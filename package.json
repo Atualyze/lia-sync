@@ -1,1 +1,17 @@
-{"name":"clubinho-homevet-whatsapp-bot","version":"0.5.4","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"dev":"node src/server.mjs","start":"node src/server.mjs","build":"for f in src/*.mjs; do node --check \"$f\" || exit 1; done","lint":"for f in src/*.mjs; do node --check \"$f\" || exit 1; done","test":"node --test"}}
+{
+  "name": "lia-bot",
+  "version": "1.0.0",
+  "description": "Lia AI — Motor Conversacional Inteligente & Triagem Omnichannel (Atualyze)",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node src/server.mjs",
+    "start": "node src/server.mjs",
+    "build": "for f in src/*.mjs; do node --check \"$f\" || exit 1; done",
+    "lint": "for f in src/*.mjs; do node --check \"$f\" || exit 1; done",
+    "test": "node --test"
+  }
+}
