@@ -27,6 +27,17 @@ export const responseSchema = {
     red_flags: { type: 'BOOLEAN' },
     handoff: { type: 'BOOLEAN' },
     handoff_reason: { type: 'STRING' },
+    tool_calls: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          args: { type: 'OBJECT' }
+        },
+        required: ['name']
+      }
+    },
     reminder: {
       type: 'OBJECT',
       properties: {
@@ -173,6 +184,17 @@ const openRouterSchema = {
     red_flags: { type: 'boolean' },
     handoff: { type: 'boolean' },
     handoff_reason: { type: ['string', 'null'] },
+    tool_calls: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          args: { type: 'object' }
+        },
+        required: ['name']
+      }
+    },
     collected: { type: 'object', additionalProperties: true }
   },
   required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_reason', 'collected']

@@ -3,6 +3,7 @@ import { buildSystemPrompt, GREETING_MESSAGE, ATENDIMENTO_EM_PROGRESSO_MESSAGE, 
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from './faq.mjs';
 import { triggerHandoff } from './handoff.mjs';
 import { normalizePhone, isTauanContact } from './sessions.mjs';
+import { executeToolCall } from './tools/index.mjs';
 
 /**
  * Identifica se a pessoa quer falar diretamente com o Tauan ou com alguém humano
@@ -644,6 +645,30 @@ Tauan, não há nenhum contato aguardando retorno no momento! Todos os atendimen
 
       const filtered = filterReply(raw, { allowedPrices: getAllowedPrices() });
       let finalReply = filtered.text;
+
+      // Execução de Ferramentas Ativas (Function Calling - padrão tools/)
+      if (Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
+        for (const tc of result.tool_calls) {
+          if (tc?.name) {
+            try {
+              const toolRes = await executeToolCall(tc.name, tc.args || {}, {
+                phone: s.phone,
+                clientName: s.clientName || pushName || 'Cliente',
+                store,
+                reminderStore,
+                session: s
+              });
+              logger.log?.(`[flow:tool] Executada ${tc.name}:`, JSON.stringify(toolRes));
+              if (toolRes?.handoffRequested) {
+                result.handoff = true;
+                result.handoff_reason = toolRes.motivo || `Transferência via tool ${tc.name}`;
+              }
+            } catch (err) {
+              logger.error?.(`[flow:tool] Falha em ${tc.name}:`, err.message);
+            }
+          }
+        }
+      }
 
       // Se o cliente pediu para agendar um lembrete/recado
       if (result?.reminder && reminderStore) {
