@@ -1,0 +1,28 @@
+services:
+  homevet-bot:
+    build: .
+    container_name: clubinho_homevet_bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+      # Exposição pública requer proxy HTTPS.
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: America/Fortaleza
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    stop_grace_period: 15s
+    networks: [evolution_default]
+networks:
+  evolution_default:
+    external: true
