@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lia Assistente · Painel de Operações</title>
+  <meta name="description" content="Painel de controle profissional da Lia Assistente." />
+  <link rel="stylesheet" href="/dashboard/styles.css" />
+</head>
+<body>
+  <!-- TELA DE LOGIN (Caso autenticação Supabase seja ativada) -->
+  <section id="login-screen" class="login-screen hidden">
+    <form id="login-form" class="login-card">
+      <div class="brand">
+        <div class="brand-mark">LIA</div>
+        <div><strong>Lia Assistente</strong><span>Operações & Triagem</span></div>
+      </div>
+      <div class="eyebrow">Acesso Restrito</div>
+      <h1>Entrar no painel</h1>
+      <p>Acesse o controle central da assistente.</p>
+      <label>E-mail<input id="login-email" type="email" autocomplete="username" required /></label>
+      <label>Senha<input id="login-password" type="password" autocomplete="current-password" required /></label>
+      <div id="login-captcha" class="login-captcha hidden" aria-live="polite"></div>
+      <button type="submit" class="login-button">Entrar</button>
+      <div id="login-error" class="login-error" role="alert"></div>
+    </form>
+  </section>
+
+  <!-- DASHBOARD PRINCIPAL -->
+  <main id="dashboard-shell" class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">LIA</div>
+        <div>
+          <strong>Lia Assistente</strong>
+          <span>Atendimento & Triagem</span>
+        </div>
+      </div>
+
+      <div class="workspace-card">
+        <div class="eyebrow">Conexão</div>
+        <div class="workspace-line">
+          <span class="status-dot"></span>
+          <strong>WhatsApp</strong>
+          <span class="pill">Conectado</span>
+        </div>
+        <small>Instância: lia · Evolution API</small>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-view="inbox">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Conversas <b id="conversation-count">0</b>
+        </button>
+
+        <button class="nav-item" data-view="admin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Configurações <b id="admin-draft-badge" class="badge-mini warn hidden">rascunho</b>
+        </button>
+
+        <button class="nav-item" data-view="agent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
+          Capacidades IA
+        </button>
+
+        <button class="nav-item" data-view="metrics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Monitoramento <b id="metrics-status-badge" class="badge-mini ok">ok</b>
+        </button>
+
+        <button class="nav-item" data-view="handoff">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+          Transbordos <b id="handoff-count">0</b>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="avatar">TP</div>
+        <div>
+          <strong>Tauan Pires</strong>
+          <span>Atendimento Humano</span>
+        </div>
+        <button class="more" id="logout" title="Sair ou recarregar">Sair</button>
+      </div>
+    </aside>
+
+    <section class="content">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Operações em Tempo Real</div>
+          <h1 id="page-title">Conversas</h1>
+        </div>
+        <div class="top-actions">
+          <select id="mode-selector" class="mode-selector" aria-label="Modo de visualização">
+            <option value="real">WhatsApp (Tempo Real)</option>
+            <option value="simulation">Simulador Isolado</option>
+          </select>
+          <span class="last-sync" id="last-sync">sincronizando...</span>
+          <button class="icon-btn" id="refresh" title="Atualizar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- VIEW: CONVERSAS (INBOX) -->
+      <section id="inbox-view" class="view active-view">
+        <div class="inbox-grid">
+          <section class="conversation-list panel">
+            <div class="panel-head">
+              <div>
+                <strong>Caixa de Entrada</strong>
+                <span id="inbox-subtitle">Contatos ativos</span>
+              </div>
+              <button class="round-btn" id="new-sim" title="Nova simulação">+</button>
+            </div>
+            <div class="search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="search" placeholder="Filtrar por nome ou telefone..." />
+            </div>
+            <div id="conversation-items" class="conversation-items"></div>
+          </section>
+
+          <section class="chat panel">
+            <div id="chat-empty" class="empty-state">
+              <div class="empty-orbit">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <h2>Nenhuma conversa selecionada</h2>
+              <p>Selecione um contato na lista para visualizar o histórico de mensagens ou alternar para atendimento manual.</p>
+            </div>
+            <div id="chat-active" class="chat-active hidden">
+              <div class="chat-head">
+                <div class="contact-avatar" id="chat-avatar">—</div>
+                <div>
+                  <strong id="chat-name">Contato</strong>
+                  <a id="chat-phone-link" href="#" target="_blank" rel="noopener" class="chat-phone-link" title="Abrir conversa no WhatsApp">
+                    <span id="chat-phone">—</span> ↗
+                  </a>
+                </div>
+                <div class="chat-head-actions">
+                  <span class="mode-badge" id="chat-mode">LIA ATIVA</span>
+                  <button class="icon-btn" id="transfer-top" title="Alternar entre Bot e Humano">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17l9.2-9.2M17 17V7H7"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div id="messages" class="messages"></div>
+              <form id="composer" class="composer">
+                <input id="message-input" autocomplete="off" placeholder="Digite uma mensagem..." />
+                <button type="submit">Enviar</button>
+              </form>
+            </div>
+          </section>
+
+          <aside class="detail panel">
+            <div class="panel-head">
+              <div>
+                <strong>Contexto do Contato</strong>
+                <span>Dados extraídos pela IA</span>
+              </div>
+            </div>
+            <div id="detail-content" class="detail-content">
+              <div class="detail-placeholder">Selecione uma conversa para inspecionar os detalhes.</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- VIEW: CONFIGURAÇÕES E PERSONALIZAÇÃO -->
+      <section id="admin-view" class="view">
+        <div class="admin-container">
+          <div class="admin-hero panel">
+            <div>
+              <div class="eyebrow">Personalização</div>
+              <h2>Configurações da Lia</h2>
+              <p>Ajuste identidade, tom de voz, mensagens padrão e o modelo de IA ativo.</p>
+            </div>
+            <div class="admin-hero-actions">
+              <span id="admin-version-badge" class="pill pale">versão 1.0</span>
+              <button id="admin-publish" class="admin-primary-btn">Publicar Alterações</button>
+            </div>
+          </div>
+
+          <div id="admin-feedback" class="admin-feedback hidden" role="status"></div>
+
+          <!-- SIMULADOR ISOLADO -->
+          <section class="admin-preview panel">
+            <div class="admin-preview-copy">
+              <div>
+                <strong>Simulador de Rascunho</strong>
+                <span>Teste mensagens com base nas configurações atuais antes de publicar para o WhatsApp.</span>
+              </div>
+            </div>
+            <div class="admin-preview-form">
+              <label>Telefone de Teste
+                <input id="admin-preview-phone" value="5588998340085" inputmode="numeric" />
+              </label>
+              <label class="preview-message-field">Mensagem do Cliente
+                <input id="admin-preview-text" value="Olá, gostaria de falar com o Tauan" />
+              </label>
+              <button id="admin-preview-run" class="admin-primary-btn">Simular Resposta</button>
+            </div>
+            <div id="admin-preview-result" class="admin-preview-result hidden"></div>
+          </section>
+
+          <div class="admin-grid">
+            <!-- IDENTIDADE -->
+            <section class="admin-card panel">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Identidade da Assistente</strong>
+                  <span>Nome, tom de voz e responsável</span>
+                </div>
+                <span class="admin-status">Editável</span>
+              </div>
+              <div class="admin-form-grid">
+                <label>Nome do Bot
+                  <input id="admin-bot-name" data-config="identity.botName" />
+                </label>
+                <label>Responsável
+                  <input id="admin-veterinarian" data-config="identity.responsible" placeholder="Tauan Pires" />
+                </label>
+                <label>Empresa / Marca
+                  <input id="admin-company-name" data-config="identity.companyName" />
+                </label>
+                <label>Fuso Horário
+                  <input id="admin-timezone" data-config="business.timezone" />
+                </label>
+                <label class="wide">Área / Abrangência
+                  <input id="admin-areas" data-config="business.areas" />
+                </label>
+                <label class="wide">Tom de Voz & Diretrizes
+                  <textarea id="admin-tone" data-config="identity.tone" rows="3"></textarea>
+                </label>
+              </div>
+            </section>
+
+            <!-- INTELIGÊNCIA ARTIFICIAL -->
+            <section class="admin-card panel">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Modelo de IA & Notificações</strong>
+                  <span>Provedores e rota de transbordo</span>
+                </div>
+                <span class="admin-status">Publicável</span>
+              </div>
+              <div class="admin-form-grid">
+                <label>Provedor Ativo
+                  <select id="admin-ai-provider" data-config="ai.activeProvider">
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI (ChatGPT)</option>
+                    <option value="qwen">Qwen (Alibaba)</option>
+                  </select>
+                </label>
+                <label>Modelo Ativo
+                  <input id="admin-ai-model" data-config="ai.activeModel" placeholder="gemini-1.5-flash" />
+                </label>
+                <label class="wide">Modelos de Fallback (Reserva)
+                  <textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" rows="2" placeholder="meta-llama/llama-3.3-70b-instruct:free"></textarea>
+                </label>
+                <label class="wide">Destino dos Alertas e Transbordo
+                  <select id="admin-human-destination" data-config="human.alertDestination">
+                    <option value="same_as_bot">Usar o mesmo número conectado à Lia (copiloto interno no WhatsApp)</option>
+                    <option value="custom">Número de WhatsApp pessoal separado</option>
+                  </select>
+                </label>
+                <label id="admin-human-phone-group">WhatsApp Pessoal do Tauan
+                  <input id="admin-human-phone" data-config="human.phone" inputmode="numeric" placeholder="558898340085" />
+                  <span class="field-hint" style="font-size: 11px; opacity: 0.7; margin-top: 4px; display: block;">Digite com DDI e DDD (ex: 558898340085)</span>
+                </label>
+                <label class="toggle-field">
+                  <input id="admin-human-enabled" data-config="human.enabled" type="checkbox" />
+                  <span>Notificar Tauan no WhatsApp em transbordos</span>
+                </label>
+              </div>
+            </section>
+
+            <!-- TEXTOS PADRÃO -->
+            <section class="admin-card panel admin-wide">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Mensagens-Base</strong>
+                  <span>Textos mestres de saudação e direcionamento</span>
+                </div>
+                <button id="admin-reset-draft" class="admin-ghost-btn">Restaurar Padrão</button>
+              </div>
+              <div class="admin-form-grid">
+                <label class="wide">Mensagem de Boas-Vindas
+                  <textarea id="admin-greeting" data-config="messages.greeting" rows="2"></textarea>
+                </label>
+                <label>Opção 1 — "Atendimento"
+                  <textarea id="admin-plans" data-config="messages.plans" rows="3"></textarea>
+                </label>
+                <label>Opção 2 — "Falar com Tauan"
+                  <textarea id="admin-services" data-config="messages.services" rows="3"></textarea>
+                </label>
+                <label>Políticas de Atendimento
+                  <textarea id="admin-policies" data-config="messages.policies" rows="3"></textarea>
+                </label>
+                <label>Pagamento e Condições
+                  <textarea id="admin-payment" data-config="messages.payment" rows="3"></textarea>
+                </label>
+              </div>
+            </section>
+
+            <!-- BASE DE CONHECIMENTO -->
+            <section class="admin-card panel admin-wide">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Base de Conhecimento (Perguntas Frequentes)</strong>
+                  <span id="admin-faq-summary">Perguntas registradas</span>
+                </div>
+                <button id="admin-add-faq" class="admin-ghost-btn">+ Adicionar Pergunta</button>
+              </div>
+              <div id="admin-faq-list" class="admin-faq-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: CAPACIDADES DA IA -->
+      <section id="agent-view" class="view">
+        <div class="agent-panel panel">
+          <div class="agent-header-row" style="padding: 18px 24px; border-bottom: 1px solid var(--border-subtle);">
+            <div class="eyebrow">Módulos do Sistema</div>
+            <h2 style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: var(--text-primary);">Capacidades da Lia</h2>
+            <p style="margin: 2px 0 0; color: var(--text-secondary); font-size: 12px;">Visão dos componentes de software integrados ao bot.</p>
+          </div>
+
+          <div class="agent-sections-wrapper">
+            <div class="agent-section-block">
+              <div class="agent-section-title">Comunicação e Fluxo</div>
+              <div class="agent-card-list">
+                <div class="agent-card-item">
+                  <div class="agent-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </div>
+                  <div class="agent-card-info">
+                    <strong>Recepção e Triagem Dual</strong>
+                    <span>Classifica intenções entre Atendimento em Preparação ou Falar com Tauan</span>
+                  </div>
+                </div>
+                <div class="agent-card-item">
+                  <div class="agent-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/></svg>
+                  </div>
+                  <div class="agent-card-info">
+                    <strong>Base de Dúvidas FAQ</strong>
+                    <span>Respostas rápidas determinísticas e alimentadas por IA</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="agent-section-block">
+              <div class="agent-section-title">Ações do Sistema</div>
+              <div class="agent-card-list">
+                <div class="agent-card-item">
+                  <div class="agent-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                  </div>
+                  <div class="agent-card-info">
+                    <strong>Transbordo Direto para Tauan</strong>
+                    <span>Disparo de alerta via WhatsApp com resumo e link wa.me direto</span>
+                  </div>
+                </div>
+                <div class="agent-card-item">
+                  <div class="agent-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                  </div>
+                  <div class="agent-card-info">
+                    <strong>Pausa Operacional em Modo Humano</strong>
+                    <span>Silencia respostas automatizadas quando você assume a conversa</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: MONITORAMENTO (METRICS) -->
+      <section id="metrics-view" class="view">
+        <div class="metrics-container">
+          <div class="metrics-toolbar">
+            <div class="toolbar-info">
+              <strong>Telemetria & Consumo da IA</strong>
+              <span>Métricas de latência, tokens e saúde dos modelos em tempo real</span>
+            </div>
+            <div class="toolbar-actions" style="display:flex; gap:8px; align-items:center;">
+              <select id="metrics-refresh-rate" class="metrics-select" title="Intervalo de atualização">
+                <option value="5000">Atualizar: 5s</option>
+                <option value="15000" selected>Atualizar: 15s</option>
+                <option value="30000">Atualizar: 30s</option>
+                <option value="0">Pausar</option>
+              </select>
+              <button class="action-btn-ping" id="btn-refresh-metrics" title="Atualizar agora">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Atualizar
+              </button>
+              <button class="action-btn-ping" id="btn-reset-metrics" title="Zerar métricas da sessão" style="opacity:0.8;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Zerar
+              </button>
+              <button class="action-btn-ping primary-ping" id="btn-ping-ai">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                ⚡ Testar Latência (Ping)
+              </button>
+            </div>
+          </div>
+
+          <div id="ping-result-banner" class="ping-banner hidden"></div>
+          <div id="metrics-ping-banner" class="ping-banner hidden"></div>
+
+          <div class="metrics-kpi-grid">
+            <div class="metric-card">
+              <div class="metric-label">Provedor & Modelo</div>
+              <div class="metric-value-row">
+                <span class="metric-number-provider" id="metric-active-provider">Gemini</span>
+              </div>
+              <div class="metric-sub-row">
+                <span>Modelo:</span> <b id="metric-active-model">gemini-3.8-flash</b>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-label">Latência Real</div>
+              <div class="metric-value-row">
+                <span class="metric-number" id="metric-avg-latency">0</span>
+                <span class="metric-unit">ms</span>
+                <span id="metric-latency-badge" class="pill mini mint" style="margin-left:auto;">Sem dados</span>
+              </div>
+              <div class="metric-sub-row">
+                <span>Última: <b id="metric-last-latency">—</b></span>
+                <span>P95: <b id="metric-p95-latency">—</b></span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-label">Tokens & Custo</div>
+              <div class="metric-value-row">
+                <span class="metric-number" id="metric-total-tokens">0</span>
+                <span id="metric-cost-badge" class="pill mini mint" style="margin-left:auto;">Grátis</span>
+              </div>
+              <div class="metric-sub-row">
+                <span>Prompt: <b id="metric-prompt-tokens">0</b></span>
+                <span>Resposta: <b id="metric-completion-tokens">0</b></span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-label">Estabilidade</div>
+              <div class="metric-value-row">
+                <span class="metric-number" id="metric-success-rate">100%</span>
+                <span id="metric-rate-badge" class="pill mini mint" style="margin-left:auto;">100% estável</span>
+              </div>
+              <div class="metric-sub-row">
+                <span>Total: <b id="metric-total-reqs">0</b></span>
+                <span>Falhas: <b id="metric-total-fails">0</b></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metrics-dual-grid">
+            <section class="panel metrics-section">
+              <div class="panel-head">
+                <div>
+                  <strong>Circuit Breakers dos Provedores</strong>
+                  <span>Status de saúde das conexões de IA</span>
+                </div>
+              </div>
+              <div id="metrics-circuit-list" class="circuit-list"></div>
+            </section>
+
+            <section class="panel metrics-section">
+              <div class="panel-head">
+                <div>
+                  <strong>Chamadas Recentes à IA</strong>
+                  <span id="metrics-history-count">0 registradas</span>
+                </div>
+              </div>
+              <div class="metrics-table-wrapper">
+                <table class="metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <th>Provedor / Modelo</th>
+                      <th>Intenção</th>
+                      <th>Latência</th>
+                      <th>Tokens</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="metrics-history-tbody">
+                    <tr><td colspan="6" class="table-empty">Nenhuma chamada registrada ainda.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel metrics-section" style="margin-top:12px;">
+            <div class="panel-head">
+              <div>
+                <strong>Log de Erros Sanitizado</strong>
+                <span><span id="metrics-errors-count">0</span> incidentes nas últimas chamadas</span>
+              </div>
+            </div>
+            <div id="metrics-errors-list" class="errors-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- VIEW: TRANSBORDOS (HANDOFF) -->
+      <section id="handoff-view" class="view">
+        <div class="handoff-panel panel">
+          <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Fila de Transbordos (Atendimento Humano)</strong>
+              <span>Contatos aguardando retorno do Tauan ou em modo humano</span>
+            </div>
+            <button class="action-btn-ping" id="refresh-handoff" title="Atualizar fila agora">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Atualizar Fila
+            </button>
+          </div>
+          <div id="handoff-list" class="handoff-list">
+            <div class="empty-state">
+              <p>Nenhum transbordo pendente. O robô está atendendo normalmente.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,581 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createFlow, isTalkToTauanRequest } from './flow.mjs';
+import { SessionStore } from './sessions.mjs';
+
+function createMockStore() {
+  const sessions = {};
+  return {
+    sessions,
+    get(phone, origin = 'real') {
+      const key = origin === 'simulation' ? `sim:${phone}` : phone;
+      if (!sessions[key]) {
+        sessions[key] = {
+          phone,
+          history: [],
+          human: false,
+          handoffAt: null,
+          origin
+        };
+      }
+      return sessions[key];
+    },
+    touch() {},
+    markDirty() {}
+  };
+}
+
+test('Conversa interna: número legado NÃO ativa mais o copiloto do Tauan', async () => {
+  const store = createMockStore();
+  let aiCalledWithTauan = false;
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async ({ isTauan, system }) => {
+        if (isTauan || system?.includes('copiloto executiva')) {
+          aiCalledWithTauan = true;
+        }
+        return { reply: 'Olá!', intent: 'saudacao' };
+      }
+    }
+  });
+
+  // Mensagem vinda do número antigo 558898340085
+  await flow.process({
+    phone: '558898340085',
+    text: 'status'
+  });
+
+  // Não deve ter ativado a persona de copiloto interno
+  assert.equal(aiCalledWithTauan, false, 'Número antigo não deve ativar o copiloto interno');
+});
+
+test('Conversa interna: comandos operacionais (ajuda, status, fila)', async () => {
+  const store = createMockStore();
+  
+  // Cliente 1 em espera
+  const sClient = store.get('5511999998888');
+  sClient.clientName = 'Carlos Silva';
+  sClient.human = true;
+  sClient.handoffAt = new Date(Date.now() - 10 * 60000).toISOString();
+  sClient.history.push({ role: 'user', content: 'Gostaria de um orçamento para o app' });
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    getTelemetry: async () => ({
+      activeProvider: 'gemini',
+      activeModel: 'gemini-3.8-flash',
+      evolution: { status: 'connected' }
+    }),
+    ai: { askAI: async () => ({ reply: 'ok' }) }
+  });
+
+  // Comando ajuda
+  const help = await flow.process({ phone: '5588921694598', text: 'ajuda' });
+  assert.match(help, /\*status\*/);
+  assert.match(help, /\*fila\*/);
+  assert.match(help, /\*bot \[número\]\*/);
+
+  // Comando status
+  const status = await flow.process({ phone: '5588921694598', text: 'status' });
+  assert.match(status, /Raio-X Operacional/);
+  assert.match(status, /gemini-3\.8-flash/);
+  assert.match(status, /🟢 Conectado/);
+  assert.match(status, /Em espera humana/);
+
+  // Comando fila
+  const fila = await flow.process({ phone: '5588921694598', text: 'fila' });
+  assert.match(fila, /Carlos Silva/);
+  assert.match(fila, /wa\.me\/5511999998888/);
+  assert.match(fila, /orçamento para o app/);
+});
+
+test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', async () => {
+  const store = createMockStore();
+  let flushCalled = false;
+  store.flush = async () => { flushCalled = true; };
+
+  const clientPhone = '5588993602644';
+  const sClient = store.get(clientPhone);
+  sClient.clientName = 'Mikaelle Santos';
+  sClient.human = true;
+  sClient.handoffAt = new Date().toISOString();
+  sClient.history.push({ role: 'user', content: 'Oi' });
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: { askAI: async () => ({ reply: 'ok' }) }
+  });
+
+  // 1. Comando bot com telefone formatado (+55 88 99360-2644)
+  const repFormatado = await flow.process({ phone: '5588921694598', text: 'bot +55 88 99360-2644' });
+  assert.match(repFormatado, /Bot reativado com sucesso/);
+  assert.match(repFormatado, /Mikaelle Santos/);
+  assert.equal(sClient.human, false, 'Sessão do cliente deve voltar para bot (human=false)');
+  assert.equal(typeof sClient.updatedAt, 'string', 'updatedAt deve ser preenchido');
+  assert.equal(flushCalled, true, 'flush deve ter sido chamado para persistir no banco');
+
+  // 2. Coloca em humano pelo nome
+  sClient.human = false;
+  const repHumanoNome = await flow.process({ phone: '5588921694598', text: 'humano mikaelle' });
+  assert.match(repHumanoNome, /Atendimento humano ativado/);
+  assert.equal(sClient.human, true, 'Sessão do cliente deve ficar em modo humano');
+
+  // 3. Reativa bot pelo índice 1 da fila (bot 1)
+  const repBotIdx = await flow.process({ phone: '5588921694598', text: 'bot 1' });
+  assert.match(repBotIdx, /Bot reativado com sucesso/);
+  assert.match(repBotIdx, /Mikaelle Santos/);
+  assert.equal(sClient.human, false, 'Sessão reativada pelo índice');
+
+  // 4. Comando limpar
+  sClient.history = [{ role: 'user', content: 'teste' }];
+  const repLimpar = await flow.process({ phone: '5588921694598', text: `limpar ${clientPhone}` });
+  assert.match(repLimpar, /Sessão resetada com sucesso/);
+  assert.equal(sClient.history.length, 0, 'Histórico do cliente deve ser esvaziado');
+  assert.equal(sClient.human, false, 'Cliente resetado volta para bot');
+
+  // 5. Variantes de pergunta de fila
+  sClient.human = true;
+  sClient.clientName = 'Glória Vasconcelos';
+  sClient.handoffAt = new Date(Date.now() - 15 * 60000).toISOString();
+  sClient.history = [{ role: 'user', content: 'Dúvida sobre a entrega' }];
+
+  const repQuem = await flow.process({ phone: '5588921694598', text: 'quem tá esperando?' });
+  assert.match(repQuem, /Glória Vasconcelos/);
+  assert.match(repQuem, /15 min/);
+
+  const repLista = await flow.process({ phone: '5588921694598', text: 'lista completa' });
+  assert.match(repLista, /Glória Vasconcelos/);
+
+  const repAlguem = await flow.process({ phone: '5588921694598', text: 'tem alguém esperando?' });
+  assert.match(repAlguem, /Glória Vasconcelos/);
+});
+
+test('Conversa interna: respostas de IA passam por filterReply', async () => {
+  const store = createMockStore();
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async () => ({
+        reply: '**Relatório executivo:**\n- Ponto 1\n- Ponto 2'
+      })
+    }
+  });
+
+  const rep = await flow.process({ phone: '5588921694598', text: 'Me faz um resumo das tarefas' });
+  // Deve ter convertido ** em * do WhatsApp e - em •
+  assert.match(rep, /\*Relatório executivo:\*/);
+  assert.match(rep, /• Ponto 1/);
+  assert.doesNotMatch(rep, /\*\*/);
+});
+
+test('Cliente: menção casual ao Tauan não dispara handoff robótico prematuro', async () => {
+  // Teste da regex isTalkToTauanRequest
+  assert.equal(isTalkToTauanRequest('O Tauan me indicou o trabalho de vocês'), false);
+  assert.equal(isTalkToTauanRequest('Conheci o Tauan na faculdade'), false);
+  assert.equal(isTalkToTauanRequest('Bom dia, tudo bem?'), false);
+
+  // Casos que DEVEM disparar transferência expressa:
+  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan'), true);
+  assert.equal(isTalkToTauanRequest('Pode me passar pro Tauan?'), true);
+  assert.equal(isTalkToTauanRequest('falar com humano'), true);
+  assert.equal(isTalkToTauanRequest('chamar atendente'), true);
+  assert.equal(isTalkToTauanRequest('opcao 2'), true);
+  assert.equal(isTalkToTauanRequest('2'), true);
+});
+
+test('Áudio personalizado: Lia NUNCA envia o comando literal, gera prévia amigável e pede confirmação antes de enviar', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+
+  const sentAudios = [];
+  const sentTexts = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendText: async (phone, text) => { sentTexts.push({ phone, text }); },
+      sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Claro, Tauan! Vou enviar o áudio para o Lima.',
+        intent: 'envio_mensagem',
+        tool_calls: []
+      }),
+      synthesizeVoice: async (text) => ({ base64: `AUDIO_B64:${text}`, mimeType: 'audio/ogg' })
+    }
+  });
+
+  // 1. Tauan pede: "Vou precisar que envie um áudio pro lima" (sem assunto)
+  const askSubject = await flow.process({
+    phone: '5588921694598',
+    text: 'Vou precisar que envie um áudio pro lima'
+  });
+  assert.equal(sentAudios.length, 0, 'Não deve enviar áudio quando ainda não há assunto');
+  assert.match(askSubject, /O que você gostaria que eu falasse no áudio para o \*Lima\*/i);
+
+  // 2. Tauan envia comando completo: "Lia, envie um áudio pro Lima sobre o pagamento dos boletos de R$ 2500"
+  const preview = await flow.process({
+    phone: '5588921694598',
+    text: 'Lia, envie um áudio pro Lima sobre o pagamento dos boletos de R$ 2500'
+  });
+
+  // NÃO deve ter enviado o áudio ainda — deve ter pedido confirmação!
+  assert.equal(sentAudios.length, 0, 'Não deve disparar o áudio antes da confirmação do Tauan');
+  assert.match(preview, /Prévia do áudio personalizado para Lima/i);
+  assert.match(preview, /Oi, Lima!/i);
+  assert.doesNotMatch(preview, /Aqui é a Lia, assistente do Tauan/i, 'Não deve repetir autoapresentação robótica');
+  assert.doesNotMatch(preview, /a pedido dele/i, 'Não deve dizer que foi a pedido do Tauan');
+  assert.match(preview, /sobre o pagamento dos boletos de R\$ 2500/i);
+  assert.doesNotMatch(preview, /"envie um áudio pro Lima/i, 'Jamais deve usar a frase literal de comando como roteiro');
+  assert.match(preview, /Deseja que eu grave e envie este áudio agora/i);
+
+  // 3. Tauan confirma: "sim, pode enviar"
+  const confirmed = await flow.process({
+    phone: '5588921694598',
+    text: 'sim, pode enviar'
+  });
+
+  assert.equal(sentAudios.length, 1, 'Após confirmação, o áudio deve ser sintetizado e enviado');
+  assert.equal(sentAudios[0].phone, '5585991099483');
+  assert.match(sentAudios[0].base64, /Oi, Lima!/);
+  assert.doesNotMatch(sentAudios[0].base64, /Aqui é a Lia, assistente do Tauan/);
+  assert.match(confirmed, /Áudio gravado e enviado com sucesso/i);
+});
+
+test('Notificação ao Tauan: sempre notifica quando assunto é direcionado ao Tauan (mesmo com *Tauan* ou handoff anterior)', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+  sLima.human = false;
+  sLima.handoffNotified = true; // Simulando sessão que já teve handoff no passado e voltou para o bot
+
+  const notifications = [];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendText: async (phone, text) => { notifications.push({ phone, text }); }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Perfeito, Lima! Já acionei o *Tauan* para pegarmos o link atualizado do rastreio do site para você. 📲',
+        intent: 'duvida',
+        handoff: false
+      })
+    }
+  });
+
+  const reply = await flow.process({
+    phone: '5585991099483',
+    text: 'Preciso que mande o rastreio do site'
+  });
+
+  assert.match(reply, /acionei o \*Tauan\*/);
+  assert.equal(sLima.human, true, 'Sessão deve entrar em modo humano');
+  assert.equal(notifications.length, 1, 'Tauan DEVE receber notificação no WhatsApp mesmo se handoffNotified antigo era true');
+  assert.equal(notifications[0].phone, '5588921694598');
+  assert.match(notifications[0].text, /Novo contato para você, Tauan/);
+  assert.match(notifications[0].text, /Lima/);
+});
+
+test('Ajuste na prévia do áudio: converte 3ª pessoa ("ele") para 2ª pessoa ("você") e NUNCA dispara o feedback do Tauan pro cliente', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+
+  const sentAudios = [];
+  const sentTexts = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendText: async (phone, text) => { sentTexts.push({ phone, text }); },
+      sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Ok!',
+        intent: 'envio_mensagem',
+        tool_calls: []
+      }),
+      synthesizeVoice: async (text) => ({ base64: `AUDIO_B64:${text}`, mimeType: 'audio/ogg' })
+    }
+  });
+
+  // 1. Tauan pede áudio
+  await flow.process({
+    phone: '5588921694598',
+    text: 'Preciso que envie um áudio pro lima'
+  });
+
+  // 2. Tauan diz em 3ª pessoa: "Diga que ele vai precisar criar o código de rastreio pixel da meta e cadastrar no CRM"
+  const preview1 = await flow.process({
+    phone: '5588921694598',
+    text: 'Diga que ele vai precisar criar o código de rastreio pixel da meta e cadastrar no CRM'
+  });
+
+  // Já deve ter convertido "ele vai precisar" para "você vai precisar"!
+  assert.match(preview1, /você vai precisar criar o código de rastreio pixel da meta/i);
+  assert.doesNotMatch(preview1, /Aqui é a Lia, assistente do Tauan/i);
+  assert.doesNotMatch(preview1, /Estou passando para te avisar que/i);
+  assert.equal(sentTexts.length, 0, 'Não deve enviar texto para o Lima');
+  assert.equal(sentAudios.length, 0, 'Não deve enviar áudio antes da confirmação');
+
+  // 3. Mesmo que o Tauan mande uma observação/correção como "No caso estou me referindo ao lima e não a mim", JAMAIS dispara isso pro Lima!
+  const preview2 = await flow.process({
+    phone: '5588921694598',
+    text: 'No caso estou me referindo ao lima e não a mim'
+  });
+
+  assert.equal(sentTexts.length, 0, 'JAMAIS deve enviar a observação do Tauan para o Lima');
+  assert.equal(sentAudios.length, 0, 'Ainda aguarda o "sim" final do Tauan');
+  assert.match(preview2, /Prévia atualizada do áudio para lima/i);
+  assert.match(preview2, /Ficou como você queria\?/i);
+
+  // 4. Tauan confirma: "sim"
+  const finalConfirm = await flow.process({
+    phone: '5588921694598',
+    text: 'sim'
+  });
+
+  assert.equal(sentAudios.length, 1, 'Agora sim envia o áudio sintetizado para o Lima');
+  assert.match(finalConfirm, /Áudio gravado e enviado com sucesso/i);
+});
+
+test('Cliente envia áudio: Lia responde em áudio E pergunta se o cliente prefere conversar por áudio ou texto', async () => {
+  const store = createMockStore();
+  const clientPhone = '5585991099483';
+  const sLima = store.get(clientPhone);
+  sLima.clientName = 'Lima';
+  sLima.human = false;
+
+  const sentAudios = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    getBotConfig: () => ({ voice: { autoVoiceOnAudio: true } }),
+    whatsapp: {
+      getMediaBase64: async () => ({ base64: 'FAKE_AUDIO_IN', mimetype: 'audio/ogg' }),
+      sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); }
+    },
+    ai: {
+      transcribeAudio: async () => 'Qual o horário de atendimento de vocês?',
+      askAI: async () => ({
+        reply: 'Oi, Lima! Nosso atendimento funciona de segunda a sexta, das 8h às 18h.',
+        intent: 'duvida',
+        handoff: false
+      }),
+      synthesizeVoice: async (text) => ({ base64: `VOICE_OUT:${text}`, mimeType: 'audio/ogg' })
+    }
+  });
+
+  const textFollowUp = await flow.process({
+    phone: clientPhone,
+    mediaType: 'audio',
+    nonText: true,
+    rawItem: { jid: `${clientPhone}@s.whatsapp.net`, key: { id: 'msg1' }, message: { audioMessage: {} } }
+  });
+
+  assert.equal(sentAudios.length, 1, 'Deve ter enviado a resposta sintetizada em áudio para o cliente');
+  assert.match(sentAudios[0].base64, /Oi, Lima! Nosso atendimento funciona de segunda a sexta/);
+  assert.match(textFollowUp, /Prefere continuar conversando por \*áudio\* ou por \*texto\*\?/i);
+});
+
+test('Sanitização de roteiro: remove completamente "o áudio pro lima informando sobre" mesmo com artigo definido ("o áudio")', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async () => ({
+        reply: 'Ok',
+        intent: 'envio_mensagem',
+        tool_calls: []
+      })
+    }
+  });
+
+  const preview = await flow.process({
+    phone: '5588921694598',
+    text: 'Envie o audio pro lima informando sobre o código de rastreio do site'
+  });
+
+  assert.doesNotMatch(preview, /o audio pro lima/i, 'Jamais deve vazar "o audio pro lima" no roteiro');
+  assert.doesNotMatch(preview, /informando sobre/i, 'Jamais deve vazar "informando sobre" no roteiro');
+  assert.doesNotMatch(preview, /Aqui é a Lia, assistente do Tauan/i, 'Não deve repetir apresentação robótica');
+  assert.doesNotMatch(preview, /a pedido dele/i, 'Não deve dizer que foi a pedido do Tauan');
+  assert.doesNotMatch(preview, /Estou passando para te avisar que/i, 'Não deve usar clichê robótico');
+  assert.match(preview, /Oi, Lima! Tudo bem\? Estou entrando em contato para alinharmos sobre o código de rastreio do site/i);
+
+  // Teste exato do print: Lia, envie um audio e diga ao lima que "ele vai precisar testar os eventos no crm também no menu de aquisição
+  const previewPrint = await flow.process({
+    phone: '5588921694598',
+    text: 'cancelar' // limpa o anterior
+  }).then(() => flow.process({
+    phone: '5588921694598',
+    text: 'Lia, envie um audio e diga ao lima que "ele vai precisar testar os eventos no crm também no menu de aquisição'
+  }));
+
+  assert.doesNotMatch(previewPrint, /Oi, lima! E diga/i, 'Jamais deve vazar "E diga" no roteiro');
+  assert.doesNotMatch(previewPrint, /ele vai precisar/i, 'Deve converter "ele vai precisar" para 2ª pessoa');
+  assert.match(previewPrint, /Oi, lima! Tudo bem\? Só para alinharmos os próximos passos, você vai precisar testar os eventos no crm também no menu de aquisição, combinado\?/i);
+});
+
+test('Contexto selecionável do Contato: injeta suporte ativo, observações e Base de Conhecimento (Clubinho HomeVet) somente quando ativado no contato', async () => {
+  const store = createMockStore();
+
+  // Contato 1: Sem suporte ativo nem base (comportamento padrão preservado)
+  const sNormal = store.get('5511988887777');
+  sNormal.clientName = 'Visitante Comum';
+
+  // Contato 2: Com suporte ativo + Base Clubinho HomeVet + Observações
+  const sClubinho = store.get('5586999962542');
+  sClubinho.clientName = 'Dra. Elisângela';
+  sClubinho.supportModeEnabled = true;
+  sClubinho.knowledgeBaseId = 'clubinho-homevet';
+  sClubinho.contactRole = 'project_owner';
+  sClubinho.contactNotes = 'Fundadora do Clubinho HomeVet em Teresina. Sempre que pedir ajuste no checkout Asaas ou falar com o Tauan, priorizar.';
+
+  const promptsByPhone = {};
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async ({ system }) => {
+        if (system.includes('Visitante Comum')) promptsByPhone.normal = system;
+        if (system.includes('Dra. Elisângela')) promptsByPhone.clubinho = system;
+        return { reply: 'Tudo certo!', intent: 'duvida', handoff: false };
+      }
+    }
+  });
+
+  await flow.process({ phone: '5511988887777', text: 'Olá, quero saber como funciona' });
+  await flow.process({ phone: '5586999962542', text: 'Oi Lia, qual o valor configurado no plano filhote cão e como sincronizo o Asaas?' });
+
+  // 1. Contato comum NÃO recebe o bloco especial nem o manual do Clubinho HomeVet
+  assert.doesNotMatch(promptsByPhone.normal, /CONTEXTO ESPECIAL DESTE CONTATO/);
+  assert.doesNotMatch(promptsByPhone.normal, /CLUBINHO HOMEVET/);
+
+  // 2. Contato configurado RECEBE suporte ativo, observações e o manual completo do Clubinho HomeVet
+  assert.match(promptsByPhone.clubinho, /CONTEXTO ESPECIAL DESTE CONTATO/);
+  assert.match(promptsByPhone.clubinho, /FAZ PARTE DO ATENDIMENTO\/SUPORTE ATIVO/);
+  assert.match(promptsByPhone.clubinho, /Fundadora do Clubinho HomeVet em Teresina/);
+  assert.match(promptsByPhone.clubinho, /CLUBINHO HOMEVET/i);
+  assert.match(promptsByPhone.clubinho, /Plano Sênior \/ Filhote \(Cães\)/i);
+  assert.match(promptsByPhone.clubinho, /Testar conexão Asaas/i);
+  assert.match(promptsByPhone.clubinho, /Relatório Completo Web \(`\.HTML`\)/i);
+  assert.match(promptsByPhone.clubinho, /FOCO PRÁTICO NO CRM \(\/admin\) \+ LANDING PAGE/i);
+  assert.match(promptsByPhone.clubinho, /NOTIFICAÇÃO IMEDIATA AO TAUAN \/ ATUALYZE/i);
+  assert.doesNotMatch(promptsByPhone.clubinho, /POST \/api\/payments\/checkout/i);
+});
+
+test('Copiloto do Tauan (isTauan=true): tem acesso completo aos dossiês das bases de conhecimento (ex: Clubinho HomeVet)', async () => {
+  const store = createMockStore();
+  let capturedCopilotSystem = '';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async ({ system }) => {
+        capturedCopilotSystem = system;
+        return {
+          reply: 'Conheço todos os detalhes do *Clubinho HomeVet*! É o clube de saúde preventiva veterinária domiciliar da Dra. Elisângela em Teresina-PI.',
+          intent: 'chat',
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'tauan_self',
+    text: 'O que vc sabe sobre o clubinho homevet?'
+  });
+
+  assert.match(capturedCopilotSystem, /BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS/);
+  assert.match(capturedCopilotSystem, /CLUBINHO HOMEVET/i);
+  assert.match(capturedCopilotSystem, /Dra\. Elisângela/i);
+  assert.match(capturedCopilotSystem, /Relatório Completo Web \(`\.HTML`\)/i);
+  assert.doesNotMatch(capturedCopilotSystem, /POST \/api\/payments\/checkout/i);
+  assert.match(reply, /Clubinho HomeVet/i);
+});
+
+test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e envia áudio diretamente sem pedir confirmação', async () => {
+  const store = createMockStore();
+  const sentAudios = [];
+  let speechTextPassed = '';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendWhatsAppAudio: async (phone, base64) => {
+        sentAudios.push({ phone, base64 });
+      }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Tauan, para exportar o relatório em HTML, acesse o menu Relatórios, clique na aba Exportar, escolha o período e clique em Relatório Completo Web.',
+        intent: 'chat',
+        handoff: false,
+        tool_calls: []
+      }),
+      synthesizeVoice: async (text) => {
+        speechTextPassed = text;
+        return { base64: 'AUDIO_BASE64_SIMULADO', mimeType: 'audio/wav' };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'tauan_self',
+    text: 'Lia, me explique em áudio como exporto o relatório em html'
+  });
+
+  // 1. Deve ter sintetizado o áudio diretamente
+  assert.match(speechTextPassed, /para exportar o relatório em HTML/i);
+
+  // 2. Deve ter enviado o áudio para o Tauan no WhatsApp
+  assert.equal(sentAudios.length, 1, 'Deve ter disparado o áudio para o WhatsApp do Tauan');
+  assert.equal(sentAudios[0].phone, '5588921694598');
+  assert.equal(sentAudios[0].base64, 'AUDIO_BASE64_SIMULADO');
+
+  // 3. Resposta de texto deve conter o aviso e a transcrição, SEM pedir confirmação
+  assert.match(reply, /Áudio gravado e enviado para você/i);
+  assert.match(reply, /Relatórios/i);
+  assert.doesNotMatch(reply, /Deseja que eu grave e envie este áudio agora/i, 'NÃO deve pedir confirmação quando é para o próprio Tauan');
+  assert.doesNotMatch(reply, /Prévia do áudio personalizado para você/i);
+
+  // 4. lastAudioBase64 deve ter sido salvo na sessão do Tauan para o Chatwoot
+  const sTauan = store.get('tauan_self');
+  assert.equal(sTauan.lastAudioBase64, 'AUDIO_BASE64_SIMULADO');
+});
