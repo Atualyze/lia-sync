@@ -635,7 +635,8 @@ export function createFlow({
       rawItem = null,
       pushName = '',
       authorizedResume = false,
-      messageId = ''
+      messageId = '',
+      attachments = []
     }) {
       const botConfig = getBotConfig() || {};
       const isSelfTauan = phone === 'tauan_self' || isTauanSender(phone);
@@ -654,6 +655,39 @@ export function createFlow({
         store.touch(sSelf);
 
         let cleanTauan = String(text || '').trim();
+
+        // Análise multimodal se houver documentos ou imagens em anexo (Painel Chatwoot ou WhatsApp)
+        let copilotDocAnalysis = null;
+        const targetAtt = Array.isArray(attachments) && attachments.length > 0 ? attachments[0] : null;
+        if (targetAtt && (targetAtt.url || targetAtt.dataUrl)) {
+          const rawUrl = String(targetAtt.url || targetAtt.dataUrl || '');
+          const matchB64 = rawUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (matchB64 && ai.analyzeDocument) {
+            const mime = matchB64[1] || targetAtt.mimeType || 'application/pdf';
+            const b64 = matchB64[2];
+            try {
+              copilotDocAnalysis = await ai.analyzeDocument({
+                base64: b64,
+                mimetype: mime,
+                caption: cleanTauan
+              });
+            } catch (err) {
+              console.error('[flow] Erro ao analisar documento no Copiloto:', err.message);
+            }
+          }
+        }
+
+        if (copilotDocAnalysis && copilotDocAnalysis.summary) {
+          const docTypeFormatted = String(copilotDocAnalysis.docType || 'Documento').toUpperCase();
+          const pointsList = (copilotDocAnalysis.keyPoints || []).map(p => `• ${p}`).join('\n');
+          const pDetails = copilotDocAnalysis.paymentDetails;
+          let paymentText = '';
+          if (pDetails && pDetails.isPayment) {
+            paymentText = `\n\n💳 *Dados do Pagamento Identificado:*\n• *Valor:* ${pDetails.amount || 'Não identificado'}\n• *Pagador:* ${pDetails.payer || 'Não identificado'}\n• *Favorecido:* ${pDetails.receiver || 'Não identificado'}\n• *Data:* ${pDetails.date || 'Não identificada'}`;
+          }
+          const analysisReply = `📄 *Análise do Documento (${docTypeFormatted}) Concluída!*\n\n📋 *Resumo Executivo:*\n${copilotDocAnalysis.summary}${paymentText}\n\n📌 *Pontos Identificados:*\n${pointsList || 'Nenhum ponto crítico identificado.'}\n\n💡 *Ação Recomendada:* ${copilotDocAnalysis.actionNeeded || 'Revisar anexo.'}`;
+          return recordSelfTurn(filterReply(analysisReply, { isCopilot: true }).text);
+        }
         if (mediaType === 'audio' && rawItem) {
           try {
             const media = await whatsapp.getMediaBase64?.(rawItem);

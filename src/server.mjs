@@ -424,7 +424,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
           phone: digits,
           text,
           origin,
-          pushName
+          pushName,
+          attachments: Array.isArray(body.attachments) ? body.attachments : []
         }));
         const session = store.get(digits, origin);
         const lastAudio = session?.lastAudioBase64 || null;
