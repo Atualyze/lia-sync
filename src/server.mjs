@@ -1,7 +1,9 @@
 import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { timingSafeEqual } from 'node:crypto';
 import { config, validateConfig } from './config.mjs';
 import { SessionStore, normalizePhone, isValidRealMobilePhone, isTauanContact } from './sessions.mjs';
@@ -18,6 +20,21 @@ import { AdminConfigStore } from './admin-config.mjs';
 import { SupabaseSessionStore, SupabaseAdminConfigStore, createSupabaseRuntime } from './supabase-runtime.mjs';
 import { setMetricsPersistenceSink } from './metrics.mjs';
 import { ReminderStore } from './reminders.mjs';
+
+const require = createRequire(import.meta.url);
+const APP_VERSION = require('../package.json').version;
+const HOP_BY_HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
+
+function withoutHopByHopHeaders(headers = {}) {
+  const result = { ...headers };
+  const blocked = new Set(HOP_BY_HOP_HEADERS);
+  for (const token of String(result.connection || '').split(',')) {
+    if (token.trim()) blocked.add(token.trim().toLowerCase());
+  }
+  for (const name of blocked) delete result[name];
+  delete result.host;
+  return result;
+}
 
 const bridgeSubscribers = new Set();
 export function broadcastBridgeEvent(type, data) {
@@ -80,7 +97,7 @@ const supabaseRuntime = config.supabaseRuntimeEnabled ? createSupabaseRuntime({ 
 const defaultStore = supabaseRuntime.enabled ? new SupabaseSessionStore(config.dataFile, { client: supabaseRuntime.client, ttlMs: config.sessionTtlMs }) : new SessionStore(config.dataFile, { ttlMs: config.sessionTtlMs });
 const defaultAdminConfig = supabaseRuntime.enabled ? new SupabaseAdminConfigStore(undefined, { client: supabaseRuntime.client }) : new AdminConfigStore();
 
-export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig } = {}) {
+export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl } = {}) {
   await store.load();
   await adminConfig.load();
   if (!store.client?.enabled) console.warn('[persistence] Supabase runtime desativado: configure SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; usando fallback local.');
@@ -186,7 +203,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     return { provider, model, fallbackModels };
   };
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
-  const deliver = (job) => store.enqueue(job.phone, () => f.process(job)).then(async answer => {
+  const deliver = (job) => store.enqueue(job.phone, () => f.process({ ...job, messageId: job.keyId || '' })).then(async answer => {
     if (!answer) return;
     const parts = splitReply(answer);
     for (let i = 0; i < parts.length; i++) {
@@ -215,49 +232,47 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     pending.set(job.phone, job);
   };
   const proxyToChatwoot = (req, res, fallback) => {
-    const targetBase = process.env.CHATWOOT_INTERNAL_URL || 'http://chatwoot-lia:4000';
-    const targetUrl = new URL(req.url, targetBase);
-    const proxyReq = http.request(
-      {
-        hostname: targetUrl.hostname,
-        port: targetUrl.port || 4000,
-        path: targetUrl.pathname + targetUrl.search,
-        method: req.method,
-        headers: {
-          ...req.headers,
-          host: `${targetUrl.hostname}:${targetUrl.port || 4000}`
-        }
-      },
-      (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-        proxyRes.pipe(res, { end: true });
-      }
-    );
-    proxyReq.on('error', (err) => {
-      if (fallback && !res.headersSent) {
-        return fallback();
-      }
+    let target;
+    let incoming;
+    try {
+      target = new URL(chatwootInternalUrl);
+      incoming = new URL(req.url, 'http://localhost');
+      if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash || target.pathname !== '/') throw new Error('invalid_chatwoot_target');
+      if (incoming.pathname.length > 2048 || incoming.search.length > 2048 || /%(?:2f|5c|2e)/i.test(incoming.pathname) || /[\\\u0000-\u001f]/.test(incoming.pathname)) throw new Error('invalid_chatwoot_path');
+      if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) throw new Error('invalid_chatwoot_method');
+    } catch {
+      if (fallback && !res.headersSent) return fallback();
+      return json(res, 400, { error: 'invalid_chatwoot_request' });
+    }
+    const requestHeaders = withoutHopByHopHeaders(req.headers);
+    requestHeaders.host = target.host;
+    const transport = target.protocol === 'https:' ? https : http;
+    const proxyReq = transport.request({
+      hostname: target.hostname,
+      port: target.port || undefined,
+      path: incoming.pathname + incoming.search,
+      method: req.method,
+      headers: requestHeaders,
+      timeout: 15000
+    }, proxyRes => {
+      res.writeHead(proxyRes.statusCode || 200, withoutHopByHopHeaders(proxyRes.headers));
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on('timeout', () => proxyReq.destroy(new Error('chatwoot_timeout')));
+    proxyReq.on('error', err => {
+      if (fallback && !res.headersSent) return fallback();
       console.error('[chatwoot-proxy]', err.message);
-      if (!res.headersSent) {
-        json(res, 502, { error: 'chatwoot_unavailable', message: err.message });
-      }
+      if (!res.headersSent) json(res, 502, { error: 'chatwoot_unavailable' });
     });
-    res.on('close', () => {
-      if (!res.writableEnded) proxyReq.destroy();
-    });
+    res.on('close', () => { if (!res.writableEnded) proxyReq.destroy(); });
     req.pipe(proxyReq, { end: true });
   };
-  const isChatwootApiPath = (pathname) => (
-    pathname === '/api/events' ||
-    pathname === '/api/status' ||
-    pathname.startsWith('/api/conversations') ||
-    pathname.startsWith('/api/contacts') ||
-    pathname.startsWith('/api/knowledge-bases') ||
-    pathname.startsWith('/api/triage') ||
-    pathname.startsWith('/api/channels') ||
-    pathname.startsWith('/api/lia/') ||
-    pathname.startsWith('/api/webhooks/')
-  );
+  const isChatwootApiPath = pathname => {
+    const roots = ['/api/events', '/api/status', '/api/conversations', '/api/contacts', '/api/knowledge-bases', '/api/triage', '/api/channels', '/api/lia', '/api/webhooks'];
+    return roots.some(root => pathname === root || pathname.startsWith(`${root}/`));
+  };
+  const isVerifiedWebhookEndpoint = (method, pathname) =>
+    ['GET', 'POST'].includes(method) && /^\/api\/webhooks\/(?:whatsapp|instagram|messenger|evolution|telegram)$/.test(pathname);
   const isLegacyStaticPath = (pathname) => (
     pathname === '/legacy-dashboard' ||
     pathname === '/conectar.html' ||
@@ -269,8 +284,15 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const app = async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': config.dashboardOrigin || '*', 'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization' }); return res.end(); }
-    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, service: 'clubinho-homevet-bot', version: '0.5.4', uptime: Math.round(process.uptime()), providers: getCircuitBreakers(), activeProvider: runtimeAI().provider, activeModel: runtimeAI().model, faqAgeSeconds: faqAgeSeconds(), sessions: Object.keys(store.sessions).length, persistence: { runtimeEnabled: Boolean(store.client?.enabled), conversations: store.persistence || 'fallback', conversationsError: store.remoteError || null, config: adminConfig.persistence || 'fallback', configError: adminConfig.remoteError || null } });
-    if (isChatwootApiPath(u.pathname)) return proxyToChatwoot(req, res);
+    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, service: 'clubinho-homevet-bot', version: APP_VERSION, uptime: Math.round(process.uptime()), providers: getCircuitBreakers(), activeProvider: runtimeAI().provider, activeModel: runtimeAI().model, faqAgeSeconds: faqAgeSeconds(), sessions: Object.keys(store.sessions).length, persistence: { runtimeEnabled: Boolean(store.client?.enabled), conversations: store.persistence || 'fallback', conversationsError: store.remoteError || null, config: adminConfig.persistence || 'fallback', configError: adminConfig.remoteError || null } });
+    if (isChatwootApiPath(u.pathname)) {
+      // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
+      if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);
+      const authResult = await auth(req, config);
+      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      if (!authorizedRequest) return json(res, typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
+      return proxyToChatwoot(req, res);
+    }
     if (u.pathname === '/api/dashboard/auth/config') return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: config.allowUnauthenticatedDashboard });
     if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) { const authResult = await auth(req, config); const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true; if (!authorizedRequest) { const status = typeof authResult === 'object' ? authResult.status || 401 : 401; const reason = typeof authResult === 'object' ? authResult.reason || 'dashboard_auth_required' : 'dashboard_auth_required'; return json(res, status, { error: status === 403 ? 'dashboard_profile_not_authorized' : status === 503 ? 'dashboard_auth_unavailable' : 'dashboard_auth_required', reason }); } }
     if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
@@ -278,6 +300,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         if (u.pathname === '/legacy-dashboard') req.url = '/index.html';
         return serveStatic(req, res, config);
       }
+      const authResult = await auth(req, config);
+      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      if (!authorizedRequest) return json(res, typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
       return proxyToChatwoot(req, res, () => serveStatic(req, res, config));
     }
     if (req.method === 'GET' && u.pathname === '/api/dashboard/state') {

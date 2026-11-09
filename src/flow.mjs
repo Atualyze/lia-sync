@@ -634,7 +634,8 @@ export function createFlow({
       mediaType = null,
       rawItem = null,
       pushName = '',
-      authorizedResume = false
+      authorizedResume = false,
+      messageId = ''
     }) {
       const botConfig = getBotConfig() || {};
       const isSelfTauan = phone === 'tauan_self' || isTauanSender(phone);
@@ -1191,7 +1192,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           const isPlaceholder = remText.length < 5 || /^(?:recado|lembrete|descri[cç][aã]o|anota[cç][aã]o|exemplo|\.\.\.)/i.test(remText);
           const askedReminder = /(?:lembr|agend|compromisso|anot|tarefa|marcar)\b/i.test(cleanTauan) || result.intent === 'lembrete';
           if (!isPlaceholder && askedReminder) {
-            reminderStore.add({
+            await reminderStore.add({
               text: remText,
               dueAt: result.reminder.dueAt,
               phone: 'tauan',
@@ -1537,9 +1538,9 @@ ${errMsg}`;
 
         if (transcribed && transcribed.trim()) {
           clean = sanitizeInput(transcribed.trim(), maxInputChars);
-          s.history.push({ role: 'user', content: `[Áudio]: ${clean}`, createdAt: new Date(now()).toISOString() });
+          s.history.push({ role: 'user', content: `[Áudio]: ${clean}`, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         } else {
-          s.history.push({ role: 'user', content: '[Áudio enviado]', createdAt: new Date(now()).toISOString() });
+          s.history.push({ role: 'user', content: '[Áudio enviado]', createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         }
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
@@ -1571,7 +1572,7 @@ ${errMsg}`;
       // 2.2 TRATAMENTO DE FOTO / VÍDEO
       if (mediaType === 'image' || mediaType === 'video') {
         const typeLabel = mediaType === 'image' ? 'foto' : 'vídeo';
-        s.history.push({ role: 'user', content: `[${typeLabel} enviada]` + (clean ? `: ${clean}` : ''), createdAt: new Date(now()).toISOString() });
+        s.history.push({ role: 'user', content: `[${typeLabel} enviada]` + (clean ? `: ${clean}` : ''), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
         if (s.human) {
@@ -1625,7 +1626,7 @@ ${errMsg}`;
           const docTypeFormatted = String(docAnalysis.docType || 'PDF').toUpperCase();
           const keySummary = `[Documento ${docTypeFormatted} analisado]\nResumo: ${docAnalysis.summary}` +
             (Array.isArray(docAnalysis.keyPoints) && docAnalysis.keyPoints.length ? `\nPontos-chave: ${docAnalysis.keyPoints.join('; ')}` : '');
-          s.history.push({ role: 'user', content: keySummary, createdAt: new Date(now()).toISOString() });
+          s.history.push({ role: 'user', content: keySummary, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
 
           const alertMsg = `📄 *Novo Documento (${docTypeFormatted}) recebido de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n\n📋 *Resumo Executivo:*\n${docAnalysis.summary}\n\n📌 *Pontos Identificados:*\n${(docAnalysis.keyPoints || []).map(p => `• ${p}`).join('\n')}\n\n💡 *Ação Sugerida:* ${docAnalysis.actionNeeded || 'Revisar anexo'}`;
 
@@ -1650,14 +1651,14 @@ ${errMsg}`;
         const last = nonTextNotice.get(phone) || 0;
         if (now() - last < 3600000) return null;
         nonTextNotice.set(phone, now());
-        s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]', createdAt: new Date(now()).toISOString() });
+        s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]', createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         store.markDirty();
         return 'Recebi seu arquivo por aqui! 📄\n\nSe preferir escrever ou mandar um áudio com o que você precisa, fico à disposição por aqui.';
       }
 
       if (!clean) { store.markDirty(); return null; }
       if (mediaType !== 'audio') {
-        s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString() });
+        s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
       }
 
       // ==========================================
@@ -1848,14 +1849,40 @@ ${errMsg}`;
         }
       }
 
-      const filtered = filterReply(raw, { allowedPrices: getAllowedPrices() });
-      let finalReply = String(filtered.text || '')
+      const allowedPrices = getAllowedPrices();
+      const filtered = filterReply(raw, { allowedPrices });
+      let safeReplyText = String(filtered.text || '');
+      if (filtered.blocked) {
+        s.violationsCount = (s.violationsCount || 0) + 1;
+        const isPriceViolation = filtered.violations.includes('preco');
+        let faqPriceReply = null;
+        if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(clean)) {
+          const answer = findDynamicFaq(clean, items);
+          if (answer && /R\$\s?\d|\b\d+\s?reais\b/i.test(answer)) {
+            const faqPrices = new Set([...(allowedPrices || []), ...(answer.match(/R\$\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+\s?reais/gi) || [])]);
+            const faqFiltered = filterReply(answer, { allowedPrices: faqPrices });
+            if (!faqFiltered.blocked) faqPriceReply = faqFiltered.text;
+          }
+        }
+        await triggerHandoff(s, {
+          reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
+          urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
+          now: now(),
+          notify,
+          forceNotify: true
+        });
+        safeReplyText = faqPriceReply || (isPriceViolation
+          ? 'Para garantir que você receba o valor correto e atualizado, vou confirmar essa informação com nossa equipe. Já encaminhei sua dúvida para eles.'
+          : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+      }
+      let finalReply = String(safeReplyText || '')
         .replace(/\(\s*`?(?:GET|POST|PUT|PATCH|DELETE)?\s*\/api\/[a-zA-Z0-9_/:.-]+`?\s*\)/gi, '')
         .replace(/`?(?:GET|POST|PUT|PATCH|DELETE)\s+\/api\/[a-zA-Z0-9_/:.-]+`?/gi, 'pelo painel do sistema');
 
       // Execução de Ferramentas Ativas (Function Calling - padrão tools/)
       const isSuperAgent = botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalling === true;
-      if (isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
+      let toolReplyOverride = null;
+      if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
         for (const tc of result.tool_calls) {
           if (tc?.name) {
             try {
@@ -1867,24 +1894,40 @@ ${errMsg}`;
                 session: s
               });
               logger.log?.(`[flow:tool] Executada ${tc.name}:`, JSON.stringify(toolRes));
+              if (tc.name === 'agendar_retorno_ou_followup') {
+                toolReplyOverride = toolRes?.success
+                  ? toolRes.message
+                  : 'Não consegui confirmar o agendamento porque o lembrete não foi persistido. Vou pedir à equipe para verificar.';
+              }
               if (toolRes?.handoffRequested) {
                 result.handoff = true;
                 result.handoff_reason = toolRes.motivo || `Transferência via tool ${tc.name}`;
               }
             } catch (err) {
               logger.error?.(`[flow:tool] Falha em ${tc.name}:`, err.message);
+              if (tc.name === 'agendar_retorno_ou_followup') {
+                toolReplyOverride = 'Não consegui confirmar o agendamento porque o lembrete não foi persistido. Vou pedir à equipe para verificar.';
+              }
             }
           }
         }
       }
 
+      if (toolReplyOverride) {
+        const toolFiltered = filterReply(toolReplyOverride, { allowedPrices });
+        finalReply = toolFiltered.blocked
+          ? 'Não consegui concluir o agendamento com segurança. Vou pedir à equipe para verificar.'
+          : toolFiltered.text;
+        safeReplyText = finalReply;
+      }
+
       // Se o cliente pediu para agendar um lembrete/recado
-      if (result?.reminder && reminderStore) {
+      if (!filtered.blocked && result?.reminder && reminderStore) {
         const remText = String(result.reminder.text || '').trim();
         const isPlaceholder = remText.length < 5 || /^(?:recado|lembrete|descri[cç][aã]o|anota[cç][aã]o|exemplo|\.\.\.)/i.test(remText);
         const askedReminder = /(?:lembr|agend|recado|anot|avis|hor[aá]rio)\b/i.test(clean) || result.intent === 'lembrete';
         if (!isPlaceholder && askedReminder) {
-          reminderStore.add({
+          await reminderStore.add({
             text: remText,
             dueAt: result.reminder.dueAt,
             phone: s.phone,
@@ -1930,7 +1973,7 @@ ${errMsg}`;
 
       if (clientWantsVoiceNow && ai?.synthesizeVoice && whatsapp?.sendWhatsAppAudio) {
         try {
-          const spokenReply = cleanForSpeech(filtered.text);
+          const spokenReply = cleanForSpeech(safeReplyText);
           if (spokenReply && spokenReply.length >= 2) {
             const voiceRes = await ai.synthesizeVoice(spokenReply, { botConfig });
             if (voiceRes?.base64) {
@@ -1938,7 +1981,7 @@ ${errMsg}`;
               await whatsapp.sendWhatsAppAudio(targetJid, voiceRes.base64);
               // Se o cliente já escolheu áudio ou estamos no fluxo automático de voz, enviamos o áudio!
               // Caso tenhamos acabado de fazer a pergunta sobre preferência (texto complementar), retornamos apenas a perguntinha curta em texto ou null se não houver pergunta
-              if (finalReply !== filtered.text) {
+              if (finalReply !== safeReplyText) {
                 return `🎙️ _Enviei um áudio acima! Prefere continuar conversando por *áudio* ou por *texto*?_`;
               }
               return null;

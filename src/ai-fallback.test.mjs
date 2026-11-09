@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 
 const realFetch = globalThis.fetch;
 
+function restoreEnvAfter(t, names) {
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  t.after(() => { for (const [name, value] of Object.entries(previous)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; } });
+}
+
 function mockFetchSequence(responses) {
   const calls = [];
   let i = 0;
@@ -43,6 +48,7 @@ const geminiOk = {
 };
 
 test('fallback: flash-lite com 503 cai para flash subsequente', async (t) => {
+  restoreEnvAfter(t, ['GEMINI_API_KEY']);
   process.env.GEMINI_API_KEY = 'test_gemini_key_123';
   const calls = mockFetchSequence([{ status: 503 }, geminiOk]);
   t.after(() => {
@@ -71,6 +77,7 @@ test('fallback: flash-lite com 503 cai para flash subsequente', async (t) => {
 });
 
 test('openrouter: nunca recebe ID de modelo do Gemini', async (t) => {
+  restoreEnvAfter(t, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY']);
   process.env.GEMINI_API_KEY = '';
   process.env.OPENROUTER_API_KEY = 'test_openrouter_key';
   const calls = [];

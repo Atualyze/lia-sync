@@ -49,15 +49,11 @@ export class ReminderStore {
   }
 
   async save() {
-    try {
-      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-      await fs.writeFile(this.filePath, JSON.stringify(this.reminders, null, 2), 'utf8');
-    } catch (e) {
-      console.error('[reminders] Erro ao salvar:', e.message);
-    }
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    await fs.writeFile(this.filePath, JSON.stringify(this.reminders, null, 2), 'utf8');
   }
 
-  add({ text, dueAt, phone = '', clientName = '', createdBy = 'contato' }) {
+  async add({ text, dueAt, phone = '', clientName = '', createdBy = 'contato' }) {
     let dueIso = null;
     try {
       const d = new Date(dueAt);
@@ -79,19 +75,26 @@ export class ReminderStore {
       createdAt: new Date().toISOString()
     };
     this.reminders.push(item);
-    this.save().catch(() => {});
+    try {
+      await this.save();
 
-    if (this.client?.enabled) {
-      this.client.upsert('reminders', [{
-        id: item.id,
-        text: item.text,
-        due_at: item.dueAt,
-        phone: item.phone || null,
-        client_name: item.clientName || null,
-        created_by: item.createdBy,
-        status: item.status,
-        created_at: item.createdAt
-      }], 'id').catch(err => this.logger.warn?.(`[reminders] Erro ao persistir no Supabase: ${err.message}`));
+      if (this.client?.enabled) {
+        await this.client.upsert('reminders', [{
+          id: item.id,
+          text: item.text,
+          due_at: item.dueAt,
+          phone: item.phone || null,
+          client_name: item.clientName || null,
+          created_by: item.createdBy,
+          status: item.status,
+          created_at: item.createdAt
+        }], 'id');
+      }
+    } catch (err) {
+      this.reminders = this.reminders.filter(reminder => reminder.id !== item.id);
+      await this.save().catch(() => {});
+      this.logger.warn?.(`[reminders] Erro ao persistir lembrete: ${err.message}`);
+      throw err;
     }
 
     return item;

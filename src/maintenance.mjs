@@ -22,6 +22,9 @@ export async function processMaintenance({
   logger = console
 }) {
   const current = now();
+  const expiredSessions = store.purge?.() || 0;
+  if (expiredSessions) store.markDirty?.();
+  try { await store.purgeArchives?.(); } catch (e) { logger.warn?.('[maintenance] Falha ao aplicar retenção de archives:', e.message); }
   const hour = hourAt(current, timeZone);
   const daytime = hour >= 8 && hour < 20;
 

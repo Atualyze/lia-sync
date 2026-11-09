@@ -194,7 +194,8 @@ test('endpoint /health reporta versao atualizada e circuit breakers reais', asyn
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.ok, true);
-  assert.equal(data.version, '0.5.4');
+  const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(data.version, packageJson.version);
   assert.ok(data.providers);
   assert.ok(data.providers.gemini);
   assert.ok(data.providers.openrouter);
@@ -323,12 +324,12 @@ test('A2: CONFIRMAR COM A DRA. nunca vaza no filterReply nem no knowledge FAQ', 
 test('A3 e A4: providers priorizam configurados saudáveis e breaker abre com 429', async () => {
   const { providers, getCircuitBreakers, call } = await import('./ai.mjs');
   const list = providers();
-  assert.deepEqual(list, []);
-  assert.equal(getCircuitBreakers().openrouter.status, 'nao_configurado');
-
   const breakers = getCircuitBreakers();
+  const configured = Object.entries(breakers).filter(([, value]) => value.configured).map(([name]) => name).sort();
+  assert.deepEqual([...list].sort(), configured);
   assert.ok(breakers.gemini);
   assert.ok(breakers.openrouter);
+  assert.equal(breakers.openrouter.configured, breakers.openrouter.status !== 'nao_configurado');
   assert.ok(['operacional', 'degradado', 'aberto', 'nao_configurado'].includes(breakers.gemini.status));
 });
 

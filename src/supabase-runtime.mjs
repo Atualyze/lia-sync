@@ -38,26 +38,22 @@ export class SupabaseRestClient {
 }
 
 const externalIdFor = (key, index, message) => {
+  if (message.id) {
+    const id = String(message.id);
+    return id.startsWith('runtime:') || id.startsWith('wa:') ? id : `wa:${id}`;
+  }
   const datePart = message.createdAt ? String(message.createdAt).slice(0, 10) : 'nodate';
   const hash = crypto.createHash('sha1').update(`${message.role}:${datePart}:${String(message.content || '').trim()}`).digest('hex').slice(0, 16);
-  return `runtime:${key}:${hash}`;
+  return `runtime:${key}:${index}:${hash}`;
 };
 
 function dedupeMessages(messages = []) {
   const out = [];
-  const seenRecent = new Set();
+  const seenIds = new Set();
   for (const m of messages) {
     if (!m || !m.content) continue;
-    const text = String(m.content).trim();
-    const sig = `${m.role}:${text}`;
-    const prev = out[out.length - 1];
-    if (prev && prev.role === m.role && String(prev.content).trim() === text) {
-      continue;
-    }
-    if (seenRecent.has(sig)) {
-      continue;
-    }
-    seenRecent.add(sig);
+    if (m.id && seenIds.has(String(m.id))) continue;
+    if (m.id) seenIds.add(String(m.id));
     out.push(m);
   }
   return out;
@@ -69,7 +65,7 @@ function rowToSession(row, messages = []) {
   const key = row.external_key;
   const resolvedName = row.contact_name || c.display_name || c.push_name || '';
   const cleanMessages = dedupeMessages(
-    messages.map(m => ({ role: m.role, content: m.content, createdAt: m.created_at || null }))
+    messages.map(m => ({ role: m.role, content: m.content, createdAt: m.created_at || null, ...(m.external_id ? { id: m.external_id } : {}) }))
   );
   return {
     phone: c.phone || key.replace(/^sim:/, ''),
@@ -106,7 +102,9 @@ function rowToSession(row, messages = []) {
     lastUserAt: iso(row.last_user_at),
     lastBotAt: iso(row.last_bot_at),
     archivedAt: iso(row.archived_at),
+    status: row.status,
     archiveReason: row.archive_reason || undefined,
+    legalHold: Boolean(meta.legalHold || meta.legal_hold),
     _conversationId: row.id,
     _externalKey: key
   };
@@ -124,7 +122,7 @@ function sessionToConversation(key, session, contactId) {
     contact_id: contactId,
     external_key: key,
     origin: session.origin === 'simulation' || key.startsWith('sim:') ? 'simulation' : 'real',
-    status: session.archivedAt ? 'archived' : 'open',
+    status: session.status === 'closed' ? 'closed' : (session.archivedAt ? 'archived' : 'open'),
     mode: session.human ? 'human' : 'bot',
     human_source: hSource,
     contact_name: session.clientName || session.contactName || null,
@@ -156,7 +154,9 @@ function sessionToConversation(key, session, contactId) {
       contactRole: session.contactRole || null,
       contactNotes: session.contactNotes || '',
       audioPreference: session.audioPreference || null,
-      askedAudioPreference: Boolean(session.askedAudioPreference)
+      askedAudioPreference: Boolean(session.askedAudioPreference),
+      legalHold: Boolean(session.legalHold || session.metadata?.legalHold),
+      legal_hold: Boolean(session.legal_hold || session.metadata?.legal_hold)
     }
   };
 }
@@ -169,6 +169,34 @@ export class SupabaseSessionStore extends SessionStore {
     this.persistence = 'fallback';
     this.remoteError = null;
     this.refreshing = null;
+    this.lastRetentionSweepAt = 0;
+  }
+
+  async purgeArchives() {
+    const localRemoved = await super.purgeArchives();
+    if (!this.client?.enabled || this.now() - this.lastRetentionSweepAt < 6 * 3600000) return localRemoved;
+    this.lastRetentionSweepAt = this.now();
+    const cutoff = new Date(this.now() - this.ttlMs).toISOString();
+    try {
+      const rows = await this.client.select('conversations', `select=id,status,archived_at,metadata&status=eq.archived&archived_at=lt.${encodeURIComponent(cutoff)}&limit=500`);
+      for (const row of rows || []) {
+        const metadata = row.metadata || {};
+        if (!row.id || row.status === 'closed' || metadata.legalHold || metadata.legal_hold) continue;
+        const filters = new URLSearchParams({
+          id: `eq.${row.id}`,
+          status: 'eq.archived',
+          archived_at: `lt.${cutoff}`,
+          'metadata->>legalHold': 'not.is.true',
+          'metadata->>legal_hold': 'not.is.true'
+        });
+        await this.client.request('conversations', { method: 'DELETE', query: filters.toString() });
+      }
+      this.remoteError = null;
+    } catch (error) {
+      this.remoteError = error.message;
+      this.logger.warn?.(`[supabase] retenção remota preservada por falha de limpeza: ${error.message}`);
+    }
+    return localRemoved;
   }
 
   async load() {
@@ -194,7 +222,7 @@ export class SupabaseSessionStore extends SessionStore {
         ids.map(id =>
           this.client.select(
             'conversation_messages',
-            `select=conversation_id,role,content,created_at&conversation_id=eq.${id}&order=created_at.desc&limit=60`
+            `select=conversation_id,external_id,role,content,created_at&conversation_id=eq.${id}&order=created_at.desc&limit=60`
           ).catch(err => {
             this.logger.warn?.(`[supabase] falha ao buscar mensagens de ${id}: ${err.message}`);
             return [];

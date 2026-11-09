@@ -36,6 +36,7 @@ export const config = Object.freeze({
   inactivityStaleHours: num('INACTIVITY_STALE_HOURS', 12),
   inactivityCheckSeconds: num('INACTIVITY_CHECK_SECONDS', 30),
   dashboardOrigin: process.env.DASHBOARD_ORIGIN || '',
+  chatwootInternalUrl: process.env.CHATWOOT_INTERNAL_URL || 'http://chatwoot-lia:4000',
   allowUnauthenticatedDashboard: process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true',
   dashboardRoles: (process.env.DASHBOARD_ALLOWED_ROLES || '').split(',').map(s => s.trim()).filter(Boolean),
   supabaseUrl: (process.env.SUPABASE_URL || '').replace(/\/$/, ''),

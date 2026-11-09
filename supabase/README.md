@@ -52,6 +52,14 @@ archive/*.json             -> conversations.status = 'archived'
 
 Na primeira inicialização com as variáveis de runtime configuradas, dados locais são importados quando ainda não existem no banco. Não remova os arquivos locais antes de validar a operação e o rollback.
 
+### Retenção e expurgo
+
+Por padrão, sessões ativas e registros arquivados são retidos por 30 dias (`SESSION_TTL_DAYS`, padrão 30). Arquivos `archive/*.json` com `archivedAt` anterior ao prazo são removidos pelo ciclo de manutenção. No Supabase, conversas com `status = 'archived'` e `archived_at` vencido são excluídas; a exclusão em cascata das mensagens segue a FK já definida na migração operacional. O expurgo remoto é limitado a uma execução a cada seis horas enquanto o processo está ativo e também ocorre na inicialização.
+
+Conversas com estado `closed` nunca são removidas por essa política. Para preservar um arquivo ou conversa arquivada, marque `legalHold: true` ou `legal_hold: true` na sessão/`metadata` antes do prazo. O runtime usa apenas a coluna `metadata` já existente, sem exigir migração adicional. Arquivos inválidos, sem `archivedAt` verificável, ou linhas com marcação de retenção são mantidos.
+
+Limites: o runtime só consegue reconhecer legal holds representados por esses marcadores; holds mantidos fora do arquivo/metadata não são detectáveis. Se o schema remoto não tiver sido migrado ou uma operação de expurgo falhar, os registros remotos são preservados e o erro fica disponível em `persistenceError`/logs. O prazo pode ser alterado via `SESSION_TTL_DAYS`; backups externos e políticas de retenção do provedor Supabase não são afetados por esse expurgo.
+
 ## Aplicação pelo Supabase Dashboard
 
 1. Crie um projeto Supabase novo, exclusivo para o bot.
