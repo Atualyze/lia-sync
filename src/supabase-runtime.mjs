@@ -246,9 +246,9 @@ export class SupabaseSessionStore extends SessionStore {
             rSession.clientName = lSession.clientName;
             rSession.contactName = lSession.contactName || lSession.clientName;
           }
-          if (lSession.pendingAudioConfirmation) rSession.pendingAudioConfirmation = lSession.pendingAudioConfirmation;
-          if (lSession.pendingRecipient) rSession.pendingRecipient = lSession.pendingRecipient;
-          if (lSession.pendingAsAudio !== undefined) rSession.pendingAsAudio = lSession.pendingAsAudio;
+          rSession.pendingAudioConfirmation = lSession.pendingAudioConfirmation || null;
+          rSession.pendingRecipient = lSession.pendingRecipient || null;
+          rSession.pendingAsAudio = Boolean(lSession.pendingAsAudio);
           if (lSession.audioPreference) rSession.audioPreference = lSession.audioPreference;
           if (lSession.askedAudioPreference) rSession.askedAudioPreference = lSession.askedAudioPreference;
         }

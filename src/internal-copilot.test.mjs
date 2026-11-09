@@ -667,3 +667,50 @@ test('Copiloto: Pedido de áudio no chat interno gera fala natural como assisten
   assert.equal(sSelf.lastAudioBase64, 'AUDIO_COPILOTO_BASE64');
   assert.equal(sSelf.pendingRecipient, null);
 });
+
+test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre o Lima sobre o monitoramento do pixel..."', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {}
+  });
+
+  const preview = await flow.process({
+    phone: '5588921694598',
+    text: 'Perfeito, vou precisar que vc mande um áudio e lembre o Lima sobre o monitoramento do pixel da meta dentro do CRM após o início da campanha já que os dados inicias serão de teste.'
+  });
+
+  // 1. Prévia amigável gerada
+  assert.match(preview, /Prévia do áudio personalizado para Lima/i);
+  assert.match(preview, /Oi, Lima! Tudo bem\?/i);
+  assert.match(preview, /monitoramento do pixel da meta dentro do CRM/i);
+  // 2. NUNCA contém comandos crus ou prefixos vazados
+  assert.doesNotMatch(preview, /vou precisar que/i);
+  assert.doesNotMatch(preview, /mande um [aá]udio/i);
+  assert.doesNotMatch(preview, /lembre o Lima/i);
+  assert.doesNotMatch(preview, /passando para te avisar que perfeito/i);
+  assert.doesNotMatch(preview, /Queria aproveitar para alinhar com você que/i);
+
+  // 3. Cancela e garante que o cancelamento é definitivo
+  const cancel = await flow.process({
+    phone: '5588921694598',
+    text: 'cancela'
+  });
+  assert.match(cancel, /Envio cancelado com sucesso/i);
+  const sSelf = store.get('tauan_self');
+  assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve ser falsy');
+
+  // 4. Nova mensagem com "Perfeito, ..." NÃO confirma nem reativa o cancelado
+  const nextMsg = await flow.process({
+    phone: '5588921694598',
+    text: 'Perfeito, obrigado'
+  });
+  assert.doesNotMatch(nextMsg, /Áudio gravado e enviado com sucesso/i);
+  assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve continuar falsy');
+});
+
