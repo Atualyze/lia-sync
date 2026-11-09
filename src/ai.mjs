@@ -8,11 +8,13 @@ const PROVIDERS = ['gemini', 'openrouter', 'qwen', 'openai'];
 
 export function resolveAIConfig(botConfig = {}) {
   const ai = botConfig?.ai || botConfig || {};
-  const provider = String(ai.activeProvider || ai.provider || '').toLowerCase();
-  const rawModel = typeof ai.activeModel === 'string' ? ai.activeModel.trim() : (typeof ai.model === 'string' ? ai.model.trim() : '');
+  const provider = String(ai.activeProvider || ai.provider || config.defaultProvider || 'gemini').toLowerCase();
+  const rawModel = typeof ai.activeModel === 'string' && ai.activeModel.trim()
+    ? ai.activeModel.trim()
+    : (typeof ai.model === 'string' && ai.model.trim() ? ai.model.trim() : (config.defaultModel || 'gemini-3.8-flash'));
   return {
-    provider,
-    model: rawModel,
+    provider: provider || 'gemini',
+    model: rawModel || 'gemini-3.8-flash',
     fallbackModels: Array.isArray(ai.fallbackModels) ? ai.fallbackModels.filter(Boolean) : [],
     maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || config.aiMaxOutputTokens || 2048),
     structuredOutputs: ai.structuredOutputs === true,

@@ -97,18 +97,19 @@ export function stripCommandPrefix(rawText = '', recipient = '') {
   const recPrep = '(?:para\\s+o|para\\s+a|para|pro|pra|ao|à)\\s+|o\\s+|a\\s+';
   const recTarget = recEscaped ? `(?:(?:${recPrep})?${recEscaped}\\b)` : `(?:${recPrep}[a-zA-ZÀ-ÿ0-9+]+\\b)`;
   const media = '(?:(?:(?:um|uma|o|a)\\s+)?(?:mensagem(?:\\s+de\\s+[aá]udio|\\s+de\\s+voz)?|msg|zap|[aá]udio|audio|voz|recado)|(?:em|por)\\s+(?:[aá]udio|voz))';
+  const chatContext = '(?:\\s+(?:no\\s+chat\\s+interno|comigo|pra\\s+mim|para\\s+mim))?';
   const gerunds = '(?:informando|avisando|dizendo|falando|explicando|lembrando|pedindo|cobrando|confirmando|perguntando)';
 
   // Padrão 1: "vou precisar que vc mande um áudio e lembre o Lima sobre..." ou "envie um áudio pro Lima sobre..."
-  const fullCmdPattern = new RegExp(`^${modals}?\\s*${pronouns}?\\s*(?:me\\s+)?${sendVerbs}\\s+${media}(?:\\s+e\\s+|\\s*,?\\s*)?${speechVerbs}?(?:\\s*${recTarget})?(?:\\s*${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|se\\b|sobre\\b|de\\b|a\\s+respeito\\s+de\\b)?\\s*`, 'i');
+  const fullCmdPattern = new RegExp(`^${modals}?\\s*${pronouns}?\\s*(?:me\\s+)?${sendVerbs}\\s+${media}${chatContext}(?:\\s+e\\s+|\\s*,?\\s*)?${speechVerbs}?(?:\\s*${recTarget})?(?:\\s*${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|sobre\\b|de\\b|a\\s+respeito\\s+de\\b)?\\s*`, 'i');
   s = s.replace(fullCmdPattern, '').trim();
 
   // Padrão 2: "lembre o Lima sobre..." ou "avise o Lima que..." ou "mande um áudio pro Lima dizendo que..."
-  const directCmdPattern = new RegExp(`^${speechVerbs}\\s*${recTarget}\\s*(?:${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|se\\b|sobre\\b|de\\b|a\\s+respeito\\s+de\\b)?\\s*`, 'i');
+  const directCmdPattern = new RegExp(`^${speechVerbs}\\s*${recTarget}\\s*(?:${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|sobre\\b|de\\b|a\\s+respeito\\s+de\\b)?\\s*`, 'i');
   s = s.replace(directCmdPattern, '').trim();
 
   if (recEscaped) {
-    const midRecCmdRe = new RegExp(`\\b(?:e\\s+)?${speechVerbs}?\\s*${media}\\s*(?:${recPrep})?${recEscaped}\\b\\s*(?:${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|se\\b|sobre\\b|de\\b)?\\s*`, 'gi');
+    const midRecCmdRe = new RegExp(`\\b(?:e\\s+)?${speechVerbs}?\\s*${media}\\s*(?:${recPrep})?${recEscaped}\\b\\s*(?:${gerunds})?\\s*(?:que\\b|para\\b|pra\\b|sobre\\b|de\\b)?\\s*`, 'gi');
     s = s.replace(midRecCmdRe, '').trim();
   }
 
@@ -120,6 +121,7 @@ export function stripCommandPrefix(rawText = '', recipient = '') {
       .replace(/^(?:perfeito|certo|ótimo|otimo|combinado|beleza|ok|show|maravilha|olha|então|entao|seguinte)[\s,!.-]+/i, '')
       .replace(/^(?:sim|ok|beleza|confirmo|pode mandar|pode enviar|manda|dispara|por favor|pfv)[\s,!.-]*/i, '')
       .replace(/^(?:e\s+|ent[ãa]o\s+|ai\s+|a[íi]\s+|depois\s+)/i, '')
+      .replace(/^(?:no\s+chat\s+interno|comigo|pra\s+mim|para\s+mim)\b[\s,:-]*/i, '')
       .replace(new RegExp(`^(?:${modals})?\\s*(?:${pronouns})?\\s*(?:me\\s+)?(?:${sendVerbs}|fale com|falar com|${speechVerbs})\\b[\\s,:-]*`, 'i'), '')
       .replace(new RegExp(`^${media}\\b[\\s,:-]*`, 'i'), '')
       .replace(/^(?:em\s+[aá]udio|por\s+[aá]udio|como\s+[aá]udio|em\s+voz|por\s+voz)\b[\s,:-]*/i, '')
@@ -148,7 +150,10 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
   const rawRec = recipient && !/^\d+$/.test(String(recipient).replace(/\D/g, '')) && recipient !== 'você mesmo (Tauan)'
     ? String(recipient).trim()
     : '';
-  const recName = rawRec ? rawRec.charAt(0).toUpperCase() + rawRec.slice(1) : '';
+  const isPhoneRec = /^\d+$/.test(String(recipient || '').replace(/\D/g, ''));
+  const recName = !isPhoneRec && rawRec && !/^(?:n[úu]mero|numero|telefone|contato|cliente)$/i.test(rawRec)
+    ? rawRec.charAt(0).toUpperCase() + rawRec.slice(1)
+    : '';
   let text = cleanForSpeech(rawMessage);
 
   // Remove qualquer autoapresentação repetitiva ou clichê robótico
@@ -157,34 +162,35 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
     .replace(/^(?:ol[áa](?:,\s*[a-zA-ZÀ-ÿ0-9]+)?!\s*)?(?:aqui [ée] a lia(?:,\s*assistente do tauan)?[.,!\s]*)/i, '')
     .replace(/\baqui [ée] a lia(?:,\s*assistente do tauan)?[.,!\s]*/gi, '')
     .replace(/^(?:estou\s+)?passando(?:\s+por\s+aqui)?(?:\s+a\s+pedido\s+(?:dele|do\s+tauan))?\s+para\s+(?:te\s+avisar\s+que|avisar\s+que|te\s+lembrar\s+que|te\s+informar\s+que|falarmos\s+sobre|alinharmos\s+sobre)\s*/i, '')
-    .replace(/\ba\s+pedido\s+(?:dele|do\s+tauan)\b[\s,]*/gi, '')
-    .replace(/\.\s*(?:assim que voc[êe] puder,\s*me d[áa] um retorno por aqui,\s*t[áa] bom\?|qualquer d[úu]vida,\s*[ée] s[óo] me chamar por aqui,\s*t[áa] bom\?)\s*(?:um abra[cç]o!)?$/i, '')
+    .replace(/^queria\s+(?:aproveitar\s+para\s+)?alinhar\s+com\s+voc[êe]\s+que\s+(?:eu\s+)?/i, '')
+    .replace(/^(?:quero\s+aproveitar\s+para\s+)?alinhar\s+com\s+voc[êe]\s+que\s+/i, '')
+    .replace(/^(?:dar\s+um\s+toque|te\s+dar\s+um\s+toque|avisar|lembrar)\s+(?:que\b|sobre\b)?\s*/i, '')
     .trim();
 
-  let core = stripCommandPrefix(rawCore, recName);
-  if (!core) {
-    core = stripCommandPrefix(text, recName) || text;
-  }
+  // Limpa comandos vazados na raiz do roteiro
+  let body = stripCommandPrefix(rawCore, recName);
 
-  const isReminder = /\b(?:lembr|toque|aviso)\b/i.test(rawMessage) && !/\b(?:vai\s+querer|pergunta)\b/i.test(core);
+  // Se o texto é uma pergunta (ex: "se vai querer a proposta", "perguntando se vai comparecer")
+  const isQuestion = /(?:pergunt|saber\s+se|se\s+vai|se\s+quer|se\s+ele|se\s+ela|quando\b|como\b|qual\b|onde\b|que\s+horas|quanto\b)/i.test(rawMessage) || /\?$/.test(body);
 
-  // Detecta intenção antes de normalizar pronomes
-  const isQuestion = /^(?:se\s+|perguntando|pergunte|pergunta|para\s+perguntar|ver\s+se|saber\s+se)\b/i.test(rawCore) ||
-    /^(?:se\s+|quando\b|como\b|qual\b|quais\b|onde\b|que\s+horas|quanto\b|por\s+que\b)/i.test(core) ||
-    /\b(?:vai\s+querer|vai\s+fechar|consegue|pode|gostaria|chegou\s+a\s+ver|j[áa]\s+viu|j[áa]\s+recebeu|tem\s+interesse)\b/i.test(core) ||
-    /\?$/.test(rawMessage.trim());
+  // Se é pedido de envio de documento / ação do cliente
+  const isActionRequest = /^(?:para\s+voc[êe]\s+(?:nos?\s+)?(?:enviar|mandar|passar)|voc[êe]\s+(?:nos?\s+)?(?:enviar|mandar|passar)|(?:enviar|mandar|passar)\s+(?:o|a|os|as|seu|sua)?\s*(?:comprovante|documento|contrato|dados|chave|pix|nota|foto|arquivo|relat[óo]rio))/i.test(body);
 
-  const isActionRequest = /^(?:pedindo|pe[cç]a|pede|cobrando|cobre|cobra|solicitando|solicite|solicita)\b/i.test(rawCore) ||
-    /^(?:para\s+(?:ele|ela|voc[êe])\s+(?:nos?\s+)?(?:enviar|mandar|passar|encaminhar)|(?:enviar|mandar|passar|encaminhar)\s+(?:o|a|os|as|um|uma)?\s*(?:comprovante|documento|arquivo|contrato|nota|dados|chave|pix))/i.test(core);
+  // Se é lembrete
+  const isReminder = /(?:lembr(?:e|ar|ando)?|toque|aviso)\b/i.test(rawMessage);
 
-  // Converte 3ª pessoa ("ele vai precisar", "ele precisa", "ele tem que", "ele deve", "dele") em 2ª pessoa ("você vai precisar", "você precisa", etc.)
-  let body = core
+  // Transforma pronomes de 3ª pessoa ("ele/ela") para 2ª pessoa ("você")
+  body = body
+    .replace(/\bse\s+ele\b/gi, 'se você')
+    .replace(/\bse\s+ela\b/gi, 'se você')
+    .replace(/\bque\s+ele\b/gi, 'que você')
+    .replace(/\bque\s+ela\b/gi, 'que você')
     .replace(/\bele\s+vai\b/gi, 'você vai')
     .replace(/\bela\s+vai\b/gi, 'você vai')
+    .replace(/\bele\s+quer\b/gi, 'você quer')
+    .replace(/\bela\s+quer\b/gi, 'você quer')
     .replace(/\bele\s+precisa\b/gi, 'você precisa')
     .replace(/\bela\s+precisa\b/gi, 'você precisa')
-    .replace(/\bele\s+tem\s+que\b/gi, 'você tem que')
-    .replace(/\bela\s+tem\s+que\b/gi, 'você tem que')
     .replace(/\bele\s+deve\b/gi, 'você deve')
     .replace(/\bela\s+deve\b/gi, 'você deve')
     .replace(/\bele\s+pode\b/gi, 'você pode')
@@ -211,12 +217,15 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
 
   body = body.replace(/[.!?]+$/, '').trim();
 
-  // Caso 2: Substantivo de tópico puro (ex: "o pagamento dos boletos", "o código de rastreio do site") sem verbo conjugado
-  const looksLikeNounTopic = /^(?:o\s+|a\s+|os\s+|as\s+|um\s+|uma\s+)?(?:pagamento|boleto|boletos|fatura|nota|contrato|c[óo]digo|rastreio|site|sistema|projeto|proposta|or[cç]amento|reuni[ãa]o|entrega|cadastro|acesso|pix|valor)\b/i.test(body) &&
+  // Caso 2: Substantivo de tópico puro (ex: "o pagamento dos boletos", "o status operacional do sistema", "o código de rastreio")
+  const looksLikeNounTopic = /^(?:o\s+|a\s+|os\s+|as\s+|um\s+|uma\s+)?(?:pagamento|boleto|boletos|fatura|nota|contrato|c[óo]digo|rastreio|site|sistema|projeto|proposta|or[cç]amento|reuni[ãa]o|entrega|cadastro|acesso|pix|valor|status|monitoramento|pixel|campanha|servi[cç]o)\b/i.test(body) &&
     !/\b(?:vai|foi|est[áa]|est[ãa]o|precisa|pode|deve|tem|ficou|chegou|saiu|vence|venceu|sera|ser[áa]|[ée])\b/i.test(body);
 
   if (looksLikeNounTopic) {
-    const lowerTopic = body.charAt(0).toLowerCase() + body.slice(1);
+    let lowerTopic = body.charAt(0).toLowerCase() + body.slice(1);
+    if (!/^(?:o|a|os|as|um|uma)\s+/i.test(lowerTopic)) {
+      lowerTopic = 'o ' + lowerTopic;
+    }
     return `${greeting} Estou entrando em contato para alinharmos sobre ${lowerTopic}. Assim que puder, me dá um retorno por aqui, tá bom?`;
   }
 
@@ -227,7 +236,7 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
     return `${greeting} Passando para te dar um toque sobre ${remTopic}. Qualquer dúvida que tiver, estou por aqui!`;
   }
 
-  // Caso 4: Humanização natural de instruções técnicas/tarefas ("você vai precisar...", "você precisa...", "você tem que...", "precisa...")
+  // Caso 4: Humanização natural de instruções técnicas/tarefas
   if (/^voc[êe]\s+(?:vai\s+precisar|precisa|tem\s+que|deve)\s+/i.test(body)) {
     const action = body.replace(/^voc[êe]\s+(?:vai\s+precisar|precisa|tem\s+que|deve)\s+/i, '').trim();
     return `${greeting} Só para alinharmos os próximos passos, você vai precisar ${action}, combinado? Assim que concluir ou se tiver qualquer dúvida, é só me chamar por aqui!`;
@@ -238,7 +247,7 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
     return `${greeting} Só para alinharmos os próximos passos, você vai precisar ${action}, combinado? Assim que concluir ou se tiver qualquer dúvida, é só me chamar por aqui!`;
   }
 
-  // Caso 5: Pergunta / Sondagem de interesse ou horário ("se vai querer a proposta", "quando pode fazer reunião", etc.)
+  // Caso 5: Pergunta / Sondagem de interesse
   if (isQuestion) {
     let qBody = body.replace(/^(?:se\s+|para\s+perguntar\s+se\s+|para\s+saber\s+se\s+|perguntando\s+se\s+)/i, '').trim();
     const lowerQ = qBody.charAt(0).toLowerCase() + qBody.slice(1);
@@ -248,13 +257,13 @@ export function buildFriendlyAudioScript(recipient, rawMessage) {
     return `${greeting} Passando para saber se ${lowerQ}. Se tiver alguma dúvida ou precisar de qualquer ajuste, estou por aqui, tá bom?`;
   }
 
-  // Caso 6: Pedido de ação / envio de documento ("enviar o comprovante", "mandar o contrato", etc.)
+  // Caso 6: Pedido de ação / envio de documento
   if (isActionRequest) {
     let aBody = body.replace(/^(?:para\s+voc[êe]\s+(?:nos?\s+)?(?:enviar|mandar|passar)|voc[êe]\s+(?:nos?\s+)?(?:enviar|mandar|passar)|(?:enviar|mandar|passar)\s+)/i, '').trim();
     return `${greeting} Você conseguiria nos enviar ${aBody}? Assim que puder, me dá um retorno por aqui, tá bom!`;
   }
 
-  // Caso 7: Notificação / Atualização de Status ("o site já ficou pronto", "a reunião foi confirmada para as 15h", etc.)
+  // Caso 7: Notificação / Atualização de Status
   let lowerBody = body.replace(/^(?:que\s+|para\s+avisar\s+que\s+|para\s+informar\s+que\s+|avisando\s+que\s+)/i, '').trim();
   lowerBody = lowerBody.charAt(0).toLowerCase() + lowerBody.slice(1);
   return `${greeting} Passando para te avisar que ${lowerBody}. Qualquer dúvida que surgir, é só me chamar por aqui, tá bom?`;
@@ -273,7 +282,8 @@ export function buildFriendlyMessage(recipient, rawMessage, { asAudio = false } 
  * eliminando o pedido cru e qualquer clichê robótico.
  */
 export async function humanizeContactMessage(recipient, rawMessage, { asAudio = false, ai, botConfig = {} } = {}) {
-  const recName = recipient && !/^\d+$/.test(String(recipient).replace(/\D/g, '')) && recipient !== 'você mesmo (Tauan)'
+  const isPhone = /^\d+$/.test(String(recipient).replace(/\D/g, ''));
+  const recName = recipient && !isPhone && recipient !== 'você mesmo (Tauan)' && !/^(?:n[úu]mero|numero|telefone|contato|cliente)$/i.test(String(recipient))
     ? String(recipient).trim()
     : 'cliente';
 
@@ -285,12 +295,11 @@ Tauan (gestor da equipe) deu a seguinte instrução para enviar ao contato "${re
 Sua tarefa: Gerar a mensagem final pronta e humanizada que você (Lia) vai ${asAudio ? 'falar no áudio' : 'enviar no WhatsApp'} diretamente para "${recName}".
 
 DIRETRIZES:
-1. Fale DIRETAMENTE com "${recName}" em 2ª pessoa ("você"), com simpatia, naturalidade, tom consultivo e acolhedor.
+1. Fale DIRETAMENTE com o contato em 2ª pessoa ("você"), com simpatia, naturalidade, tom consultivo e acolhedor.
 2. NUNCA diga que está falando "a pedido do Tauan", "a mando dele" ou "o Tauan pediu para avisar". Fale com autonomia como parte da equipe.
 3. NUNCA repita ou transcreva comandos operacionais do Tauan (ex: "vou precisar que vc mande um áudio", "lembre o Lima", etc.). Formule a mensagem executando o objetivo de forma fluida.
-4. NUNCA use frases clichês robóticas como "Queria aproveitar para alinhar com você que eu...". Varie o tom com naturalidade.
-5. ${asAudio ? 'Para áudio: NÃO use emojis nem asteriscos (*) de formatação (para que a síntese de voz soe 100% natural).' : 'Para texto: use emojis amigáveis e formatação leve.'}
-6. Retorne APENAS um JSON no formato: {"message": "texto final da mensagem"}.`;
+4. NUNCA use frases clichês robóticas como "Queria aproveitar para alinhar com você que eu..." ou "Passando para te avisar que...". Varie o tom com naturalidade.
+5. ${asAudio ? 'Para áudio: NÃO use emojis nem asteriscos (*) de formatação (para que a síntese de voz soe 100% natural).' : 'Para texto: use emojis amigáveis e formatação leve.'}`;
 
       const aiRes = await ai.askAI({
         system: prompt,
@@ -303,20 +312,23 @@ DIRETRIZES:
       if (aiRes?.message && typeof aiRes.message === 'string') {
         candidate = aiRes.message.trim();
       } else if (aiRes?.reply && typeof aiRes.reply === 'string') {
-        const jsonMatch = aiRes.reply.match(/\{[\s\S]*?"message"\s*:\s*"([^"]+)"[\s\S]*?\}/i);
+        const text = aiRes.reply.trim();
+        const jsonMatch = text.match(/\{[\s\S]*?"(?:message|reply)"\s*:\s*"([^"]+)"[\s\S]*?\}/i);
         if (jsonMatch) {
           candidate = jsonMatch[1].trim();
         } else {
           try {
-            const parsed = JSON.parse(aiRes.reply.trim());
-            if (parsed && typeof parsed.message === 'string') {
-              candidate = parsed.message.trim();
-            }
-          } catch {}
+            const parsed = JSON.parse(text);
+            if (parsed && typeof parsed.message === 'string') candidate = parsed.message.trim();
+            else if (parsed && typeof parsed.reply === 'string') candidate = parsed.reply.trim();
+            else candidate = text;
+          } catch {
+            candidate = text;
+          }
         }
       }
 
-      // Validação: descarta respostas que sejam confirmações direcionadas ao Tauan (ex: em mocks de teste ou alucinações)
+      // Validação: descarta respostas que sejam confirmações direcionadas ao Tauan (ex: em mocks de teste ou confirmações)
       const isMetaAck = !candidate ||
         /(?:claro|com certeza|perfeito|deixa comigo|beleza|vou enviar|vou gravar|posso enviar|anotado)[,\s!]+(?:tauan)?/i.test(candidate) ||
         /\b(?:vou enviar o [aá]udio|enviando mensagem|disparando|a pedido d[eo])\b/i.test(candidate) ||
@@ -963,7 +975,7 @@ Tauan, não há nenhum contato aguardando retorno no momento! Todos os atendimen
           } else {
             const isConfirm = /^(?:sim|confirmo|confirmado|pode\s+enviar|pode\s+mandar|pode\s+gravar|autorizo|manda|dispara|dispare|envia|vai)[.!\s]*$/i.test(strippedCmd) ||
               /^(?:pode\s+enviar|pode\s+mandar|pode\s+gravar|pode\s+sim|sim[,.\s]+pode\s+(?:enviar|mandar|gravar|disparar))\b/i.test(strippedCmd);
-            const isCancel = /^(?:n[ãa]o|n[ãa]o\s+envia|n[ãa]o\s+manda|cancela|cancelar|cancelado|cancela\s+tudo|deixa|abortar|esquece|para|parar|desiste|descarta)\b/i.test(strippedCmd);
+            const isCancel = /(?:cancela|cancelar|cancelado|abortar|esquece|desiste|descarta|n[ãa]o\s+(?:envia|manda|precisa|quero)|deixa\s+(?:quieto|pra\s+l[áa]))\b/i.test(strippedCmd);
 
           if (isConfirm) {
             sSelf.pendingAudioConfirmation = null;
@@ -1261,7 +1273,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 const isAudioReq = Boolean(tc.args?.asAudio || dispatchIntent.asAudio || sSelf.pendingAsAudio || /(?:em\s+|como\s+|por\s+|um\s+)?(?:[aá]udio|voz)\b/i.test(cleanTauan));
                 if (tc.name === 'enviar_mensagem_contato' && isAudioReq) {
                   tc.args.asAudio = true;
-                  const targetRec = tc.args.recipient || dispatchIntent.recipient || sSelf.pendingRecipient || 'Contato';
+                  const IGNORED_TARGETS = new Set(['o', 'a', 'os', 'as', 'um', 'uma', 'o contato', 'contato', 'cliente', 'qualquer', 'número', 'numero', 'telefone', 'celular']);
+                  const validRec = (tc.args.recipient && !IGNORED_TARGETS.has(String(tc.args.recipient).toLowerCase())) ? tc.args.recipient : null;
+                  const targetRec = validRec || dispatchIntent.recipient || sSelf.pendingRecipient || 'Contato';
                   const rawSourceMsg = tc.args.message || dispatchIntent.message || cleanTauan;
                   const friendlyScript = await humanizeContactMessage(targetRec, rawSourceMsg, { asAudio: true, ai, botConfig });
 
@@ -1274,7 +1288,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   sSelf.pendingRecipient = null;
                   sSelf.pendingAsAudio = false;
 
-                  const previewReply = `🎙️ *Prévia do áudio personalizado para ${targetRec}:*\n\n> "${friendlyScript}"\n\nDeseja que eu grave e envie este áudio agora? _(Responda *sim* para confirmar ou me diga se quiser ajustar algo)_`;
+                  const isTargetPhone = /^\d{8,15}$/.test(String(targetRec).replace(/\D/g, ''));
+                  const targetLabel = isTargetPhone ? formatPhoneNumber(targetRec) : targetRec;
+                  const previewReply = `🎙️ *Prévia do áudio personalizado para ${targetLabel}:*\n\n> "${friendlyScript}"\n\nDeseja que eu grave e envie este áudio agora? _(Responda *sim* para confirmar ou me diga se quiser ajustar algo)_`;
                   return recordSelfTurn(filterReply(previewReply, { isCopilot: true }).text);
                 }
 
@@ -1337,7 +1353,9 @@ ${errMsg}`;
         if (!rawReply) {
           if (isAudioForSelf) {
             const simMatch = cleanTauan.match(/(?:perguntando|avisando|falando|dizendo|sobre)\s+(?:para\s+o|para\s+a|para|pro|pra)?\s*([a-zA-ZÀ-ÿ0-9+]+)?/i);
-            const simName = simMatch?.[1] || '';
+            const rawSimName = simMatch?.[1] || '';
+            const IGNORED_SIM = new Set(['se', 'que', 'quando', 'como', 'onde', 'o', 'a', 'os', 'as', 'um', 'uma', 'o contato', 'contato', 'cliente', 'qualquer', 'número', 'numero', 'telefone', 'celular']);
+            const simName = IGNORED_SIM.has(rawSimName.toLowerCase()) ? '' : rawSimName;
             rawReply = buildFriendlyMessage(simName, cleanTauan, { asAudio: true });
           } else {
             const isGreeting = cleanTauan.length < 25 && /^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|lia)[\s,!.]*$/i.test(cleanTauan.trim());
