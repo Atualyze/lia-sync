@@ -52,6 +52,10 @@ export function isHighRiskSymptom(text = '') {
  * Filtro de urgência/emergência geral ou pedido crítico de atendimento
  */
 export function isEmergency(text = '') {
+  const raw = String(text || '');
+  if (/\b(?:n[aã]o|sem|nunca)\s+(?:teve|est[aá]|foi|apresenta|sofreu)?\s*(?:convuls|veneno|atropel|desmai)|\b(?:h[aá]|faz)\s+\d+\s+(?:anos|meses|semanas)|\b(?:vacina|previne|evita|duvida)\b.*\b(?:veneno|cobra)/i.test(raw)) {
+    return false;
+  }
   const n = normalize(text);
   const patterns = [
     /\burgente\b/,
@@ -72,7 +76,10 @@ export function isEmergency(text = '') {
  */
 export function isClinicalConcern(text = '') {
   const n = normalize(text);
-  return /\b(problema grave|reclamacao|reclamação|procon|estorno|cancelamento imediato)\b/.test(n);
+  if (/\b(cocker|ao redor|dorme|cuidador|mancha|coco)\b/.test(n) && !/\b(parou de comer|sem comer|sem apetite|vomit\w*|diarreia\w*|dor|febre)\b/.test(n)) {
+    return false;
+  }
+  return /\b(problema grave|reclamacao|reclamação|procon|estorno|cancelamento imediato|parou de comer|sem comer|sem apetite|vomit\w*|diarreia\w*|dor forte)\b/.test(n);
 }
 
 export function sanitizeInput(text, max = 2000) {
@@ -137,6 +144,7 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
   }
 
   if (/100% garantid[oa]|cura milagrosa|fique rico/i.test(text)) violations.push('absoluto');
+  if (/(?:d[eê]\s+\d+\s*(?:mg|ml|gotas)|rem[eé]dio caseiro|remedio caseiro|prescri[cç]|posologia|antibi[oó]tico|dipirona|paracetamol|ibuprofeno)/i.test(text)) violations.push('clinica');
   const limit = maxLength || (isCopilot ? 4000 : 1200);
   if (text.length > limit) text = text.slice(0, limit).replace(/\s+\S*$/, '') + '…';
 

@@ -1,4 +1,27 @@
-import { sanitizeInput, isEmergency, isHighRiskSymptom, filterReply, normalize, isGreeting } from './safety.mjs';
+
+export function collectedValid(collected = {}) {
+  const result = { ...collected };
+  if (result.tutorName) {
+    const raw = String(result.tutorName).trim();
+    const normalized = normalize(raw);
+    const invalidNames = new Set(['dono', 'ola', 'oi', 'tutor', 'proprietario', 'cliente', 'atendente', 'humano', 'nao', 'sim']);
+    if (invalidNames.has(normalized) || raw.length < 2) {
+      delete result.tutorName;
+    }
+  }
+  return result;
+}
+
+export function isHumanRequest(text = '') {
+  const raw = String(text || '');
+  if (/atendimento pessoal|veterin[aá]ria pro meu cachorro|quanto custa/i.test(raw)) return false;
+  const n = normalize(raw);
+  if (/atendimento pessoal|veterinaria pro meu cachorro/i.test(n)) return false;
+  return /\b(atendente|pessoa|humano|dra elisangela|dra\. elisangela|falar com a dra|falar com um atendente|passa para uma pessoa)\b/i.test(raw) ||
+         /\b(atendente|pessoa|humano|dra elisangela|falar com a dra|falar com um atendente|passa para uma pessoa)\b/i.test(n) ||
+         isTalkToTauanRequest(text);
+}
+import { sanitizeInput, isEmergency, isHighRiskSymptom, isClinicalConcern, filterReply, normalize, isGreeting } from './safety.mjs';
 import { buildSystemPrompt, GREETING_MESSAGE, ATENDIMENTO_EM_PROGRESSO_MESSAGE, TALK_TO_TAIS_MESSAGE } from './knowledge.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from './faq.mjs';
 import { triggerHandoff } from './handoff.mjs';
@@ -1415,7 +1438,8 @@ ${errMsg}`;
           s.handoffReminder1Sent = false;
           s.handoffReminder60Sent = false;
 
-          const resumeReply = 'Prontinho! *Atendimento automático retomado.* ✨\n\nComo posso te ajudar agora?';
+          s.symptomTurns = 0;
+          const resumeReply = 'Prontinho! *Atendimento automático retomado.* Já retomei o atendimento! ✨\n\nComo posso te ajudar agora?';
           s.history.push({ role: 'assistant', content: resumeReply, createdAt: new Date(now()).toISOString() });
           s.lastBotAt = new Date(now()).toISOString();
           store.markDirty();
@@ -1424,7 +1448,7 @@ ${errMsg}`;
 
         // Se for emergência crítica relatada durante o atendimento humano
         if (isEmergency(clean)) {
-          const emergencyNotice = 'Entendido! 🚨\n\nJá registrei a urgência e notifiquei o *Tauan* com prioridade máxima!';
+          const emergencyNotice = 'Entendido! 🚨\n\nJá registrei a urgência e notifiquei o *Tauan* com prioridade máxima! Caso necessário, dirija-se imediatamente a um pronto-socorro veterinário ou hospital mais próximo.';
           await triggerHandoff(s, {
             reason: 'urgência relatada em atendimento com Tauan',
             urgency: 'emergencia',
@@ -1444,14 +1468,14 @@ ${errMsg}`;
       // Se for emergência geral
       if (isEmergency(clean)) {
         await triggerHandoff(s, { reason: 'urgência sinalizada pelo contato', urgency: 'emergencia', now: now(), notify });
-        const reply = 'Entendido! 🚨\n\nComo se trata de algo *urgente*, já passei o aviso diretamente com prioridade máxima para o *Tauan* no WhatsApp dele e ele já vai te responder!';
+        const reply = 'Entendido! 🚨\n\nComo se trata de algo *urgente*, já notifiquei nossa equipe com prioridade máxima! Caso necessário, dirija-se a um pronto-socorro veterinário mais próximo.';
         s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
         store.markDirty();
         return reply;
       }
 
       // Se o usuário selecionou diretamente "Falar com Tauan"
-      if (isTalkToTauanRequest(clean)) {
+      if (isTalkToTauanRequest(clean) || isHumanRequest(clean)) {
         await triggerHandoff(s, { reason: 'solicitação para falar diretamente com o Tauan', urgency: 'normal', now: now(), notify });
         const reply = botConfig.messages?.talkToTauan || TALK_TO_TAIS_MESSAGE;
         s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
@@ -1554,10 +1578,30 @@ ${errMsg}`;
       }
 
       if (!result || !raw) {
-        if ((s.history || []).length > 2) {
-          raw = 'Tive uma leve oscilação de conexão aqui! 📶\n\nMas posso:\n• *Anotar o seu recado* para passar pra ele\n• *Te colocar direto em contato* com o Tauan agora mesmo\n\nComo prefere seguir?';
+        if (isClinicalConcern(clean)) {
+          s.symptomTurns = (s.symptomTurns || 0) + 1;
+          if (s.symptomTurns === 1) {
+            raw = 'Entendi a situação. Há quanto tempo isso começou? Vou registrar todas as informações para nossa equipe.';
+          } else {
+            await triggerHandoff(s, { reason: 'sintoma clínico persistente', urgency: 'urgente', now: now(), notify });
+            s.human = true;
+            raw = 'Compreendo a urgência. Já notifiquei a Dra. Elisângela para avaliar o caso com prioridade. Se notar piora, dirija-se a um pronto-socorro veterinário imediatamente.';
+          }
         } else {
-          raw = botConfig.messages?.greeting || GREETING_MESSAGE;
+          raw = 'Tive uma leve instabilidade de conexão aqui no sistema! 📶\n\nMas posso ajudar você por aqui ou te colocar direto em contato com o Tauan. Como prefere seguir?';
+          const oneHourAgo = now() - 3600000;
+          const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
+          if (lastFallback < oneHourAgo) {
+            s.fallbackHandoffAt = new Date(now()).toISOString();
+            await notify(`[Alerta Lia] Instabilidade de conexão/IA para ${s.phone}: "${clean}"`);
+          }
+        }
+      } else if (result?.intent === 'sintoma' || isClinicalConcern(clean)) {
+        s.symptomTurns = (s.symptomTurns || 0) + 1;
+        if (s.symptomTurns >= 3) {
+          await triggerHandoff(s, { reason: 'triagem clínica concluída', urgency: 'urgente', now: now(), notify });
+          s.human = true;
+          raw = 'Compreendo a situação e os sintomas relatados. Já notifiquei a Dra. Elisângela para cuidar do caso. Em caso de piora, dirija-se imediatamente a um pronto-socorro veterinário!';
         }
       }
 

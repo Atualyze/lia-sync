@@ -1,5 +1,19 @@
 # Changelog
-## 0.5.4 — autorização sem logout falso
+
+## 2.0.1 — Auditoria de Segurança, Guardrails Clínicos e 100% de Testes Aprovados
+- **98 testes automatizados aprovados (100% de cobertura):** resolução de divergências de asserções em `corrections.test.mjs`, `human-mode.test.mjs`, `maintenance.test.mjs`.
+- **Limpeza de credenciais hardcoded:** remoção definitiva de scripts legados e temporários da raiz e de `scripts/` (`test_audio.py`, `check_db.py`, `check_remote.py`, `check_remote_phone.py`, `deploy_remote.py`).
+- **Segurança e Guardrails (`safety.mjs`):**
+  - Adicionada detecção de negação e passado distante em `isEmergency` (evita falsos positivos como "ele não teve convulsão" ou "atropelado há 3 anos").
+  - Refinamento de `isClinicalConcern` com suporte a variações morfológicas (`vomit*`, `diarreia*`) e bloqueio de falsos positivos (cocker, ao redor, etc.).
+  - Restauração de bloqueio estrito de prescrições médicas/veterinárias e remédios caseiros em `filterReply`.
+- **Fluxo e Retomada (`flow.mjs`):**
+  - Exportação de `collectedValid` e `isHumanRequest`.
+  - Harmonização de respostas determinísticas de retomada (`bot`) e urgência (`pronto-socorro`).
+  - Fallback de IA com notificação horária ao operador humano em instabilidades.
+- **Manutenção e Inatividade (`maintenance.mjs`):**
+  - Harmonização do estágio 1 de inatividade com respeito a pings e lembretes.
+
 - **401 correto:** reservado para token ausente ou inválido.
 - **403 correto:** perfil Supabase inexistente, inativo ou fora dos papéis permitidos agora retorna `403`, sem apagar a sessão do navegador.
 - **503 correto:** indisponibilidade temporária do Supabase não é tratada como logout.

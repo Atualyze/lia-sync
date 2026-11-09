@@ -15,7 +15,7 @@ export async function processMaintenance({
   humanReminderMinutes = 15,
   humanAutoResumeHours = 0,
   humanPhone = '',
-  disableInactivityPings = true,
+  disableInactivityPings = false,
   enableLeadFollowUp = true,
   followUpMinHours = 24,
   followUpMaxHours = 72,
@@ -162,7 +162,7 @@ export async function processMaintenance({
     if (!stage || stage <= (session.inactivityStage || 0)) continue;
 
     const message = stage === 1
-      ? 'Oi! Passando só pra ver se você ainda precisa de alguma ajuda por aqui. 😊\n\nFique à vontade pra responder quando puder!'
+      ? 'Oi! Passando só pra ver se você ainda precisa de alguma ajuda por aqui. Fico à disposição para qualquer dúvida! 😊\n\nFique à vontade pra responder quando puder!'
       : stage === 2
       ? 'Oi de novo! 👋\n\nCaso queira continuar depois ou falar direto com o *Tauan*, é só me mandar uma mensagem aqui.'
       : 'Como não tive retorno, vou pausar nosso atendimento por agora. ⏸️\n\nQuando quiser continuar, é só me mandar um *oi*!';
