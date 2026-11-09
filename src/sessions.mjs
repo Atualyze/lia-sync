@@ -65,6 +65,20 @@ export function isValidRealMobilePhone(raw = '') {
   return false;
 }
 
+export function formatPhoneNumber(raw = '') {
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return raw;
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    const ddd = digits.slice(2, 4);
+    const num = digits.slice(4);
+    if (num.length === 9) return `+55 (${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`;
+    if (num.length === 8) return `+55 (${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+  }
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return raw;
+}
+
 export function isTauanContact(target = '', humanPhone = '', cachedOwner = '') {
   if (!target) return false;
   const s = String(target).trim();

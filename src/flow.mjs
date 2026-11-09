@@ -25,7 +25,7 @@ import { sanitizeInput, isEmergency, isHighRiskSymptom, isClinicalConcern, filte
 import { buildSystemPrompt, GREETING_MESSAGE, ATENDIMENTO_EM_PROGRESSO_MESSAGE, TALK_TO_TAIS_MESSAGE } from './knowledge.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from './faq.mjs';
 import { triggerHandoff } from './handoff.mjs';
-import { normalizePhone, isTauanContact } from './sessions.mjs';
+import { normalizePhone, isTauanContact, formatPhoneNumber } from './sessions.mjs';
 import { executeToolCall } from './tools/index.mjs';
 import { avaliarJanelaDeAtendimento } from './business-hours.mjs';
 import { classificarSetorPorTexto } from './triage-router.mjs';
@@ -1056,7 +1056,7 @@ Tauan, não há nenhum contato aguardando retorno no momento! Todos os atendimen
                 ...pendingAudio,
                 message: revisedScript
               };
-              const targetLabel = pendingAudio.forSelf ? 'você' : pendingAudio.recipient;
+              const targetLabel = pendingAudio.forSelf ? 'você' : (/^\d{8,15}$/.test(String(pendingAudio.recipient).replace(/\D/g, '')) ? formatPhoneNumber(pendingAudio.recipient) : pendingAudio.recipient);
               const revisedReply = `🎙️ *Prévia atualizada do áudio para ${targetLabel}:*\n\n> "${revisedScript}"\n\nFicou como você queria? _(Responda *sim* para eu gravar e enviar ou me diga se quiser ajustar mais algum detalhe)_`;
               return recordSelfTurn(filterReply(revisedReply, { isCopilot: true }).text);
             }
@@ -1229,22 +1229,33 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   tc.args = tc.args || {};
 
                   // 1. Extração Inteligente de Recipient
-                  if (!tc.args.recipient || tc.args.recipient === 'o contato') {
+                  const IGNORED_TOOL_RECS = new Set(['o', 'a', 'os', 'as', 'um', 'uma', 'o contato', 'contato', 'cliente', 'qualquer', 'número', 'numero', 'telefone', 'celular']);
+                  if (dispatchIntent.recipient && !IGNORED_TOOL_RECS.has(String(dispatchIntent.recipient).toLowerCase())) {
+                    tc.args.recipient = dispatchIntent.recipient;
+                  } else if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
                     const replyRecMatch = result?.reply?.match(/(?:destinat[áa]rio|para\s+o|para\s+a)\s*[:*]*\s*\*?([a-zA-ZÀ-ÿ0-9+]+)/i);
-                    if (replyRecMatch && !['o', 'a', 'o contato', 'um', 'qualquer'].includes(replyRecMatch[1].toLowerCase())) {
+                    if (replyRecMatch && !IGNORED_TOOL_RECS.has(replyRecMatch[1].toLowerCase())) {
                       tc.args.recipient = replyRecMatch[1].trim();
                     }
-                    if (!tc.args.recipient || tc.args.recipient === 'o contato') {
+                    if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
                       const userRecMatch = cleanTauan.match(/(?:para\s+o|para\s+a|pro|pra|ao)\s+([a-zA-ZÀ-ÿ0-9]+)/i);
-                      if (userRecMatch) tc.args.recipient = userRecMatch[1].trim();
+                      if (userRecMatch && !IGNORED_TOOL_RECS.has(userRecMatch[1].toLowerCase())) {
+                        tc.args.recipient = userRecMatch[1].trim();
+                      }
                     }
-                    if ((!tc.args.recipient || tc.args.recipient === 'o contato') && sSelf.pendingRecipient && sSelf.pendingRecipient !== 'o contato') {
+                    if ((!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) && sSelf.pendingRecipient && !IGNORED_TOOL_RECS.has(String(sSelf.pendingRecipient).toLowerCase())) {
                       tc.args.recipient = sSelf.pendingRecipient;
                     }
-                    if (!tc.args.recipient || tc.args.recipient === 'o contato') {
+                    if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
+                      const pMatch = cleanTauan.match(/55\d{10,11}|\b\d{10,11}\b/);
+                      if (pMatch) {
+                        tc.args.recipient = pMatch[0];
+                      }
+                    }
+                    if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
                       const histCombined = `${cleanTauan} ${result?.reply || ''} ${recentHistory.map(h => h.content).join(' ')}`;
                       for (const name of knownNames) {
-                        if (!name || name.length < 2) continue;
+                        if (!name || name.length < 2 || IGNORED_TOOL_RECS.has(name.toLowerCase())) continue;
                         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         if (new RegExp(`\\b${escaped}\\b`, 'i').test(histCombined)) {
                           tc.args.recipient = name;
@@ -1381,7 +1392,9 @@ ${errMsg}`;
               };
               sSelf.pendingRecipient = null;
               sSelf.pendingAsAudio = false;
-              const previewReply = `🎙️ *Prévia do áudio personalizado para ${targetRec}:*\n\n> "${friendlyScript}"\n\nDeseja que eu grave e envie este áudio agora? _(Responda *sim* para confirmar ou me diga se quiser ajustar algo)_`;
+              const isTargetPhone = /^\d{8,15}$/.test(String(targetRec).replace(/\D/g, ''));
+              const targetLabel = isTargetPhone ? formatPhoneNumber(targetRec) : targetRec;
+              const previewReply = `🎙️ *Prévia do áudio personalizado para ${targetLabel}:*\n\n> "${friendlyScript}"\n\nDeseja que eu grave e envie este áudio agora? _(Responda *sim* para confirmar ou me diga se quiser ajustar algo)_`;
               return recordSelfTurn(filterReply(previewReply, { isCopilot: true }).text);
             }
             const friendlyDirect = buildFriendlyMessage(sSelf.pendingRecipient, cleanTauan, { asAudio: false });
