@@ -92,11 +92,11 @@ export function stripCommandPrefix(rawText = '', recipient = '') {
   // 1. Componentes de comandos
   const sendVerbs = '(?:envie|enviar|envia|mande|mandar|manda|dispare|disparar|dispara|grave|gravar|grava|solte|soltar|solta|passe|passar|passa)';
   const speechVerbs = '(?:diga|diz|fale|fala|avise|avisa|informe|informa|explique|explica|pe[cç]a|pede|lembre|lembra|pergunte|pergunta|cobre|cobra|notifique|notifica)';
-  const modals = '(?:vou\\s+precisar\\s+que|preciso\\s+que|quero\\s+que|gostaria\\s+que|pode|poderia|favor)';
+  const modals = '(?:vou\\s+precisar\\s+que|preciso\\s+que|quero\\s+que|gostaria\\s+que|pode|poderia|favor|que)';
   const pronouns = '(?:voc[êe]|vc|c[êe])';
   const recPrep = '(?:para\\s+o|para\\s+a|para|pro|pra|ao|à)\\s+|o\\s+|a\\s+';
   const recTarget = recEscaped ? `(?:(?:${recPrep})?${recEscaped}\\b)` : `(?:${recPrep}[a-zA-ZÀ-ÿ0-9+]+\\b)`;
-  const media = '(?:(?:(?:um|uma|o|a)\\s+)?(?:mensagem(?:\\s+de\\s+[aá]udio|\\s+de\\s+voz)?|msg|zap|[aá]udio|audio|voz|recado)|(?:em|por)\\s+(?:[aá]udio|voz))';
+  const media = '(?:(?:(?:um|uma|o|a)\\s+)?(?:mensagem(?:\\s+de\\s+[aá]udio|\\s+de\\s+voz)?|msg|zap|[aá]udio|audio|voz|recado|texto)|(?:em|por)\\s+(?:[aá]udio|voz|texto))';
   const chatContext = '(?:\\s+(?:no\\s+chat\\s+interno|comigo|pra\\s+mim|para\\s+mim))?';
   const gerunds = '(?:informando|avisando|dizendo|falando|explicando|lembrando|pedindo|cobrando|confirmando|perguntando)';
 
@@ -124,11 +124,11 @@ export function stripCommandPrefix(rawText = '', recipient = '') {
       .replace(/^(?:no\s+chat\s+interno|comigo|pra\s+mim|para\s+mim)\b[\s,:-]*/i, '')
       .replace(new RegExp(`^(?:${modals})?\\s*(?:${pronouns})?\\s*(?:me\\s+)?(?:${sendVerbs}|fale com|falar com|${speechVerbs})\\b[\\s,:-]*`, 'i'), '')
       .replace(new RegExp(`^${media}\\b[\\s,:-]*`, 'i'), '')
-      .replace(/^(?:em\s+[aá]udio|por\s+[aá]udio|como\s+[aá]udio|em\s+voz|por\s+voz)\b[\s,:-]*/i, '')
+      .replace(/^(?:em\s+[aá]udio|por\s+[aá]udio|como\s+[aá]udio|em\s+voz|por\s+voz|em\s+texto|por\s+texto)\b[\s,:-]*/i, '')
       .replace(new RegExp(`^(?:e\\s+)?(?:${gerunds}|${speechVerbs})\\b[\\s,:-]*`, 'i'), '')
       .replace(new RegExp(`^(?:para\\s+o|para\\s+a|para|pro|pra|ao|para\\s+ele|pra\\s+ele|para\\s+ela|pra\\s+ela)\\s+[a-zA-ZÀ-ÿ0-9+]+\\b[\\s,!.-]*`, 'i'), '')
       .replace(/^(?:para\s+ele|pra\s+ele|para\s+ela|pra\s+ela|a\s+ele|a\s+ela)\b[\s,!.-]*/i, '')
-      .replace(/^(?:a\s+mensagem\s+[ée]|o\s+recado\s+[ée]|o\s+[aá]udio\s+[ée]|que\s+[ée])\s*/i, '')
+      .replace(/^(?:a\s+mensagem\s+[ée]|o\s+recado\s+[ée]|o\s+[aá]udio\s+[ée]|o\s+texto\s+[ée]|que\s+[ée])\s*/i, '')
       .replace(/^(?:apenas\s+que\s+[ée]|s[óo]\s+que\s+[ée]|apenas\s+que|s[óo]\s+que|apenas\s+|s[óo]\s+|que\s+|para\s+|pra\s+)\s*/i, '')
       .trim();
 
@@ -137,6 +137,14 @@ export function stripCommandPrefix(rawText = '', recipient = '') {
       s = s.replace(recPrefixRe, '').trim();
     }
     if (s === prev) break;
+  }
+
+  // Se o que restou for apenas uma indicação isolada de formato, comando ou modalidade, zera
+  if (/^(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem|recado|msg|voz)$/i.test(s) ||
+      /^(?:em\s+|por\s+)?(?:texto|áudio|audio|voz)$/i.test(s) ||
+      /^(?:quero\s+)?(?:em\s+|por\s+)?(?:texto|áudio|audio|voz)$/i.test(s) ||
+      /^(?:enviar|envie|mandar|mande)\s+(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem)$/i.test(s)) {
+    return '';
   }
 
   return s.replace(/\s{2,}/g, ' ').trim();
@@ -390,7 +398,8 @@ export function extractDispatchIntent(cleanTauan, { pendingRecipient, pendingAsA
   const IGNORED_RECIPIENTS = new Set([
     'o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'o contato', 'contato',
     'qualquer', 'mim', 'ele', 'ela', 'todos', 'todas', 'nós', 'você', 'voce',
-    'gente', 'ajuda', 'status', 'ver', 'hoje', 'amanhã', 'ontem', 'saber', 'recado', 'mensagem'
+    'gente', 'ajuda', 'status', 'ver', 'hoje', 'amanhã', 'ontem', 'saber', 'recado', 'mensagem',
+    'número', 'numero', 'telefone', 'celular', 'cliente', 'ptbr', 'pt-br', 'pt_br', 'br'
   ]);
 
   const lastAssistantAsked = Boolean(
@@ -460,16 +469,25 @@ export function extractDispatchIntent(cleanTauan, { pendingRecipient, pendingAsA
   if (explicitMsgMatch) {
     message = explicitMsgMatch[1].trim();
   } else {
-    const isOnlySendCmd = /^(?:[@/]?lia[\s,:-]*)?(?:vou precisar que|preciso que|quero que|gostaria que|por favor|pode)?\s*(?:voc[êe]\s+)?(?:envie|enviar|mande|mandar|dispare|disparar|manda|envia|grave|gravar|fale com|falar com)\s+(?:(?:um|uma|o|a)\s+)?(?:mensagem(?:\s+de\s+[aá]udio|\s+de\s+voz)?|msg|zap|[aá]udio|audio|voz|recado)?\s*(?:para\s+o|para\s+a|para|pro|pra|ao)\s+[a-zA-ZÀ-ÿ0-9+]+\s*[.!?]*$/i.test(cleanTauan.trim());
-    if (!isOnlySendCmd) {
+    const isOnlySendCmd = /^(?:[@/]?lia[\s,:-]*)?(?:vou precisar que|preciso que|quero que|gostaria que|por favor|pode)?\s*(?:voc[êe]\s+)?(?:envie|enviar|mande|mandar|dispare|disparar|manda|envia|grave|gravar|fale com|falar com)\s+(?:(?:um|uma|o|a)\s+)?(?:mensagem(?:\s+de\s+[aá]udio|\s+de\s+voz)?|msg|zap|[aá]udio|audio|voz|recado|texto)?\s*(?:para\s+o|para\s+a|para|pro|pra|ao)?\s*(?:[a-zA-ZÀ-ÿ0-9+]+\s*)?[.!?]*$/i.test(cleanTauan.trim());
+    const isModalityOnly = /^(?:[@/]?lia[\s,:-]*)?(?:que\s+)?(?:envie|enviar|mande|mandar|grave|gravar|dispare|disparar)?\s*(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem|recado|msg|zap)(?:\s+(?:em|por)\s+(?:texto|áudio|audio))?[.!?]*$/i.test(cleanTauan.trim());
+    if (!isOnlySendCmd && !isModalityOnly) {
       const stripped = stripCommandPrefix(cleanTauan, recipient);
-      if (stripped.length >= 3 && !/^(?:ajuda|status|resumo|fila|espera|lembretes|bot|humano|limpar)\b/i.test(stripped)) {
+      const isFormatWord = /^(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem|recado|msg|voz)$/i.test(stripped) ||
+                           /^(?:em\s+|por\s+)?(?:texto|áudio|audio|voz)$/i.test(stripped);
+      if (stripped.length >= 3 && !isFormatWord && !/^(?:ajuda|status|resumo|fila|espera|lembretes|bot|humano|limpar)\b/i.test(stripped)) {
         message = stripped;
       }
     }
   }
 
-  const asAudio = Boolean(pendingAsAudio) || /(?:em\s+|como\s+|por\s+|um\s+|uma\s+mensagem\s+de\s+)?(?:[aá]udio|voz)\b/i.test(cleanTauan) || /(?:o que voc[êe] gostaria que eu falasse no [aá]udio)/i.test(lastAssistantMsg || '');
+  const wantsText = /(?:em\s+|por\s+|um\s+|uma\s+mensagem\s+de\s+)?(?:texto|escrito)\b/i.test(cleanTauan);
+  let asAudio = false;
+  if (wantsText) {
+    asAudio = false;
+  } else {
+    asAudio = Boolean(pendingAsAudio) || /(?:em\s+|como\s+|por\s+|um\s+|uma\s+mensagem\s+de\s+)?(?:[aá]udio|voz)\b/i.test(cleanTauan) || /(?:o que voc[êe] gostaria que eu falasse no [aá]udio)/i.test(lastAssistantMsg || '');
+  }
   return { recipient, message, asAudio };
 }
 
@@ -1032,7 +1050,10 @@ Tauan, não há nenhum contato aguardando retorno no momento! Todos os atendimen
             sSelf.pendingAudioConfirmation = null;
             sSelf.pendingRecipient = null;
             sSelf.pendingAsAudio = false;
-            return recordSelfTurn(filterReply('🚫 *Envio cancelado com sucesso!* Se precisar gravar outra mensagem ou ajustar o texto, é só me chamar.', { isCopilot: true }).text);
+            sSelf.lastCancelledAt = now();
+            store.markDirty?.();
+            await store.flush?.().catch(() => {});
+            return recordSelfTurn(filterReply('🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.', { isCopilot: true }).text);
           } else {
             // Se o Tauan enviou uma observação/ajuste sobre a prévia do áudio (e não um comando de sistema como status/fila/bot)
             const isSystemCmd = /^(?:ajuda|status|resumo|fila|espera|lembretes|bot|humano|limpar)\b/i.test(strippedCmd);
@@ -1083,7 +1104,11 @@ Tauan, não há nenhum contato aguardando retorno no momento! Todos os atendimen
 
         // Se Tauan quer enviar mensagem de TEXTO (não áudio) e já temos o destinatário E a mensagem explícita (sem ser 'sobre...'):
         const isTopicOnly = /^sobre\s+/i.test(String(dispatchIntent.message || '').trim());
-        if (dispatchIntent.recipient && dispatchIntent.message && !dispatchIntent.asAudio && !isTopicOnly) {
+        const isCommandLikeMsg = /^(?:que\s+)?(?:envie|enviar|mande|mandar|dispare|disparar|grave|gravar)\s+(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem|recado|msg|zap)/i.test(String(dispatchIntent.message || '').trim()) ||
+          /^(?:um\s+|uma\s+)?(?:texto|áudio|audio|mensagem|recado|msg|voz)$/i.test(String(dispatchIntent.message || '').trim()) ||
+          String(dispatchIntent.message || '').trim().length < 4;
+
+        if (dispatchIntent.recipient && dispatchIntent.message && !dispatchIntent.asAudio && !isTopicOnly && !isCommandLikeMsg) {
           try {
             const friendlyTextMessage = await humanizeContactMessage(dispatchIntent.recipient, dispatchIntent.message, { asAudio: false, ai, botConfig });
             const toolRes = await executeToolCall('enviar_mensagem_contato', {
@@ -1120,13 +1145,15 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           } catch (err) {
             console.error('[flow] Erro no disparo direto:', err.message);
           }
-        } else if (dispatchIntent.recipient && !dispatchIntent.message) {
-          // Tauan pediu para enviar mas ainda não disse o conteúdo/assunto
+        } else if (dispatchIntent.recipient && (!dispatchIntent.message || isCommandLikeMsg)) {
+          // Tauan pediu para enviar mas ainda não disse o conteúdo/assunto (ou a mensagem era apenas meta-comando)
           sSelf.pendingRecipient = dispatchIntent.recipient;
           sSelf.pendingAsAudio = Boolean(dispatchIntent.asAudio);
+          const isPhoneRec = /^\d{8,15}$/.test(String(dispatchIntent.recipient).replace(/\D/g, ''));
+          const recLabel = isPhoneRec ? formatPhoneNumber(dispatchIntent.recipient) : dispatchIntent.recipient;
           const askReply = dispatchIntent.asAudio
-            ? `Claro, Tauan! O que você gostaria que eu falasse no áudio para o *${dispatchIntent.recipient}*? Me diga o assunto ou recado que eu monto um áudio amigável e te mostro para confirmar antes de enviar! 🎙️✨`
-            : `Claro, Tauan! O que você gostaria de dizer para o *${dispatchIntent.recipient}*? Me diga o recado que já disparo para ele no WhatsApp! 📲✨`;
+            ? `Claro, Tauan! O que você gostaria que eu falasse no áudio para o *${recLabel}*? Me diga o assunto ou recado que eu monto um áudio amigável e te mostro para confirmar antes de enviar! 🎙️✨`
+            : `Claro, Tauan! O que você gostaria de dizer para o *${recLabel}* em texto? Me diga o recado que eu preparo a mensagem e te mostro! 📲✨`;
           return recordSelfTurn(filterReply(askReply, { isCopilot: true }).text);
         }
 
@@ -1253,9 +1280,12 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                       }
                     }
                     if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
-                      const histCombined = `${cleanTauan} ${result?.reply || ''} ${recentHistory.map(h => h.content).join(' ')}`;
+                      const validHistoryTurns = (sSelf.lastCancelledAt && recentHistory)
+                        ? recentHistory.filter(h => !h.createdAt || new Date(h.createdAt).getTime() > sSelf.lastCancelledAt)
+                        : recentHistory;
+                      const histCombined = `${cleanTauan} ${result?.reply || ''} ${validHistoryTurns.map(h => h.content).join(' ')}`;
                       for (const name of knownNames) {
-                        if (!name || name.length < 2 || IGNORED_TOOL_RECS.has(name.toLowerCase())) continue;
+                        if (!name || name.length < 2 || IGNORED_TOOL_RECS.has(name.toLowerCase()) || /^(?:ptbr|pt-br|pt_br|br)$/i.test(name)) continue;
                         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         if (new RegExp(`\\b${escaped}\\b`, 'i').test(histCombined)) {
                           tc.args.recipient = name;

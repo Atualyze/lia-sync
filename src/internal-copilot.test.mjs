@@ -714,3 +714,63 @@ test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre 
   assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve continuar falsy');
 });
 
+test('Fluxo completo: cancelamento de áudio, troca para texto e proteção contra envio de comando cru', async () => {
+  const store = createMockStore();
+  const sContact = store.get('5588998340085');
+  sContact.pushName = 'ptbr';
+  sContact.clientName = 'Tauan Pires';
+
+  const sentMessages = [];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    whatsapp: {
+      sendWhatsAppText: async (phone, msg) => {
+        sentMessages.push({ phone, msg });
+        return { success: true };
+      }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Oi, Tauan! Tudo bem? 🚀\n\nPor aqui tudo 100% operacional. Em que posso te ajudar agora?',
+        tool_calls: []
+      })
+    }
+  });
+
+  // Turno 1: Tauan pede áudio
+  const p1 = await flow.process({
+    phone: 'tauan_self',
+    text: 'preciso que envie um áudio para 88998340085 sobre o status operacional do sistema'
+  });
+  assert.match(p1, /Prévia do áudio personalizado/i);
+  assert.match(p1, /Deseja que eu grave e envie este áudio agora/i);
+
+  // Turno 2: Tauan cancela dizendo 'não'
+  const p2 = await flow.process({
+    phone: 'tauan_self',
+    text: 'não'
+  });
+  assert.match(p2, /Envio cancelado com sucesso/i);
+  assert.equal(sentMessages.length, 0, 'Nenhuma mensagem deve ter sido enviada');
+
+  // Turno 3: Tauan cumprimenta
+  const p3 = await flow.process({
+    phone: 'tauan_self',
+    text: 'oi'
+  });
+  assert.match(p3, /100% operacional/i);
+
+  // Turno 4: Tauan diz 'que envie um texto'
+  const p4 = await flow.process({
+    phone: 'tauan_self',
+    text: 'que envie um texto'
+  });
+
+  // NÃO deve ter disparado mensagem alguma para o WhatsApp do contato
+  assert.equal(sentMessages.length, 0, 'JAMAIS deve disparar mensagem sem recado real para o contato');
+  assert.doesNotMatch(p4, /Mensagem disparada com sucesso/i);
+  assert.doesNotMatch(p4, /nvie um texto/i);
+  assert.doesNotMatch(p4, /Destinatário: ptbr/i);
+});
+
