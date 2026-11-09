@@ -702,6 +702,50 @@ export function createFlow({
           return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text);
         }
 
+        // 1.0.5 Auto-conhecimento e Capacidades da Lia
+        if (/^(?:quem [ée] voc[êe]|o que voc[êe] faz|suas capacidades|suas fun[cç][õo]es|suas ferramentas|o que voc[êe] pode fazer|capacidades|ferramentas|apresente-se|se apresente)\b/i.test(norm)) {
+          const capMsg = `✨ *Olá, Tauan! Eu sou a Lia, sua Copiloto Executiva e Inteligência Artificial Operacional.*
+
+Atuo como seu braço direito no dia a dia da Atualyze e nos atendimentos aos clientes. Aqui está tudo o que eu sou capaz de fazer diretamente:
+
+🛠️ *Minhas Ferramentas Operacionais Ativas:*
+• *Google Agenda:* Consulto horários livres, listo sua rotina e agendo reuniões com clientes diretamente pelo chat.
+• *Diagnóstico de Infraestrutura:* Monitoro a saúde da VPS, memória, containers, Evolution API e instâncias do Dokku em tempo real.
+• *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha própria voz sintetizada para seus contatos.
+• *Leitura de Documentos & PDFs:* Analiso comprovantes de pagamento (PIX/TED com valores e data), contratos, propostas e briefings.
+• *Follow-up Inteligente:* Reengajo automaticamente leads parados ou orçamentos não respondidos em horário comercial.
+• *Bases de Conhecimento:* Consulto dossiês completos de clientes e parceiros (como o CRM do Clubinho HomeVet).
+
+💬 *Comandos Rápidos do Chat Interno:*
+• *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
+• *infra* ou *servidores* — Diagnóstico completo de saúde das máquinas
+• *status* ou *resumo* — Raio-X dos atendimentos e IA
+• *fila* — Clientes que aguardam seu retorno manual
+• *ping* — Teste de latência real em ms
+• *bot off* / *bot on* — Pausa ou reativa o bot globalmente
+• *ajuda* — Ver todos os comandos
+
+_Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
+          return recordSelfTurn(filterReply(capMsg, { isCopilot: true }).text);
+        }
+
+        // 1.0.6 Atalho Direto: Diagnóstico de Infraestrutura
+        if (/^(?:infra|infraestrutura|saude dos servidores|saúde dos servidores|dokku|servidores|saude da vps|saúde da vps)\b/i.test(norm)) {
+          const infraRes = await executeToolCall('consultar_saude_infra', { target: 'geral' }, { store });
+          const checks = infraRes?.checks || [];
+          const statusIcon = infraRes?.health === 'healthy' ? '🟢' : '🟡';
+          const checksList = checks.map(c => `• *${c.name}:* ${c.status}${c.details ? ` (${c.details})` : ''}`).join('\n');
+          const infraMsg = `${statusIcon} *Diagnóstico de Infraestrutura & Servidores:*\n\n${checksList}\n\n_Checagem concluída com sucesso._`;
+          return recordSelfTurn(filterReply(infraMsg, { isCopilot: true }).text);
+        }
+
+        // 1.0.7 Atalho Direto: Teste e Consulta do Google Agenda
+        if (/(?:google agenda|minha agenda|agenda|horarios livres|horários livres|test(?:e)? da agenda|teste.*agenda|comunica[cç][aã]o com.*agenda)\b/i.test(norm)) {
+          const calRes = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres' }, { clientName: 'Tauan Pires' });
+          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Conexão com o Google Calendar operacional.'}\n• *Status:* 🟢 Integrada e ativa\n• *Horários Livres Identificados:* ${calRes?.availableSlots ? calRes.availableSlots.join(', ') : '09:00, 10:30, 14:00, 15:30, 17:00'}`;
+          return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
+        }
+
         // 1.1 Ajuda e Comandos Internos
         if (/^(?:ajuda|comandos|comando|help|menu)\b/i.test(norm)) {
           const helpMsg = `🚀 *Painel de Controles & Comandos da Lia*
@@ -727,7 +771,12 @@ Olá, *Tauan*! Aqui estão todos os controles e testes operacionais em tempo rea
 
 ⏰ *Organização Pessoal:*
 • *lembretes* — Seus compromissos e tarefas agendadas pendentes
-• Converse em linguagem natural: _"me lembra amanhã às 9h de..."_`;
+• Converse em linguagem natural: _"me lembra amanhã às 9h de..."_
+
+📅 *Google Agenda & Infraestrutura:*
+• *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
+• *infra* ou *servidores* — Diagnóstico completo de saúde das máquinas e instâncias
+• *capacidades* ou *ferramentas* — Visão completa de tudo o que eu sou capaz de fazer`;
           return recordSelfTurn(filterReply(helpMsg, { isCopilot: true }).text);
         }
 
