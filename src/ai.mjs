@@ -722,7 +722,12 @@ export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {
     .trim();
   if (!cleanText) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-lite-tts:generateContent?key=${config.geminiKey}`;
+  const ttsModels = [
+    'gemini-3.8-flash-lite-tts',
+    'gemini-3.8-flash-tts',
+    'gemini-2.5-flash-preview-tts'
+  ];
+
   const payload = {
     contents: [
       { parts: [{ text: cleanText }] }
@@ -739,27 +744,30 @@ export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {
     }
   };
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      console.error('[ai] synthesizeVoice HTTP erro:', res.status, err);
-      return null;
-    }
-    const data = await res.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    for (const p of parts) {
-      if (p.inlineData?.data) {
-        return { base64: p.inlineData.data, mimeType: p.inlineData.mimeType || 'audio/wav', voiceName: selectedVoice };
+  for (const model of ttsModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.geminiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => '');
+        console.warn(`[ai] synthesizeVoice (${model}) HTTP erro ${res.status}:`, err.slice(0, 150));
+        continue;
       }
+      const data = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      for (const p of parts) {
+        if (p.inlineData?.data) {
+          return { base64: p.inlineData.data, mimeType: p.inlineData.mimeType || 'audio/wav', voiceName: selectedVoice };
+        }
+      }
+    } catch (err) {
+      console.warn(`[ai] synthesizeVoice (${model}) erro:`, err.message);
     }
-    return null;
-  } catch (err) {
-    console.error('[ai] synthesizeVoice erro:', err.message);
-    return null;
   }
+
+  return null;
 }

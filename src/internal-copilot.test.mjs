@@ -579,3 +579,91 @@ test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e 
   const sTauan = store.get('tauan_self');
   assert.equal(sTauan.lastAudioBase64, 'AUDIO_BASE64_SIMULADO');
 });
+
+test('Humanização e Eliminação de Clichês: Lia humaniza perguntas, avisos e pedidos sem usar frases robóticas', async () => {
+  const store = createMockStore();
+  const sLima = store.get('5585991099483');
+  sLima.clientName = 'Lima';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {}
+  });
+
+  // 1. Pergunta / Acompanhamento: "Lia, envie um áudio pro Lima perguntando se ele vai querer a proposta"
+  const previewPergunta = await flow.process({
+    phone: '5588921694598',
+    text: 'Lia, envie um áudio pro Lima perguntando se ele vai querer a proposta'
+  });
+
+  assert.doesNotMatch(previewPergunta, /Queria aproveitar para alinhar com você que/i, 'NUNCA deve ter o clichê "Queria aproveitar para alinhar..."');
+  assert.doesNotMatch(previewPergunta, /se ele vai/i, 'Deve converter para 2ª pessoa');
+  assert.match(previewPergunta, /Oi, Lima! Tudo bem\? Passando para saber se você vai querer a proposta/i);
+
+  // 2. Cancelamento real: "cancela"
+  const cancelRes = await flow.process({
+    phone: '5588921694598',
+    text: 'cancela'
+  });
+  assert.match(cancelRes, /Envio cancelado com sucesso/i);
+  const sSelf = store.get('tauan_self');
+  assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve ser falsy após cancelar');
+  assert.ok(!sSelf.pendingRecipient, 'pendingRecipient deve ser falsy após cancelar');
+  assert.ok(!sSelf.pendingAsAudio, 'pendingAsAudio deve ser falsy após cancelar');
+
+  // 3. Aviso / Atualização de Status: "Lia, manda uma mensagem pro Lima avisando que o site já ficou pronto"
+  const sentTexts = [];
+  const flowText = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendText: async (phone, text) => { sentTexts.push({ phone, text }); }
+    }
+  });
+
+  const sendRes = await flowText.process({
+    phone: '5588921694598',
+    text: 'Lia, manda uma mensagem pro Lima avisando que o site já ficou pronto'
+  });
+
+  assert.match(sendRes, /Mensagem disparada com sucesso/i);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(sentTexts[0].phone, '5585991099483');
+  assert.doesNotMatch(sentTexts[0].text, /Queria aproveitar para alinhar com você que/i);
+  assert.doesNotMatch(sentTexts[0].text, /avisando que o site/i);
+  assert.match(sentTexts[0].text, /Oi, Lima! Tudo bem\? Passando para te avisar que o site já ficou pronto/i);
+});
+
+test('Copiloto: Pedido de áudio no chat interno gera fala natural como assistente e salva áudio para o Tauan', async () => {
+  const store = createMockStore();
+  let synthesizedText = '';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {},
+    ai: {
+      synthesizeVoice: async (text) => {
+        synthesizedText = text;
+        return { base64: 'AUDIO_COPILOTO_BASE64', mimeType: 'audio/wav' };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'tauan_self',
+    text: 'Lia, me mande um áudio no chat interno perguntando se o cliente vai querer a proposta'
+  });
+
+  assert.match(reply, /Áudio gravado e enviado para você/i);
+  assert.doesNotMatch(synthesizedText, /Queria aproveitar para alinhar com você que/i);
+  assert.match(synthesizedText, /Passando para saber se/i);
+
+  const sSelf = store.get('tauan_self');
+  assert.equal(sSelf.lastAudioBase64, 'AUDIO_COPILOTO_BASE64');
+  assert.equal(sSelf.pendingRecipient, null);
+});
