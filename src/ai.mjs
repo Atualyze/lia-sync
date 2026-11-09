@@ -7,11 +7,12 @@ const opened = new Map();
 const PROVIDERS = ['gemini', 'openrouter', 'qwen', 'openai'];
 
 export function resolveAIConfig(botConfig = {}) {
-  const ai = botConfig?.ai || {};
-  const provider = String(ai.activeProvider || '').toLowerCase();
+  const ai = botConfig?.ai || botConfig || {};
+  const provider = String(ai.activeProvider || ai.provider || '').toLowerCase();
+  const rawModel = typeof ai.activeModel === 'string' ? ai.activeModel.trim() : (typeof ai.model === 'string' ? ai.model.trim() : '');
   return {
     provider,
-    model: typeof ai.activeModel === 'string' ? ai.activeModel.trim() : '',
+    model: rawModel,
     fallbackModels: Array.isArray(ai.fallbackModels) ? ai.fallbackModels.filter(Boolean) : [],
     maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || config.aiMaxOutputTokens || 2048),
     structuredOutputs: ai.structuredOutputs === true,
@@ -469,15 +470,21 @@ export async function call(provider, {
   if (provider === 'gemini') {
     // Modelo fixo: tenta só ele, sem cadeia
     // Modelo preferido: tenta o roteado e depois a cadeia padrão
-    const candidateModels = fixedModel
+    const candidateModels = (fixedModel
       ? [fixedModel]
       : [
           preferredModel || legacyModel,
-          (runtime.model && runtime.model !== 'gemini-1.5-flash') ? runtime.model : null,
-          ...runtime.fallbackModels,
+          (runtime.model && runtime.model.startsWith('gemini-') && runtime.model !== 'gemini-1.5-flash') ? runtime.model : null,
+          ...runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')),
           'gemini-3.8-flash',
-          'gemini-flash-latest'
-        ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+          'gemini-3.5-flash-lite',
+          'gemini-flash-latest',
+          'gemini-pro-latest'
+        ]
+    )
+      .filter(Boolean)
+      .filter(m => typeof m === 'string' && m.startsWith('gemini-'))
+      .filter((m, i, arr) => arr.indexOf(m) === i);
 
     let primaryErr = null;
     let lastErr = null;
@@ -527,8 +534,8 @@ export async function call(provider, {
       } catch (err) {
         if (!primaryErr) primaryErr = err;
         lastErr = err;
-        // Só cai para o próximo modelo em erros transitórios, e nunca no modo fixo
-        if (fixedModel || !/\b(404|429|5\d\d)\b/.test(err.message)) break;
+        // Só cai para o próximo modelo em erros transitórios ou modelo inválido/descontinuado, e nunca no modo fixo
+        if (fixedModel || !/\b(400|404|429|5\d\d)\b/.test(err.message)) break;
       }
     }
     throw primaryErr || lastErr || Error('Gemini failed');

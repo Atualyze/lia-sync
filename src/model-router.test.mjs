@@ -4,14 +4,14 @@ import { decidirModeloPorContexto } from './model-router.mjs';
 
 test('model-router: roteia saudações e mensagens curtas para flash-lite', () => {
   const r1 = decidirModeloPorContexto({ userText: 'Oi, tudo bem?' });
-  assert.equal(r1.model, 'gemini-2.5-flash-lite');
+  assert.equal(r1.model, 'gemini-3.5-flash-lite');
   assert.equal(r1.tier, 'lite');
 
   const r2 = decidirModeloPorContexto({ userText: 'bom dia!' });
-  assert.equal(r2.model, 'gemini-2.5-flash-lite');
+  assert.equal(r2.model, 'gemini-3.5-flash-lite');
 
   const r3 = decidirModeloPorContexto({ userText: 'qual o link do portal?' });
-  assert.equal(r3.model, 'gemini-2.5-flash-lite');
+  assert.equal(r3.model, 'gemini-3.5-flash-lite');
 });
 
 test('model-router: roteia comandos de ferramentas e super agente para flash', () => {
@@ -19,14 +19,14 @@ test('model-router: roteia comandos de ferramentas e super agente para flash', (
     userText: 'Gostaria de agendar um retorno para amanhã às 14h com o setor comercial',
     isSuperAgent: true
   });
-  assert.equal(r1.model, 'gemini-2.5-flash');
+  assert.equal(r1.model, 'gemini-3.8-flash');
   assert.equal(r1.tier, 'flash');
 
   const r2 = decidirModeloPorContexto({
     userText: 'Pode me transferir para o financeiro?',
     isSuperAgent: false
   });
-  assert.equal(r2.model, 'gemini-2.5-flash');
+  assert.equal(r2.model, 'gemini-3.8-flash');
 });
 
 test('model-router: roteia análises estratégicas do Copiloto do Tauan para pro', () => {
@@ -34,7 +34,7 @@ test('model-router: roteia análises estratégicas do Copiloto do Tauan para pro
     userText: 'Lia, faça uma análise profunda e consolide o relatório estratégico de vendas do mês',
     isTauan: true
   });
-  assert.equal(r1.model, 'gemini-2.5-pro');
+  assert.equal(r1.model, 'gemini-pro-latest');
   assert.equal(r1.tier, 'pro');
 
   const r2 = decidirModeloPorContexto({

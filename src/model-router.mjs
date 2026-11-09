@@ -4,9 +4,9 @@ import { isHighRiskSymptom } from './safety.mjs';
  * Roteador Autônomo e Dinâmico de Modelos (Complexity-Based Model Dispatcher)
  *
  * Princípios:
- * 1. Simplicidade/Saudação/Dúvidas Curtas -> Gemini 2.5 Flash Lite (0.4s - 0.8s, Custo Mínimo)
- * 2. Ferramentas (Tool Calling), Multimodal ou Funil -> Gemini 2.5 Flash / 3.8 Flash (1.2s - 1.8s)
- * 3. Copiloto do Tauan em Planejamento / Análise Profunda -> Gemini 2.5 Pro ou Flash
+ * 1. Simplicidade/Saudação/Dúvidas Curtas -> Gemini 3.5 Flash Lite (0.4s - 0.8s, Custo Mínimo)
+ * 2. Ferramentas (Tool Calling), Multimodal ou Funil -> Gemini 3.8 Flash (1.2s - 1.8s)
+ * 3. Copiloto do Tauan em Planejamento / Análise Profunda -> Gemini Pro / 3.8 Flash
  * 4. Fallback Transparente: Se o modelo selecionado falhar, a Lia cai em cascata para o próximo.
  */
 
@@ -47,13 +47,13 @@ export function decidirModeloPorContexto({
     const isDeepReasoning = /(?:planej|estrat|analis|auditor|relat|consolid|compara|dossi|benchmark|rca|raiz|arquitetur)/i.test(lower);
     if (isDeepReasoning) {
       return {
-        model: 'gemini-2.5-pro',
+        model: 'gemini-pro-latest',
         tier: 'pro',
         reason: 'Copiloto: Análise profunda e raciocínio estratégico'
       };
     }
     return {
-      model: configuredModel || 'gemini-2.5-flash',
+      model: configuredModel || 'gemini-3.8-flash',
       tier: 'flash',
       reason: 'Copiloto: Interação operacional dinâmica'
     };
@@ -62,7 +62,7 @@ export function decidirModeloPorContexto({
   // 2. SINTOMA DE ALTO RISCO: nunca usa modelo leve
   if (isHighRiskSymptom(clean)) {
     return {
-      model: configuredModel && !configuredModel.includes('lite') ? configuredModel : 'gemini-2.5-flash',
+      model: configuredModel && !configuredModel.includes('lite') ? configuredModel : 'gemini-3.8-flash',
       tier: 'flash',
       reason: 'Sintoma de alto risco: modelo com maior capacidade de raciocínio',
       escalate: true
@@ -79,16 +79,16 @@ export function decidirModeloPorContexto({
 
   if (isGreetingOrAck || isShortFaqQuestion) {
     return {
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       tier: 'lite',
       reason: 'Linha de Frente: Saudação ou dúvida breve com latência mínima'
     };
   }
 
-  // 3. CASO SUPER AGENTE COM FERRAMENTAS / CONSULTAS AO CRM / ATENDIMENTO COMPLETO
+  // 4. CASO SUPER AGENTE COM FERRAMENTAS / CONSULTAS AO CRM / ATENDIMENTO COMPLETO
   if (isSuperAgent || /(?:agend|transfer|reuni[aã]o|hor[aá]rio|lead|interess|proposta|contrat|boleto|segunda via|setor)/i.test(lower)) {
     return {
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       tier: 'flash',
       reason: 'Super Agente: Execução de ferramentas e persistência no CRM'
     };
@@ -96,7 +96,7 @@ export function decidirModeloPorContexto({
 
   // Padrão equilibrado
   return {
-    model: configuredModel || 'gemini-2.5-flash',
+    model: configuredModel || 'gemini-3.8-flash',
     tier: 'flash',
     reason: 'Atendimento Conversacional Padrão'
   };

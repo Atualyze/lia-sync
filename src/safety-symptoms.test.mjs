@@ -23,12 +23,12 @@ for (const texto of CASOS_ALTO_RISCO) {
 
   test(`sintoma de alto risco nunca vai para flash-lite: "${texto}"`, () => {
     const r = decidirModeloPorContexto({ userText: texto, configuredModel: 'gemini-3.8-flash' });
-    assert.notEqual(r.model, 'gemini-2.5-flash-lite');
+    assert.notEqual(r.model, 'gemini-3.5-flash-lite');
     assert.equal(r.escalate, true);
   });
 }
 
 test('mensagem comum continua indo para flash-lite', () => {
   const r = decidirModeloPorContexto({ userText: 'qual o horário de vocês?' });
-  assert.equal(r.model, 'gemini-2.5-flash-lite');
+  assert.equal(r.model, 'gemini-3.5-flash-lite');
 });

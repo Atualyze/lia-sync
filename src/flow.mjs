@@ -947,7 +947,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           system: sys,
           history: recentHistory,
           userText: cleanTauan,
-          botConfig
+          botConfig,
+          isTauan: true
         });
 
         // Se pediu para agendar um lembrete
@@ -1132,7 +1133,17 @@ ${errMsg}`;
           }
         }
 
-        let rawReply = result?.reply || 'Estou aqui, Tauan! O sistema está operando normalmente. Em que posso te ajudar agora?';
+        let rawReply = result?.reply;
+        if (!rawReply) {
+          const isGreeting = /^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|lia)\b/i.test(cleanTauan);
+          if (isGreeting) {
+            rawReply = 'Olá, Tauan! Estou aqui totalmente à disposição. Como posso te ajudar agora?';
+          } else if (isAudioForSelf) {
+            rawReply = 'Tauan, aqui está o resumo do que você me solicitou em áudio.';
+          } else {
+            rawReply = 'Estou aqui, Tauan! O sistema está operando normalmente. Em que posso te ajudar agora?';
+          }
+        }
 
         // Prevenção de loop: se a resposta for idêntica à pergunta anterior da Lia
         if (lastAssistantMsg && rawReply.trim() === lastAssistantMsg.trim()) {
@@ -1202,7 +1213,10 @@ ${errMsg}`;
                 logger.error?.('[flow] Erro ao enviar áudio do Copiloto no WhatsApp:', audioErr.message);
               }
             }
-            const okSelfReply = `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${rawReply}`;
+            const displayReply = rawReply.includes('Estou aqui, Tauan')
+              ? 'Áudio de demonstração gerado com sucesso para você!'
+              : rawReply;
+            const okSelfReply = `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}`;
             return recordSelfTurn(filterReply(okSelfReply, { isCopilot: true }).text);
           } else {
             const fallbackReply = `⚠️ *Não consegui gerar o áudio no momento, mas aqui está a explicação:*\n\n${rawReply}`;
