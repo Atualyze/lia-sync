@@ -1359,6 +1359,23 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
+        // Se executou ferramenta de infraestrutura ou agenda, formata resposta clara
+        const infraResult = toolOutputs.find(t => t.tool === 'consultar_saude_infra');
+        if (infraResult) {
+          const checks = infraResult.result?.checks || [];
+          const statusIcon = infraResult.result?.health === 'healthy' ? '🟢' : '🟡';
+          const checksList = checks.map(c => `• *${c.name}:* ${c.status}${c.details ? ` (${c.details})` : ''}`).join('\n');
+          const infraMsg = `${statusIcon} *Diagnóstico de Infraestrutura & Servidores:*\n\n${checksList}\n\n_Todos os serviços checados com sucesso._`;
+          return recordSelfTurn(filterReply(infraMsg, { isCopilot: true }).text);
+        }
+
+        const calResult = toolOutputs.find(t => t.tool === 'gerenciar_agenda_google');
+        if (calResult) {
+          const res = calResult.result;
+          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${res.message || 'Operação realizada com sucesso.'}${res.availableSlots ? `\n• *Horários Livres:* ${res.availableSlots.join(', ')}` : ''}`;
+          return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
+        }
+
         // Se disparou mensagem para contato externo via tool
         const sendToolResult = toolOutputs.find(t => t.tool === 'enviar_mensagem_contato');
         if (sendToolResult) {
