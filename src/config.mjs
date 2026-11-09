@@ -40,7 +40,7 @@ export const config = Object.freeze({
   dashboardRoles: (process.env.DASHBOARD_ALLOWED_ROLES || '').split(',').map(s => s.trim()).filter(Boolean),
   supabaseUrl: (process.env.SUPABASE_URL || '').replace(/\/$/, ''),
   supabaseKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   supabaseRuntimeEnabled: bool('SUPABASE_RUNTIME_ENABLED', true),
   supabaseCaptchaSiteKey: process.env.SUPABASE_CAPTCHA_SITE_KEY || '',
   supabaseCaptchaProvider: (process.env.SUPABASE_CAPTCHA_PROVIDER || 'turnstile').toLowerCase(),
