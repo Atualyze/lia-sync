@@ -55,7 +55,7 @@ test('Habilidade 3: Follow-up proativo reengaja lead qualificado entre 24h e 72h
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].phone, phone);
   assert.match(sentMessages[0].msg, /Oi, Lucas!/);
-  assert.match(sentMessages[0].msg, /dúvida sobre o que conversamos/);
+  assert.match(sentMessages[0].msg, /avaliar a proposta|dúvida sobre o que conversamos/);
   assert.equal(session.followUpCount, 1);
   assert.ok(session.followUpSentAt);
 

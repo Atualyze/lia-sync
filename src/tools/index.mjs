@@ -4,6 +4,8 @@ import { toolTransferirSetor } from './transferir_setor.mjs';
 import { toolConsultarBaseConhecimento } from './consultar_base_conhecimento.mjs';
 import { toolAtualizarDadosCRM } from './atualizar_dados_crm.mjs';
 import { toolEnviarMensagemContato } from './enviar_mensagem_contato.mjs';
+import { toolConsultarSaudeInfra } from './consultar_saude_infra.mjs';
+import { toolGerenciarAgendaGoogle } from './gerenciar_agenda_google.mjs';
 
 export const ALL_TOOLS = [
   toolTransferirSetor,
@@ -11,8 +13,21 @@ export const ALL_TOOLS = [
   toolConsultarContato,
   toolConsultarBaseConhecimento,
   toolAtualizarDadosCRM,
-  toolEnviarMensagemContato
+  toolEnviarMensagemContato,
+  toolConsultarSaudeInfra,
+  toolGerenciarAgendaGoogle
 ];
+
+export {
+  toolConsultarContato,
+  toolAgendarRetorno,
+  toolTransferirSetor,
+  toolConsultarBaseConhecimento,
+  toolAtualizarDadosCRM,
+  toolEnviarMensagemContato,
+  toolConsultarSaudeInfra,
+  toolGerenciarAgendaGoogle
+};
 
 /**
  * Converte as ferramentas para o formato Gemini Function Declarations

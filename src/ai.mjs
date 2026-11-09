@@ -91,19 +91,29 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg') {
 }
 
 /**
- * Analisa documentos e briefings em PDF com Gemini Flash multimodal
+ * Analisa documentos, contratos, comprovantes (PIX/TED) e briefings em PDF/Imagem com Gemini Flash multimodal
  */
 export async function analyzeDocument({ base64, mimetype = 'application/pdf', caption = '' }) {
   if (!config.geminiKey || !base64) return null;
   const cleanMime = String(mimetype).split(';')[0].trim() || 'application/pdf';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${config.geminiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`;
   try {
-    const promptText = `Você é a IA assistente executiva do Tauan.
-Analise este documento com máxima fidelidade e síntese executiva.
+    const promptText = `Você é a Lia, IA assistente executiva do Tauan (Atualyze).
+Analise este documento ou anexo com máxima fidelidade, precisão e síntese executiva.
+Identifique com precisão se é comprovante de pagamento (PIX, TED, boleto), contrato, briefing, proposta ou certidão.
+Se for comprovante de pagamento, extraia obrigatoriamente: valor (R$), pagador, favorecido/destinatário, data/hora e id/autenticação se existirem.
 Retorne um JSON estrito no seguinte formato:
 {
   "summary": "Resumo executivo claro em 2 a 4 linhas em português do Brasil.",
-  "docType": "proposta | contrato | briefing | comprovante | certidao | documento_geral",
+  "docType": "comprovante_pix | comprovante_ted | comprovante_boleto | contrato | briefing | proposta | certidao | documento_geral",
+  "paymentDetails": {
+    "isPayment": true/false,
+    "amount": "R$ 0,00 ou null",
+    "payer": "Nome ou null",
+    "receiver": "Nome ou null",
+    "date": "Data ou null",
+    "txId": "Código/Autenticação ou null"
+  },
   "keyPoints": ["Ponto 1 (valores, partes ou objeto)", "Ponto 2 (prazos ou condições)", "Ponto 3 (pendências ou observações)"],
   "actionNeeded": "Ação recomendada para o Tauan ou resposta sugerida ao cliente."
 }
@@ -121,7 +131,7 @@ ${caption ? `Contexto/Legenda enviada pelo cliente: "${caption}"` : ''}`;
         }],
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.2
+          temperature: 0.1
         }
       })
     });

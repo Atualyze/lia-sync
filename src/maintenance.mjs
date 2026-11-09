@@ -131,7 +131,11 @@ export async function processMaintenance({
 
         const clientName = (session.clientName || session.contactName || '').trim();
         const greeting = clientName ? `Oi, ${clientName}!` : 'Oi!';
-        const followUpMessage = `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com o *Tauan*, fico à disposição! ✨`;
+        const userQuotes = session.history.filter(m => m && m.role === 'user' && typeof m.content === 'string').map(m => m.content.toLowerCase()).join(' ');
+        const isCommercialProposal = /(?:preço|preco|valor|quanto|orçamento|orcamento|proposta|plano|pacote|custo|fechar|contratar)\b/i.test(userQuotes);
+        const followUpMessage = isCommercialProposal
+          ? `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu avaliar a proposta ou se ficou com alguma dúvida sobre valores e prazos. Se quiser ajustar algo no projeto ou falar direto com o *Tauan*, fico à disposição! ✨`
+          : `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com o *Tauan*, fico à disposição! ✨`;
 
         session.history.push({ role: 'assistant', content: followUpMessage, createdAt: new Date(current).toISOString() });
         store.markDirty();
