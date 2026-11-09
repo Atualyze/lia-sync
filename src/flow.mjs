@@ -703,7 +703,7 @@ export function createFlow({
         }
 
         // 1.0.5 Auto-conhecimento e Capacidades da Lia
-        if (/^(?:quem [ée] voc[êe]|o que voc[êe] faz|suas capacidades|suas fun[cç][õo]es|suas ferramentas|o que voc[êe] pode fazer|capacidades|ferramentas|apresente-se|se apresente)\b/i.test(norm)) {
+        if (/(?:quem [ée] voc[êe]|o que voc[êe] faz|habilidades?|capacidades?|fun[cç][õo]es|ferramentas?|o que voc[êe] pode fazer|apresente-se|se apresente|sobre voc[êe]|quem e vc|quem voce e|suas skills)\b/i.test(norm)) {
           const capMsg = `✨ *Olá, Tauan! Eu sou a Lia, sua Copiloto Executiva e Inteligência Artificial Operacional.*
 
 Atuo como seu braço direito no dia a dia da Atualyze e nos atendimentos aos clientes. Aqui está tudo o que eu sou capaz de fazer diretamente:
@@ -914,7 +914,9 @@ _Dica: digite *ajuda* para ver todos os comandos disponíveis._`;
         }
 
         // 1.3 Consulta de Contatos Aguardando (Fila)
-        if (/(?:quem|quais|lista|contatos?|aguardando|esperando|espera|fila|pendentes?|transbordos?|alguem)\b/i.test(norm)) {
+        const isFilaQuery = /(?:fila|espera|aguardando|esperando|pendentes?|transbordos?)\b/i.test(norm) ||
+          /^(?:quem|quais|lista)\b/i.test(norm);
+        if (isFilaQuery && !/(?:habilidade|capacidade|ferramenta|agenda|infra|dokku|servidor|quem [ée] voc[êe]|quem e vc|o que voc[êe])/i.test(norm)) {
           const waiting = getWaitingList();
           if (!waiting.length) {
             const emptyMsg = `✨ *Fila de Atendimento Zerada!*
