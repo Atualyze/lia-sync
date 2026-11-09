@@ -1,4 +1,4 @@
-import { sanitizeInput, isEmergency, filterReply, normalize, isGreeting } from './safety.mjs';
+import { sanitizeInput, isEmergency, isHighRiskSymptom, filterReply, normalize, isGreeting } from './safety.mjs';
 import { buildSystemPrompt, GREETING_MESSAGE, ATENDIMENTO_EM_PROGRESSO_MESSAGE, TALK_TO_TAIS_MESSAGE } from './knowledge.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from './faq.mjs';
 import { triggerHandoff } from './handoff.mjs';
@@ -1504,6 +1504,24 @@ ${errMsg}`;
           s.sectorName = triageResult.sectorName;
           s.sectorCategory = triageResult.category;
         }
+      }
+
+      // 2.5.3 TRATAMENTO DE SINTOMA DE ALTO RISCO / EMERGÊNCIA VETERINÁRIA
+      if (isHighRiskSymptom(clean)) {
+        await triggerHandoff(s, {
+          reason: 'sintoma de alto risco relatado pelo tutor',
+          urgency: 'emergencia',
+          now: now(),
+          notify
+        });
+        const reply =
+          'Entendi a gravidade do que você descreveu. 🚨\n\n' +
+          'Por favor, leve o animal *agora* ao atendimento veterinário mais próximo, ' +
+          'sem esperar. Já avisei nossa equipe com prioridade máxima.\n\n' +
+          'Se estiver em risco imediato, ligue para a clínica de plantão.';
+        s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
+        store.markDirty();
+        return reply;
       }
 
       // Atendimento inteligente: a Lia usa a IA com memória do contexto

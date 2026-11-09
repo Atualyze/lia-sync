@@ -12,6 +12,43 @@ export function normalize(text = '') {
 const has = (text, pattern) => pattern.test(normalize(text));
 
 /**
+ * Sintomas veterinários de alto risco.
+ * Qualquer menção a estes termos deve ser tratada como emergência clínica:
+ * handoff imediato e encaminhamento para atendimento presencial.
+ */
+const HIGH_RISK_SYMPTOM_PATTERNS = [
+  /\bsangr/,                          // sangrando, sangramento, sangue
+  /\bconvuls/,                        // convulsão, convulsionando
+  /\bveneno/,                         // veneno, envenenado
+  /\benvenen/,                        // envenenamento
+  /\bintoxic/,                        // intoxicação
+  /\batropel/,                        // atropelado, atropelamento
+  /\bdesmai/,                         // desmaiou, desmaio
+  /\bfalta de ar\b/,
+  /\bn[aã]o respira/,
+  /\brespira(?:ndo)? (?:mal|com dificuldade)/,
+  /\bdificuldade para respirar/,
+  /\bn[aã]o consegue (?:levantar|andar|se levantar)/,
+  /\bparalis/,                        // paralisia, paralisado
+  /\bsem movimento/,
+  /\bn[aã]o (?:acorda|reage)/,
+  /\bvomit\w* (?:com )?sangue/,
+  /\bdiarreia (?:com )?sangue/,
+  /\bengol(?:iu|ido|iu)? (?:algo|objeto|corpo)/,
+  /\bpernas? (?:traseira|dianteira)s? (?:n[aã]o|paralis)/,
+  /\bgolpe de calor/,
+  /\binchad[oa]\b.*\b(?:barriga|abdome)/,
+  /\bmorrendo\b/,
+  /\bmorreu\b/,
+  /\bgravid[ae].*\b(?:sangr|dor forte)/
+];
+
+export function isHighRiskSymptom(text = '') {
+  const n = normalize(text);
+  return HIGH_RISK_SYMPTOM_PATTERNS.some(p => p.test(n));
+}
+
+/**
  * Filtro de urgência/emergência geral ou pedido crítico de atendimento
  */
 export function isEmergency(text = '') {
@@ -26,7 +63,8 @@ export function isEmergency(text = '') {
     /\bprocesso judicial\b/,
     /\bameaca\b/
   ];
-  return patterns.some(p => has(n, p));
+  if (patterns.some(p => has(n, p))) return true;
+  return isHighRiskSymptom(text);
 }
 
 /**

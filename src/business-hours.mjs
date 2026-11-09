@@ -1,5 +1,5 @@
 /**
- * Janela de Atendimento e Pacing Fora do Horário para a Lia Assistente.
+ * Janela de Atendimento e Pacing Fora do Horário para a Lia Sync.
  * Baseado nos padrões testados em produção (fail-open, zero-dependency, zero-polling).
  *
  * Princípios fundamentais:

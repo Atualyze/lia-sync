@@ -922,7 +922,7 @@ const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) ===
 if (isDirectRun) {
   const errors = validateConfig(); if (errors.length) { console.error(`[config] ${errors.join('; ')}`); process.exit(1); }
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(e); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
-  server.listen(config.port, config.host, () => console.log(`Lia Assistente escutando em ${config.host}:${config.port}`));
+  server.listen(config.port, config.host, () => console.log(`Lia Sync escutando em ${config.host}:${config.port}`));
   const maintenance = () => processMaintenance({
     store,
     send: sendText,

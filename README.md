@@ -1,4 +1,4 @@
-# Lia Assistente — Central de Atendimento & Triagem Inteligente via WhatsApp
+# Lia Sync - Central de Atendimento & Triagem Inteligente via WhatsApp
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 

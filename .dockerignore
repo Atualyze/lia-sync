@@ -1,5 +1,11 @@
-data/*
+node_modules/
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pub
+id_*
 .git
-node_modules
+.DS_Store
 *.log

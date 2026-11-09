@@ -1,7 +1,7 @@
 {
-  "name": "lia-assistente",
-  "version": "1.3.0",
-  "description": "Assistente virtual de atendimento, triagem por setores, MoA e Copiloto Executivo via WhatsApp (Atualyze)",
+  "name": "lia-sync",
+  "version": "2.0.0",
+  "description": "Lia Sync - Central de Atendimento Inteligente, Triagem Setorial, MoA e Copiloto Operacional via WhatsApp (Atualyze)",
   "author": "Atualyze <atualyze@proton.me>",
   "private": true,
   "type": "module",

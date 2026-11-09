@@ -1,4 +1,4 @@
-# Regras do Projeto — Lia Assistente
+# Regras do Projeto - Lia Sync
 
 - Não versionar `.env`, tokens, chaves de API, credenciais ou dados pessoais de clientes.
 - Toda resposta gerada deve passar por `filterReply` (higienização, limites de caracteres e formatação WhatsApp).

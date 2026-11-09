@@ -2,6 +2,11 @@ node_modules/
 .env
 .env.*
 !.env.example
+*.key
+*.pem
+*.pub
+id_*
 data/*.json
+data/sessions.json*
 *.log
 .DS_Store

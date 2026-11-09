@@ -18,7 +18,7 @@ export const config = Object.freeze({
   openrouterKey: process.env.OPENROUTER_API_KEY || '',
   openrouterBaseUrl: (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, ''),
   openrouterSiteUrl: process.env.OPENROUTER_SITE_URL || '',
-  openrouterAppName: process.env.OPENROUTER_APP_NAME || 'Lia Assistente',
+  openrouterAppName: process.env.OPENROUTER_APP_NAME || 'Lia Sync',
   qwenKey: process.env.QWEN_API_KEY || '',
   qwenBaseUrl: (process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
   openaiKey: process.env.OPENAI_API_KEY || '',

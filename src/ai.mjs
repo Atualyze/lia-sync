@@ -451,21 +451,38 @@ export const OPENROUTER_FREE_MODELS = [
   }
 ];
 
-export async function call(provider, { system, history = [], userText, deadline, model: customModel, aiConfig = {}, enableSearch }) {
+export async function call(provider, {
+  system,
+  history = [],
+  userText,
+  deadline,
+  fixedModel,
+  preferredModel,
+  model: legacyModel,
+  aiConfig = {},
+  enableSearch
+}) {
   if (!available(provider) || opened.get(provider) > Date.now()) return null;
   const runtime = resolveAIConfig({ ai: aiConfig });
   const timeoutMs = Math.max(1, Math.min(config.aiTimeoutMs, (deadline ? deadline - Date.now() : config.aiTimeoutMs)));
 
   if (provider === 'gemini') {
-    const candidateModels = customModel ? [customModel] : [
-      (runtime.model === 'gemini-1.5-flash' || !runtime.model) ? 'gemini-3.8-flash' : runtime.model,
-      ...runtime.fallbackModels,
-      'gemini-3.8-flash',
-      'gemini-flash-latest'
-    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+    // Modelo fixo: tenta só ele, sem cadeia
+    // Modelo preferido: tenta o roteado e depois a cadeia padrão
+    const candidateModels = fixedModel
+      ? [fixedModel]
+      : [
+          preferredModel || legacyModel,
+          (runtime.model && runtime.model !== 'gemini-1.5-flash') ? runtime.model : null,
+          ...runtime.fallbackModels,
+          'gemini-3.8-flash',
+          'gemini-flash-latest'
+        ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+
     let primaryErr = null;
     let lastErr = null;
     const needsSearch = Boolean(enableSearch || shouldEnableGoogleSearch(userText));
+
     for (const model of candidateModels) {
       try {
         const remainingMs = deadline ? deadline - Date.now() : config.aiTimeoutMs;
@@ -510,19 +527,18 @@ export async function call(provider, { system, history = [], userText, deadline,
       } catch (err) {
         if (!primaryErr) primaryErr = err;
         lastErr = err;
-        if (customModel || !/\b(404|429|5\d\d)\b/.test(err.message)) break;
+        // Só cai para o próximo modelo em erros transitórios, e nunca no modo fixo
+        if (fixedModel || !/\b(404|429|5\d\d)\b/.test(err.message)) break;
       }
     }
     throw primaryErr || lastErr || Error('Gemini failed');
   }
 
+  // Provedores não-Gemini usam o modelo que lhes foi atribuído
+  const model = fixedModel || preferredModel || legacyModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
   const signal = AbortSignal.timeout(timeoutMs);
   const base = provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1';
   const key = provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey;
-  const defaultModel = (provider === runtime.provider && runtime.model)
-    ? runtime.model
-    : (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
-  const model = customModel || defaultModel;
   const headers = { 'content-type': 'application/json', Authorization: `Bearer ${key}` };
   if (provider === 'openrouter') {
     if (config.openrouterSiteUrl) headers['HTTP-Referer'] = config.openrouterSiteUrl;
@@ -542,6 +558,17 @@ export async function call(provider, { system, history = [], userText, deadline,
   return { raw, tokens: { promptTokens, completionTokens, totalTokens }, model: data.model || model };
 }
 
+/**
+ * Retorna o modelo apropriado para cada provedor.
+ * Modelos do Gemini (gemini-*) só são usados no provedor gemini.
+ */
+function providerDefaultModel(provider, aiConfig, fixedModel) {
+  if (fixedModel && provider === aiConfig.provider) return fixedModel;
+  if (provider === aiConfig.provider) return aiConfig.model;
+  if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
+  return '';
+}
+
 export async function askAI(args) {
   const aiConfig = resolveAIConfig(args?.botConfig);
   if (!PROVIDERS.includes(aiConfig.provider) || !aiConfig.model) {
@@ -559,21 +586,33 @@ export async function askAI(args) {
     configuredModel: aiConfig.model,
     autoRoutingEnabled: isAutoRouting
   });
-  const effectiveModel = decision.model || aiConfig.model;
+
+  // Modo fixo (OpenRouter, qwen, gpt ou auto-roteamento desligado): sem cadeia de fallback
+  const fixedModel = decision.tier === 'custom' ? decision.model : null;
+  const preferredModel = decision.tier === 'custom' ? null : decision.model;
 
   const deadline = Date.now() + 35000;
   for (const provider of providers(args?.botConfig)) {
     const start = Date.now();
-    const model = provider === aiConfig.provider ? effectiveModel : (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
+    // Cada provedor recebe o modelo que lhe pertence. Nunca o do Gemini.
+    const providerModel = providerDefaultModel(provider, aiConfig, fixedModel);
+    if (!providerModel && provider !== 'gemini') continue; // sem modelo, não tenta
+
     try {
-      const res = await call(provider, { ...args, model: effectiveModel, deadline, aiConfig });
+      const res = await call(provider, {
+        ...args,
+        deadline,
+        aiConfig,
+        fixedModel: provider === 'gemini' ? fixedModel : providerModel,
+        preferredModel: provider === 'gemini' ? preferredModel : null
+      });
       if (res?.raw) {
         failures.set(provider, 0);
         opened.delete(provider);
         const parsed = parseAIResponse(res.raw);
         recordAICall({
           provider,
-          model: res.model || model,
+          model: res.model || providerModel || preferredModel || 'gemini-3.8-flash',
           latencyMs: Date.now() - start,
           promptTokens: res.tokens?.promptTokens,
           completionTokens: res.tokens?.completionTokens,
@@ -590,7 +629,7 @@ export async function askAI(args) {
       if (count >= 3 || /\b(429|401|403)\b/.test(error.message)) opened.set(provider, Date.now() + 60000);
       recordAICall({
         provider,
-        model,
+        model: providerModel || preferredModel || 'unknown',
         latencyMs: Date.now() - start,
         promptTokens: 0,
         completionTokens: 0,
