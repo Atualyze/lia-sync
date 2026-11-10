@@ -160,7 +160,8 @@ Contrato de saída JSON obrigatório:
   "reminder": null
 }
 (Observação: preencha "tool_calls" com [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] SEMPRE que o Tauan pedir para disparar ou enviar mensagem para um cliente; caso contrário, use []).
-(Observação 2: preencha "reminder" com {"text": "...", "dueAt": "..."} APENAS se o Tauan pediu para criar um lembrete).`;
+(Observação 2: preencha "reminder" com {"text": "...", "dueAt": "..."} APENAS se o Tauan pediu para criar um lembrete).
+    • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} — gera relatórios e propostas oficiais em PDF via pdfme.`;
   }
 
   const messagesBase = {

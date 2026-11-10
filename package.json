@@ -14,5 +14,9 @@
     "build": "find src -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check",
     "lint": "find src -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@pdfme/generator": "^6.2.8",
+    "@pdfme/schemas": "^6.2.8"
   }
 }

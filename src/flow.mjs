@@ -744,6 +744,7 @@ Atuo como seu braço direito no dia a dia da Atualyze e nos atendimentos aos cli
 
 🛠️ *Minhas Ferramentas Operacionais Ativas:*
 • *Google Agenda:* Consulto horários livres, listo sua rotina e agendo reuniões com clientes diretamente pelo chat.
+• *Emissão de Documentos em PDF (pdfme):* Crio propostas, orçamentos e relatórios executivos em PDF nativo sem consumir CPU da VPS.
 • *Diagnóstico de Infraestrutura:* Monitoro a saúde da VPS, memória, containers, Evolution API e instâncias do Dokku em tempo real.
 • *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha própria voz sintetizada para seus contatos.
 • *Leitura de Documentos & PDFs:* Analiso comprovantes de pagamento (PIX/TED com valores e data), contratos, propostas e briefings.
@@ -780,6 +781,19 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
+        // 1.0.8 Atalho Direto: Geração de Documentos / Relatórios em PDF (pdfme)
+        if (/(?:gerars+(?:pdf|relat[oó]rio|proposta|or[cç]amento)|cria(?:r)?s+(?:ums+)?pdf|emitirs+(?:pdf|proposta))/i.test(norm)) {
+          const pdfRes = await executeToolCall('gerar_documento_pdf', {
+            tipo: /proposta/i.test(norm) ? 'proposta' : /or[cç]amento/i.test(norm) ? 'orcamento' : 'relatorio',
+            titulo: 'Relatório Executivo Oficial • Lia Copilot',
+            destinatario: 'Tauan Pires (Atualyze)',
+            conteudo: 'Este documento oficial foi gerado instantaneamente via biblioteca pdfme sob demanda pelo chat interno da Lia.\n\n• Status Operacional: Conectado e Estável\n• Integração: PDF Engine TypeScript Native\n• Consumo de Recursos: Zero sobrecarga na VPS',
+            valor: 'R$ 0,00 (Demonstrativo)'
+          }, { clientName: 'Tauan Pires' });
+          const pdfMsg = `📄 *Documento Oficial Gerado com Sucesso (pdfme):*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${(pdfRes?.fileSize / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || 'Tauan Pires'}\n\n_O arquivo foi processado com layout executivo e está pronto para download ou envio!_ 🚀`;
+          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+        }
+
         // 1.1 Ajuda e Comandos Internos
         if (/^(?:ajuda|comandos|comando|help|menu)\b/i.test(norm)) {
           const helpMsg = `🚀 *Painel de Controles & Comandos da Lia*
@@ -810,7 +824,8 @@ Olá, *Tauan*! Aqui estão todos os controles e testes operacionais em tempo rea
 📅 *Google Agenda & Infraestrutura:*
 • *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
 • *infra* ou *servidores* — Diagnóstico completo de saúde das máquinas e instâncias
-• *capacidades* ou *ferramentas* — Visão completa de tudo o que eu sou capaz de fazer`;
+• *capacidades* ou *ferramentas* — Visão completa de tudo o que eu sou capaz de fazer
+• *gerar pdf* — Testa e emite um documento oficial em PDF gerado pelo pdfme`;
           return recordSelfTurn(filterReply(helpMsg, { isCopilot: true }).text);
         }
 

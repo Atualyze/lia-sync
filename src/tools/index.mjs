@@ -6,6 +6,7 @@ import { toolAtualizarDadosCRM } from './atualizar_dados_crm.mjs';
 import { toolEnviarMensagemContato } from './enviar_mensagem_contato.mjs';
 import { toolConsultarSaudeInfra } from './consultar_saude_infra.mjs';
 import { toolGerenciarAgendaGoogle } from './gerenciar_agenda_google.mjs';
+import { toolGerarDocumentoPdf } from './gerar_documento_pdf.mjs';
 
 export const ALL_TOOLS = [
   toolTransferirSetor,
@@ -15,7 +16,8 @@ export const ALL_TOOLS = [
   toolAtualizarDadosCRM,
   toolEnviarMensagemContato,
   toolConsultarSaudeInfra,
-  toolGerenciarAgendaGoogle
+  toolGerenciarAgendaGoogle,
+  toolGerarDocumentoPdf
 ];
 
 export {
@@ -26,7 +28,8 @@ export {
   toolAtualizarDadosCRM,
   toolEnviarMensagemContato,
   toolConsultarSaudeInfra,
-  toolGerenciarAgendaGoogle
+  toolGerenciarAgendaGoogle,
+  toolGerarDocumentoPdf
 };
 
 /**
