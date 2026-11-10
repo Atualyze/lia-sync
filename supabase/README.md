@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Este diretório contém o banco de desenvolvimento/staging do Clubinho HomeVet. Ele é independente do Supabase do CRM original.
+Este diretório contém o banco de desenvolvimento/staging da Lia Sync. Ele é independente do Supabase do CRM original.
 
 ## Migrações
 
@@ -9,7 +9,7 @@ Execute nesta ordem:
 1. `migrations/20261015222000_initial_bot_schema.sql`
 2. `migrations/20261015223000_operational_bot_schema.sql`
 3. `migrations/20261016000000_faq_table.sql` — compatibilidade para bancos que já executaram as migrations anteriores
-4. `seed.sql` — carga inicial do conteúdo público do Clubinho HomeVet
+4. `seed.sql` — carga inicial do conteúdo público inicial
 
 A primeira migração cria a camada de integração atual. A segunda contém o domínio operacional usado pelo runtime híbrido: o Supabase é a fonte primária quando a `service_role` está configurada, com dual-write e fallback para `sessions.json` e `bot-config.json`.
 
@@ -148,6 +148,6 @@ profiles
 - Depois de trocar o projeto, limpe a sessão antiga do navegador:
 
 ```js
-localStorage.removeItem('homevet-session');
+localStorage.removeItem('lia-sync-session');
 location.reload();
 ```

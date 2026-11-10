@@ -1,4 +1,4 @@
-// Telemetria e métricas em memória para o dashboard do Clubinho HomeVet
+// Telemetria e métricas em memória para o dashboard do Lia Sync
 // Regra: logs e telemetria NUNCA devem conter texto do cliente nem telefone completo.
 
 const MAX_HISTORY = 100;

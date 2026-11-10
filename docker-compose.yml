@@ -1,7 +1,7 @@
 services:
-  homevet-bot:
+  lia-sync:
     build: .
-    container_name: clubinho_homevet_bot
+    container_name: lia_sync
     restart: unless-stopped
     env_file: .env
     ports:

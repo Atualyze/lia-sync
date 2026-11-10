@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import os from 'node:os';import path from 'node:path';import fs from 'node:fs/promises';import {isEmergency,isClinicalConcern,isAffirmative,isGreeting,filterReply,sanitizeInput} from './safety.mjs';import {parseAIResponse,normalizeHistory,buildOpenRouterBody} from './ai.mjs';import {SessionStore} from './sessions.mjs';import {plansToFaq} from './faq.mjs';import {createFlow} from './flow.mjs';import {parsePayload,isIgnoredJid,isMessageUpsert} from './whatsapp.mjs';
-test('detectores clínicos usam palavras inteiras e negação',()=>{for(const x of ['cocker','ao redor','dorme','cuidador','Mancha','cocô'])assert.equal(isClinicalConcern(x),false);assert.equal(isClinicalConcern('parou de comer'),true);assert.equal(isEmergency('ele não teve convulsão, só quero a vacina'),false);assert.equal(isEmergency('foi atropelado há 3 anos, hoje está ótimo'),false);assert.equal(isEmergency('a vacina previne veneno de cobra?'),false);assert.equal(isEmergency('meu cachorro foi atropelado agora'),true);});
+import test from 'node:test';import assert from 'node:assert/strict';import os from 'node:os';import path from 'node:path';import fs from 'node:fs/promises';import {isEmergency,isAffirmative,isGreeting,filterReply,sanitizeInput} from './safety.mjs';import {parseAIResponse,normalizeHistory,buildOpenRouterBody} from './ai.mjs';import {SessionStore} from './sessions.mjs';import {plansToFaq} from './faq.mjs';import {createFlow} from './flow.mjs';import {parsePayload,isIgnoredJid,isMessageUpsert} from './whatsapp.mjs';
+test('detector de urgência usa palavras inteiras e respeita negação',()=>{for(const x of ['qual o horário de vocês?','quero saber do plano','bom dia'])assert.equal(isEmergency(x),false);assert.equal(isEmergency('isso não é urgente, pode responder depois'),false);assert.equal(isEmergency('minha fatura está urgente'),true);assert.equal(isEmergency('quero falar com o atendente agora'),false);assert.equal(isEmergency('sofri uma fraude no pagamento'),true);});
 test('afirmativa e saudação são correspondências exatas',()=>{assert.equal(isAffirmative('sim'),true);assert.equal(isAffirmative('quero cancelar meu plano'),false);assert.equal(isAffirmative('pode me passar o preço?'),false);assert.equal(isGreeting('Oi, quero agendar'),false);});
 test('filterReply bloqueia clínica e normaliza WhatsApp',()=>{const x=filterReply('**texto**\n- item\nDê 5 mg de dipirona');assert.equal(x.blocked,true);assert.match(filterReply('**texto**').text,/\*texto\*/);assert.match(filterReply('- item').text,/• item/);});
 test('parser aceita JSON, extrai objeto e cai para texto',()=>{assert.equal(parseAIResponse('{"reply":"oi","intent":"saudacao"}').reply,'oi');assert.equal(parseAIResponse('prefixo {"reply":"oi"}').reply,'oi');assert.equal(parseAIResponse('resposta simples').reply,'resposta simples');});
@@ -13,7 +13,7 @@ test('sanitização remove tag de transferência e controles',()=>assert.equal(s
 
 test('rate limit bloqueia excesso e avisa uma vez por janela',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`rate-${Date.now()}.json`));await store.load();const flow=createFlow({store,ai:{askAI:async()=>({reply:'ok',intent:'outro',collected:{}})},faq:async()=>[],rateLimitMax:1,rateLimitWindowMs:60000});assert.equal(flow.allowRate('5586999962542'),true);assert.equal(flow.allowRate('5586999962542'),false);assert.equal(flow.shouldWarnRate('5586999962542'),true);assert.equal(flow.shouldWarnRate('5586999962542'),false);});
 test('cliente não retoma sessão humana quando a política está desligada',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`resume-${Date.now()}.json`));await store.load();store.get('5586999962542').human=true;const flow=createFlow({store,allowClientResume:false,faq:async()=>[],ai:{askAI:async()=>({reply:'não deveria',collected:{}})}});assert.equal(await flow.process({phone:'5586999962542',text:'bot'}),null);const resumed=createFlow({store,allowClientResume:true,faq:async()=>[]});assert.match(await resumed.process({phone:'5586999962542',text:'bot'}),/retomei/);});
-test('triagem clínica escala no máximo no terceiro turno',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`symptom-${Date.now()}.json`));await store.load();let handoffs=0;const flow=createFlow({store,faq:async()=>[],ai:{askAI:async()=>({reply:'me conte mais',intent:'sintoma',handoff:false,collected:{}})},whatsapp:{sendText:async()=>{handoffs++;}}});await flow.process({phone:'5586999962542',text:'parou de comer'});await flow.process({phone:'5586999962542',text:'parou de comer'});const answer=await flow.process({phone:'5586999962542',text:'sem apetite'});assert.match(answer,/pronto-socorro|Dra/i);assert.equal(store.get('5586999962542').human,true);});
+test('não existe triagem técnica: dúvida é respondida pela IA sem escalar',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`triage-${Date.now()}.json`));await store.load();let handoffs=0;const flow=createFlow({store,faq:async()=>[],ai:{askAI:async()=>({reply:'consulto a base e te respondo em seguida',intent:'duvida',handoff:false,collected:{}})},whatsapp:{sendText:async()=>{handoffs++;}}});const answer=await flow.process({phone:'5586999962542',text:'onde fica a segunda via do boleto?'});assert.match(answer,/consulto a base/i);assert.equal(store.get('5586999962542').human,false);assert.equal(handoffs,0);});
 test('manutenção envia lembrete de inatividade e handoff',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`maint-${Date.now()}.json`));await store.load();const s=store.get('5586999962542');s.awaitingReply=true;s.lastBotAt=new Date(1700000000000-6*60000).toISOString();const sent=[];const {processMaintenance}=await import('./maintenance.mjs');await processMaintenance({store,now:()=>1700000000000,send:async(p,m)=>sent.push([p,m]),timeZone:'America/Fortaleza'});assert.equal(sent.length,1);assert.match(sent[0][1],/disposição/);});
 test('arquivamento real grava cópia e remove sessão ativa',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'archive-')),file=path.join(dir,'sessions.json');const store=new SessionStore(file,{now:()=>1700000000000});await store.load();store.get('5586999962542').tutorName='Ana';await store.archive('5586999962542','solicitação do proprietário');assert.equal(store.sessions['5586999962542'],undefined);const archived=await fs.readdir(path.join(dir,'archive'));assert.equal(archived.length,1);});
 test('JID @lid sem número alternativo permanece como chave e destino',()=>{const item=parsePayload({event:'MESSAGES_UPSERT',data:{key:{remoteJid:'123456789@lid'},message:{conversation:'oi'}}});assert.equal(item.phone,'123456789@lid');assert.equal(item.jid,'123456789@lid');});
@@ -176,9 +176,9 @@ test('tutorName aceita nomes reais e isHumanRequest encaminha para atendente', a
   assert.equal(isHumanRequest('passa para uma pessoa'), true);
   assert.equal(isHumanRequest('falar com a Dra. Elisângela'), true);
   assert.equal(isHumanRequest('humano'), true);
-  assert.equal(isHumanRequest('quanto custa a vacina?'), false);
+  assert.equal(isHumanRequest('quanto custa o plano?'), false);
   assert.equal(isHumanRequest('atendimento pessoal'), false);
-  assert.equal(isHumanRequest('quero uma veterinária pro meu cachorro'), false);
+  assert.equal(isHumanRequest('meu boleto venceu'), false);
 });
 
 test('endpoint /health reporta versao atualizada e circuit breakers reais', async () => {
@@ -226,11 +226,10 @@ test('C2: parser recupera reply de JSON truncado e nunca retorna string vazia pa
   assert.match(reply, /instabilidade|ajudar|Dra/i);
 });
 
-test('C3: comando bot reseta triagem clinica e planos nao reativam emergencia', async () => {
+test('C3: comando bot retoma atendimento e duvida comum nao reativa emergencia', async () => {
   const store = new SessionStore(path.join(os.tmpdir(), `c3-${Date.now()}.json`));
   await store.load();
   const session = store.get('5586999962542');
-  session.symptomTurns = 3;
   session.human = true;
 
   const flow = createFlow({
@@ -242,10 +241,9 @@ test('C3: comando bot reseta triagem clinica e planos nao reativam emergencia', 
 
   const res1 = await flow.process({ phone: '5586999962542', text: 'bot' });
   assert.match(res1, /retomei/i);
-  assert.equal(session.symptomTurns, 0);
 
   const res2 = await flow.process({ phone: '5586999962542', text: 'oi, queria saber dos planos' });
-  assert.doesNotMatch(res2, /pronto-socorro/i);
+  assert.doesNotMatch(res2, /urg[êe]ncia|socorro/i);
   assert.match(res2, /planos/i);
 });
 
@@ -276,9 +274,9 @@ test('C4: triggerHandoff re-notifica em emergencia e modo humano responde emerge
     humanPhone: '5586988887777',
     whatsapp: { sendText: async () => { flowNotified++; } }
   });
-  const emergencyReply = await flow.process({ phone: '5586999962542', text: 'meu cachorro foi atropelado agora' });
+  const emergencyReply = await flow.process({ phone: '5586999962542', text: 'isso é urgente, preciso de socorro agora' });
   assert.ok(emergencyReply !== null);
-  assert.match(emergencyReply, /pronto-socorro/i);
+  assert.match(emergencyReply, /urg[êe]ncia|urg[êe]nte|socorro/i);
   assert.equal(flowNotified >= 1, true);
 });
 
@@ -289,7 +287,7 @@ test('C5: wasSentByBot e recordBotSend evitam corrida do fromMe', async () => {
   assert.equal(wasSentByBot('id-desconhecido', '5586999962542', 'Mensagem do humano'), false);
 });
 
-test('A1: sintoma com IA fora escala para handoff no segundo turno em vez de repetir pergunta', async () => {
+test('A1: IA fora gera fallback de instabilidade e alerta, sem triagem técnica', async () => {
   const store = new SessionStore(path.join(os.tmpdir(), `a1-${Date.now()}.json`));
   await store.load();
   let handoffs = 0;
@@ -301,13 +299,13 @@ test('A1: sintoma com IA fora escala para handoff no segundo turno em vez de rep
     whatsapp: { sendText: async () => { handoffs++; } }
   });
 
-  const r1 = await flow.process({ phone: '5586999962542', text: 'ele parou de comer' });
-  assert.match(r1, /tempo isso começou/i);
+  const r1 = await flow.process({ phone: '5586999962542', text: 'onde vejo minha segunda via?' });
+  assert.match(r1, /instabilidade/i);
+  assert.doesNotMatch(r1, /pronto-socorro|Dra\./i);
 
-  const r2 = await flow.process({ phone: '5586999962542', text: 'desde ontem está vomitando' });
-  assert.doesNotMatch(r2, /tempo isso começou/i);
-  assert.match(r2, /Dra\. Elisângela/i);
-  assert.equal(store.get('5586999962542').human, true);
+  const r2 = await flow.process({ phone: '5586999962542', text: 'e o prazo de entrega?' });
+  assert.match(r2, /instabilidade/i);
+  assert.equal(store.get('5586999962542').human, false);
   assert.ok(handoffs >= 1);
 });
 

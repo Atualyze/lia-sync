@@ -1,4 +1,4 @@
-const storageKey = 'homevet-session';
+const storageKey = 'lia-sync-session';
 const requestTimeoutMs = 15000;
 
 const headers = (key, token) => ({

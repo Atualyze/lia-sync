@@ -12,74 +12,30 @@ export function normalize(text = '') {
 const has = (text, pattern) => pattern.test(normalize(text));
 
 /**
- * Sintomas veterinários de alto risco.
- * Qualquer menção a estes termos deve ser tratada como emergência clínica:
- * handoff imediato e encaminhamento para atendimento presencial.
+ * Filtro de urgência/emergência geral ou pedido crítico de atendimento.
+ *
+ * Regra de produto: a Lia Sync não faz triagem técnica de nenhum setor.
+ * Ela apenas identifica pedidos de urgência, fraude, invasão, ameaça ou
+ * processo judicial e aciona o handoff humano. O conteúdo do atendimento
+ * vem da base de conhecimento do cliente.
  */
-const HIGH_RISK_SYMPTOM_PATTERNS = [
-  /\bsangr/,                          // sangrando, sangramento, sangue
-  /\bconvuls/,                        // convulsão, convulsionando
-  /\bveneno/,                         // veneno, envenenado
-  /\benvenen/,                        // envenenamento
-  /\bintoxic/,                        // intoxicação
-  /\batropel/,                        // atropelado, atropelamento
-  /\bdesmai/,                         // desmaiou, desmaio
-  /\bfalta de ar\b/,
-  /\bn[aã]o respira/,
-  /\brespira(?:ndo)? (?:mal|com dificuldade)/,
-  /\bdificuldade para respirar/,
-  /\bn[aã]o consegue (?:levantar|andar|se levantar)/,
-  /\bparalis/,                        // paralisia, paralisado
-  /\bsem movimento/,
-  /\bn[aã]o (?:acorda|reage)/,
-  /\bvomit\w* (?:com )?sangue/,
-  /\bdiarreia (?:com )?sangue/,
-  /\bengol(?:iu|ido|iu)? (?:algo|objeto|corpo)/,
-  /\bpernas? (?:traseira|dianteira)s? (?:n[aã]o|paralis)/,
-  /\bgolpe de calor/,
-  /\binchad[oa]\b.*\b(?:barriga|abdome)/,
-  /\bmorrendo\b/,
-  /\bmorreu\b/,
-  /\bgravid[ae].*\b(?:sangr|dor forte)/
+const EMERGENCY_PATTERNS = [
+  /\burgente\b/,
+  /\burgencia\b/,
+  /\bsocorro\b/,
+  /\bgolpe\b/,
+  /\bfraude\b/,
+  /\binvasao\b/,
+  /\bprocesso judicial\b/,
+  /\bameaca\b/
 ];
 
-export function isHighRiskSymptom(text = '') {
-  const n = normalize(text);
-  return HIGH_RISK_SYMPTOM_PATTERNS.some(p => p.test(n));
-}
+const EMERGENCY_NEGATION = /\b(?:nao|sem|nunca)\b[\s\S]{0,24}\b(?:urgente|urgencia|socorro|fraude|invasao|ameaca|processo judicial)\b/;
 
-/**
- * Filtro de urgência/emergência geral ou pedido crítico de atendimento
- */
 export function isEmergency(text = '') {
-  const raw = String(text || '');
-  if (/\b(?:n[aã]o|sem|nunca)\s+(?:teve|est[aá]|foi|apresenta|sofreu)?\s*(?:convuls|veneno|atropel|desmai)|\b(?:h[aá]|faz)\s+\d+\s+(?:anos|meses|semanas)|\b(?:vacina|previne|evita|duvida)\b.*\b(?:veneno|cobra)/i.test(raw)) {
-    return false;
-  }
   const n = normalize(text);
-  const patterns = [
-    /\burgente\b/,
-    /\burgencia\b/,
-    /\bsocorro\b/,
-    /\bgolpe\b/,
-    /\bfraude\b/,
-    /\binvasao\b/,
-    /\bprocesso judicial\b/,
-    /\bameaca\b/
-  ];
-  if (patterns.some(p => has(n, p))) return true;
-  return isHighRiskSymptom(text);
-}
-
-/**
- * Identifica se a dúvida requer atenção especializada ou detalhamento técnico
- */
-export function isClinicalConcern(text = '') {
-  const n = normalize(text);
-  if (/\b(cocker|ao redor|dorme|cuidador|mancha|coco)\b/.test(n) && !/\b(parou de comer|sem comer|sem apetite|vomit\w*|diarreia\w*|dor|febre)\b/.test(n)) {
-    return false;
-  }
-  return /\b(problema grave|reclamacao|reclamação|procon|estorno|cancelamento imediato|parou de comer|sem comer|sem apetite|vomit\w*|diarreia\w*|dor forte)\b/.test(n);
+  if (EMERGENCY_NEGATION.test(n)) return false;
+  return EMERGENCY_PATTERNS.some(p => p.test(n));
 }
 
 export function sanitizeInput(text, max = 2000) {

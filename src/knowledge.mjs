@@ -1,8 +1,8 @@
 import { BUSINESS } from './config.mjs';
-import { normalize, isEmergency, isClinicalConcern, isAffirmative, isGreeting } from './safety.mjs';
+import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
 import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync } from './knowledge-bases.mjs';
 
-export { BUSINESS, normalize, isEmergency, isClinicalConcern, isAffirmative, isGreeting };
+export { BUSINESS, normalize, isEmergency, isAffirmative, isGreeting };
 
 export const GREETING_MESSAGE = 'Oi! Tudo bem? 😊\n\nSou a *Lia*, assistente pessoal do *Tauan*.\n\nPor aqui posso:\n• Esclarecer dúvidas rápidas e adiantar seu atendimento\n• Conectar você diretamente com o Tauan\n\nComo prefere seguir?';
 export const ATENDIMENTO_EM_PROGRESSO_MESSAGE = 'Nosso atendimento automatizado ainda está sendo preparado com muito carinho! ☕✨\n\nEnquanto isso, eu posso:\n• *Anotar o seu recado* com os detalhes da sua necessidade\n• *Te colocar direto em contato* com o Tauan agora mesmo\n\nQuer falar direto com ele?';
@@ -72,7 +72,7 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     const allKbs = listKnowledgeBasesSync();
     const kbCopilotSection = allKbs.length > 0
       ? `\n7. BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS:
-Você possui acesso às bases de conhecimento dos sistemas abaixo (como o Clubinho HomeVet).
+Você possui acesso às bases de conhecimento dos sistemas e clientes abaixo (uma por cliente atendido pela Atualyze).
 REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 - SEJA DIRETA, ENXUTA E OBJETIVA: NUNCA envie textos longos demais nem despeje o manual inteiro de uma vez. Responda em 2 a 4 parágrafos curtos ou bullet points diretos focado exatamente no que foi perguntado.
 - FOCO 100% EM COMO USAR O CRM + LANDING PAGE: Explique sempre na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/aba* (no Painel CRM /admin ou na Landing Page) e *como usar passo a passo*.

@@ -1,4 +1,4 @@
-# Dashboard Clubinho HomeVet
+# Dashboard Lia Sync
 
 Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pelo mesmo processo, usa os endpoints locais `/api/dashboard/*` e `/api/admin/*` e não expõe segredos no navegador.
 
@@ -38,7 +38,7 @@ Somente para desenvolvimento local:
 ```bash
 ALLOW_INSECURE_WEBHOOK=true \
 ALLOW_UNAUTHENTICATED_DASHBOARD=true \
-EVOLUTION_INSTANCE=clubinho \
+EVOLUTION_INSTANCE=lia-sync \
 npm start
 ```
 

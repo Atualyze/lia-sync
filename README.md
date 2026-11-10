@@ -88,14 +88,14 @@ npm run build
 npm start
 ```
 
-`EVOLUTION_INSTANCE` não tem default implícito e deve ser `clubinho`. Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento.
+`EVOLUTION_INSTANCE` não tem default implícito e deve ser o nome da instância no Evolution API (ex.: `lia-sync`). Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento.
 
 Para testar o painel localmente sem Supabase, use somente em desenvolvimento:
 
 ```bash
 PORT=3000 \
 HOST=0.0.0.0 \
-EVOLUTION_INSTANCE=clubinho \
+EVOLUTION_INSTANCE=lia-sync \
 ALLOW_INSECURE_WEBHOOK=true \
 ALLOW_UNAUTHENTICATED_DASHBOARD=true \
 npm start

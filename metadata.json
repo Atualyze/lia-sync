@@ -1,6 +1,6 @@
 {
-  "name": "Clubinho HomeVet WhatsApp Bot",
-  "description": "Bot WhatsApp com integração à Evolution API v2, triagem de atendimento veterinário, regras de segurança clínica e dashboard de monitoramento.",
+  "name": "Lia Sync",
+  "description": "Assistente de suporte multicliente da Atualyze: WhatsApp via Evolution API v2, respostas apoiadas em base de conhecimento por cliente, regras determinísticas de segurança e dashboard de monitoramento.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

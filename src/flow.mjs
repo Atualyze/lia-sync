@@ -14,14 +14,15 @@ export function collectedValid(collected = {}) {
 
 export function isHumanRequest(text = '') {
   const raw = String(text || '');
-  if (/atendimento pessoal|veterin[aá]ria pro meu cachorro|quanto custa/i.test(raw)) return false;
+  if (/atendimento pessoal|quanto custa/i.test(raw)) return false;
   const n = normalize(raw);
-  if (/atendimento pessoal|veterinaria pro meu cachorro/i.test(n)) return false;
-  return /\b(atendente|pessoa|humano|dra elisangela|dra\. elisangela|falar com a dra|falar com um atendente|passa para uma pessoa)\b/i.test(raw) ||
-         /\b(atendente|pessoa|humano|dra elisangela|falar com a dra|falar com um atendente|passa para uma pessoa)\b/i.test(n) ||
+  if (/atendimento pessoal/i.test(n)) return false;
+  return /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(raw) ||
+         /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(n) ||
+         /\b(?:falar|chamar|quero)\s+(?:com\s+)?(?:a\s+|o\s+)?(?:dra|dr|doutora|doutor)\.?\s+\w+/i.test(n) ||
          isTalkToTauanRequest(text);
 }
-import { sanitizeInput, isEmergency, isHighRiskSymptom, isClinicalConcern, filterReply, normalize, isGreeting } from './safety.mjs';
+import { sanitizeInput, isEmergency, filterReply, normalize, isGreeting } from './safety.mjs';
 import { buildSystemPrompt, GREETING_MESSAGE, ATENDIMENTO_EM_PROGRESSO_MESSAGE, TALK_TO_TAIS_MESSAGE } from './knowledge.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from './faq.mjs';
 import { triggerHandoff } from './handoff.mjs';
@@ -752,7 +753,7 @@ Atuo como seu braço direito no dia a dia da Atualyze e nos atendimentos aos cli
 • *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha própria voz sintetizada para seus contatos.
 • *Leitura de Documentos & PDFs:* Analiso comprovantes de pagamento (PIX/TED com valores e data), contratos, propostas e briefings.
 • *Follow-up Inteligente:* Reengajo automaticamente leads parados ou orçamentos não respondidos em horário comercial.
-• *Bases de Conhecimento:* Consulto dossiês completos de clientes e parceiros (como o CRM do Clubinho HomeVet).
+• *Bases de Conhecimento:* Consulto os dossiês completos dos sistemas de cada cliente e parceiro da Atualyze.
 
 💬 *Comandos Rápidos do Chat Interno:*
 • *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
@@ -1802,7 +1803,6 @@ ${errMsg}`;
           s.handoffReminder1Sent = false;
           s.handoffReminder60Sent = false;
 
-          s.symptomTurns = 0;
           const resumeReply = 'Prontinho! *Atendimento automático retomado.* Já retomei o atendimento! ✨\n\nComo posso te ajudar agora?';
           s.history.push({ role: 'assistant', content: resumeReply, createdAt: new Date(now()).toISOString() });
           s.lastBotAt = new Date(now()).toISOString();
@@ -1812,7 +1812,7 @@ ${errMsg}`;
 
         // Se for emergência crítica relatada durante o atendimento humano
         if (isEmergency(clean)) {
-          const emergencyNotice = 'Entendido! 🚨\n\nJá registrei a urgência e notifiquei o *Tauan* com prioridade máxima! Caso necessário, dirija-se imediatamente a um pronto-socorro veterinário ou hospital mais próximo.';
+          const emergencyNotice = 'Entendido! 🚨\n\nJá registrei a urgência e notifiquei o *Tauan* com prioridade máxima. Ele assume o atendimento por aqui em instantes.';
           await triggerHandoff(s, {
             reason: 'urgência relatada em atendimento com Tauan',
             urgency: 'emergencia',
@@ -1832,7 +1832,7 @@ ${errMsg}`;
       // Se for emergência geral
       if (isEmergency(clean)) {
         await triggerHandoff(s, { reason: 'urgência sinalizada pelo contato', urgency: 'emergencia', now: now(), notify });
-        const reply = 'Entendido! 🚨\n\nComo se trata de algo *urgente*, já notifiquei nossa equipe com prioridade máxima! Caso necessário, dirija-se a um pronto-socorro veterinário mais próximo.';
+        const reply = 'Entendido! 🚨\n\nComo se trata de algo *urgente*, já notifiquei nossa equipe com prioridade máxima. Já vamos te responder por aqui.';
         s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
         store.markDirty();
         return reply;
@@ -1908,24 +1908,6 @@ ${errMsg}`;
         }
       }
 
-      // 2.5.3 TRATAMENTO DE SINTOMA DE ALTO RISCO / EMERGÊNCIA VETERINÁRIA
-      if (isHighRiskSymptom(clean)) {
-        await triggerHandoff(s, {
-          reason: 'sintoma de alto risco relatado pelo tutor',
-          urgency: 'emergencia',
-          now: now(),
-          notify
-        });
-        const reply =
-          'Entendi a gravidade do que você descreveu. 🚨\n\n' +
-          'Por favor, leve o animal *agora* ao atendimento veterinário mais próximo, ' +
-          'sem esperar. Já avisei nossa equipe com prioridade máxima.\n\n' +
-          'Se estiver em risco imediato, ligue para a clínica de plantão.';
-        s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-        store.markDirty();
-        return reply;
-      }
-
       // Atendimento inteligente: a Lia usa a IA com memória do contexto
       const items = await faq();
       let result = await ai?.askAI?.({
@@ -1942,30 +1924,12 @@ ${errMsg}`;
       }
 
       if (!result || !raw) {
-        if (isClinicalConcern(clean)) {
-          s.symptomTurns = (s.symptomTurns || 0) + 1;
-          if (s.symptomTurns === 1) {
-            raw = 'Entendi a situação. Há quanto tempo isso começou? Vou registrar todas as informações para nossa equipe.';
-          } else {
-            await triggerHandoff(s, { reason: 'sintoma clínico persistente', urgency: 'urgente', now: now(), notify });
-            s.human = true;
-            raw = 'Compreendo a urgência. Já notifiquei a Dra. Elisângela para avaliar o caso com prioridade. Se notar piora, dirija-se a um pronto-socorro veterinário imediatamente.';
-          }
-        } else {
-          raw = 'Tive uma leve instabilidade de conexão aqui no sistema! 📶\n\nMas posso ajudar você por aqui ou te colocar direto em contato com o Tauan. Como prefere seguir?';
-          const oneHourAgo = now() - 3600000;
-          const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
-          if (lastFallback < oneHourAgo) {
-            s.fallbackHandoffAt = new Date(now()).toISOString();
-            await notify(`[Alerta Lia] Instabilidade de conexão/IA para ${s.phone}: "${clean}"`);
-          }
-        }
-      } else if (result?.intent === 'sintoma' || isClinicalConcern(clean)) {
-        s.symptomTurns = (s.symptomTurns || 0) + 1;
-        if (s.symptomTurns >= 3) {
-          await triggerHandoff(s, { reason: 'triagem clínica concluída', urgency: 'urgente', now: now(), notify });
-          s.human = true;
-          raw = 'Compreendo a situação e os sintomas relatados. Já notifiquei a Dra. Elisângela para cuidar do caso. Em caso de piora, dirija-se imediatamente a um pronto-socorro veterinário!';
+        raw = 'Tive uma leve instabilidade de conexão aqui no sistema! 📶\n\nMas posso ajudar você por aqui ou te colocar direto em contato com o Tauan. Como prefere seguir?';
+        const oneHourAgo = now() - 3600000;
+        const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
+        if (lastFallback < oneHourAgo) {
+          s.fallbackHandoffAt = new Date(now()).toISOString();
+          await notify(`[Alerta Lia] Instabilidade de conexão/IA para ${s.phone}: "${clean}"`);
         }
       }
 

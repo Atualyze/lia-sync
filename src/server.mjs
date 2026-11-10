@@ -284,7 +284,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const app = async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': config.dashboardOrigin || '*', 'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization' }); return res.end(); }
-    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, service: 'clubinho-homevet-bot', version: APP_VERSION, uptime: Math.round(process.uptime()), providers: getCircuitBreakers(), activeProvider: runtimeAI().provider, activeModel: runtimeAI().model, faqAgeSeconds: faqAgeSeconds(), sessions: Object.keys(store.sessions).length, persistence: { runtimeEnabled: Boolean(store.client?.enabled), conversations: store.persistence || 'fallback', conversationsError: store.remoteError || null, config: adminConfig.persistence || 'fallback', configError: adminConfig.remoteError || null } });
+    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, service: 'lia-sync', version: APP_VERSION, uptime: Math.round(process.uptime()), providers: getCircuitBreakers(), activeProvider: runtimeAI().provider, activeModel: runtimeAI().model, faqAgeSeconds: faqAgeSeconds(), sessions: Object.keys(store.sessions).length, persistence: { runtimeEnabled: Boolean(store.client?.enabled), conversations: store.persistence || 'fallback', conversationsError: store.remoteError || null, config: adminConfig.persistence || 'fallback', configError: adminConfig.remoteError || null } });
     if (isChatwootApiPath(u.pathname)) {
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
       if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);
@@ -741,7 +741,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     if (req.method === 'POST' && u.pathname === '/api/admin/config/preview') {
       const body = await readBody(req);
       if (!validPhone(body.phone) || typeof body.text !== 'string' || !body.text.trim()) return json(res, 400, { error: 'phone_and_text_required' });
-      const previewFile = path.join(os.tmpdir(), `homevet-preview-${process.pid}-${Date.now()}.json`);
+      const previewFile = path.join(os.tmpdir(), `lia-sync-preview-${process.pid}-${Date.now()}.json`);
       const previewStore = new SessionStore(previewFile, { ttlMs: 10 * 60 * 1000 });
       try {
         await previewStore.load();

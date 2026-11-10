@@ -229,7 +229,7 @@ export function buildOpenRouterBody({ model, fallbackModels = [], system, histor
     temperature: 0.2,
     max_tokens: config.aiMaxOutputTokens,
     messages: [{ role: 'system', content: system }, ...normalizeHistory(history), { role: 'user', content: userText }],
-    response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'homevet_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' },
+    response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' },
     provider: { require_parameters: requireParameters, allow_fallbacks: true, sort: 'latency' }
   };
   const models = [...new Set(fallbackModels.filter(Boolean).filter(candidate => candidate !== model))].slice(0, 3);
@@ -668,7 +668,7 @@ export async function pingAI(targetProvider, targetModel) {
   const start = Date.now();
   const model = targetModel || '';
   if (!available(p)) return { ok: false, provider: p, model, latencyMs: 0, error: `${p} não configurado. Informe a chave de API no .env e reinicie o serviço.` };
-  const system = 'Você é o assistente técnico do Clubinho HomeVet. Responda em JSON {"status":"ok","mensagem":"conectado"}.';
+  const system = 'Você é o assistente técnico da Atualyze. Responda em JSON {"status":"ok","mensagem":"conectado"}.';
   const userText = 'teste de conexão';
   try {
     const res = await call(p, { system, history: [], userText, deadline: Date.now() + 15000, model });

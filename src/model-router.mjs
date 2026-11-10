@@ -1,5 +1,3 @@
-import { isHighRiskSymptom } from './safety.mjs';
-
 /**
  * Roteador Autônomo e Dinâmico de Modelos (Complexity-Based Model Dispatcher)
  *
@@ -59,23 +57,12 @@ export function decidirModeloPorContexto({
     };
   }
 
-  // 2. SINTOMA DE ALTO RISCO: nunca usa modelo leve
-  if (isHighRiskSymptom(clean)) {
-    return {
-      model: configuredModel && !configuredModel.includes('lite') ? configuredModel : 'gemini-3.8-flash',
-      tier: 'flash',
-      reason: 'Sintoma de alto risco: modelo com maior capacidade de raciocínio',
-      escalate: true
-    };
-  }
-
-  // 3. CASO MENSAGEM SIMPLES / SAUDAÇÃO / CONFIRMAÇÃO (ROTEIA PARA FLASH-LITE)
+  // 2. CASO MENSAGEM SIMPLES / SAUDAÇÃO / CONFIRMAÇÃO (ROTEIA PARA FLASH-LITE)
   // Menos de 40 caracteres, saudações clássicas, ou confirmações diretas
   const isGreetingOrAck = /^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|obrigad[oa]|valeu|sim|n[aã]o|ok|beleza|entendi|show|blz|perfeito)[!.,\s?]*$/i.test(lower);
   const isShortFaqQuestion =
     clean.length <= 45 &&
-    !/(?:agend|transfer|comprar|plano|contrat|cancel|urgente|emerg|reclam|proposta)/i.test(lower) &&
-    !isHighRiskSymptom(clean);
+    !/(?:agend|transfer|comprar|plano|contrat|cancel|urgente|emerg|reclam|proposta)/i.test(lower);
 
   if (isGreetingOrAck || isShortFaqQuestion) {
     return {
