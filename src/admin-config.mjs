@@ -18,6 +18,7 @@ export const DEFAULT_BOT_CONFIG = {
     responsible: BUSINESS.responsible,
     companyName: BUSINESS.name,
     language: 'pt-BR',
+    aliases: [],
     tone: 'Acolhedor, dinâmico e bem distribuído. Use parágrafos curtos, quebras de linha para arejar a leitura, destaques em *negrito* nos pontos-chave e marcadores ("• ") quando listar opções.'
   },
   business: {

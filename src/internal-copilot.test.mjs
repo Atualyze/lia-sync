@@ -179,18 +179,23 @@ test('Conversa interna: respostas de IA passam por filterReply', async () => {
 });
 
 test('Cliente: menção casual ao Tauan não dispara handoff robótico prematuro', async () => {
-  // Teste da regex isTalkToTauanRequest
-  assert.equal(isTalkToTauanRequest('O Tauan me indicou o trabalho de vocês'), false);
-  assert.equal(isTalkToTauanRequest('Conheci o Tauan na faculdade'), false);
-  assert.equal(isTalkToTauanRequest('Bom dia, tudo bem?'), false);
+  // Teste da regex isTalkToTauanRequest com a identidade configurada no painel
+  const identity = { identity: { botName: 'Lia', responsible: 'Tauan', companyName: 'Atualyze' } };
+  assert.equal(isTalkToTauanRequest('O Tauan me indicou o trabalho de vocês', identity), false);
+  assert.equal(isTalkToTauanRequest('Conheci o Tauan na faculdade', identity), false);
+  assert.equal(isTalkToTauanRequest('Bom dia, tudo bem?', identity), false);
 
   // Casos que DEVEM disparar transferência expressa:
-  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan'), true);
-  assert.equal(isTalkToTauanRequest('Pode me passar pro Tauan?'), true);
+  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan', identity), true);
+  assert.equal(isTalkToTauanRequest('Pode me passar pro Tauan?', identity), true);
   assert.equal(isTalkToTauanRequest('falar com humano'), true);
   assert.equal(isTalkToTauanRequest('chamar atendente'), true);
   assert.equal(isTalkToTauanRequest('opcao 2'), true);
   assert.equal(isTalkToTauanRequest('2'), true);
+
+  // Sem identidade configurada, o fallback é neutro: "Tauan" deixa de ser o responsável.
+  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan'), false);
+  assert.equal(isTalkToTauanRequest('Quero falar com o responsável'), true);
 });
 
 test('Áudio personalizado: Lia NUNCA envia o comando literal, gera prévia amigável e pede confirmação antes de enviar', async () => {
@@ -268,6 +273,7 @@ test('Notificação ao Tauan: sempre notifica quando assunto é direcionado ao T
     store,
     humanPhone: '5588921694598',
     getHumanPhone: () => '5588921694598',
+    getBotConfig: () => ({ identity: { botName: 'Lia', responsible: 'Tauan', companyName: 'Atualyze' } }),
     whatsapp: {
       sendText: async (phone, text) => { notifications.push({ phone, text }); }
     },
@@ -512,7 +518,7 @@ test('Contexto selecionável do Contato: injeta suporte ativo, observações e B
   assert.match(promptsByPhone.clubinho, /Testar conexão Asaas/i);
   assert.match(promptsByPhone.clubinho, /Relatório Completo Web \(`\.HTML`\)/i);
   assert.match(promptsByPhone.clubinho, /FOCO PRÁTICO NO CRM \(\/admin\) \+ LANDING PAGE/i);
-  assert.match(promptsByPhone.clubinho, /NOTIFICAÇÃO IMEDIATA AO TAUAN \/ ATUALYZE/i);
+  assert.match(promptsByPhone.clubinho, /NOTIFICAÇÃO IMEDIATA AO RESPONSÁVEL/i);
   assert.doesNotMatch(promptsByPhone.clubinho, /POST \/api\/payments\/checkout/i);
 });
 

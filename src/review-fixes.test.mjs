@@ -36,7 +36,8 @@ test('agendar_retorno usa ReminderStore.add e só confirma após persistência',
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reminder-persist-'));
   const store = new ReminderStore(path.join(dir, 'reminders.json'), { logger: quietLogger });
   await store.load();
-  const result = await toolAgendarRetorno.execute({ reason: 'Retornar ao cliente', when: '2026-11-10T15:00:00.000Z' }, {
+  const futureIso = new Date(Date.now() + 86400000).toISOString();
+  const result = await toolAgendarRetorno.execute({ reason: 'Retornar ao cliente', when: futureIso }, {
     phone: '5588999990000', clientName: 'Contato teste', reminderStore: store
   });
   assert.equal(result.success, true);

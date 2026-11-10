@@ -1,5 +1,7 @@
 # Supabase independente do bot
 
+Esta documentação acompanha o Lia Sync **2.1.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+
 Este diretório contém o banco de desenvolvimento/staging da Lia Sync. Ele é independente do Supabase do CRM original.
 
 ## Migrações

@@ -63,8 +63,8 @@ test('triage-router: classifica corretamente palavras-chave por setor', () => {
   assert.equal(t3.category, 'financeiro');
   assert.equal(t3.sectorId, 'sec_fin');
 
-  const t4 = classificarSetorPorTexto('Preciso falar urgente com o Tauan', mockSectors);
-  assert.equal(t4.category, 'tauan');
+  const t4 = classificarSetorPorTexto('Preciso falar urgente com o Tauan', mockSectors, { responsible: 'Tauan' });
+  assert.equal(t4.category, 'responsavel');
   assert.equal(t4.sectorId, 'sec_dir');
 
   const t5 = classificarSetorPorTexto('Olá, boa tarde!', mockSectors);

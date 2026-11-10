@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 — Arquitetura modular e operação configurável
+
+- **Build multiplataforma:** `npm run build` e `npm run lint` deixaram de depender de `find` e `xargs`; ambos usam `scripts/check-syntax.mjs`, compatível com Windows, Linux e macOS.
+- **Fluxo modular:** `flow.mjs` virou uma fachada e o atendimento foi separado em `flow/client.mjs`, `flow/owner.mjs`, `flow/text.mjs`, `flow/media.mjs` e `flow/pdf.mjs`.
+- **IA e HTTP modularizados:** implementações foram extraídas para `src/ai/` e `src/http/`, com as fachadas públicas preservadas para evitar quebra de imports.
+- **Identidade configurável:** responsável, empresa, apelidos e telefone humano são resolvidos a partir da configuração publicada no painel. Identificadores e mensagens antigos continuam apenas como compatibilidade de dados existentes.
+- **Mídia:** PDFs criados pelo Copiloto passam a ser enviados como documento; voz é entregue sem legenda redundante.
+- **Documentação:** README, guia de arquitetura e documentação do dashboard atualizados para a estrutura 2.1.0.
+
 ## 2.0.1 — Auditoria de Segurança, Guardrails Clínicos e 100% de Testes Aprovados
 - **98 testes automatizados aprovados (100% de cobertura):** resolução de divergências de asserções em `corrections.test.mjs`, `human-mode.test.mjs`, `maintenance.test.mjs`.
 - **Limpeza de credenciais hardcoded:** remoção definitiva de scripts legados e temporários da raiz e de `scripts/` (`test_audio.py`, `check_db.py`, `check_remote.py`, `check_remote_phone.py`, `deploy_remote.py`).

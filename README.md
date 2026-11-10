@@ -1,25 +1,31 @@
-# Lia Sync - Central de Atendimento & Triagem Inteligente via WhatsApp
+# Lia Sync - Central de Atendimento Inteligente via WhatsApp
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 1.3.0**
+**Versão atual: 2.1.0**
 
-## Novidades da Versão 1.3.0
-- **Roteamento Dinâmico por Complexidade (MoA — Mixture of Agents):** Delega automaticamente mensagens rotineiras para `gemini-2.5-flash-lite` (0.4s), comandos operacionais para `gemini-2.5-flash` e tarefas do Copiloto do Tauan para `gemini-2.5-pro`.
-- **Janela de Atendimento & Pacing Noturno (Fail-Open):** Intercepta mensagens fora do horário configurado, envia aviso acolhedor único e adia o turno para a reabertura sem sobrecarregar a VPS.
-- **Triagem Leve por Setores:** Classificação em < 1ms por palavras-chave com tags para Comercial, Suporte, Financeiro e Tauan.
-- **Painel de Comandos Internos no Chat do Tauan:**
-  - `status` — Diagnóstico de conexão, sessões e modelo ativo.
-  - `ping` / `teste` — Mede a latência real da IA em milissegundos.
-  - `metricas` / `consumo` — Estatísticas de tokens, requisições e taxa de sucesso.
-  - `relatorio` — Resumo executivo de conversas e transbordos.
-  - `bot off` / `bot on` — Desativação/reativação global instantânea da IA.
-  - `expediente` — Consulta do horário de funcionamento e status da janela.
-  - `fila` / `bot [num]` / `humano [num]` / `limpar [num]` — Gestão cirúrgica de contatos.
+## Novidades da Versão 2.1.0
+
+- **Arquitetura modular:** IA, HTTP, fluxo de atendimento e identidade foram separados em módulos coesos, mantendo `ai.mjs`, `flow.mjs` e `server.mjs` como fachadas compatíveis.
+- **Identidade publicada pelo painel:** nome da assistente, responsável, empresa, apelidos, tom e telefone humano não são definidos no código operacional.
+- **Mídias confiáveis:** PDFs gerados pelo Copiloto são enviados como documento no WhatsApp; respostas em áudio não recebem legenda duplicada.
+- **Build portátil:** `npm run build` e `npm run lint` usam Node nativo e funcionam no Windows, Linux e macOS.
+
+Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para os limites e responsabilidades de cada módulo.
 
 ## Arquitetura
 
-As regras determinísticas — autenticação do webhook, dedupe/rate limit, grupos ignorados, sanitização, emergência, filtro clínico, fila por telefone, persistência e handoff — nunca dependem da IA. A IA atende saudação, planos, políticas, pagamento, dúvidas, coleta e triagem não emergencial; recebe JSON estrito e contexto, mas não decide regras de segurança. O código está separado em `config`, `knowledge`, `safety`, `sessions`, `ai`, `flow`, `handoff`, `whatsapp`, `faq`, `dashboard`, `admin-config` e o bootstrap `server`.
+As regras determinísticas — autenticação do webhook, dedupe/rate limit, grupos ignorados, sanitização, emergência, filtro clínico, fila por telefone, persistência e handoff — nunca dependem da IA. A IA atende saudação, planos, políticas, pagamento, dúvidas, coleta e triagem não emergencial; recebe JSON estrito e contexto, mas não decide regras de segurança.
+
+O código é organizado em módulos pequenos, com fachadas finas para compatibilidade:
+
+- `core/identity.mjs` e `core/messages.mjs` — identidade, apelidos, chaves internas e mensagens padrão (tudo vindo do painel, com fallback neutro);
+- `flow/text.mjs`, `flow/owner.mjs`, `flow/client.mjs`, `flow/media.mjs`, `flow/pdf.mjs` — helpers de texto, copiloto do responsável, atendimento ao cliente, mídia/voz e PDFs;
+- `ai/` — configuração de provedores, parsing, busca web, documentos, voz e orquestração de chamadas;
+- `http/` — utilidades, bridge/SSE, proxy Chatwoot, dashboard, rotas de bridge, webhook e roteador;
+- `config`, `knowledge`, `safety`, `sessions`, `handoff`, `whatsapp`, `faq`, `dashboard`, `admin-config` e o bootstrap `server`.
+
+A identidade da assistente (nome, responsável, empresa, tom, apelidos e telefone) é configurada no painel e não é fixada em código.
 
 ## Painel administrativo
 
@@ -27,7 +33,7 @@ O dashboard é servido em `/dashboard` e agora possui uma área **Administraçã
 
 É possível editar:
 
-- identidade do bot, empresa e veterinária;
+- identidade da assistente, responsável, empresa, apelidos e tom de voz;
 - área de atendimento, fuso horário e tom de voz;
 - limite de turnos clínicos e retomada pelo cliente;
 - mensagens de fallback, saudação, planos, serviços, políticas e pagamento;
@@ -76,7 +82,7 @@ A configuração é persistida no Supabase em `bot_config_state` e `bot_config_r
 
 Toda resposta passa por `filterReply`. Preços só são aceitos quando vieram literalmente dos planos ativos do CRM. Sessões reais usam `<telefone>` e simulações `sim:<telefone>`. Para um JID `@lid`, o bot usa um número alternativo apenas quando a Evolution o fornece; caso contrário, preserva o JID completo para envio, sem inventar número. Conversas e mensagens vão para `contacts`, `conversations` e `conversation_messages`; `ai_calls` recebe telemetria sem prompts, respostas ou telefones. O backend mantém dual-write local por segurança e cai automaticamente para os JSON se o Supabase ficar indisponível. Para ativar, configure `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, mantendo a última chave somente no ambiente do servidor. `SUPABASE_RUNTIME_ENABLED=false` desliga a migração sem remover o fallback. O arquivo de sessões é retido por 30 dias por padrão e grava atomicamente. Para o volume Docker, use `chown 1000:1000 data`.
 
-As proteções clínicas essenciais permanecem no código: o painel pode controlar contexto e comportamento operacional, mas não remove a exigência de não diagnosticar, não prescrever, não dar prognóstico e encaminhar emergências.
+As proteções de segurança configuradas para a operação permanecem no código: o painel pode controlar contexto e comportamento operacional, mas não remove os limites de resposta e encaminhamento definidos pelo produto.
 
 ## Configuração e execução
 
@@ -156,12 +162,12 @@ curl -X POST 'http://127.0.0.1:3000/api/dashboard/simulate?x=1' \
 
 Salve a configuração atual da instância Evolution e confirme `curl http://127.0.0.1:3000/health`. Execute `docker compose up -d --build`, confirme o healthcheck e valide um payload de teste. Só então configure o webhook para `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a configuração salva, valide o health da Evolution e mantenha o container anterior disponível até a confirmação.
 
-## Pendências e riscos remanescentes
+## Limites operacionais
 
-É necessário confirmar com a Dra. os textos comerciais, a política de preços exclusivamente via CRM e o telefone humano na configuração publicada. Também é necessário decidir se `HUMAN_AUTO_RESUME_HOURS` será habilitado. A semântica exata de `source` da Evolution, `fromMe` e JIDs `@lid` varia por versão/instância e precisa de payload real. Os lembretes de handoff e a manutenção de inatividade são executados pelo timer do servidor; em múltiplas réplicas, deve existir apenas um worker ativo ou um lock distribuído.
+Confirme os textos comerciais, a política de preços exclusivamente via CRM e o telefone humano na configuração publicada. A semântica exata de `source` da Evolution, `fromMe` e JIDs `@lid` varia por versão/instância e precisa de payload real. Os lembretes de handoff e a manutenção de inatividade são executados pelo timer do servidor; em múltiplas réplicas, deve existir apenas um worker ativo ou um lock distribuído.
 
 A versão atual também coalesce mensagens do webhook dentro de `MESSAGE_DEBOUNCE_MS`, limita o custo por janela, pausa automaticamente quando a Dra. responde pelo celular e executa manutenção de lembretes/inatividade. O dashboard atualiza a cada 5 segundos enquanto a aba está visível e arquiva conversas reais em vez de apagá-las.
 
 ### Retomada do bot após atendimento humano
 
-Quando uma sessão está em atendimento humano, o cliente pode enviar `bot`, `voltar` ou `reativar`; o fluxo grava a retomada no store ativo, com `conversations` como fonte primária e `sessions.json` como fallback. Essa opção fica ativa por padrão (`HUMAN_ALLOW_CLIENT_RESUME=true`) e pode ser desligada explicitamente com `false`. A Dra. também pode enviar `bot <telefone>` a partir do número publicado em `bot_config_state.active_config.human.phone`; esse comando é processado antes da lógica de `fromMe`, evitando que seja confundido com uma nova tomada de controle humano.
+Quando uma sessão está em atendimento humano, o cliente pode enviar `bot`, `voltar` ou `reativar`; o fluxo grava a retomada no store ativo, com `conversations` como fonte primária e `sessions.json` como fallback. Essa opção fica ativa por padrão (`HUMAN_ALLOW_CLIENT_RESUME=true`) e pode ser desligada explicitamente com `false`. O responsável também pode enviar `bot <telefone>` a partir do número publicado em `bot_config_state.active_config.human.phone`; esse comando é processado antes da lógica de `fromMe`, evitando que seja confundido com uma nova tomada de controle humano.

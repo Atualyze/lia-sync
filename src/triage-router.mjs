@@ -6,7 +6,7 @@
  * - Comercial / Vendas
  * - Suporte / Técnico
  * - Financeiro / Cobrança
- * - Falar com Tauan / Diretoria
+ * - Responsável / Diretoria
  */
 
 const SECTOR_KEYWORDS = {
@@ -24,9 +24,9 @@ const SECTOR_KEYWORDS = {
     'boleto', 'fatura', 'pix', 'nota fiscal', 'nf', 'pagamento', 'pagar', 'comprovante',
     'segunda via', '2a via', 'estorno', 'reembolso', 'cobrança', 'cobranca', 'vencimento'
   ],
-  tauan: [
-    'tauan', 'falar com tauan', 'responsavel', 'responsável', 'dono', 'diretor', 'diretoria',
-    'urgente', 'urgência', 'emergencia', 'emergência'
+  responsavel: [
+    'falar com o responsavel', 'falar com a responsavel', 'responsavel', 'responsável', 'dono',
+    'diretor', 'diretoria', 'urgente', 'urgência', 'emergencia', 'emergência'
   ]
 };
 
@@ -45,14 +45,18 @@ function normalizeText(text = '') {
  * Classifica o setor mais provável com base no texto da mensagem e setores cadastrados.
  * @param {string} text - Texto recebido do contato.
  * @param {Array} sectors - Lista de setores do sistema ({ id, name, description }).
+ * @param {{ responsible?: string, companyName?: string, aliases?: string[] }} identity - Identidade configurada.
  * @returns {{ sectorId: string|null, sectorName: string|null, category: string|null, confidence: number }}
  */
-export function classificarSetorPorTexto(text, sectors = []) {
+export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
   if (!text || typeof text !== 'string') {
     return { sectorId: null, sectorName: null, category: null, confidence: 0 };
   }
 
   const norm = normalizeText(text);
+  const ownerNames = [identity.responsible, identity.companyName, ...(Array.isArray(identity.aliases) ? identity.aliases : [])]
+    .map(normalizeText)
+    .filter(Boolean);
 
   // Mapeia setores cadastrados para categorias padrão
   const sectorMap = {};
@@ -67,13 +71,14 @@ export function classificarSetorPorTexto(text, sectors = []) {
       sectorMap.suporte = s;
     } else if (sNameNorm.includes('financ') || sNameNorm.includes('cobranc') || sDescNorm.includes('boleto')) {
       sectorMap.financeiro = s;
-    } else if (sNameNorm.includes('tauan') || sNameNorm.includes('diretor') || sDescNorm.includes('diretoria')) {
-      sectorMap.tauan = s;
+    } else if (sNameNorm.includes('responsavel') || sNameNorm.includes('diretor') || sDescNorm.includes('diretoria') ||
+      ownerNames.some(name => sNameNorm.includes(name))) {
+      sectorMap.responsavel = s;
     }
   }
 
   // Pontuação por categoria
-  const scores = { vendas: 0, suporte: 0, financeiro: 0, tauan: 0 };
+  const scores = { vendas: 0, suporte: 0, financeiro: 0, responsavel: 0 };
 
   for (const [cat, keywords] of Object.entries(SECTOR_KEYWORDS)) {
     for (const kw of keywords) {
@@ -83,6 +88,11 @@ export function classificarSetorPorTexto(text, sectors = []) {
         scores[cat] += kwNorm.includes(' ') ? 3 : 1;
       }
     }
+  }
+
+  // Nomes configurados (responsável, empresa, apelidos) contam como pedido ao responsável
+  if (ownerNames.some(name => name.length >= 3 && norm.includes(name))) {
+    scores.responsavel += 2;
   }
 
   // Encontra a categoria com maior pontuação

@@ -4,7 +4,7 @@
  * Princípios:
  * 1. Simplicidade/Saudação/Dúvidas Curtas -> Gemini 3.5 Flash Lite (0.4s - 0.8s, Custo Mínimo)
  * 2. Ferramentas (Tool Calling), Multimodal ou Funil -> Gemini 3.8 Flash (1.2s - 1.8s)
- * 3. Copiloto do Tauan em Planejamento / Análise Profunda -> Gemini Pro / 3.8 Flash
+ * 3. Copiloto do responsável em Planejamento / Análise Profunda -> Gemini Pro / 3.8 Flash
  * 4. Fallback Transparente: Se o modelo selecionado falhar, a Lia cai em cascata para o próximo.
  */
 
@@ -14,7 +14,8 @@
  * @param {Object} params
  * @param {string} params.userText - Mensagem recebida.
  * @param {Array} params.history - Histórico recente de mensagens.
- * @param {boolean} params.isTauan - Se o interlocutor é o próprio Tauan (Copiloto).
+ * @param {boolean} params.isOwner - Se o interlocutor é o próprio responsável (Copiloto).
+ * @param {boolean} params.isTauan - Alias legado de `isOwner`, mantido por compatibilidade.
  * @param {boolean} params.isSuperAgent - Se o modo Super Agente com Tool Calling está ativo.
  * @param {string} params.configuredModel - Modelo padrão publicado no painel.
  * @param {boolean} params.autoRoutingEnabled - Se o auto-roteamento híbrido está ativado.
@@ -23,6 +24,7 @@
 export function decidirModeloPorContexto({
   userText = '',
   history = [],
+  isOwner = false,
   isTauan = false,
   isSuperAgent = false,
   configuredModel = 'gemini-3.8-flash',
@@ -40,8 +42,8 @@ export function decidirModeloPorContexto({
   const clean = String(userText || '').trim();
   const lower = clean.toLowerCase();
 
-  // 1. CASO COPILOTO DO TAUAN
-  if (isTauan) {
+  // 1. CASO COPILOTO DO RESPONSÁVEL
+  if (isOwner || isTauan) {
     const isDeepReasoning = /(?:planej|estrat|analis|auditor|relat|consolid|compara|dossi|benchmark|rca|raiz|arquitetur)/i.test(lower);
     if (isDeepReasoning) {
       return {

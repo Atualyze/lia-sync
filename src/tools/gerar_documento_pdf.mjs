@@ -1,4 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { resolveIdentity } from '../core/identity.mjs';
 
 /**
  * Ferramenta Executiva: Gerador de Documentos e Relatórios em PDF
@@ -35,9 +36,10 @@ export const toolGerarDocumentoPdf = {
     required: ['tipo', 'titulo', 'conteudo']
   },
   async execute(args = {}, context = {}) {
+    const identity = resolveIdentity(context.botConfig || context.identity || {});
     const {
       tipo = 'relatorio',
-      titulo = 'Documento Lia Assistente',
+      titulo = `Documento ${identity.botName}`,
       destinatario = context.clientName || 'Cliente / Responsável',
       conteudo = '',
       valor = ''
@@ -61,7 +63,8 @@ export const toolGerarDocumentoPdf = {
       });
 
       // 2. Badge do Tipo
-      const badgeText = tipo.toUpperCase() + ' OFICIAL • ATUALYZE INTELLIGENCE';
+      const brand = identity.companyName ? ` • ${identity.companyName.toUpperCase()}` : '';
+      const badgeText = tipo.toUpperCase() + ' OFICIAL' + brand;
       page.drawText(badgeText, {
         x: 50,
         y: height - 50,
@@ -175,7 +178,10 @@ export const toolGerarDocumentoPdf = {
         color: rgb(0.88, 0.91, 0.94)
       });
 
-      page.drawText('Gerado automaticamente pela Lia Assistente • Atualyze Intelligence (Tauan Pires)', {
+      const footer = `Gerado automaticamente pela ${identity.botName}` +
+        (identity.companyName ? ` • ${identity.companyName}` : '') +
+        (identity.responsible ? ` (${identity.responsible})` : '');
+      page.drawText(footer, {
         x: 50,
         y: 52,
         size: 8.5,

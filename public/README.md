@@ -1,5 +1,7 @@
 # Dashboard Lia Sync
 
+Versão do backend: **2.1.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+
 Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pelo mesmo processo, usa os endpoints locais `/api/dashboard/*` e `/api/admin/*` e não expõe segredos no navegador.
 
 ## Operação
@@ -13,6 +15,8 @@ Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pe
 ## Rascunho e publicação
 
 A área Administração salva alterações como rascunho. O runtime usa somente a versão publicada. Use **Publicar alterações** para ativar o contexto e **Descartar rascunho** para voltar à última versão publicada.
+
+Em **Identidade**, configure nome da assistente, responsável, empresa, apelidos e tom. O responsável e o telefone humano usados pelo Copiloto e pelo handoff são lidos da configuração publicada; não há pessoa fixa no código operacional.
 
 ## Preview isolado
 

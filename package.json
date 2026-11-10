@@ -1,8 +1,8 @@
 {
   "name": "lia-sync",
-  "version": "2.0.0",
-  "description": "Lia Sync - Central de Atendimento Inteligente, Triagem Setorial, MoA e Copiloto Operacional via WhatsApp (Atualyze)",
-  "author": "Atualyze <atualyze@proton.me>",
+  "version": "2.1.0",
+  "description": "Lia Sync - Central de Atendimento Inteligente, Triagem Setorial, MoA e Copiloto Operacional via WhatsApp",
+  "author": "Lia Sync",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "node src/server.mjs",
     "start": "node src/server.mjs",
-    "build": "find src -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check",
-    "lint": "find src -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check",
+    "build": "node scripts/check-syntax.mjs",
+    "lint": "node scripts/check-syntax.mjs",
     "test": "node --test"
   },
   "dependencies": {

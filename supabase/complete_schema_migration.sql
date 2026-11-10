@@ -1,5 +1,5 @@
 -- ==============================================================================
--- LIA — ASSISTENTE PESSOAL E EXECUTIVA DO TAUAN
+-- LIA - ASSISTENTE DE ATENDIMENTO MULTICLIENTE
 -- ESQUEMA DE MIGRAÇÃO DEFINITIVO SUPABASE (PostgreSQL)
 -- ==============================================================================
 -- Execute este script completo no painel do Supabase:
@@ -24,7 +24,7 @@ end;
 $$;
 
 -- ==============================================================================
--- 3. PERFIS DE USUÁRIOS (Tauan e Administradores)
+-- 3. PERFIS DE USUÁRIOS (Responsáveis e Administradores)
 -- (Criada antes de is_active_staff para evitar erro de relação inexistente)
 -- ==============================================================================
 create table if not exists public.profiles (
@@ -59,7 +59,7 @@ $$;
 grant execute on function public.is_active_staff(text[]) to authenticated;
 
 -- ==============================================================================
--- 5. CONTATOS (Pessoas / Clientes que conversam com o Tauan)
+-- 5. CONTATOS (Pessoas / Clientes que conversam com a equipe)
 -- ==============================================================================
 create table if not exists public.contacts (
   id uuid primary key default gen_random_uuid(),
@@ -145,7 +145,7 @@ create index if not exists conversation_messages_conversation_idx on public.conv
 create index if not exists conversation_messages_external_idx on public.conversation_messages (external_id) where external_id is not null;
 
 -- ==============================================================================
--- 8. LEMBRETES E AGENDAMENTOS (Para o Tauan)
+-- 8. LEMBRETES E AGENDAMENTOS (Para o responsável)
 -- ==============================================================================
 create table if not exists public.reminders (
   id text primary key,
@@ -162,7 +162,7 @@ create table if not exists public.reminders (
 create index if not exists reminders_due_status_idx on public.reminders (status, due_at);
 
 -- ==============================================================================
--- 9. HANDOFFS (Transferências diretas para o Tauan)
+-- 9. HANDOFFS (Transferências diretas para o responsável)
 -- ==============================================================================
 create table if not exists public.handoffs (
   id uuid primary key default gen_random_uuid(),
@@ -365,8 +365,8 @@ create policy audit_log_admin_select on public.audit_log for select to authentic
 insert into public.bot_config_state (id, active_config, draft_config)
 values (
   true,
-  '{"identity":{"botName":"Lia","responsible":"Tauan"},"ai":{"temperature":0.3,"primaryModel":"gemini-3.8-flash","fallbackModel":"nvidia/nemotron-3.5-lightning:free"}}'::jsonb,
-  '{"identity":{"botName":"Lia","responsible":"Tauan"},"ai":{"temperature":0.3,"primaryModel":"gemini-3.8-flash","fallbackModel":"nvidia/nemotron-3.5-lightning:free"}}'::jsonb
+  '{"identity":{"botName":"Lia"},"ai":{"temperature":0.3,"primaryModel":"gemini-3.8-flash","fallbackModel":"nvidia/nemotron-3.5-lightning:free"}}'::jsonb,
+  '{"identity":{"botName":"Lia"},"ai":{"temperature":0.3,"primaryModel":"gemini-3.8-flash","fallbackModel":"nvidia/nemotron-3.5-lightning:free"}}'::jsonb
 )
 on conflict (id) do nothing;
 
@@ -375,22 +375,23 @@ values (true, '[]'::jsonb)
 on conflict (id) do nothing;
 
 -- FAQ Inicial da Lia
+delete from public.faq where slug = 'falar-com-tauan';
 insert into public.faq (slug, question, keys, answer, active, sort_order, metadata)
 values
   (
     'quem-e-a-lia',
     'Quem é a Lia?',
     array['quem e voce','sobre a lia','o que voce faz','quem e a lia'],
-    'Sou a Lia, assistente pessoal e executiva do Tauan! Faço a recepção por aqui, tiro dúvidas rápidas, anoto recados e te conecto direto com ele quando precisar.',
+    'Sou a Lia, assistente de atendimento da equipe! Faço a recepção por aqui, tiro dúvidas rápidas, anoto recados e te conecto com a equipe quando precisar.',
     true,
     10,
     '{}'::jsonb
   ),
   (
-    'falar-com-tauan',
-    'Como falo com o Tauan?',
-    array['falar com tauan','tauan','falar com ele','humano','atendente'],
-    'Com certeza! Já dei um toque no Tauan e avisei que você chamou por aqui. Ele vai te responder diretamente assim que visualizar!',
+    'falar-com-responsavel',
+    'Como falo com o responsável?',
+    array['falar com responsavel','responsavel','falar com ele','humano','atendente'],
+    'Com certeza! Já avisei a equipe que você chamou por aqui. Você vai receber o retorno diretamente assim que visualizarem!',
     true,
     20,
     '{}'::jsonb
@@ -399,7 +400,7 @@ values
     'horarios-atendimento',
     'Qual o horário de atendimento?',
     array['horario','horarios','funcionamento','dias','quando atende'],
-    'Nosso atendimento acontece geralmente de segunda a sexta, em horário comercial, mas você pode deixar sua mensagem a qualquer hora que o Tauan responde.',
+    'Nosso atendimento acontece geralmente de segunda a sexta, em horário comercial, mas você pode deixar sua mensagem a qualquer hora que a equipe responde.',
     true,
     30,
     '{}'::jsonb

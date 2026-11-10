@@ -565,7 +565,7 @@ function renderHandoff() {
       const dName = esc(item.displayName || item.name || 'Contato');
       const fPhone = esc(item.phoneFormatted || item.phone || '');
       const cleanNum = String(item.phone || '').replace(/\D/g, '');
-      const reason = esc(item.handoffReason || 'Solicitação para falar diretamente com o Tauan');
+      const reason = esc(item.handoffReason || 'Solicitação para falar diretamente com o responsável');
       const timeWait = esc(item.time || 'recente');
       const urgency = item.handoffUrgency === 'urgente' ? '<span class="pill mini" style="background:#ffe6e2;color:#b85842;">URGENTE</span>' : '';
 
@@ -586,7 +586,7 @@ function renderHandoff() {
         <div class="handoff-actions">
           <button class="btn-handoff primary" data-open-chat="${esc(item.phone)}">Abrir Conversa</button>
           ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="btn-handoff wa">WhatsApp ↗</a>` : ''}
-          <button class="btn-handoff resume" data-resume-bot="${esc(item.phone)}">Reativar Lia (Bot)</button>
+          <button class="btn-handoff resume" data-resume-bot="${esc(item.phone)}">Reativar Bot</button>
         </div>
       </div>`;
     })
@@ -658,6 +658,7 @@ function renderAdmin() {
   document.querySelectorAll('[data-config]').forEach(input => {
     const value = adminGet(draft, input.dataset.config);
     if (input.type === 'checkbox') input.checked = Boolean(value);
+    else if (input.dataset.config === 'identity.aliases') input.value = Array.isArray(value) ? value.join(', ') : (value ?? '');
     else input.value = value ?? '';
   });
   updateHumanDestinationVisibility();
@@ -670,7 +671,10 @@ function renderAdmin() {
 function adminReadForm() {
   const draft = state.adminConfig.draft;
   document.querySelectorAll('[data-config]').forEach(input => {
-    const value = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.trim();
+    let value = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.trim();
+    if (input.dataset.config === 'identity.aliases') {
+      value = String(input.value).split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+    }
     adminSet(draft, input.dataset.config, value);
   });
   const fallbackInput = $('#admin-ai-fallbacks');
@@ -947,7 +951,7 @@ function startDashboard() {
     modal.innerHTML = `
       <div class="sim-modal-card">
         <h3>Nova Simulação de Atendimento</h3>
-        <p>Inicie uma sessão isolada para testar o comportamento da Lia sem enviar mensagens para o WhatsApp real.</p>
+        <p>Inicie uma sessão isolada para testar o comportamento da assistente sem enviar mensagens para o WhatsApp real.</p>
         <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;letter-spacing:0.5px;">Telefone de Simulação</label>
         <input id="modal-sim-phone" type="text" value="${defaultPhone}" inputmode="numeric" />
         <div class="sim-modal-actions">

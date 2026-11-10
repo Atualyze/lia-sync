@@ -10,7 +10,7 @@ export const toolTransferirSetor = {
     properties: {
       setor: {
         type: 'STRING',
-        description: 'Nome do setor para onde o cliente deseja ser direcionado. Ex: "comercial", "financeiro", "suporte", "tauan".'
+        description: 'Nome do setor para onde o cliente deseja ser direcionado. Ex: "comercial", "financeiro", "suporte", "responsavel".'
       },
       motivo: {
         type: 'STRING',

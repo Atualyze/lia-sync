@@ -6,7 +6,7 @@
  * 1. Fail-open: Se o fuso ou a configuração forem inválidos, a janela é considerada aberta (nunca silencia).
  * 2. Adiar e não descartar: Mensagens fora do expediente são marcadas com timestamp de abertura.
  * 3. Aviso amigável único por período fechado: Evita spam se o cliente mandar várias mensagens.
- * 4. Isenção total para o Tauan / Copiloto: O atendimento ao dono do sistema é 24/7 incondicional.
+ * 4. Isenção total para o responsável / Copiloto: O atendimento ao dono do sistema é 24/7 incondicional.
  */
 
 const HORA_RX = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;

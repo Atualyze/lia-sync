@@ -1,18 +1,19 @@
 import { sendText, sendWhatsAppAudio } from '../whatsapp.mjs';
+import { isOwnerKey } from '../core/identity.mjs';
 
 /**
  * Tool: enviar_mensagem_contato
- * Permite à Lia disparar uma mensagem ativa de WhatsApp para um contato externo sob comando do Tauan.
+ * Permite à assistente disparar uma mensagem ativa de WhatsApp para um contato externo sob comando do responsável.
  */
 export const toolEnviarMensagemContato = {
   name: 'enviar_mensagem_contato',
-  description: 'Envia ou dispara uma mensagem de WhatsApp ativa para um cliente ou contato externo sob o comando do Tauan. Recebe o telefone (com DDD) ou o nome do contato cadastrado na agenda/CRM para localização automática.',
+  description: 'Envia ou dispara uma mensagem de WhatsApp ativa para um cliente ou contato externo sob o comando do responsável. Recebe o telefone (com DDD) ou o nome do contato cadastrado na agenda/CRM para localização automática.',
   parameters: {
     type: 'OBJECT',
     properties: {
       recipient: {
         type: 'STRING',
-        description: 'Número de telefone com DDD (apenas dígitos, ex: 55889921538106, 88992153810) ou nome do contato cadastrado no CRM/agenda (ex: "Roniel", "Foxline", "Rodrigo Mesquita", "Emanuelle", "Lima").'
+        description: 'Número de telefone com DDD (apenas dígitos, ex: 5511999998888) ou nome do contato cadastrado no CRM/agenda (ex: "Roniel", "Foxline", "Rodrigo Mesquita", "Lima").'
       },
       message: {
         type: 'STRING',
@@ -20,7 +21,7 @@ export const toolEnviarMensagemContato = {
       },
       asAudio: {
         type: 'BOOLEAN',
-        description: 'Se true, sintetiza o texto em áudio realista com a voz da Lia e envia como mensagem de voz no WhatsApp.'
+        description: 'Se true, sintetiza o texto em áudio realista com a voz da assistente e envia como mensagem de voz no WhatsApp.'
       }
     },
     required: ['message']
@@ -36,7 +37,7 @@ export const toolEnviarMensagemContato = {
       } else if (context.session?.history && context.store?.sessions) {
         const recentTexts = context.session.history.slice(-4).map(h => h.content).join(' ');
         for (const [phone, s] of Object.entries(context.store.sessions)) {
-          if (phone === 'tauan_self' || !s.phone) continue;
+          if (isOwnerKey(phone) || !s.phone) continue;
           const name = s.clientName || s.pushName || s.contactName || '';
           if (name && name.length >= 3) {
             const regex = new RegExp('\\b' + name.trim() + '\\b', 'i');
@@ -80,7 +81,7 @@ export const toolEnviarMensagemContato = {
       const recLower = rawRec.toLowerCase();
       const sessions = Object.values(store.sessions || {});
       for (const s of sessions) {
-        if (!s || !s.phone || s.phone === 'tauan_self') continue;
+        if (!s || !s.phone || isOwnerKey(s.phone)) continue;
         const name = (s.clientName || s.pushName || s.contactName || '').toLowerCase();
         if (name && (name.includes(recLower) || recLower.includes(name))) {
           targetPhone = String(s.phone).replace(/@.*$/, '').replace(/\D/g, '');

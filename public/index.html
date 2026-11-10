@@ -75,9 +75,9 @@
       </nav>
 
       <div class="sidebar-foot">
-        <div class="avatar">TP</div>
+        <div class="avatar">EA</div>
         <div>
-          <strong>Tauan Pires</strong>
+          <strong>Equipe de Atendimento</strong>
           <span>Atendimento Humano</span>
         </div>
         <button class="more" id="logout" title="Sair ou recarregar">Sair</button>
@@ -193,10 +193,10 @@
             </div>
             <div class="admin-preview-form">
               <label>Telefone de Teste
-                <input id="admin-preview-phone" value="5588998340085" inputmode="numeric" />
+                <input id="admin-preview-phone" value="5588999999999" inputmode="numeric" />
               </label>
               <label class="preview-message-field">Mensagem do Cliente
-                <input id="admin-preview-text" value="Olá, gostaria de falar com o Tauan" />
+                <input id="admin-preview-text" value="Olá, gostaria de falar com o responsável" />
               </label>
               <button id="admin-preview-run" class="admin-primary-btn">Simular Resposta</button>
             </div>
@@ -218,11 +218,12 @@
                   <input id="admin-bot-name" data-config="identity.botName" />
                 </label>
                 <label>Responsável
-                  <input id="admin-veterinarian" data-config="identity.responsible" placeholder="Tauan Pires" />
+                  <input id="admin-veterinarian" data-config="identity.responsible" placeholder="Nome do responsável" />
                 </label>
                 <label>Empresa / Marca
                   <input id="admin-company-name" data-config="identity.companyName" />
                 </label>
+                <label>Apelidos do Responsável<input id="admin-identity-aliases" data-config="identity.aliases" placeholder="Ex.: Maria, Maria Silva" /><span class="field-hint" style="font-size: 11px; opacity: 0.7; margin-top: 4px; display: block;">Separe por vírgula. Usado para reconhecer o responsável nas mensagens.</span></label>
                 <label>Fuso Horário
                   <input id="admin-timezone" data-config="business.timezone" />
                 </label>
@@ -265,13 +266,13 @@
                     <option value="custom">Número de WhatsApp pessoal separado</option>
                   </select>
                 </label>
-                <label id="admin-human-phone-group">WhatsApp Pessoal do Tauan
-                  <input id="admin-human-phone" data-config="human.phone" inputmode="numeric" placeholder="558898340085" />
-                  <span class="field-hint" style="font-size: 11px; opacity: 0.7; margin-top: 4px; display: block;">Digite com DDI e DDD (ex: 558898340085)</span>
+                <label id="admin-human-phone-group">WhatsApp Pessoal do Responsável
+                  <input id="admin-human-phone" data-config="human.phone" inputmode="numeric" placeholder="5588999999999" />
+                  <span class="field-hint" style="font-size: 11px; opacity: 0.7; margin-top: 4px; display: block;">Digite com DDI e DDD (ex: 5588999999999)</span>
                 </label>
                 <label class="toggle-field">
                   <input id="admin-human-enabled" data-config="human.enabled" type="checkbox" />
-                  <span>Notificar Tauan no WhatsApp em transbordos</span>
+                  <span>Notificar o responsável no WhatsApp em transbordos</span>
                 </label>
               </div>
             </section>
@@ -292,7 +293,7 @@
                 <label>Opção 1 — "Atendimento"
                   <textarea id="admin-plans" data-config="messages.plans" rows="3"></textarea>
                 </label>
-                <label>Opção 2 — "Falar com Tauan"
+                <label>Opção 2 — "Falar com o responsável"
                   <textarea id="admin-services" data-config="messages.services" rows="3"></textarea>
                 </label>
                 <label>Políticas de Atendimento
@@ -338,7 +339,7 @@
                   </div>
                   <div class="agent-card-info">
                     <strong>Recepção e Triagem Dual</strong>
-                    <span>Classifica intenções entre Atendimento em Preparação ou Falar com Tauan</span>
+                    <span>Classifica intenções entre Atendimento em Preparação ou Falar com o responsável</span>
                   </div>
                 </div>
                 <div class="agent-card-item">
@@ -361,7 +362,7 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                   </div>
                   <div class="agent-card-info">
-                    <strong>Transbordo Direto para Tauan</strong>
+                    <strong>Transbordo Direto para o Responsável</strong>
                     <span>Disparo de alerta via WhatsApp com resumo e link wa.me direto</span>
                   </div>
                 </div>
@@ -518,7 +519,7 @@
           <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <strong>Fila de Transbordos (Atendimento Humano)</strong>
-              <span>Contatos aguardando retorno do Tauan ou em modo humano</span>
+              <span>Contatos aguardando retorno do responsável ou em modo humano</span>
             </div>
             <button class="action-btn-ping" id="refresh-handoff" title="Atualizar fila agora">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>

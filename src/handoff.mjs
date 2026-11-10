@@ -1,7 +1,11 @@
-export function summary(session, reason = 'solicitação de atendimento', urgency = 'normal') {
+import { resolveIdentity } from './core/identity.mjs';
+
+export function summary(session, reason = 'solicitação de atendimento', urgency = 'normal', identityInput = {}) {
+  const identity = resolveIdentity(identityInput);
+  const owner = identity.responsible || 'nossa equipe';
   const last = (session.history || [])
     .slice(-4)
-    .map(m => `• ${m.role === 'user' ? (session.clientName || 'Contato') : 'Lia'}: "${String(m.content || '').slice(0, 140)}"`)
+    .map(m => `• ${m.role === 'user' ? (session.clientName || 'Contato') : identity.botName}: "${String(m.content || '').slice(0, 140)}"`)
     .join('\n');
 
   const clientName = session.clientName || session.contactName || 'Contato';
@@ -10,7 +14,7 @@ export function summary(session, reason = 'solicitação de atendimento', urgenc
   const waLink = cleanDigits ? `https://wa.me/${cleanDigits}` : '—';
   const tagUrgency = urgency === 'emergencia' ? ' 🚨 *URGENTE*' : '';
 
-  return `🔔 *Novo contato para você, Tauan!*${tagUrgency}\n\n` +
+  return `🔔 *Novo contato para você, ${owner}!*${tagUrgency}\n\n` +
     `👤 *Nome:* ${clientName}\n` +
     `📱 *WhatsApp:* ${waLink}\n` +
     `🎯 *Motivo:* ${reason}\n\n` +
@@ -24,7 +28,8 @@ export async function triggerHandoff(session, {
   send,
   notify,
   forceNotify = false,
-  now = Date.now()
+  now = Date.now(),
+  identity = {}
 } = {}) {
   if (lastUserText) {
     session.history = [...(session.history || []), { role: 'user', content: lastUserText }];
@@ -47,13 +52,13 @@ export async function triggerHandoff(session, {
   );
   if (shouldNotify) {
     try {
-      await notify(summary(session, reason, urgency));
+      await notify(summary(session, reason, urgency, identity));
       session.handoffNotified = true;
       session.handoffNotifyFailed = false;
       session.lastNotifiedUrgency = urgency;
     } catch (e) {
       session.handoffNotifyFailed = true;
-      console.error('[handoff] Falha ao notificar Tauan:', e.message);
+      console.error('[handoff] Falha ao notificar responsável:', e.message);
     }
   }
 

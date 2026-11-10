@@ -1,4 +1,5 @@
-import { normalizePhone, isValidRealMobilePhone, isTauanContact } from './sessions.mjs';
+import { normalizePhone, isValidRealMobilePhone, isOwnerContact } from './sessions.mjs';
+import { isOwnerKey, resolveIdentity } from './core/identity.mjs';
 
 function hourAt(now, zone) {
   return Number(new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: '2-digit', hour12: false }).format(new Date(now)));
@@ -19,16 +20,19 @@ export async function processMaintenance({
   enableLeadFollowUp = true,
   followUpMinHours = 24,
   followUpMaxHours = 72,
+  identity = {},
   logger = console
 }) {
   const current = now();
+  const resolvedIdentity = resolveIdentity(identity);
+  const owner = resolvedIdentity.responsible || 'nossa equipe';
   const expiredSessions = store.purge?.() || 0;
   if (expiredSessions) store.markDirty?.();
   try { await store.purgeArchives?.(); } catch (e) { logger.warn?.('[maintenance] Falha ao aplicar retenção de archives:', e.message); }
   const hour = hourAt(current, timeZone);
   const daytime = hour >= 8 && hour < 20;
 
-  // 1. Processar Lembretes Agendados do Tauan
+  // 1. Processar Lembretes Agendados do responsável
   if (reminderStore) {
     const due = reminderStore.getPendingDue(current);
     for (const rem of due) {
@@ -46,12 +50,12 @@ export async function processMaintenance({
   // 2. Processar Sessões e Inatividades
   for (const [key, session] of Object.entries(store.sessions)) {
     if (key.startsWith('sim:')) continue;
-    if (key === 'tauan_self' || session.phone === 'tauan_self' || session.isInternalChat) continue;
+    if (isOwnerKey(key) || isOwnerKey(session.phone) || session.isInternalChat) continue;
 
     const rawPhone = session.phone || key;
 
-    // NUNCA processar sessões do próprio Tauan / Chat Interno
-    if (isTauanContact(rawPhone, humanPhone) || isTauanContact(key, humanPhone)) continue;
+    // NUNCA processar sessões do próprio responsável / Chat Interno
+    if (isOwnerContact(rawPhone, { humanPhone, identity: resolvedIdentity }) || isOwnerContact(key, { humanPhone, identity: resolvedIdentity })) continue;
 
     // Validação estrita de celular real brasileiro:
     // NUNCA envia mensagem nem follow-up para números fictícios, aleatórios ou inválidos (ex: 9999-8888, 11111111)
@@ -86,7 +90,7 @@ export async function processMaintenance({
       continue;
     }
 
-    // 2.2 Lembrete único para o Tauan de cliente aguardando atendimento
+    // 2.2 Lembrete único para o responsável de cliente aguardando atendimento
     const isTakeover = session.humanSource === 'takeover' || Boolean(session.takeoverAt);
     if (session.human && session.handoffAt && !session.handoffReminder1Sent && !isTakeover) {
       const elapsedMin = (current - new Date(session.handoffAt).getTime()) / 60000;
@@ -134,8 +138,8 @@ export async function processMaintenance({
         const userQuotes = session.history.filter(m => m && m.role === 'user' && typeof m.content === 'string').map(m => m.content.toLowerCase()).join(' ');
         const isCommercialProposal = /(?:preço|preco|valor|quanto|orçamento|orcamento|proposta|plano|pacote|custo|fechar|contratar)\b/i.test(userQuotes);
         const followUpMessage = isCommercialProposal
-          ? `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu avaliar a proposta ou se ficou com alguma dúvida sobre valores e prazos. Se quiser ajustar algo no projeto ou falar direto com o *Tauan*, fico à disposição! ✨`
-          : `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com o *Tauan*, fico à disposição! ✨`;
+          ? `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu avaliar a proposta ou se ficou com alguma dúvida sobre valores e prazos. Se quiser ajustar algo no projeto ou falar direto com *${owner}*, fico à disposição! ✨`
+          : `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com *${owner}*, fico à disposição! ✨`;
 
         session.history.push({ role: 'assistant', content: followUpMessage, createdAt: new Date(current).toISOString() });
         store.markDirty();
@@ -171,7 +175,7 @@ export async function processMaintenance({
     const message = stage === 1
       ? 'Oi! Passando só pra ver se você ainda precisa de alguma ajuda por aqui. Fico à disposição para qualquer dúvida! 😊\n\nFique à vontade pra responder quando puder!'
       : stage === 2
-      ? 'Oi de novo! 👋\n\nCaso queira continuar depois ou falar direto com o *Tauan*, é só me mandar uma mensagem aqui.'
+      ? 'Oi de novo! 👋\n\nCaso queira continuar depois ou falar direto com *' + owner + '*, é só me mandar uma mensagem aqui.'
       : 'Como não tive retorno, vou pausar nosso atendimento por agora. ⏸️\n\nQuando quiser continuar, é só me mandar um *oi*!';
 
     session.inactivityStage = stage;
