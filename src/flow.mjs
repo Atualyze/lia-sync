@@ -668,6 +668,34 @@ export function createFlow({
           return replyText;
         };
 
+        // Envia o PDF gerado como documento real no WhatsApp (o texto de confirmação continua no chat)
+        const deliverGeneratedPdf = async (pdfRes) => {
+          if (!pdfRes?.success || !pdfRes?.dataUrl) {
+            return { sent: false, error: pdfRes?.error || 'PDF não foi gerado' };
+          }
+          const targetPhone = String(rawItem?.jid || rawItem?.phone || getHumanPhone() || '')
+            .replace(/@.*$/, '')
+            .replace(/\D/g, '');
+          if (!targetPhone || targetPhone.length < 8) {
+            return { sent: false, error: 'Número de destino indisponível' };
+          }
+          if (typeof whatsapp?.sendDocument !== 'function') {
+            return { sent: false, error: 'Envio de documento indisponível' };
+          }
+          try {
+            await whatsapp.sendDocument(targetPhone, {
+              dataUrl: pdfRes.dataUrl,
+              fileName: pdfRes.fileName || 'documento.pdf',
+              mimetype: 'application/pdf'
+            });
+            return { sent: true, phone: targetPhone };
+          } catch (err) {
+            logger.error?.('[flow] Falha ao enviar PDF no WhatsApp:', err.message);
+            return { sent: false, error: err.message };
+          }
+        };
+
+
 
         // Análise multimodal se houver documentos ou imagens em anexo (Painel Chatwoot ou WhatsApp)
         let copilotDocAnalysis = null;
@@ -794,7 +822,10 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
             conteudo: 'Este documento oficial foi gerado instantaneamente via biblioteca pdfme sob demanda pelo chat interno da Lia.\n\n• Status Operacional: Conectado e Estável\n• Integração: PDF Engine TypeScript Native\n• Consumo de Recursos: Zero sobrecarga na VPS',
             valor: 'R$ 0,00 (Demonstrativo)'
           }, { clientName: 'Tauan Pires' });
-          const pdfMsg = `📄 *Documento Oficial Gerado com Sucesso (pdfme):*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${(pdfRes?.fileSize / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || 'Tauan Pires'}\n\n_O arquivo foi processado com layout executivo e está pronto para download ou envio!_ 🚀`;
+          const pdfDelivery = await deliverGeneratedPdf(pdfRes);
+          const pdfMsg = pdfDelivery.sent
+            ? `📄 *Documento Oficial Gerado e Enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || 'Tauan Pires'}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
+            : `📄 *Documento Oficial Gerado (pdfme):*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || 'Tauan Pires'}\n\n⚠️ _O PDF foi gerado, mas não pôde ser enviado: ${pdfDelivery.error}_`;
           return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
         }
 
@@ -1480,6 +1511,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
+        // PDF gerado por chamada de ferramenta do modelo: envia o arquivo real, não só o texto
+        const pdfResult = toolOutputs.find(t => t.tool === 'gerar_documento_pdf');
+        if (pdfResult?.result) {
+          const res = pdfResult.result;
+          const delivery = await deliverGeneratedPdf(res);
+          const pdfMsg = delivery.sent
+            ? `📄 *Documento Oficial Gerado e Enviado!*\n\n• *Arquivo:* ${res?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((res?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${res?.destinatario || 'Tauan Pires'}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
+            : `📄 *Documento Oficial Gerado (pdfme):*\n\n• *Arquivo:* ${res?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((res?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${res?.destinatario || 'Tauan Pires'}\n\n⚠️ _O PDF foi gerado, mas não pôde ser enviado: ${delivery.error}_`;
+          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+        }
+
         // Se disparou mensagem para contato externo via tool
         const sendToolResult = toolOutputs.find(t => t.tool === 'enviar_mensagem_contato');
         if (sendToolResult) {
@@ -2043,11 +2085,6 @@ ${errMsg}`;
       const autoVoiceEnabled = botConfig?.voice?.autoVoiceOnAudio !== false;
       const clientWantsVoiceNow = (mediaType === 'audio' && autoVoiceEnabled && s.audioPreference !== 'text') || s.audioPreference === 'audio';
 
-      if (clientWantsVoiceNow && !s.askedAudioPreference) {
-        s.askedAudioPreference = true;
-        finalReply = `${finalReply}\n\n_(Te respondi em áudio também! 🎙️ Prefere continuar nossa conversa por *áudio* ou por *texto*?)_`;
-      }
-
       s.history.push({ role: 'assistant', content: finalReply, createdAt: new Date(now()).toISOString() });
       if (s.history.length > 40) {
         s.history = s.history.slice(-30);
@@ -2063,11 +2100,7 @@ ${errMsg}`;
             if (voiceRes?.base64) {
               const targetJid = rawItem?.jid || phone;
               await whatsapp.sendWhatsAppAudio(targetJid, voiceRes.base64);
-              // Se o cliente já escolheu áudio ou estamos no fluxo automático de voz, enviamos o áudio!
-              // Caso tenhamos acabado de fazer a pergunta sobre preferência (texto complementar), retornamos apenas a perguntinha curta em texto ou null se não houver pergunta
-              if (finalReply !== safeReplyText) {
-                return `🎙️ _Enviei um áudio acima! Prefere continuar conversando por *áudio* ou por *texto*?_`;
-              }
+              // Áudio não leva legenda: a própria mensagem de voz é a resposta.
               return null;
             }
           }

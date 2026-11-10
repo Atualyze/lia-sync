@@ -11,7 +11,7 @@ import { createFlow } from './flow.mjs';
 import { splitReply } from './safety.mjs';
 import { askAI, getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq, faqAgeSeconds } from './faq.mjs';
-import { sendText, parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, getMediaBase64, getInstanceOwnerPhone, sendWhatsAppAudio } from './whatsapp.mjs';
+import { sendText, parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, getMediaBase64, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument } from './whatsapp.mjs';
 import { AI_AGENT_STRUCTURE } from './knowledge.mjs';
 import { listKnowledgeBases, getKnowledgeBaseContentSync, saveKnowledgeBase } from './knowledge-bases.mjs';
 import { authCache, validPhone, serveStatic } from './dashboard.mjs';
@@ -185,7 +185,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     ai: { askAI, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
-    whatsapp: { sendText, sendWhatsAppAudio, getMediaBase64 },
+    whatsapp: { sendText, sendWhatsAppAudio, sendDocument, getMediaBase64 },
     getHumanPhone,
     reminderStore,
     getTelemetry,

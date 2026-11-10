@@ -151,6 +151,48 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
   throw last;
 }
 
+export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento.pdf', mimetype = 'application/pdf', caption = '' } = {}, { retry = 2, onSent } = {}) {
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
+  const cleanB64 = String(dataUrl || base64 || '').replace(/^data:[^;]+;base64,/, '');
+  if (!cleanB64) throw Error('Documento sem conteúdo para envio');
+  let last;
+  for (let i = 0; i <= retry; i++) {
+    try {
+      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        body: JSON.stringify({ number: jid, presence: 'composing' })
+      }).catch(() => {});
+
+      const r = await fetch(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        body: JSON.stringify({
+          number: jid,
+          mediatype: 'document',
+          mimetype,
+          fileName,
+          media: cleanB64,
+          ...(caption ? { caption } : {})
+        })
+      });
+      if (!r.ok) {
+        const errText = await r.text().catch(() => '');
+        throw Error(`Evolution Document ${r.status}: ${errText}`);
+      }
+      const j = await r.json().catch(() => ({}));
+      const id = j?.key?.id || j?.data?.key?.id;
+      j && remember(id);
+      onSent?.(id);
+      return j;
+    } catch (e) {
+      last = e;
+      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+    }
+  }
+  throw last;
+}
+
 export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } = {}) {
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(audioBase64).replace(/^data:audio\/[^;]+;base64,/, '');

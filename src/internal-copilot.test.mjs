@@ -359,7 +359,7 @@ test('Ajuste na prévia do áudio: converte 3ª pessoa ("ele") para 2ª pessoa (
   assert.match(finalConfirm, /Áudio gravado e enviado com sucesso/i);
 });
 
-test('Cliente envia áudio: Lia responde em áudio E pergunta se o cliente prefere conversar por áudio ou texto', async () => {
+test('Cliente envia áudio: Lia responde apenas com áudio, sem legenda ou pergunta extra', async () => {
   const store = createMockStore();
   const clientPhone = '5585991099483';
   const sLima = store.get(clientPhone);
@@ -397,7 +397,29 @@ test('Cliente envia áudio: Lia responde em áudio E pergunta se o cliente prefe
 
   assert.equal(sentAudios.length, 1, 'Deve ter enviado a resposta sintetizada em áudio para o cliente');
   assert.match(sentAudios[0].base64, /Oi, Lima! Nosso atendimento funciona de segunda a sexta/);
-  assert.match(textFollowUp, /Prefere continuar conversando por \*áudio\* ou por \*texto\*\?/i);
+  assert.equal(textFollowUp, null, 'Áudio não deve levar legenda em texto');
+});
+
+test('Copiloto: gerar PDF envia o arquivo como documento real no WhatsApp', async () => {
+  const store = createMockStore();
+  const sentDocs = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendDocument: async (phone, doc) => { sentDocs.push({ phone, doc }); }
+    }
+  });
+
+  const reply = await flow.process({ phone: 'tauan_self', text: 'Lia, gerar pdf' });
+
+  assert.equal(sentDocs.length, 1, 'O PDF deve ser enviado como documento');
+  assert.equal(sentDocs[0].phone, '5588921694598');
+  assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/, 'Deve enviar o dataUrl do PDF');
+  assert.match(sentDocs[0].doc.fileName, /\.pdf$/);
+  assert.match(reply, /Documento Oficial Gerado e Enviado/i);
 });
 
 test('Sanitização de roteiro: remove completamente "o áudio pro lima informando sobre" mesmo com artigo definido ("o áudio")', async () => {
