@@ -197,7 +197,9 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "amanhã às 14h"} — programa retorno de contato ou lembrete.
    • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
    • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras na base de conhecimento oficial.
-   • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.`
+   • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
+    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
+    • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.`
     : `5. MODO ASSISTENTE PESSOAL DO TAUAN (PADRÃO - SEM EXECUÇÃO DE TOOLS):
    Você atua exclusivamente como a assistente executiva calorosa e acolhedora do ${responsible}. Faça a recepção, esclareça dúvidas com base no FAQ oficial e anote recados.
    Não execute comandos de ferramentas automatizadas. Mantenha "tool_calls": null.`
