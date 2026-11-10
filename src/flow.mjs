@@ -656,6 +656,18 @@ export function createFlow({
 
         let cleanTauan = String(text || '').trim();
 
+        const recordSelfTurn = (replyText) => {
+          sSelf.history.push({ role: 'user', content: cleanTauan, createdAt: new Date(now()).toISOString() });
+          sSelf.history.push({ role: 'assistant', content: replyText, createdAt: new Date(now()).toISOString() });
+          if (sSelf.history.length > 40) sSelf.history = sSelf.history.slice(-30);
+          sSelf.lastUserAt = new Date(now()).toISOString();
+          sSelf.lastBotAt = new Date(now()).toISOString();
+          sSelf.updatedAt = new Date(now()).toISOString();
+          store.markDirty();
+          return replyText;
+        };
+
+
         // Análise multimodal se houver documentos ou imagens em anexo (Painel Chatwoot ou WhatsApp)
         let copilotDocAnalysis = null;
         const targetAtt = Array.isArray(attachments) && attachments.length > 0 ? attachments[0] : null;
@@ -709,16 +721,7 @@ export function createFlow({
         const norm = normalize(strippedCmd);
         const telemetry = await getTelemetry?.();
 
-        const recordSelfTurn = (replyText) => {
-          sSelf.history.push({ role: 'user', content: cleanTauan, createdAt: new Date(now()).toISOString() });
-          sSelf.history.push({ role: 'assistant', content: replyText, createdAt: new Date(now()).toISOString() });
-          if (sSelf.history.length > 40) sSelf.history = sSelf.history.slice(-30);
-          sSelf.lastUserAt = new Date(now()).toISOString();
-          sSelf.lastBotAt = new Date(now()).toISOString();
-          sSelf.updatedAt = new Date(now()).toISOString();
-          store.markDirty();
-          return replyText;
-        };
+        
 
         // 1.0 Cancelamento Geral Imediato (prioridade máxima antes de qualquer processamento)
         const isExplicitCancel = /^(?:n[ãa]o(?:\s+(?:envia|manda|precisa|quero))?|cancela|cancelar|cancelado|abortar|esquece|deixa(?:\s+(?:quieto|pra\s+l[áa]))?|para|parar|n[ãa]o\s+envia|n[ãa]o\s+manda|n[ãa]o\s+precisa)\b/i.test(strippedCmd) ||
