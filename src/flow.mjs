@@ -782,7 +782,7 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
         }
 
         // 1.0.8 Atalho Direto: Geração de Documentos / Relatórios em PDF (pdfme)
-        if (/(?:gerars+(?:pdf|relat[oó]rio|proposta|or[cç]amento)|cria(?:r)?s+(?:ums+)?pdf|emitirs+(?:pdf|proposta))/i.test(norm)) {
+        if (/(?:gerar\s+(?:pdf|relat[oó]rio|proposta|or[cç]amento)|cria(?:r)?\s+(?:um\s+)?pdf|crie\s+(?:um\s+)?relat[oó]rio\s+em\s+p[df]f|emitir\s+(?:pdf|proposta))/i.test(norm)) {
           const pdfRes = await executeToolCall('gerar_documento_pdf', {
             tipo: /proposta/i.test(norm) ? 'proposta' : /or[cç]amento/i.test(norm) ? 'orcamento' : 'relatorio',
             titulo: 'Relatório Executivo Oficial • Lia Copilot',
@@ -965,7 +965,7 @@ _Dica: digite *ajuda* para ver todos os comandos disponíveis._`;
         // 1.3 Consulta de Contatos Aguardando (Fila)
         const isFilaQuery = /(?:fila|espera|aguardando|esperando|pendentes?|transbordos?)\b/i.test(norm) ||
           /^(?:quem|quais|lista)\b/i.test(norm);
-        if (isFilaQuery && !/(?:habilidade|capacidade|ferramenta|agenda|infra|dokku|servidor|quem [ée] voc[êe]|quem e vc|o que voc[êe])/i.test(norm)) {
+        if (isFilaQuery && !/(?:habilidade|capacidade|ferramenta|agenda|infra|dokku|servidor|quem [ée] voc[êe]|quem e vc|o que voc[êe]|quem [ée] voc|quem e você)/i.test(norm)) {
           const waiting = getWaitingList();
           if (!waiting.length) {
             const emptyMsg = `✨ *Fila de Atendimento Zerada!*

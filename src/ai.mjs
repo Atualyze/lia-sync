@@ -96,7 +96,7 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg') {
 export async function analyzeDocument({ base64, mimetype = 'application/pdf', caption = '' }) {
   if (!config.geminiKey || !base64) return null;
   const cleanMime = String(mimetype).split(';')[0].trim() || 'application/pdf';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${config.geminiKey}`;
   try {
     const promptText = `Você é a Lia, IA assistente executiva do Tauan (Atualyze).
 Analise este documento ou anexo com máxima fidelidade, precisão e síntese executiva.
