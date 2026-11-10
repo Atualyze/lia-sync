@@ -1,7 +1,7 @@
 services:
-  lia-sync:
+  bot:
     build: .
-    container_name: lia_sync
+    container_name: lia-bot
     restart: unless-stopped
     env_file: .env
     ports:
@@ -22,7 +22,7 @@ services:
         max-size: 10m
         max-file: "3"
     stop_grace_period: 15s
-    networks: [evolution_default]
+    networks: [default, evolution-net]
 networks:
-  evolution_default:
+  evolution-net:
     external: true
