@@ -406,7 +406,7 @@ test('Cliente envia áudio: Lia responde apenas com áudio, sem legenda ou pergu
   assert.equal(textFollowUp, null, 'Áudio não deve levar legenda em texto');
 });
 
-test('Copiloto: gerar PDF envia o arquivo como documento real no WhatsApp', async () => {
+test('Copiloto: gerar PDF pergunta as informações antes e gera após a resposta', async () => {
   const store = createMockStore();
   const sentDocs = [];
 
@@ -419,13 +419,45 @@ test('Copiloto: gerar PDF envia o arquivo como documento real no WhatsApp', asyn
     }
   });
 
-  const reply = await flow.process({ phone: 'tauan_self', text: 'Lia, gerar pdf' });
+  const ask = await flow.process({ phone: 'tauan_self', text: 'Lia, gerar pdf' });
+
+  assert.equal(sentDocs.length, 0, 'Não deve gerar PDF antes de perguntar');
+  assert.match(ask, /quais informa/i, 'Deve perguntar quais informações usar');
+
+  const reply = await flow.process({ phone: 'tauan_self', text: 'dados do sistema' });
 
   assert.equal(sentDocs.length, 1, 'O PDF deve ser enviado como documento');
   assert.equal(sentDocs[0].phone, '5588921694598');
   assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/, 'Deve enviar o dataUrl do PDF');
   assert.match(sentDocs[0].doc.fileName, /\.pdf$/);
-  assert.match(reply, /Relatório Operacional Gerado e Enviado/i);
+  assert.match(reply, /gerado e enviado/i);
+});
+
+test('Copiloto: orçamento sem detalhes pergunta; com detalhes gera direto', async () => {
+  const store = createMockStore();
+  const sentDocs = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendDocument: async (phone, doc) => { sentDocs.push({ phone, doc }); }
+    }
+  });
+
+  const ask = await flow.process({ phone: 'tauan_self', text: 'gerar orçamento' });
+  assert.equal(sentDocs.length, 0, 'Orçamento sem detalhes não gera direto');
+  assert.match(ask, /orçamento/i);
+  assert.match(ask, /valores/i);
+
+  const content = await flow.process({ phone: 'tauan_self', text: 'Implantação de chatbot com IA, 2 atendentes, prazo de 30 dias, valor R$ 4.500,00' });
+  assert.equal(sentDocs.length, 1, 'Resposta com os detalhes deve gerar o PDF');
+  assert.match(content, /gerado e enviado/i);
+
+  const direct = await flow.process({ phone: 'tauan_self', text: 'gerar orçamento: manutenção mensal do sistema, 10 horas, R$ 2.000,00, prazo 5 dias' });
+  assert.equal(sentDocs.length, 2, 'Pedido já com valores gera direto');
+  assert.match(direct, /gerado e enviado/i);
 });
 
 test('Sanitização de roteiro: remove completamente "o áudio pro lima informando sobre" mesmo com artigo definido ("o áudio")', async () => {

@@ -106,15 +106,66 @@ export async function handleOwnerSession({
           /^(?:pode\s+)?cancelar\b/i.test(strippedCmd);
 
         if (isExplicitCancel) {
-          const hadPending = Boolean(sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio);
+          const hadPending = Boolean(sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
           sSelf.pendingAudioConfirmation = null;
           sSelf.pendingRecipient = null;
           sSelf.pendingAsAudio = false;
+          sSelf.pendingPdf = null;
           store.markDirty();
           const cancelMsg = hadPending
             ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
             : `Tudo bem, ${owner}! Cancelado por aqui. Em que posso te ajudar agora?`;
           return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text);
+        }
+
+        // 1.0.1 PDF pendente: a resposta do dono vira o conteúdo do documento
+        const PDF_TYPES = [
+          { key: 'recibo', label: 'recibo' },
+          { key: 'declaracao', label: 'declaração' },
+          { key: 'proposta', label: 'proposta' },
+          { key: 'orcamento', label: 'orçamento' },
+          { key: 'relatorio', label: 'relatório' }
+        ];
+        const isSystemCmd = /^(?:ajuda|comandos|status|resumo|painel|diagnostico|fila|espera|infra|infraestrutura|servidores|agenda|ping|bot|lembretes|expediente|limpar|humano|quem)\b/i.test(norm);
+
+        if (sSelf.pendingPdf && !isSystemCmd) {
+          const pend = sSelf.pendingPdf;
+          // Se o dono pediu outro documento, descarta o pendente e recomeça o fluxo
+          if (/(?:gerar|criar|emitir|fazer|montar|preparar)\s+(?:um\s+|uma\s+)?(?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o|pdf)|(?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o)\s+em\s+pdf/i.test(norm)) {
+            sSelf.pendingPdf = null;
+            store.markDirty();
+          } else {
+            sSelf.pendingPdf = null;
+            store.markDirty();
+          const userContent = strippedCmd.trim();
+          if (/^(?:dados do sistema|sistema|raio-x|status atual|automático|automatico|operacional)$/i.test(norm) && pend.tipo === 'relatorio') {
+            // Relatório operacional com dados reais em tempo real
+            const sessionsArr = Object.values(store.sessions);
+            const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
+            const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
+            const remList = reminderStore ? reminderStore.listActive() : [];
+            const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
+            const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini';
+            const evoState = telemetry?.evolution?.status || 'conectado';
+            const evoBadge = (evoState === 'connected' || evoState === 'conectado') ? 'Conectado' : evoState;
+            const agora = new Date(now()).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            pend.conteudo = `### Resumo\nRelatório operacional gerado automaticamente pela ${assistant} em ${agora}, com base nos dados em tempo real do sistema.\n\n### Inteligência Artificial\n• Provedor ativo: ${provider}\n• Modelo em uso: ${model}\n• Status: operacional\n\n### Conexão WhatsApp (Evolution API)\n• Estado da conexão: ${evoBadge}\n\n### Atendimentos\n• Conversas em andamento: ${activeCount}\n• Em espera por atendimento humano: ${humanWaiting.length}${humanWaiting.length ? `\n• Aguardando retorno: ${humanWaiting.map(s => s.phone).slice(0, 10).join(', ')}` : ''}\n\n### Lembretes\n• Pendências ativas: ${remList.length}${remList.length ? `\n${remList.slice(0, 10).map(r => `• ${r.text || r.message || 'lembrete ativo'}`).join('\n')}` : ''}`;
+          } else {
+            pend.conteudo = userContent;
+          }
+          const pdfRes = await executeToolCall('gerar_documento_pdf', {
+            tipo: pend.tipo,
+            titulo: pend.titulo,
+            destinatario: pend.destinatario,
+            conteudo: pend.conteudo,
+            ...(pend.valor ? { valor: pend.valor } : {})
+          }, { clientName: owner, botConfig, identity });
+          const pdfDelivery = await deliverGeneratedPdf(pdfRes);
+          const pdfMsg = pdfDelivery.sent
+            ? `📄 *${pend.labelLabel || 'Documento'} gerado e enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
+            : `⚠️ *O PDF foi gerado, mas não pôde ser enviado:* ${pdfDelivery.error}`;
+          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+          }
         }
 
         // 1.0.5 Auto-conhecimento e Capacidades da assistente
@@ -162,28 +213,43 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
-        // 1.0.8 Atalho Direto: Geração de Relatório em PDF com dados reais do sistema
-        if (/(?:gerar\s+(?:pdf|relat[oó]rio)|cria(?:r)?\s+(?:um\s+)?pdf|crie\s+(?:um\s+)?relat[oó]rio\s+em\s+p[df]f)/i.test(norm)) {
-          const sessionsArr = Object.values(store.sessions);
-          const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
-          const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
-          const remList = reminderStore ? reminderStore.listActive() : [];
-          const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
-          const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini';
-          const evoState = telemetry?.evolution?.status || 'conectado';
-          const evoBadge = (evoState === 'connected' || evoState === 'conectado') ? 'Conectado' : evoState;
-          const agora = new Date(now()).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-          const pdfRes = await executeToolCall('gerar_documento_pdf', {
-            tipo: 'relatorio',
-            titulo: `Relatório Operacional • ${assistant}`,
-            destinatario: ownerLabel,
-            conteudo: `### Resumo\nRelatório operacional gerado automaticamente pela ${assistant} em ${agora}, com base nos dados em tempo real do sistema.\n\n### Inteligência Artificial\n• Provedor ativo: ${provider}\n• Modelo em uso: ${model}\n• Status: operacional\n\n### Conexão WhatsApp (Evolution API)\n• Estado da conexão: ${evoBadge}\n\n### Atendimentos\n• Conversas em andamento: ${activeCount}\n• Em espera por atendimento humano: ${humanWaiting.length}${humanWaiting.length ? `\n• Aguardando retorno: ${humanWaiting.map(s => s.phone).slice(0, 10).join(', ')}` : ''}\n\n### Lembretes\n• Pendências ativas: ${remList.length}${remList.length ? `\n${remList.slice(0, 10).map(r => `• ${r.text || r.message || 'lembrete ativo'}`).join('\n')}` : ''}`
-          }, { clientName: owner, botConfig, identity });
-          const pdfDelivery = await deliverGeneratedPdf(pdfRes);
-          const pdfMsg = pdfDelivery.sent
-            ? `📄 *Relatório Operacional Gerado e Enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
-            : `📄 *Documento Oficial Gerado (pdfme):*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n⚠️ _O PDF foi gerado, mas não pôde ser enviado: ${pdfDelivery.error}_`;
-          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+        // 1.0.8 Documentos em PDF: SEMPRE pergunta quais informações usar antes de gerar
+        const pdfDocMatch = norm.match(/(gerar|criar|emitir|fazer|montar|preparar)\s+(?:um\s+|uma\s+)?(relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o|pdf)|(?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o)\s+em\s+pdf/);
+        if (pdfDocMatch) {
+          const palavra = pdfDocMatch[2] || pdfDocMatch[1];
+          const tipoInfo = PDF_TYPES.find(t => palavra && (t.label === palavra || t.key === palavra)) || PDF_TYPES.find(t => t.key === 'relatorio');
+          const tipo = tipoInfo.key;
+          const tipoTitulo = { relatorio: 'Relatório Executivo', orcamento: 'Orçamento', proposta: 'Proposta Comercial', recibo: 'Recibo', declaracao: 'Declaração' }[tipo];
+          const titulo = `${tipoTitulo} • ${assistant}`;
+
+          // Já veio conteúdo no pedido? (texto longo com números/valores além do comando)
+          const bodyText = strippedCmd
+            .replace(new RegExp(`^.*?(?:gerar|criar|emitir|fazer|montar|preparar)\\s+(?:um\\s+|uma\\s+)?(?:${palavra})\\b`, 'i'), '')
+            .replace(/^\s*(?:em\s+pdf|agora|por favor|pra mim|para mim)\s*/i, '')
+            .trim();
+          const temConteudo = bodyText.length >= 40 && (/\d|R\$/i.test(bodyText));
+
+          if (temConteudo) {
+            const pdfRes = await executeToolCall('gerar_documento_pdf', {
+              tipo, titulo, destinatario: ownerLabel, conteudo: bodyText
+            }, { clientName: owner, botConfig, identity });
+            const pdfDelivery = await deliverGeneratedPdf(pdfRes);
+            const pdfMsg = pdfDelivery.sent
+              ? `📄 *${tipoTitulo} gerado e enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
+              : `⚠️ *O PDF foi gerado, mas não pôde ser enviado:* ${pdfDelivery.error}`;
+            return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+          }
+
+          sSelf.pendingPdf = { tipo, titulo, destinatario: ownerLabel, label: tipoInfo.label, labelLabel: tipoTitulo };
+          store.markDirty();
+          const perguntas = {
+            relatorio: `Claro, ${owner}! Antes de gerar o *relatório em PDF*, me diga quais informações ele deve ter.\n\n• Digite *dados do sistema* — eu monto com o raio-X em tempo real (IA, WhatsApp, atendimentos, lembretes)\n• Ou descreva o conteúdo: período, assunto, números e o que deve constar`,
+            orcamento: `Perfeito, ${owner}! Para o *orçamento em PDF* ficar completo, me informe:\n\n• *Serviço/produto* e descrição dos itens\n• *Quantidades* e *valores* de cada item (ou valor total)\n• *Prazo* de entrega/vigência\n• *Cliente* e observações, se houver`,
+            proposta: `Perfeito, ${owner}! Para a *proposta em PDF* ficar completa, me informe:\n\n• *Cliente* e escopo da proposta\n• *Itens/fases* com valores, se houver\n• *Prazo* e *condições* (pagamento, validade)\n• Alguma observação importante`,
+            recibo: `Ok, ${owner}! Para o *recibo em PDF* me informe:\n\n• *Quem pagou* e o que foi pago\n• *Valor* e forma de pagamento\n• *Data* do pagamento`,
+            declaracao: `Ok, ${owner}! Para a *declaração em PDF* me informe:\n\n• *Sobre o que* é a declaração\n• *Quem declara* e *quem recebe*\n• Fatos, datas e valores envolvidos`
+          };
+          return recordSelfTurn(filterReply(perguntas[tipo], { isCopilot: true }).text);
         }
 
         // 1.1 Ajuda e Comandos Internos
