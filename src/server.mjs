@@ -188,6 +188,10 @@ const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) ===
 if (isDirectRun) {
   const errors = validateConfig(); if (errors.length) { console.error(`[config] ${errors.join('; ')}`); process.exit(1); }
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(e); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
+  // Conexões SSE (/api/bridge/events) não podem ser mortas pelo requestTimeout padrão do Node (300s)
+  server.requestTimeout = 0;
+  server.headersTimeout = 65000;
+  server.keepAliveTimeout = 720000;
   server.listen(config.port, config.host, () => console.log(`Lia Sync escutando em ${config.host}:${config.port}`));
   const maintenance = () => processMaintenance({
     store,

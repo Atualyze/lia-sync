@@ -164,7 +164,8 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no'
     });
     res.write(': connected\n\n');
     bridgeSubscribers.add(res);
