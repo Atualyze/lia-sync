@@ -1,6 +1,43 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { resolveIdentity } from '../core/identity.mjs';
 
+// Substitui emojis e símbolos fora do Windows-1252 (fontes padrão do PDF não os suportam)
+const CHAR_MAP = { '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"', '\u2013': '-', '\u2014': '-', '\u2026': '...', '\u00A0': ' ', '\u2192': '->', '\u2022': '\u2022' };
+function sanitize(text = '') {
+  return String(text)
+    .replace(/[\u2018\u2019\u201C\u201D\u2013\u2014\u2026\u00A0\u2192]/g, c => CHAR_MAP[c] || ' ')
+    .replace(/[\uFE0E\uFE0F\u200D]/g, '')
+    .replace(/[^\u0000-\u00FF\u2022\n]/g, '');
+}
+
+function wrapLine(text, font, size, maxWidth) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  if (!words.length) return [''];
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      line = candidate;
+    } else {
+      if (line) lines.push(line);
+      if (font.widthOfTextAtSize(word, size) > maxWidth) {
+        // palavra maior que a linha inteira: corta por caractere
+        let chunk = '';
+        for (const ch of word) {
+          if (font.widthOfTextAtSize(chunk + ch, size) > maxWidth) {
+            lines.push(chunk);
+            chunk = ch;
+          } else chunk += ch;
+        }
+        line = chunk;
+      } else line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 /**
  * Ferramenta Executiva: Gerador de Documentos e Relatórios em PDF
  * Engine 100% nativa sem dependências externas complexas
@@ -26,7 +63,7 @@ export const toolGerarDocumentoPdf = {
       },
       conteudo: {
         type: 'STRING',
-        description: 'Texto principal estruturado com descrição, itens, valores e observações'
+        description: 'Corpo COMPLETO e detalhado do documento, com várias seções. Use "### " para iniciar uma seção (fica em negrito), "• " para itens de lista e linhas terminadas em ":" como subtítulos. Inclua TODAS as informações relevantes do pedido: contexto, itens, quantidades, valores, prazos, observações. Nunca envie um resumo de 1-2 frases; o documento precisa ter conteúdo real.'
       },
       valor: {
         type: 'STRING',
@@ -73,14 +110,16 @@ export const toolGerarDocumentoPdf = {
         color: rgb(0.31, 0.27, 0.90)
       });
 
-      // 3. Título Principal
-      page.drawText(titulo, {
-        x: 50,
-        y: height - 75,
-        size: 18,
-        font: fontBold,
-        color: rgb(0.06, 0.09, 0.16)
-      });
+      // 3. Título Principal (com quebra se longo)
+      for (const tl of wrapLine(sanitize(titulo), fontBold, 18, width - 100)) {
+        page.drawText(tl, {
+          x: 50,
+          y: height - 75,
+          size: 18,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16)
+        });
+      }
 
       // 4. Metadados
       const dataEmissao = new Date().toLocaleDateString('pt-BR', {
@@ -89,7 +128,7 @@ export const toolGerarDocumentoPdf = {
         year: 'numeric'
       });
 
-      page.drawText(`Destinatário: ${destinatario}`, {
+      page.drawText(sanitize(`Destinatário: ${destinatario}`), {
         x: 50,
         y: height - 105,
         size: 11,
@@ -113,57 +152,79 @@ export const toolGerarDocumentoPdf = {
         color: rgb(0.88, 0.91, 0.94)
       });
 
-      // 5. Conteúdo / Corpo do Documento
-      let currentY = height - 145;
-      const lines = conteudo.split('\n');
+      // 5. Conteúdo / Corpo do Documento (com quebra de linha e múltiplas páginas)
+      let pageCtx = { page, y: height - 145 };
+      const bodyMarginBottom = 110;
+      const lineHeight = 18;
+
+      const ensureSpace = (doc, ctx, needed) => {
+        if (ctx.y - needed < bodyMarginBottom) {
+          const newPage = doc.addPage([595.28, 841.89]);
+          return { page: newPage, y: newPage.getSize().height - 90 };
+        }
+        return ctx;
+      };
+
+      const lines = sanitize(conteudo).split('\n');
 
       for (const line of lines) {
-        if (currentY < 120) break; // limite de página
         if (line.trim().length === 0) {
-          currentY -= 12;
+          pageCtx.y -= 10;
           continue;
         }
 
-        const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
+        const isBullet = line.trim().startsWith('\u2022') || line.trim().startsWith('-');
         const isBoldLine = line.trim().startsWith('###') || line.trim().endsWith(':');
-        const textToDraw = line.replace(/^###\s*/, '').trim();
+        const raw = line.replace(/^###\s*/, '').trim();
+        if (!raw) continue;
 
-        page.drawText(textToDraw, {
-          x: isBullet ? 65 : 50,
-          y: currentY,
-          size: 10.5,
-          font: isBoldLine ? fontBold : fontRegular,
-          color: rgb(0.12, 0.16, 0.23),
-          maxWidth: width - 110
-        });
+        const size = isBoldLine ? 11.5 : 10.5;
+        const x = isBullet ? 65 : 50;
+        const maxWidth = width - (isBullet ? 130 : 110);
 
-        currentY -= 18;
+        const wrapped = wrapLine(raw, isBoldLine ? fontBold : fontRegular, size, maxWidth);
+        for (const wl of wrapped) {
+          pageCtx = ensureSpace(pdfDoc, pageCtx, lineHeight + 8);
+          pageCtx.page.drawText(wl, {
+            x,
+            y: pageCtx.y,
+            size,
+            font: isBoldLine ? fontBold : fontRegular,
+            color: rgb(0.12, 0.16, 0.23)
+          });
+          pageCtx.y -= lineHeight;
+        }
+        if (isBoldLine) pageCtx.y -= 6; // respiro após seção
       }
+
+      const pageNow = pageCtx.page;
+      const { width: wNow, height: hNow } = pageNow.getSize();
 
       // 6. Box de Valor (se houver)
       if (valor) {
-        currentY = Math.max(currentY - 10, 160);
-        page.drawRectangle({
+        const vCtx = ensureSpace(pdfDoc, pageCtx, 70);
+        const vy = Math.max(vCtx.y - 10, 160);
+        vCtx.page.drawRectangle({
           x: 50,
-          y: currentY - 35,
-          width: width - 100,
+          y: vy - 35,
+          width: wNow - 100,
           height: 45,
           color: rgb(0.96, 0.97, 1.0),
           borderColor: rgb(0.78, 0.82, 0.98),
           borderWidth: 1
         });
 
-        page.drawText('INVESTIMENTO / VALOR TOTAL:', {
+        vCtx.page.drawText('INVESTIMENTO / VALOR TOTAL:', {
           x: 65,
-          y: currentY - 12,
+          y: vy - 12,
           size: 9,
           font: fontBold,
           color: rgb(0.31, 0.27, 0.90)
         });
 
-        page.drawText(valor, {
+        vCtx.page.drawText(sanitize(valor), {
           x: 65,
-          y: currentY - 28,
+          y: vy - 28,
           size: 14,
           font: fontBold,
           color: rgb(0.06, 0.09, 0.16)
@@ -171,17 +232,17 @@ export const toolGerarDocumentoPdf = {
       }
 
       // 7. Rodapé de Autenticidade
-      page.drawLine({
+      pageNow.drawLine({
         start: { x: 50, y: 70 },
-        end: { x: width - 50, y: 70 },
+        end: { x: wNow - 50, y: 70 },
         thickness: 1,
         color: rgb(0.88, 0.91, 0.94)
       });
 
       const footer = `Gerado automaticamente pela ${identity.botName}` +
-        (identity.companyName ? ` • ${identity.companyName}` : '') +
+        (identity.companyName ? ` \u2022 ${identity.companyName}` : '') +
         (identity.responsible ? ` (${identity.responsible})` : '');
-      page.drawText(footer, {
+      pageNow.drawText(sanitize(footer), {
         x: 50,
         y: 52,
         size: 8.5,

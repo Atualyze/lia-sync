@@ -163,7 +163,7 @@ Contrato de saída JSON obrigatório:
 }
 (Observação: preencha "tool_calls" com [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] SEMPRE que o responsável pedir para disparar ou enviar mensagem para um cliente; caso contrário, use []).
 (Observação 2: preencha "reminder" com {"text": "...", "dueAt": "..."} APENAS se o responsável pediu para criar um lembrete).
-    • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} — gera relatórios e propostas oficiais em PDF via pdfme.`;
+    • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} — gera documentos oficiais em PDF. IMPORTANTE: preencha "conteudo" com o corpo COMPLETO e detalhado do documento, em várias seções — use "### Título da seção", itens com "• " e linhas terminadas em ":" para subtítulos. Inclua todos os dados do pedido (itens, quantidades, valores, prazos, observações). NUNCA envie um resumo de 1 ou 2 frases; PDFs vazios são defeito grave.`;
   }
 
   const messagesBase = {

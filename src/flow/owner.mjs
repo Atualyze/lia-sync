@@ -162,18 +162,26 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
-        // 1.0.8 Atalho Direto: Geração de Documentos / Relatórios em PDF (pdfme)
-        if (/(?:gerar\s+(?:pdf|relat[oó]rio|proposta|or[cç]amento)|cria(?:r)?\s+(?:um\s+)?pdf|crie\s+(?:um\s+)?relat[oó]rio\s+em\s+p[df]f|emitir\s+(?:pdf|proposta))/i.test(norm)) {
+        // 1.0.8 Atalho Direto: Geração de Relatório em PDF com dados reais do sistema
+        if (/(?:gerar\s+(?:pdf|relat[oó]rio)|cria(?:r)?\s+(?:um\s+)?pdf|crie\s+(?:um\s+)?relat[oó]rio\s+em\s+p[df]f)/i.test(norm)) {
+          const sessionsArr = Object.values(store.sessions);
+          const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
+          const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
+          const remList = reminderStore ? reminderStore.listActive() : [];
+          const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
+          const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini';
+          const evoState = telemetry?.evolution?.status || 'conectado';
+          const evoBadge = (evoState === 'connected' || evoState === 'conectado') ? 'Conectado' : evoState;
+          const agora = new Date(now()).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
           const pdfRes = await executeToolCall('gerar_documento_pdf', {
-            tipo: /proposta/i.test(norm) ? 'proposta' : /or[cç]amento/i.test(norm) ? 'orcamento' : 'relatorio',
-            titulo: `Relatório Executivo Oficial • ${assistant} Copilot`,
+            tipo: 'relatorio',
+            titulo: `Relatório Operacional • ${assistant}`,
             destinatario: ownerLabel,
-            conteudo: `Este documento oficial foi gerado instantaneamente via biblioteca pdfme sob demanda pelo chat interno da ${assistant}.\n\n• Status Operacional: Conectado e Estável\n• Integração: PDF Engine TypeScript Native\n• Consumo de Recursos: Zero sobrecarga na VPS`,
-            valor: 'R$ 0,00 (Demonstrativo)'
+            conteudo: `### Resumo\nRelatório operacional gerado automaticamente pela ${assistant} em ${agora}, com base nos dados em tempo real do sistema.\n\n### Inteligência Artificial\n• Provedor ativo: ${provider}\n• Modelo em uso: ${model}\n• Status: operacional\n\n### Conexão WhatsApp (Evolution API)\n• Estado da conexão: ${evoBadge}\n\n### Atendimentos\n• Conversas em andamento: ${activeCount}\n• Em espera por atendimento humano: ${humanWaiting.length}${humanWaiting.length ? `\n• Aguardando retorno: ${humanWaiting.map(s => s.phone).slice(0, 10).join(', ')}` : ''}\n\n### Lembretes\n• Pendências ativas: ${remList.length}${remList.length ? `\n${remList.slice(0, 10).map(r => `• ${r.text || r.message || 'lembrete ativo'}`).join('\n')}` : ''}`
           }, { clientName: owner, botConfig, identity });
           const pdfDelivery = await deliverGeneratedPdf(pdfRes);
           const pdfMsg = pdfDelivery.sent
-            ? `📄 *Documento Oficial Gerado e Enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
+            ? `📄 *Relatório Operacional Gerado e Enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
             : `📄 *Documento Oficial Gerado (pdfme):*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n⚠️ _O PDF foi gerado, mas não pôde ser enviado: ${pdfDelivery.error}_`;
           return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
         }

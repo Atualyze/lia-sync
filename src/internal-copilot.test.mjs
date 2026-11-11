@@ -425,7 +425,7 @@ test('Copiloto: gerar PDF envia o arquivo como documento real no WhatsApp', asyn
   assert.equal(sentDocs[0].phone, '5588921694598');
   assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/, 'Deve enviar o dataUrl do PDF');
   assert.match(sentDocs[0].doc.fileName, /\.pdf$/);
-  assert.match(reply, /Documento Oficial Gerado e Enviado/i);
+  assert.match(reply, /Relatório Operacional Gerado e Enviado/i);
 });
 
 test('Sanitização de roteiro: remove completamente "o áudio pro lima informando sobre" mesmo com artigo definido ("o áudio")', async () => {
