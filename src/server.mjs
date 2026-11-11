@@ -5,6 +5,7 @@ import { config, validateConfig } from './config.mjs';
 import { SessionStore } from './sessions.mjs';
 import { createFlow } from './flow.mjs';
 import { splitReply } from './safety.mjs';
+import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
 import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, getMediaBase64 } from './whatsapp.mjs';
@@ -136,7 +137,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
   const deliver = (job) => store.enqueue(job.phone, () => f.process({ ...job, messageId: job.keyId || '' })).then(async answer => {
     if (!answer) return;
-    const parts = splitReply(answer);
+    const parts = splitReply(formatOutgoingMessage(answer));
     for (let i = 0; i < parts.length; i++) {
       if (i) await new Promise(resolve => setTimeout(resolve, 1000));
       await sendText(deliveryTarget(job, getHumanPhone()), parts[i]);

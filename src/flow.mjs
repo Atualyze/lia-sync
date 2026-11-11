@@ -3,6 +3,7 @@ import { resolveIdentity, isOwnerContact, OWNER_SELF_KEY } from './core/identity
 import { resolveMessages } from './core/messages.mjs';
 import { handleOwnerSession } from './flow/owner.mjs';
 import { handleClientMessage } from './flow/client.mjs';
+import { formatOutgoingMessage } from './core/format.mjs';
 
 export {
   collectedValid, isHumanRequest, isTalkToTauanRequest, isAtendimentoOption,
@@ -58,7 +59,7 @@ export function createFlow({
       logger.warn?.('[notify] humanPhone não definido; notificação registrada apenas no painel.');
       return undefined;
     }
-    return whatsapp.sendText?.(phone, message);
+    return whatsapp.sendText?.(phone, formatOutgoingMessage(message));
   };
 
   const identityNow = () => resolveIdentity(getBotConfig() || {});
