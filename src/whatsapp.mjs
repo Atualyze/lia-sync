@@ -129,7 +129,7 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({ number: jid, presence: 'composing' })
+        body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
       }).catch(() => {});
 
       const r = await fetch(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, {
@@ -161,7 +161,7 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({ number: jid, presence: 'composing' })
+        body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
       }).catch(() => {});
 
       const r = await fetch(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, {
@@ -202,7 +202,7 @@ export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } 
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({ number: jid, presence: 'recording' })
+        body: JSON.stringify({ number: jid, presence: 'recording', delay: 500 })
       }).catch(() => {});
 
       const r = await fetch(`${config.evolutionUrl}/message/sendWhatsAppAudio/${encodeURIComponent(config.evolutionInstance)}`, {

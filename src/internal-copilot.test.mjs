@@ -687,7 +687,10 @@ test('Copiloto: Pedido de áudio no chat interno gera fala natural como assisten
     text: 'Lia, me mande um áudio no chat interno perguntando se o cliente vai querer a proposta'
   });
 
-  assert.match(reply, /Áudio gravado e enviado para você/i);
+  // Sem whatsapp.sendWhatsAppAudio configurado, o envio não acontece e a resposta
+  // deve ser honesta sobre a falha, mantendo o conteúdo no texto.
+  assert.match(reply, /Não consegui enviar o áudio no momento/i);
+  assert.match(reply, /Passando para saber se/i);
   assert.doesNotMatch(synthesizedText, /Queria aproveitar para alinhar com você que/i);
   assert.match(synthesizedText, /Passando para saber se/i);
 

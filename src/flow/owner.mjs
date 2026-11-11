@@ -987,9 +987,11 @@ ${errMsg}`;
           if (voiceRes?.base64) {
             sSelf.lastAudioBase64 = voiceRes.base64;
             const selfTargetPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+            let audioSent = false;
             if (selfTargetPhone && selfTargetPhone.length >= 8 && whatsapp?.sendWhatsAppAudio) {
               try {
                 await whatsapp.sendWhatsAppAudio(selfTargetPhone, voiceRes.base64);
+                audioSent = true;
               } catch (audioErr) {
                 logger.error?.('[flow] Erro ao enviar áudio do Copiloto no WhatsApp:', audioErr.message);
               }
@@ -997,7 +999,9 @@ ${errMsg}`;
             const displayReply = rawReply.startsWith(`Estou aqui, ${owner}`)
               ? 'Áudio de demonstração gerado com sucesso para você!'
               : rawReply;
-            const okSelfReply = `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}`;
+            const okSelfReply = audioSent
+              ? `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}`
+              : `⚠️ *Não consegui enviar o áudio no momento, mas aqui está a resposta:*\n\n${displayReply}`;
             return recordSelfTurn(filterReply(okSelfReply, { isCopilot: true }).text);
           } else {
             const fallbackReply = `⚠️ *Não consegui gerar o áudio no momento, mas aqui está a explicação:*\n\n${rawReply}`;
