@@ -59,8 +59,9 @@ async function initAuth() {
   try {
     const response = await fetch(`${API_BASE}/api/dashboard/auth/config`);
     const config = await response.json().catch(() => ({}));
-    if (config.allowUnauthenticated || (!config.supabaseUrl && !config.publishableKey)) {
-      showDashboard();
+    if (!config.supabaseUrl || !config.publishableKey) {
+      showLogin();
+      $('#login-error').textContent = 'Autenticação indisponível: configure o provedor de login.';
       return;
     }
     const { createClient } = await import('/dashboard/vendor/supabase.js');
@@ -105,7 +106,8 @@ async function initAuth() {
       else showLogin();
     });
   } catch (error) {
-    showDashboard();
+    showLogin();
+    $('#login-error').textContent = readableAuthError(error);
   }
 }
 

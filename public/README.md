@@ -41,12 +41,12 @@ Somente para desenvolvimento local:
 
 ```bash
 ALLOW_INSECURE_WEBHOOK=true \
-ALLOW_UNAUTHENTICATED_DASHBOARD=true \
+HOST=127.0.0.1 \
 EVOLUTION_INSTANCE=lia-sync \
 npm start
 ```
 
-Depois abra `http://127.0.0.1:3000/dashboard`.
+Esse modo só permite o webhook sem token em desenvolvimento local, vinculado ao loopback. A autenticação do painel continua obrigatória; configure o Supabase para entrar em `http://127.0.0.1:3000/dashboard`.
 
 Para acessar remotamente com segurança, mantenha a porta 3000 vinculada a `127.0.0.1` e use um túnel SSH:
 

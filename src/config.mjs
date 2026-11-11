@@ -2,15 +2,17 @@ import path from 'node:path';
 
 const bool = (name, fallback = false) => process.env[name] === undefined ? fallback : process.env[name] === 'true';
 const num = (name, fallback) => Number.isFinite(Number(process.env[name])) ? Number(process.env[name]) : fallback;
+const bindHost = process.env.HOST || '0.0.0.0';
+const loopbackHost = bindHost === 'localhost' || bindHost === '::1' || /^127\./.test(bindHost);
 
 export const config = Object.freeze({
   port: num('PORT', 3000),
-  host: process.env.HOST || '0.0.0.0',
+  host: bindHost,
   evolutionUrl: (process.env.EVOLUTION_API_URL || '').replace(/\/$/, ''),
   evolutionKey: process.env.EVOLUTION_API_KEY || '',
   evolutionInstance: process.env.EVOLUTION_INSTANCE || '',
   webhookToken: process.env.WEBHOOK_TOKEN || '',
-  allowInsecureWebhook: bool('ALLOW_INSECURE_WEBHOOK'),
+  allowInsecureWebhook: bool('ALLOW_INSECURE_WEBHOOK') && process.env.NODE_ENV !== 'production' && loopbackHost,
   aiMaxOutputTokens: Math.max(1024, num('AI_MAX_OUTPUT_TOKENS', 1024)),
   aiTimeoutMs: num('AI_TIMEOUT_MS', 30000),
   geminiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
@@ -37,7 +39,8 @@ export const config = Object.freeze({
   inactivityCheckSeconds: num('INACTIVITY_CHECK_SECONDS', 30),
   dashboardOrigin: process.env.DASHBOARD_ORIGIN || '',
   chatwootInternalUrl: process.env.CHATWOOT_INTERNAL_URL || 'http://chatwoot-lia:4000',
-  allowUnauthenticatedDashboard: process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true',
+  // Retained for compatibility with older clients; unauthenticated access is disabled.
+  allowUnauthenticatedDashboard: false,
   dashboardRoles: (process.env.DASHBOARD_ALLOWED_ROLES || '').split(',').map(s => s.trim()).filter(Boolean),
   supabaseUrl: (process.env.SUPABASE_URL || '').replace(/\/$/, ''),
   supabaseKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',

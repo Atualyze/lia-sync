@@ -52,6 +52,12 @@ export function isVerifiedWebhookEndpoint(method, pathname) {
 export function isLegacyStaticPath(pathname) {
   return (
     pathname === '/legacy-dashboard' ||
+    pathname === '/dashboard' ||
+    pathname === '/dashboard/' ||
+    pathname === '/dashboard/index.html' ||
+    pathname === '/dashboard/app.js' ||
+    pathname === '/dashboard/styles.css' ||
+    pathname.startsWith('/dashboard/vendor/') ||
     pathname === '/conectar.html' ||
     pathname === '/qrcode.png' ||
     pathname === '/app.js' ||

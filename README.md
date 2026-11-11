@@ -96,14 +96,13 @@ npm start
 
 `EVOLUTION_INSTANCE` não tem default implícito e deve ser o nome da instância no Evolution API (ex.: `lia-sync`). Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento.
 
-Para testar o painel localmente sem Supabase, use somente em desenvolvimento:
+Para iniciar o servidor localmente sem `WEBHOOK_TOKEN`, use somente em desenvolvimento e vincule-o ao loopback. O painel continua exigindo autenticação do Supabase; `ALLOW_UNAUTHENTICATED_DASHBOARD` não habilita acesso anônimo:
 
 ```bash
 PORT=3000 \
-HOST=0.0.0.0 \
+HOST=127.0.0.1 \
 EVOLUTION_INSTANCE=lia-sync \
 ALLOW_INSECURE_WEBHOOK=true \
-ALLOW_UNAUTHENTICATED_DASHBOARD=true \
 npm start
 ```
 

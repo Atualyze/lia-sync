@@ -6,10 +6,27 @@ import { getKnowledgeBaseContentSync, listKnowledgeBases, saveKnowledgeBase } fr
 import { sendText } from '../whatsapp.mjs';
 import { broadcastBridgeEvent, bridgeSubscribers } from './bridge.mjs';
 
+async function isBridgeAuthorized(req, webhookAuthorize) {
+  try {
+    const result = typeof webhookAuthorize === 'function'
+      ? await webhookAuthorize(req)
+      : authorized(req);
+    return typeof result === 'object' && result !== null ? result.ok === true : result === true;
+  } catch {
+    return false;
+  }
+}
+
+function bridgeCorsHeaders(req) {
+  return config.dashboardOrigin && req.headers.origin === config.dashboardOrigin
+    ? { 'Access-Control-Allow-Origin': config.dashboardOrigin, Vary: 'Origin' }
+    : {};
+}
+
 // Rotas /api/bridge/* (inclui o stream SSE de eventos).
 export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize }) {
   if (req.method === 'POST' && u.pathname === '/api/bridge/message') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -59,7 +76,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/mode') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -104,7 +121,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/send') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -158,13 +175,14 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     }
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/events') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (req.headers.origin && (!config.dashboardOrigin || req.headers.origin !== config.dashboardOrigin)) return json(res, 403, { error: 'origin_not_allowed' });
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      ...bridgeCorsHeaders(req),
       'X-Accel-Buffering': 'no'
     });
     res.write(': connected\n\n');
@@ -179,7 +197,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     return;
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/conversations') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     if (Object.keys(store.sessions).length === 0) {
       await store.refresh?.().catch(() => {});
@@ -227,7 +245,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     return json(res, 200, { ok: true, sessions: list });
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/knowledge-bases') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     const id = u.searchParams.get('id');
     if (id) {
@@ -239,7 +257,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     return json(res, 200, { ok: true, knowledgeBases: bases });
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/knowledge-bases') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     let body;
     try { body = await readBody(req, 2 * 1024 * 1024); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -251,7 +269,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/contact-context') {
-    const isBridgeAuth = config.allowUnauthenticatedDashboard || (webhookAuthorize ? await webhookAuthorize(req) : authorized(req));
+    const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }

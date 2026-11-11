@@ -20,6 +20,12 @@ export const ALL_TOOLS = [
   toolGerarDocumentoPdf
 ];
 
+const CLIENT_ALLOWED_TOOL_NAMES = new Set([
+  'agendar_retorno_ou_followup',
+  'consultar_base_conhecimento'
+]);
+export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(toolName);
+
 export {
   toolConsultarContato,
   toolAgendarRetorno,
@@ -51,6 +57,9 @@ export function getGeminiToolDeclarations(tools = ALL_TOOLS) {
  * Executa uma ferramenta pelo nome com os argumentos passados
  */
 export async function executeToolCall(toolName, args = {}, context = {}) {
+  if (context.actor === 'client' && !CLIENT_ALLOWED_TOOL_NAMES.has(toolName)) {
+    return { error: 'Ferramenta indisponível neste fluxo.' };
+  }
   const tool = ALL_TOOLS.find(t => t.name === toolName);
   if (!tool) {
     return { error: 'Ferramenta "' + toolName + '" não encontrada.' };

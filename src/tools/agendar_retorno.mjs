@@ -24,12 +24,20 @@ export const toolAgendarRetorno = {
     required: ['reason', 'when']
   },
   async execute({ phone, reason, when }, context = {}) {
-    const targetPhone = phone ? String(phone).replace(/\D/g, '') : context.phone;
+    const sessionPhone = String(context.phone || '').replace(/^sim:/i, '');
+    const clientPhoneValid = /^\d{8,15}$/.test(sessionPhone) || /^\d+@lid$/i.test(sessionPhone);
+    const clientPhone = clientPhoneValid ? sessionPhone : '';
+    const targetPhone = context.actor === 'client'
+      ? clientPhone
+      : (phone ? String(phone).replace(/\D/g, '') : context.phone);
     const clientName = context.clientName || 'Cliente';
     const reasonText = String(reason || '').trim();
     const whenText = String(when || '').trim();
     const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i;
     const dueDate = new Date(whenText);
+    if (context.actor === 'client' && !clientPhoneValid) {
+      return { success: false, error: 'Invalid session phone for reminder.' };
+    }
     if (!reasonText) return { success: false, error: 'Informe um motivo válido para o lembrete.' };
     if (!isoDateTime.test(whenText) || !Number.isFinite(dueDate.getTime()) || dueDate.getTime() <= Date.now()) {
       return { success: false, error: 'Informe uma data e hora futura em ISO 8601 com fuso horário.' };

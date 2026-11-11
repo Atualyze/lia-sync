@@ -19,6 +19,28 @@ export const toolConsultarBaseConhecimento = {
     required: ['termo']
   },
   async execute({ termo }, context = {}) {
+    if (context.actor === 'client') {
+      const session = context.session || {};
+      const assignedKb = session.supportModeEnabled && session.knowledgeBaseId
+        ? listKnowledgeBasesSync().find(kb => kb.id === session.knowledgeBaseId)
+        : null;
+      if (assignedKb?.content) {
+        return {
+          found: true,
+          termo,
+          base: assignedKb.title,
+          versao: assignedKb.version,
+          resposta: assignedKb.content.slice(0, 12000)
+        };
+      }
+
+      const rawFaq = context.botConfig?.knowledge?.faq || FAQ || [];
+      const answer = findFaqInItems(termo, rawFaq);
+      return answer
+        ? { found: true, termo, resposta: answer }
+        : { found: false, termo, mensagem: 'Nenhum item espec\u00edfico encontrado na base.' };
+    }
+
     const matchedKb = findMatchingKnowledgeBaseSync(termo);
     if (matchedKb && matchedKb.content) {
       return {
