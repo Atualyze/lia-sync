@@ -31,6 +31,19 @@ test('consultar_web distingue consulta inválida, timeout e erro HTTP', async ()
   assert.equal(httpError.error.code, 'WEB_SEARCH_HTTP_503');
 });
 
+test('consultar_web usa a mensagem original se o modelo omitir query', async () => {
+  let received = '';
+  const result = await toolConsultarWeb.execute({}, {
+    userText: 'faça uma consulta web sobre Godzilla',
+    searchWebWithGemini: async query => {
+      received = query;
+      return { text: 'resultado mockado', queries: [], sources: [] };
+    }
+  });
+  assert.equal(result.success, true);
+  assert.equal(received, 'faça uma consulta web sobre Godzilla');
+});
+
 test('fluxo client executa consultar_web, entrega dado não confiável ao modelo e não entra em loop', async () => {
   const store = await makeStore('client');
   let calls = 0;

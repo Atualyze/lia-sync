@@ -910,6 +910,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   ai,
                   botConfig,
                   session: sSelf,
+                  userText: cleanCommand,
                   searchWebWithGemini: ai?.searchWebWithGemini
                 });
                 toolOutputs.push({ tool: tc.name, args: tc.args, result: toolRes });

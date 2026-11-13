@@ -22,7 +22,11 @@ export const toolConsultarWeb = {
     required: ['query']
   },
   async execute({ query } = {}, context = {}) {
-    const normalizedQuery = String(query || '').trim().slice(0, MAX_QUERY_CHARS);
+    // Alguns modelos emitem a chamada da ferramenta sem preencher o argumento
+    // obrigatório. Nesse caso, a mensagem original ainda é uma consulta segura;
+    // nunca executamos a ferramenta com uma string vazia.
+    const fallbackQuery = context.userText || context.originalUserText || '';
+    const normalizedQuery = String(query || fallbackQuery).trim().slice(0, MAX_QUERY_CHARS);
     if (!normalizedQuery) {
       return { success: false, error: { code: 'INVALID_QUERY', message: 'A consulta web não pode ficar vazia.' } };
     }

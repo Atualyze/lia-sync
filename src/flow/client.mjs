@@ -384,6 +384,7 @@ export async function handleClientMessage({
                 botConfig,
                 identity,
                 session: s,
+                userText,
                 searchWebWithGemini: ai?.searchWebWithGemini
               });
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
