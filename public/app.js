@@ -800,8 +800,13 @@ function queueAdminSave() {
 }
 
 async function renderAdminData() {
+  const requestVersion = state.adminChangeVersion;
   try {
-    state.adminConfig = await api('/api/admin/config');
+    const snapshot = await api('/api/admin/config');
+    // A requisição pode terminar depois de o usuário já ter alterado um
+    // controle. Nesse caso, o snapshot remoto é antigo para esta tela.
+    if (state.adminFormDirty || requestVersion !== state.adminChangeVersion) return;
+    state.adminConfig = snapshot;
     state.adminFormDirty = false;
     renderAdmin();
     if (state.adminConfig.persistence !== 'supabase') adminFeedback(state.adminConfig.persistenceError ? `Banco não gravando: ${state.adminConfig.persistenceError}` : 'Banco não configurado: alterações estão somente no arquivo local.', 'error');
