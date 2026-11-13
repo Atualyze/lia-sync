@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.4 — CSP compatível com Turnstile
+
+- Ampliada a CSP do dashboard para os subdomínios dinâmicos de desafio Cloudflare e os canais `data:` usados pelo Turnstile.
+- Mantidos os limites de `script-src`, `frame-src`, `img-src` e `connect-src` restritos aos provedores necessários.
+
 ## 2.2.3 — Correção de renderização do Turnstile
 
 - Corrigida a inicialização do Turnstile para renderizar o widget somente após a tela de login ficar visível.
