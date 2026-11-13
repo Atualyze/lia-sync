@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.8 — Diagnóstico correto de token ausente
+
+- Corrigida a mensagem do guard local: ausência de token não é mais apresentada como erro retornado pelo Supabase.
+- Quando o widget ainda não validou, o painel informa diretamente `Conclua a validação CAPTCHA antes de entrar.`
+
 ## 2.2.7 — Renderização direta após `api.js` onload
 
 - Removido completamente o uso de `turnstile.ready()` no carregamento dinâmico.

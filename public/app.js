@@ -24,6 +24,7 @@ let captcha = { token: '', reset: null, configured: false };
 function readableAuthError(error) {
   if (!error) return 'Não foi possível entrar.';
   const raw = typeof error === 'string' ? error : error.message || error.error_description || error.msg || error.error || '';
+  if (/^Conclua a validação CAPTCHA/i.test(raw)) return raw;
   if (/captcha protection|captcha_token|captcha/i.test(raw)) return 'O Supabase exige CAPTCHA para este login. Configure o widget CAPTCHA neste dashboard ou desative a proteção CAPTCHA em Authentication > Bot and Abuse Protection.';
   if (typeof error === 'string') return error;
   return raw || 'Não foi possível entrar.';
