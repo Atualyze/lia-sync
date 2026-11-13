@@ -2,7 +2,13 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.2.0**
+**Versão atual: 2.2.1**
+
+## Novidades da Versão 2.2.1 — Consulta web resiliente
+
+- **Recuperação de consulta:** quando o modelo aciona `consultar_web` sem preencher `query`, o motor usa a mensagem original do usuário como consulta, evitando `INVALID_QUERY` para pedidos válidos.
+- **Contexto consistente:** tanto o atendimento ao cliente quanto o copiloto do responsável fornecem a mensagem original ao executor de ferramentas.
+- **Regressão automatizada:** incluído teste para garantir a recuperação segura de consultas omitidas.
 
 ## Novidades da Versão 2.2.0 — Operação Centralizada
 

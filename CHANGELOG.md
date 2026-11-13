@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1 — Consulta web resiliente
+
+- Corrigido o retorno `INVALID_QUERY` quando o modelo emite `consultar_web` sem o argumento `query`.
+- O executor usa a mensagem original do cliente/responsável como fallback, mantendo a validação de tamanho e rejeitando consultas realmente vazias.
+- Adicionados testes de fluxo client/owner e regressão da ferramenta.
+- Validação: build e 6 testes focados aprovados.
+
 ## 2.2.0 — Operação centralizada, campanhas e readiness
 
 - Adicionada a visão autenticada **Saúde & Operação** ao dashboard, com readiness, dependências, modelos, circuit breakers, tokens, incidentes, campanhas, fila e supressões.
