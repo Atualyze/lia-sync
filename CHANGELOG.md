@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.7 — Renderização direta após `api.js` onload
+
+- Removido completamente o uso de `turnstile.ready()` no carregamento dinâmico.
+- O widget agora é renderizado diretamente após o evento `onload` do `api.js`, eliminando o conflito com scripts dinamicamente assíncronos.
+
 ## 2.2.6 — Carregamento compatível com `turnstile.ready()`
 
 - Removidos `async` e `defer` do script dinâmico `api.js`, conforme exigido pelo Turnstile ao usar `turnstile.ready()`.

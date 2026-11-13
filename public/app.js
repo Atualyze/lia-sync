@@ -49,10 +49,11 @@ async function setupCaptcha(authConfig) {
   }
   const api = provider === 'hcaptcha' ? window.hcaptcha : window.turnstile;
   if (!api?.render) throw new Error('Widget CAPTCHA indisponível.');
-  const render = () => api.render(container, { sitekey: authConfig.captchaSiteKey, action: 'login', callback: token => { captcha.token = token; }, 'expired-callback': () => { captcha.token = ''; }, 'error-callback': () => { captcha.token = ''; } });
-  const widgetId = provider === 'turnstile' && typeof api.ready === 'function'
-    ? await new Promise(resolve => api.ready(() => resolve(render())))
-    : render();
+  // O script é carregado dinamicamente e o onload acima já garante que a API
+  // está pronta. Não chamar turnstile.ready() aqui: o navegador pode marcar
+  // scripts dinamicamente inseridos como async, o que gera o erro oficial
+  // "Remove async/defer ... before using turnstile.ready()".
+  const widgetId = api.render(container, { sitekey: authConfig.captchaSiteKey, action: 'login', callback: token => { captcha.token = token; }, 'expired-callback': () => { captcha.token = ''; }, 'error-callback': () => { captcha.token = ''; } });
   captcha = { token: '', reset: () => api.reset(widgetId), configured: true };
   captcha.getToken = () => provider === 'turnstile' && typeof api.getResponse === 'function' ? api.getResponse(widgetId) || '' : captcha.token;
 }
