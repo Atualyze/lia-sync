@@ -282,12 +282,7 @@
                     <button id="admin-ai-models-refresh" type="button" class="admin-ghost-btn">Atualizar modelos via API</button>
                     <span id="admin-ai-models-status" class="field-hint" aria-live="polite"></span>
                   </div>
-                  <div class="admin-form-grid">
-                    <label>Reserva 1<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
-                    <label>Reserva 2<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
-                    <label>Reserva 3<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
-                  </div>
-                  <label class="wide">Reservas entre provedores (opcional)<textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" rows="2" placeholder="Ex.: openrouter:meta-llama/...:free\ngemini:gemini-3.8-flash"></textarea><small class="field-hint">Uma por linha ou vírgula. Use <code>provedor:modelo</code> para reservar outro provedor.</small></label>
+                  <label class="wide">Reservas entre provedores (até 3)<textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" rows="3" placeholder="openrouter:meta-llama/...:free\ngemini:gemini-3.8-flash\nopenai:gpt-4o-mini"></textarea><small class="field-hint">Uma por linha ou vírgula. O prefixo é obrigatório para deixar claro qual provedor deve assumir: <code>gemini:modelo</code>, <code>openrouter:modelo</code>, <code>openai:modelo</code> ou <code>qwen:modelo</code>.</small></label>
                 </div>
                 <label class="toggle-field">
                   <input data-config="ai.autoRouting" type="checkbox" />

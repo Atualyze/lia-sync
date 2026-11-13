@@ -12,6 +12,7 @@ const state = {
   adminFormDirty: false,
   adminChangeVersion: 0,
   adminSaveInFlight: false,
+  adminSaveQueued: false,
   role: 'viewer',
   tools: null,
   operations: null,
@@ -775,11 +776,20 @@ function adminReadForm() {
 
 async function saveAdminDraft(showMessage = false) {
   if (!state.adminConfig) return;
+  if (state.adminSaveInFlight) {
+    state.adminSaveQueued = true;
+    return;
+  }
   adminReadForm();
   const requestVersion = state.adminChangeVersion;
   const payload = JSON.parse(JSON.stringify(state.adminConfig.draft));
   state.adminSaveInFlight = true;
-  const result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(payload) }).finally(() => { state.adminSaveInFlight = false; });
+  let result;
+  try {
+    result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(payload) });
+  } finally {
+    state.adminSaveInFlight = false;
+  }
   if (!result.ok) throw new Error((result.errors || []).join(' '));
   if (result.persistence && result.persistence !== 'supabase') throw new Error(result.persistenceError || 'O backend não confirmou a persistência do rascunho.');
   if (requestVersion === state.adminChangeVersion) {
@@ -789,6 +799,11 @@ async function saveAdminDraft(showMessage = false) {
   } else {
     // Houve nova edição durante a requisição; mantenha a tela e grave a versão atual.
     queueAdminSave();
+  }
+  if (state.adminSaveQueued) {
+    state.adminSaveQueued = false;
+    clearTimeout(state.adminSaveTimer);
+    state.adminSaveTimer = setTimeout(() => saveAdminDraft().catch(error => adminFeedback(error.message, 'error')), 0);
   }
   if (showMessage) adminFeedback('Rascunho salvo. O bot ainda usa a versão publicada.', 'success');
 }
@@ -1206,9 +1221,6 @@ function startDashboard() {
     state.modelCatalog = [];
     const primary = $('#admin-ai-model');
     if (primary) primary.value = '';
-    const hidden = $('#admin-ai-fallbacks');
-    if (hidden) hidden.value = '';
-    document.querySelectorAll('.admin-ai-fallback-model').forEach(select => { select.value = ''; });
     loadProviderModels({ refresh: true });
   });
   $('#admin-ai-models-refresh')?.addEventListener('click', () => loadProviderModels({ refresh: true }));
