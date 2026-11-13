@@ -18,6 +18,7 @@ const state = {
   operations: null,
   modelCatalogProvider: null,
   modelCatalog: [],
+  fallbackCatalogs: {},
   initialized: false
 };
 
@@ -639,6 +640,7 @@ function renderAdmin({ force = false } = {}) {
   });
   updateHumanDestinationVisibility();
   loadProviderModels();
+  loadFallbackCatalogs();
   renderHoursWeekdays(draft);
   renderHoursPreview();
   const revision = state.adminConfig.revision || 0;
@@ -678,11 +680,10 @@ function renderHoursPreview() {
 async function loadProviderModels({ refresh = false } = {}) {
   const provider = $('#admin-ai-provider')?.value;
   const primary = $('#admin-ai-model');
-  const fallbackControls = [...document.querySelectorAll('.admin-ai-fallback-model')];
   const status = $('#admin-ai-models-status');
   if (!provider || !primary) return;
   if (!refresh && state.modelCatalogProvider === provider && state.modelCatalog.length) {
-    renderModelOptions(state.modelCatalog, primary, fallbackControls);
+    renderModelOptions(state.modelCatalog, primary);
     return;
   }
   if (status) status.textContent = 'Consultando catálogo seguro do provedor…';
@@ -691,7 +692,7 @@ async function loadProviderModels({ refresh = false } = {}) {
     if (!result.ok || !Array.isArray(result.models)) throw new Error(result.error || 'catalog_unavailable');
     state.modelCatalogProvider = provider;
     state.modelCatalog = result.models;
-    renderModelOptions(result.models, primary, fallbackControls);
+    renderModelOptions(result.models, primary);
     if (status) status.textContent = `${result.models.length} modelos disponíveis${result.truncated ? ' (lista parcial: limite de paginação atingido)' : ''}${result.cached ? ' (cache recente)' : ''}. As chaves permanecem no servidor.`;
   } catch (error) {
     state.modelCatalogProvider = provider;
@@ -704,17 +705,12 @@ async function loadProviderModels({ refresh = false } = {}) {
         : `Não foi possível consultar modelos (${code}). Verifique a chave e a conectividade do provedor no servidor.`;
     }
     primary.replaceChildren(new Option('Catálogo indisponível', ''));
-    fallbackControls.forEach(select => select.replaceChildren(new Option('Nenhum', '')));
   }
 }
 
-function renderModelOptions(models, primary, fallbackControls) {
+function renderModelOptions(models, primary) {
   const draft = state.adminConfig?.draft?.ai || {};
   const selectedPrimary = primary.value || draft.activeModel || '';
-  const hidden = $('#admin-ai-fallbacks');
-  const selectedFallbacks = hidden?.value
-    ? hidden.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 3)
-    : (Array.isArray(draft.fallbackModels) ? draft.fallbackModels.slice(0, 3) : []);
   const addOptions = (select, selected, includePrimary) => {
     const allowed = models.filter(model => includePrimary || model.id !== selectedPrimary);
     const ids = new Set(allowed.map(model => model.id));
@@ -724,19 +720,52 @@ function renderModelOptions(models, primary, fallbackControls) {
     select.value = selected && selected !== selectedPrimary ? selected : '';
   };
   addOptions(primary, selectedPrimary, true);
-  fallbackControls.forEach((select, index) => addOptions(select, selectedFallbacks[index] || '', false));
+}
+
+const FALLBACK_PROVIDERS = [['gemini', 'Gemini'], ['openrouter', 'OpenRouter'], ['openai', 'OpenAI'], ['qwen', 'Qwen']];
+function fallbackEntry(value = '') {
+  const match = String(value).trim().match(/^(gemini|openrouter|openai|qwen):(.*)$/i);
+  return match ? { provider: match[1].toLowerCase(), model: match[2].trim() } : { provider: 'openrouter', model: String(value).trim() };
+}
+function renderFallbackRows() {
+  const container = $('#admin-fallback-rows');
+  if (!container || state.adminFormDirty) return;
+  const values = Array.isArray(state.adminConfig?.draft?.ai?.fallbackModels) ? state.adminConfig.draft.ai.fallbackModels.slice(0, 3) : [];
+  container.innerHTML = [0, 1, 2].map(index => {
+    const selected = fallbackEntry(values[index] || '');
+    const models = state.fallbackCatalogs[selected.provider] || [];
+    const options = models.map(model => `<option value="${esc(model.id)}" ${model.id === selected.model ? 'selected' : ''}>${esc(model.name || model.id)} · ${esc(model.id)}</option>`).join('');
+    const extra = selected.model && !models.some(model => model.id === selected.model) ? `<option value="${esc(selected.model)}" selected>${esc(selected.model)} (salvo)</option>` : '';
+    return `<label>Reserva ${index + 1}<select class="admin-fallback-provider" data-index="${index}">${FALLBACK_PROVIDERS.map(([id, name]) => `<option value="${id}" ${id === selected.provider ? 'selected' : ''}>${name}</option>`).join('')}</select><select class="admin-fallback-model" data-index="${index}"><option value="">Nenhum modelo</option>${options}${extra}</select></label>`;
+  }).join('');
+  container.querySelectorAll('.admin-fallback-provider').forEach(select => select.addEventListener('change', async event => {
+    await loadFallbackCatalog(event.target.value, { refresh: true });
+    renderFallbackRows();
+    syncFallbackModelInputs();
+  }));
+  container.querySelectorAll('.admin-fallback-model').forEach(select => select.addEventListener('change', syncFallbackModelInputs));
+}
+async function loadFallbackCatalog(provider, { refresh = false } = {}) {
+  if (!refresh && state.fallbackCatalogs[provider]) return;
+  try {
+    const result = await api(`/api/dashboard/models?provider=${encodeURIComponent(provider)}${refresh ? '&refresh=true' : ''}`);
+    state.fallbackCatalogs[provider] = result.ok && Array.isArray(result.models) ? result.models : [];
+  } catch { state.fallbackCatalogs[provider] = []; }
+}
+async function loadFallbackCatalogs() {
+  await Promise.all(FALLBACK_PROVIDERS.map(([provider]) => loadFallbackCatalog(provider)));
+  renderFallbackRows();
 }
 
 function syncFallbackModelInputs() {
   const hidden = $('#admin-ai-fallbacks');
   if (!hidden) return;
   const primary = $('#admin-ai-model')?.value;
-  const explicit = hidden.value.split(/[\n,]/).map(value => value.trim()).filter(value => /^(gemini|openrouter|qwen|openai):/i.test(value));
-  const selected = [...document.querySelectorAll('.admin-ai-fallback-model')]
-    .map(select => select.value)
-    .filter((value, index, all) => value && value !== primary && all.indexOf(value) === index)
-    .slice(0, 3);
-  hidden.value = [...new Set([...explicit, ...selected])].slice(0, 3).join('\n');
+  const selected = [...document.querySelectorAll('.admin-fallback-model')].map(select => {
+    const provider = document.querySelector(`.admin-fallback-provider[data-index="${select.dataset.index}"]`)?.value;
+    return provider && select.value && !(provider === $('#admin-ai-provider')?.value && select.value === primary) ? `${provider}:${select.value}` : '';
+  }).filter(Boolean).slice(0, 3);
+  hidden.value = selected.join('\n');
   queueAdminSave();
 }
 
@@ -1225,10 +1254,9 @@ function startDashboard() {
   });
   $('#admin-ai-models-refresh')?.addEventListener('click', () => loadProviderModels({ refresh: true }));
   $('#admin-ai-model')?.addEventListener('change', () => {
-    renderModelOptions(state.modelCatalog, $('#admin-ai-model'), [...document.querySelectorAll('.admin-ai-fallback-model')]);
+    renderModelOptions(state.modelCatalog, $('#admin-ai-model'));
     syncFallbackModelInputs();
   });
-  document.querySelectorAll('.admin-ai-fallback-model').forEach(select => select.addEventListener('change', syncFallbackModelInputs));
   $('#admin-publish')?.addEventListener('click', async () => {
     const btn = $('#admin-publish');
     if (btn) {
