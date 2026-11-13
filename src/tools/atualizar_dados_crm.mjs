@@ -26,11 +26,15 @@ export const toolAtualizarDadosCRM = {
   },
   async execute({ interesse, observacoes, estagio }, context = {}) {
     const session = context.session;
-    if (session) {
-      if (interesse) session.productInterest = interesse;
-      if (observacoes) session.crmNotes = observacoes;
-      if (estagio) session.dealStage = estagio;
+    if (!session) return { success: false, error: 'Não foi possível identificar o contato atual para atualizar o CRM.' };
+    if (interesse) session.productInterest = interesse.trim();
+    if (observacoes) {
+      session.contactNotes = observacoes.trim();
+      session.crmNotes = observacoes.trim();
+      session.notes = observacoes.trim();
     }
+    if (estagio) session.dealStage = estagio;
+    context.store?.markDirty?.();
     return {
       success: true,
       interesse: interesse || null,

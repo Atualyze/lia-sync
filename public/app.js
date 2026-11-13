@@ -12,6 +12,8 @@ const state = {
   role: 'viewer',
   tools: null,
   operations: null,
+  modelCatalogProvider: null,
+  modelCatalog: [],
   initialized: false
 };
 
@@ -319,73 +321,7 @@ function renderSettings() {
     })
     .catch(() => {});
 
-  api('/api/dashboard/models')
-    .then((data) => {
-      const container = $('#models-catalog-list');
-      if (!container || !data.openrouterModels) return;
-      const openrouterReady = Boolean(data.providers?.openrouter?.configured);
-      container.innerHTML = data.openrouterModels
-        .map((m) => {
-          const isChat = m.category === 'chat';
-          const badgeClass = m.recommended ? 'mint' : isChat ? 'cream' : 'pale';
-          const badgeText = m.recommended ? '⭐ Recomendado' : isChat ? 'Chat / Atendimento' : 'Especializado (RAG/Safety)';
-          const safeId = m.id.replace(/[^a-z0-9]/gi, '_');
-          return `
-          <div class="model-catalog-card" data-model-id="${esc(m.id)}">
-            <div class="model-card-head">
-              <div>
-                <strong>${esc(m.name)}</strong>
-                <div class="model-card-badges">
-                  <span class="pill mini ${badgeClass}">${badgeText}</span>
-                  <span class="pill mini pale">${esc(m.contextWindow)} ctx</span>
-                  ${m.params ? `<span class="pill mini pale">${esc(m.params)}</span>` : ''}
-                </div>
-              </div>
-            </div>
-            <div class="model-card-desc">${esc(m.description)}</div>
-            <div class="model-card-meta">
-              <span>ID: <code>${esc(m.id)}</code></span>
-              <span>${esc(m.role)}</span>
-            </div>
-            <div class="model-card-actions">
-              <span id="model-ping-status-${safeId}" style="font-size:10px;color:var(--muted)"></span>
-              <button class="btn-ping-model" data-test-model="${esc(m.id)}" data-provider="openrouter" ${openrouterReady ? '' : 'disabled title="Configure OPENROUTER_API_KEY no .env"'}>${openrouterReady ? '⚡ Testar Latência' : '🔒 OpenRouter não configurado'}</button>
-            </div>
-          </div>`;
-        })
-        .join('');
-      if (!openrouterReady) {
-        container.insertAdjacentHTML('afterbegin', '<div class="provider-config-notice">OpenRouter não está configurado neste ambiente. Adicione <code>OPENROUTER_API_KEY</code> ao <code>.env</code> e reinicie o bot para habilitar os testes de modelos.</div>');
-      }
-
-      container.querySelectorAll('[data-test-model]').forEach((btn) => {
-        btn.onclick = async () => {
-          const modelId = btn.dataset.testModel;
-          const safeId = modelId.replace(/[^a-z0-9]/gi, '_');
-          const statusSpan = $(`#model-ping-status-${safeId}`);
-          btn.disabled = true;
-          btn.textContent = 'Testando...';
-          if (statusSpan) statusSpan.textContent = '⏳ medindo...';
-          try {
-            const res = await api('/api/dashboard/ping-ai', {
-              method: 'POST',
-              body: JSON.stringify({ provider: 'openrouter', model: modelId })
-            });
-            if (res.ok) {
-              if (statusSpan) statusSpan.innerHTML = `<b style="color:#367153">✓ ${res.latencyMs} ms</b> (${res.tokens?.totalTokens || 0} tok)`;
-            } else {
-              if (statusSpan) statusSpan.innerHTML = `<span style="color:#b85842">✕ ${esc(res.error || 'falha')}</span>`;
-            }
-          } catch (e) {
-            if (statusSpan) statusSpan.innerHTML = `<span style="color:#b85842">✕ ${esc(e.message)}</span>`;
-          } finally {
-            btn.disabled = false;
-            btn.textContent = '⚡ Testar Latência';
-          }
-        };
-      });
-    })
-    .catch(() => {});
+  loadProviderModels();
 }
 
 async function renderMetrics() {
@@ -692,13 +628,78 @@ function renderAdmin() {
     const value = adminGet(draft, input.dataset.config);
     if (input.type === 'checkbox') input.checked = Boolean(value);
     else if (input.dataset.config === 'identity.aliases') input.value = Array.isArray(value) ? value.join(', ') : (value ?? '');
-    else input.value = value ?? '';
+  else input.value = value ?? '';
   });
   updateHumanDestinationVisibility();
+  loadProviderModels();
   const revision = state.adminConfig.revision || 0;
   $('#admin-version-badge').textContent = `rascunho · v${revision}`;
   $('#admin-draft-badge').classList.toggle('hidden', JSON.stringify(state.adminConfig.active) === JSON.stringify(draft));
   renderAdminFaq();
+}
+
+async function loadProviderModels({ refresh = false } = {}) {
+  const provider = $('#admin-ai-provider')?.value;
+  const primary = $('#admin-ai-model');
+  const fallbackControls = [...document.querySelectorAll('.admin-ai-fallback-model')];
+  const status = $('#admin-ai-models-status');
+  if (!provider || !primary) return;
+  if (!refresh && state.modelCatalogProvider === provider && state.modelCatalog.length) {
+    renderModelOptions(state.modelCatalog, primary, fallbackControls);
+    return;
+  }
+  if (status) status.textContent = 'Consultando catálogo seguro do provedor…';
+  try {
+    const result = await api(`/api/dashboard/models?provider=${encodeURIComponent(provider)}${refresh ? '&refresh=true' : ''}`);
+    if (!result.ok || !Array.isArray(result.models)) throw new Error(result.error || 'catalog_unavailable');
+    state.modelCatalogProvider = provider;
+    state.modelCatalog = result.models;
+    renderModelOptions(result.models, primary, fallbackControls);
+    if (status) status.textContent = `${result.models.length} modelos disponíveis${result.truncated ? ' (lista parcial: limite de paginação atingido)' : ''}${result.cached ? ' (cache recente)' : ''}. As chaves permanecem no servidor.`;
+  } catch (error) {
+    state.modelCatalogProvider = provider;
+    state.modelCatalog = [];
+    if (status) {
+      let code = error.message;
+      try { code = JSON.parse(code).error || code; } catch {}
+      status.textContent = code === 'provider_not_configured'
+        ? 'Este provedor não está configurado no servidor; nenhuma chave é solicitada ou exibida aqui.'
+        : `Não foi possível consultar modelos (${code}). Verifique a chave e a conectividade do provedor no servidor.`;
+    }
+    primary.replaceChildren(new Option('Catálogo indisponível', ''));
+    fallbackControls.forEach(select => select.replaceChildren(new Option('Nenhum', '')));
+  }
+}
+
+function renderModelOptions(models, primary, fallbackControls) {
+  const draft = state.adminConfig?.draft?.ai || {};
+  const selectedPrimary = primary.value || draft.activeModel || '';
+  const hidden = $('#admin-ai-fallbacks');
+  const selectedFallbacks = hidden?.value
+    ? hidden.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 3)
+    : (Array.isArray(draft.fallbackModels) ? draft.fallbackModels.slice(0, 3) : []);
+  const addOptions = (select, selected, includePrimary) => {
+    const allowed = models.filter(model => includePrimary || model.id !== selectedPrimary);
+    const ids = new Set(allowed.map(model => model.id));
+    select.replaceChildren(new Option(includePrimary ? 'Selecione modelo principal' : 'Nenhum', ''));
+    for (const model of allowed) select.add(new Option(`${model.name} · ${model.id}`, model.id));
+    if (selected && !ids.has(selected) && selected !== selectedPrimary) select.add(new Option(`${selected} (não retornado pelo catálogo)`, selected));
+    select.value = selected && selected !== selectedPrimary ? selected : '';
+  };
+  addOptions(primary, selectedPrimary, true);
+  fallbackControls.forEach((select, index) => addOptions(select, selectedFallbacks[index] || '', false));
+}
+
+function syncFallbackModelInputs() {
+  const hidden = $('#admin-ai-fallbacks');
+  if (!hidden) return;
+  const primary = $('#admin-ai-model')?.value;
+  const selected = [...document.querySelectorAll('.admin-ai-fallback-model')]
+    .map(select => select.value)
+    .filter((value, index, all) => value && value !== primary && all.indexOf(value) === index)
+    .slice(0, 3);
+  hidden.value = selected.join('\n');
+  queueAdminSave();
 }
 
 function adminReadForm() {
@@ -711,7 +712,7 @@ function adminReadForm() {
     adminSet(draft, input.dataset.config, value);
   });
   const fallbackInput = $('#admin-ai-fallbacks');
-  if (fallbackInput) draft.ai.fallbackModels = fallbackInput.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean);
+  if (fallbackInput) draft.ai.fallbackModels = fallbackInput.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 3);
   document.querySelectorAll('.admin-faq-row').forEach(row => {
     const index = Number(row.dataset.faqIndex);
     const item = draft.knowledge.faq[index];
@@ -727,6 +728,7 @@ async function saveAdminDraft(showMessage = false) {
   adminReadForm();
   const result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(state.adminConfig.draft) });
   if (!result.ok) throw new Error((result.errors || []).join(' '));
+  if (result.persistence && result.persistence !== 'supabase') throw new Error(result.persistenceError || 'O backend não confirmou a persistência do rascunho.');
   state.adminConfig = result.snapshot;
   renderAdmin();
   if (showMessage) adminFeedback('Rascunho salvo. O bot ainda usa a versão publicada.', 'success');
@@ -1122,6 +1124,22 @@ function startDashboard() {
       queueAdminSave();
     });
   });
+  $('#admin-ai-provider')?.addEventListener('change', () => {
+    state.modelCatalogProvider = null;
+    state.modelCatalog = [];
+    const primary = $('#admin-ai-model');
+    if (primary) primary.value = '';
+    const hidden = $('#admin-ai-fallbacks');
+    if (hidden) hidden.value = '';
+    document.querySelectorAll('.admin-ai-fallback-model').forEach(select => { select.value = ''; });
+    loadProviderModels({ refresh: true });
+  });
+  $('#admin-ai-models-refresh')?.addEventListener('click', () => loadProviderModels({ refresh: true }));
+  $('#admin-ai-model')?.addEventListener('change', () => {
+    renderModelOptions(state.modelCatalog, $('#admin-ai-model'), [...document.querySelectorAll('.admin-ai-fallback-model')]);
+    syncFallbackModelInputs();
+  });
+  document.querySelectorAll('.admin-ai-fallback-model').forEach(select => select.addEventListener('change', syncFallbackModelInputs));
   $('#admin-publish')?.addEventListener('click', async () => {
     const btn = $('#admin-publish');
     if (btn) {

@@ -12,12 +12,14 @@ export class WebhookEventStore {
   get enabled() { return Boolean(this.client?.enabled); }
 
   hashKey(key) {
-    return crypto.createHash('sha256').update(String(key || crypto.randomUUID())).digest('hex');
+    if (key === undefined || key === null || key === '') return null;
+    return crypto.createHash('sha256').update(String(key)).digest('hex');
   }
 
   async begin({ key, eventType = 'unknown', instance = '' } = {}) {
     if (!this.enabled) return { tracked: false, duplicate: false, key: null, attemptCount: 0 };
     const hashedKey = this.hashKey(key);
+    if (!hashedKey) return { tracked: false, duplicate: false, key: null, attemptCount: 0 };
     const existing = await this.client.select('webhook_events', `select=event_key,status,attempt_count,updated_at&event_key=eq.${hashedKey}&limit=1`);
     const row = existing?.[0];
     if (row) {

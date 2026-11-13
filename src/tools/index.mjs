@@ -66,6 +66,29 @@ export function getGeminiToolDeclarations(tools = ALL_TOOLS) {
   ];
 }
 
+function validateToolArguments(tool, args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'Os argumentos da ferramenta precisam ser um objeto JSON.';
+  const schema = tool.parameters || {};
+  const properties = schema.properties || {};
+  for (const key of schema.required || []) {
+    if (args[key] === undefined || args[key] === null || args[key] === '') return `O argumento obrigatório "${key}" está ausente.`;
+  }
+  const types = { STRING: 'string', NUMBER: 'number', INTEGER: 'integer', BOOLEAN: 'boolean', OBJECT: 'object', ARRAY: 'array' };
+  for (const [key, value] of Object.entries(args)) {
+    const property = properties[key] || {};
+    const expected = String(property.type || '').toUpperCase();
+    if (!expected) return `O argumento "${key}" não é aceito por esta ferramenta.`;
+    if (Array.isArray(property.enum) && !property.enum.includes(value)) return `O argumento "${key}" precisa ser um dos valores permitidos.`;
+    const actualType = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+    const valid = expected === 'INTEGER' ? Number.isInteger(value)
+      : expected === 'NUMBER' ? typeof value === 'number' && Number.isFinite(value)
+      : expected === 'OBJECT' ? actualType === 'object' && value !== null && !Array.isArray(value)
+      : actualType === types[expected];
+    if (!valid) return `O argumento "${key}" precisa ser do tipo ${expected.toLowerCase()}.`;
+  }
+  return null;
+}
+
 /**
  * Executa uma ferramenta pelo nome com os argumentos passados
  */
@@ -80,6 +103,8 @@ export async function executeToolCall(toolName, args = {}, context = {}) {
   if (!tool) {
     return { error: 'Ferramenta "' + toolName + '" não encontrada.' };
   }
+  const invalid = validateToolArguments(tool, args);
+  if (invalid) return { success: false, error: invalid, code: 'invalid_tool_arguments' };
   try {
     return await tool.execute(args, context);
   } catch (err) {

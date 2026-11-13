@@ -1,8 +1,27 @@
+import crypto from 'node:crypto';
 import { json, readBody, authorized, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, sendText } from '../whatsapp.mjs';
 import { resolveIdentity, isOwnerContact, escapeRegExp, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { broadcastBridgeEvent } from './bridge.mjs';
+
+export function stableIdlessEventKey(item, event) {
+  const timestamp = item.eventTimestamp;
+  if (!timestamp) return null;
+  const contentDigest = crypto.createHash('sha256').update(JSON.stringify(item.message || {})).digest('hex');
+  const material = JSON.stringify({
+    event,
+    instance: item.instance || '',
+    jid: item.jid || '',
+    phone: item.phone || '',
+    timestamp,
+    mediaType: item.mediaType || '',
+    text: item.text || '',
+    contentDigest,
+    fromMe: Boolean(item.fromMe)
+  });
+  return `fingerprint:${crypto.createHash('sha256').update(material).digest('hex')}`;
+}
 
 // Webhooks do WhatsApp/Evolution. O ledger guarda apenas hash da chave, tipo e estado.
 export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore }) {
@@ -17,11 +36,13 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
   res.end(JSON.stringify({ accepted: true }));
 
   const item = parsePayload(payload);
-  const id = item.key?.id || payload?.data?.key?.id || payload?.key?.id;
+  const messageId = item.key?.id || payload?.data?.key?.id || payload?.key?.id;
   const rawEvent = String(item.event || payload?.event || payload?.type || '').toUpperCase().replace(/[._]/g, '').slice(0, 120) || 'UNKNOWN';
+  const stableEventKey = messageId ? `${item.instance || ''}:${rawEvent}:${messageId}` : stableIdlessEventKey(item, rawEvent);
+  const id = messageId || stableEventKey;
   let tracking = { tracked: false, duplicate: false, key: null };
   try {
-    tracking = await webhookEventStore?.begin({ key: id ? `${item.instance || ''}:${rawEvent}:${id}` : undefined, eventType: rawEvent, instance: item.instance || '' }) || tracking;
+    if (stableEventKey) tracking = await webhookEventStore?.begin({ key: stableEventKey, eventType: rawEvent, instance: item.instance || '' }) || tracking;
   } catch (error) {
     console.warn(`[webhook-ledger] indisponível (${String(error?.code || 'ledger_unavailable')})`);
   }
@@ -82,7 +103,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
 
           if (isSelfChat || isCallingAssistantDirectly) {
             broadcastBridgeEvent('whatsapp_message', {
-              id,
+              id: messageId || undefined,
               phone: OWNER_SELF_KEY,
               jid: item.jid || item.phone,
               text: item.text || '🎤 [Áudio / Mídia]',
@@ -149,7 +170,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
 
     if (isSelfChat || isCallingAssistantDirectly) {
       broadcastBridgeEvent('whatsapp_message', {
-        id,
+        id: messageId || undefined,
         phone: OWNER_SELF_KEY,
         jid: item.jid || item.phone,
         text: item.text || '🎤 [Áudio / Mídia]',
@@ -172,7 +193,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
     }
 
     broadcastBridgeEvent('whatsapp_message', {
-      id,
+      id: messageId || undefined,
       phone: item.phone,
       jid: item.jid || item.phone,
       text: item.text || '🎤 [Áudio / Mídia recebido]',

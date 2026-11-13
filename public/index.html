@@ -272,12 +272,22 @@
                     <option value="qwen">Qwen (Alibaba)</option>
                   </select>
                 </label>
-                <label>Modelo Ativo
-                  <input id="admin-ai-model" data-config="ai.activeModel" placeholder="gemini-1.5-flash" />
+                <label>Modelo Principal
+                  <select id="admin-ai-model" data-config="ai.activeModel"><option value="">Selecione um provedor e carregue os modelos</option></select>
                 </label>
-                <label class="wide">Modelos de Fallback (Reserva)
-                  <textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" rows="2" placeholder="meta-llama/llama-3.3-70b-instruct:free"></textarea>
-                </label>
+                <div class="wide">
+                  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+                    <strong>Modelos Reserva (até 3)</strong>
+                    <button id="admin-ai-models-refresh" type="button" class="admin-ghost-btn">Atualizar modelos via API</button>
+                    <span id="admin-ai-models-status" class="field-hint" aria-live="polite"></span>
+                  </div>
+                  <div class="admin-form-grid">
+                    <label>Reserva 1<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
+                    <label>Reserva 2<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
+                    <label>Reserva 3<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
+                  </div>
+                  <input id="admin-ai-fallbacks" data-config="ai.fallbackModels" type="hidden" />
+                </div>
                 <label class="wide">Destino dos Alertas e Transbordo
                   <select id="admin-human-destination" data-config="human.alertDestination">
                     <option value="same_as_bot">Usar o mesmo número conectado à Lia (copiloto interno no WhatsApp)</option>
@@ -293,6 +303,25 @@
                   <span>Notificar o responsável no WhatsApp em transbordos</span>
                 </label>
               </div>
+            </section>
+
+            <section class="admin-card panel">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Follow-up de Leads</strong>
+                  <span>Reengajamento único após a última resposta da Lia</span>
+                </div>
+                <span class="admin-status">Configurável</span>
+              </div>
+              <div class="admin-form-grid">
+                <label class="toggle-field">
+                  <input id="admin-followup-enabled" data-config="behavior.leadFollowUpEnabled" type="checkbox" />
+                  <span>Ativar follow-up automático</span>
+                </label>
+                <label>Após (horas)<input id="admin-followup-min" data-config="behavior.leadFollowUpMinHours" type="number" min="1" max="719" step="1" /></label>
+                <label>Até (horas)<input id="admin-followup-max" data-config="behavior.leadFollowUpMaxHours" type="number" min="2" max="720" step="1" /></label>
+              </div>
+              <p class="field-hint">É enviado no máximo um follow-up por conversa elegível. Alterações entram em vigor somente após publicar.</p>
             </section>
 
             <!-- TEXTOS PADRÃO -->

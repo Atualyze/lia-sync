@@ -22,6 +22,7 @@ import { deliveryTarget, json } from './http/utils.mjs';
 import { broadcastBridgeEvent } from './http/bridge.mjs';
 import { CampaignStore } from './campaigns.mjs';
 import { OperationsStore } from './operations.mjs';
+import { AIBudgetGate } from './ai/budget.mjs';
 import { WebhookEventStore } from './webhook-events.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
@@ -39,6 +40,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   else if (store.remoteError || adminConfig.remoteError) console.warn(`[persistence] Supabase configurado, mas indisponível: ${store.remoteError || adminConfig.remoteError}`);
   else console.log('[persistence] Supabase runtime ativado e conectado com sucesso.');
   setMetricsPersistenceSink(call => store.recordAICall?.(call));
+  const operationsStore = new OperationsStore({ client: store.client });
+  const budgetGate = new AIBudgetGate({ operationsStore });
+  const askAIWithBudget = args => askAI({ ...args, budgetGate });
   const faqFor = (botConfig) => async () => {
     const local = await loadFaq();
     const managed = (botConfig()?.knowledge?.faq || []).filter(item => item?.enabled !== false && item?.answer && Array.isArray(item.keys));
@@ -72,19 +76,25 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const getTelemetry = async () => {
     let evoState = 'desconhecido';
-    try {
-      const r = await fetch(`${config.evolutionUrl}/instance/fetchInstances`, {
-        headers: { apikey: config.evolutionKey }
-      });
-      if (r.ok) {
-        const list = await r.json();
-        const inst = list.find(x => x.name === config.evolutionInstance);
-        evoState = inst?.connectionStatus || 'open';
-        if (inst?.ownerJid) {
-          cachedInstanceOwner = inst.ownerJid.replace(/@.*$/, '').replace(/\D/g, '');
+    if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) {
+      evoState = 'not_configured';
+    } else {
+      try {
+        const r = await fetch(`${config.evolutionUrl}/instance/fetchInstances`, {
+          headers: { apikey: config.evolutionKey }, signal: AbortSignal.timeout(5000)
+        });
+        if (r.ok) {
+          const list = await r.json();
+          const inst = Array.isArray(list) ? list.find(x => x.name === config.evolutionInstance) : null;
+          evoState = inst ? (inst.connectionStatus || 'unknown') : 'instance_not_found';
+          if (inst?.ownerJid) {
+            cachedInstanceOwner = inst.ownerJid.replace(/@.*$/, '').replace(/\D/g, '');
+          }
+        } else {
+          evoState = 'unavailable';
         }
-      }
-    } catch {}
+      } catch (error) { evoState = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'unavailable'; }
+    }
 
     const activeSessions = Object.values(store.sessions).filter(s => !s.inactivityClosed);
     const waitingContacts = activeSessions.filter(s => s.human).map(s => ({
@@ -117,7 +127,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const f = flow || createFlow({
     store,
-    ai: { askAI, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
+    ai: { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
     whatsapp: { sendText, sendWhatsAppAudio, sendDocument, getMediaBase64 },
@@ -138,8 +148,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     return { provider, model, fallbackModels };
   };
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
-  const deliver = (job) => store.enqueue(job.phone, () => f.process({ ...job, messageId: job.keyId || '' })).then(async answer => {
-    if (!answer) return;
+  const deliver = (job) => store.enqueue(job.phone, async () => {
+    const answer = await f.process({ ...job, messageId: job.keyId || '' });
+    if (!answer) return null;
     const parts = splitReply(formatOutgoingMessage(answer));
     for (let i = 0; i < parts.length; i++) {
       if (i) await new Promise(resolve => setTimeout(resolve, 1000));
@@ -150,6 +161,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         timestamp: Date.now()
       });
     }
+    return answer;
   }).catch(e => { try { const session = store.get(job.phone); if (session) { session.sendFailed = true; store.markDirty(); } } catch {} console.error('[webhook]', e.message); });
   const schedule = (job) => {
     if (job.nonText || job.mediaType === 'audio' || job.mediaType === 'image' || job.mediaType === 'video' || isOwnerKey(job.phone)) {
@@ -169,7 +181,6 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
   const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
   setOutboundSuppressionCheck(phone => campaignStore.isSuppressed(phone));
-  const operationsStore = new OperationsStore({ client: supabaseRuntime.client });
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
 
   const app = createRouter({
@@ -189,7 +200,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     readinessCheck,
     campaignStore,
     operationsStore,
-    webhookEventStore
+    webhookEventStore,
+    aiBudgetGate: budgetGate
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; return app;
 }
@@ -215,7 +227,9 @@ if (isDirectRun) {
     humanAutoResumeHours: config.humanAutoResumeHours,
     humanPhone: app.getHumanPhone(),
     disableInactivityPings: true,
-    enableLeadFollowUp: Boolean(config.enableLeadFollowUp ?? true)
+    enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
+    followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
+    followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
   }).catch(e => console.error('[maintenance]', e.message));
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   const stop = async () => { clearInterval(maintenanceTimer); await store.flush(); server.close(() => process.exit(0)); }; process.on('SIGTERM', stop); process.on('SIGINT', stop);

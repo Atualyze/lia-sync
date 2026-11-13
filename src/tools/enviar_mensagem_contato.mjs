@@ -124,25 +124,19 @@ export const toolEnviarMensagemContato = {
     try {
       let isVoice = asAudio === true;
       if (isVoice) {
-        try {
-          const synthFn = context.ai?.synthesizeVoice;
-          const sendAudioFn = context.whatsapp?.sendWhatsAppAudio || sendWhatsAppAudio;
-          if (synthFn && sendAudioFn) {
-            const voiceRes = await synthFn(cleanMsg, { botConfig: context.botConfig });
-            if (voiceRes?.base64) {
-              await sendAudioFn(targetPhone, voiceRes.base64);
-            } else {
-              const sendFn = context.whatsapp?.sendText || sendText;
-              await sendFn(targetPhone, cleanMsg);
-              isVoice = false;
-            }
-          } else {
-            const sendFn = context.whatsapp?.sendText || sendText;
-            await sendFn(targetPhone, cleanMsg);
-            isVoice = false;
+        const synthFn = context.ai?.synthesizeVoice;
+        const sendAudioFn = context.whatsapp?.sendWhatsAppAudio || sendWhatsAppAudio;
+        let voiceRes = null;
+        if (synthFn && sendAudioFn) {
+          try { voiceRes = await synthFn(cleanMsg, { botConfig: context.botConfig }); }
+          catch (e) { console.error('[tool:enviar_mensagem_contato] Falha na síntese de áudio:', e.code || e.name || 'tts_failed'); }
+        }
+        if (voiceRes?.base64) {
+          try { await sendAudioFn(targetPhone, voiceRes.base64); }
+          catch (e) {
+            return { success: false, deliveryUnknown: e?.deliveryUnknown === true, error: e?.deliveryUnknown ? 'O resultado da entrega de áudio é incerto; não foi feito retry nem fallback para texto.' : 'A Evolution recusou a entrega do áudio; o texto não foi enviado automaticamente.' };
           }
-        } catch (e) {
-          console.error('[tool:enviar_mensagem_contato] Falha no envio em áudio, enviando texto:', e.message);
+        } else {
           const sendFn = context.whatsapp?.sendText || sendText;
           await sendFn(targetPhone, cleanMsg);
           isVoice = false;

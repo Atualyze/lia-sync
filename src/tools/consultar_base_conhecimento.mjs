@@ -34,7 +34,7 @@ export const toolConsultarBaseConhecimento = {
         };
       }
 
-      const rawFaq = context.botConfig?.knowledge?.faq || FAQ || [];
+      const rawFaq = (context.botConfig?.knowledge?.faq || FAQ || []).filter(item => item?.enabled !== false);
       const answer = findFaqInItems(termo, rawFaq);
       return answer
         ? { found: true, termo, resposta: answer }
@@ -67,7 +67,7 @@ export const toolConsultarBaseConhecimento = {
       }
     }
 
-    const rawFaq = context.botConfig?.knowledge?.faq || FAQ || [];
+    const rawFaq = (context.botConfig?.knowledge?.faq || FAQ || []).filter(item => item?.enabled !== false);
     const answer = findFaqInItems(termo, rawFaq);
     if (answer) {
       return {

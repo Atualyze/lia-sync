@@ -11,8 +11,8 @@ import { validPhone } from '../dashboard.mjs';
 // Rotas /api/admin/config/*.
 export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor }) {
   if (req.method === 'GET' && u.pathname === '/api/admin/config') return json(res, 200, { ...adminConfig.snapshot(), persistence: adminConfig.persistence || 'fallback', persistenceError: adminConfig.remoteError || null });
-  if (req.method === 'PATCH' && u.pathname === '/api/admin/config/draft') { const body = await readBody(req); const result = adminConfig.updateDraft(body.patch || body, 'dashboard'); return json(res, result.ok ? 200 : 400, result); }
-  if (req.method === 'POST' && u.pathname === '/api/admin/config/validate') { const result = adminConfig.updateDraft(adminConfig.draft, 'validator'); return json(res, result.ok ? 200 : 400, { ok: result.ok, errors: result.errors || [] }); }
+  if (req.method === 'PATCH' && u.pathname === '/api/admin/config/draft') { const body = await readBody(req); const result = await adminConfig.updateDraft(body.patch || body, 'dashboard'); return json(res, result.ok ? 200 : 400, result); }
+  if (req.method === 'POST' && u.pathname === '/api/admin/config/validate') { const result = await adminConfig.updateDraft(adminConfig.draft, 'validator'); return json(res, result.ok ? 200 : 400, { ok: result.ok, errors: result.errors || [] }); }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/preview') {
     const body = await readBody(req);
     if (!validPhone(body.phone) || typeof body.text !== 'string' || !body.text.trim()) return json(res, 400, { error: 'phone_and_text_required' });

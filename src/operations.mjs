@@ -321,6 +321,53 @@ export class OperationsStore {
     summary.truncated = truncated;
     return summary;
   }
+
+  async listMonthlyCalls(monthStart) {
+    if (!this.enabled) throw Object.assign(new Error('metrics_persistence_unavailable'), { code: 'metrics_persistence_unavailable' });
+    const start = new Date(monthStart);
+    if (!Number.isFinite(start.getTime())) throw new Error('invalid_budget_period');
+    const rows = [];
+    const pageSize = 1000;
+    const maxPages = 50;
+    for (let page = 0; page < maxPages; page++) {
+      const query = `select=request_id,created_at,provider,model,prompt_tokens,completion_tokens,success&created_at=gte.${encodeURIComponent(start.toISOString())}&order=created_at.asc&limit=${pageSize}&offset=${page * pageSize}`;
+      const batch = await this.client.select('ai_calls', query);
+      if (!Array.isArray(batch)) throw new Error('invalid_metrics_response');
+      rows.push(...batch);
+      if (batch.length < pageSize) return rows;
+    }
+    throw Object.assign(new Error('budget_history_truncated'), { code: 'budget_history_truncated' });
+  }
+
+  async reserveAIBudget({ requestId, provider, model, reservedUsd, monthStart, budgets, rates } = {}) {
+    if (!this.enabled) throw Object.assign(new Error('budget_reservation_unavailable'), { code: 'budget_reservation_unavailable' });
+    const result = await this.client.rpc('reserve_ai_budget', {
+      p_request_id: requestId,
+      p_provider: provider,
+      p_model: model,
+      p_reserved_usd: reservedUsd,
+      p_month_start: monthStart,
+      p_budgets: budgets,
+      p_rates: rates
+    });
+    return result === true;
+  }
+
+  async settleAIBudget(requestId, actualUsd, { provider, model, usageUnknown = false } = {}) {
+    if (!this.enabled) throw Object.assign(new Error('budget_reservation_unavailable'), { code: 'budget_reservation_unavailable' });
+    return (await this.client.rpc('settle_ai_budget_effective', {
+      p_request_id: requestId,
+      p_provider: provider,
+      p_model: model,
+      p_actual_usd: actualUsd,
+      p_usage_unknown: usageUnknown === true
+    })) === true;
+  }
+
+  async releaseAIBudget(requestId) {
+    if (!this.enabled) return false;
+    return (await this.client.rpc('release_ai_budget', { p_request_id: requestId })) === true;
+  }
 }
 
 export function hashEntityId(value = '') {

@@ -71,14 +71,18 @@ export function safeErrorDetail(body = '') {
   } catch { return ''; }
 }
 
-export function buildOpenRouterBody({ model, fallbackModels = [], system, history = [], userText, structuredOutputs = false, requireParameters = false }) {
+export function buildOpenRouterBody({ model, fallbackModels = [], system, history = [], userText, structuredOutputs = false, requireParameters = false, tools = [] }) {
   const body = {
     model,
     temperature: 0.2,
     max_tokens: config.aiMaxOutputTokens,
     messages: [{ role: 'system', content: system }, ...normalizeHistory(history), { role: 'user', content: userText }],
     response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' },
-    provider: { require_parameters: requireParameters, allow_fallbacks: true, sort: 'latency' }
+    provider: { require_parameters: requireParameters, allow_fallbacks: true, sort: 'latency' },
+    ...(Array.isArray(tools) && tools.length ? {
+      tools: tools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters } })),
+      tool_choice: 'auto'
+    } : {})
   };
   const models = [...new Set(fallbackModels.filter(Boolean).filter(candidate => candidate !== model))].slice(0, 3);
   if (models.length) body.models = models;
@@ -88,14 +92,23 @@ export function buildOpenRouterBody({ model, fallbackModels = [], system, histor
 export function normalizeHistory(history = []) {
   const clean = history
     .filter(m => m && ['user', 'assistant', 'model'].includes(m.role) && typeof m.content === 'string' && m.content.trim())
-    .map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content.trim() }));
+    .map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content.trim().slice(-3000) }));
   while (clean.length && clean[0].role !== 'user') clean.shift();
   const out = [];
   for (const m of clean) {
-    if (out.at(-1)?.role === m.role) out.at(-1).content += `\n${m.content}`;
+    if (out.at(-1)?.role === m.role) out.at(-1).content = `${out.at(-1).content}\n${m.content}`.slice(-3000);
     else out.push({ ...m });
   }
-  return out;
+  const bounded = [];
+  let chars = 0;
+  for (let i = out.length - 1; i >= 0 && bounded.length < 24; i--) {
+    const item = out[i];
+    if (chars + item.content.length > 12000) break;
+    bounded.unshift(item);
+    chars += item.content.length;
+  }
+  while (bounded.length && bounded[0].role !== 'user') bounded.shift();
+  return bounded;
 }
 
 function parseObject(raw) {

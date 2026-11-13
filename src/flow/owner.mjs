@@ -17,6 +17,7 @@ export async function handleOwnerSession({
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
 }) {
+        const aiDeadline = Date.now() + 35000;
         const sSelf = store.get(phone === OWNER_SELF_KEY ? OWNER_SELF_KEY : phone);
         sSelf.human = false;
         sSelf.isInternalChat = true;
@@ -624,7 +625,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
                     system: `Você é a ${assistant}, agente de suporte da equipe. Você está ajustando um roteiro de áudio que VOCÊ vai gravar falando diretamente de forma natural com o contato "${pendingAudio.recipient}" (trate o contato sempre por "você", nunca por "ele/ela", não se apresente repetidamente como "Aqui é a ${assistant}, assistente de ${owner}" e não diga "a pedido de ${owner}"). Retorne em JSON {"reply": "roteiro ajustado sem emojis nem asteriscos"}.`,
                     history: [],
                     userText: `Roteiro anterior: "${pendingAudio.message}"\nPedido de ajuste de ${owner}: "${cleanCommand}"\nReescreva o roteiro aplicando a correção solicitada:`,
-                    botConfig
+                    botConfig,
+                    deadline: aiDeadline
                   });
                   if (revRes?.reply) {
                     const cleanedRev = buildFriendlyAudioScript(pendingAudio.recipient, revRes.reply, { identity });
@@ -742,7 +744,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           history: recentHistory,
           userText: cleanCommand,
           botConfig,
-          isOwner: true
+          isOwner: true,
+          deadline: aiDeadline
         });
 
         // Se pediu para agendar um lembrete
@@ -932,7 +935,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               history: recentHistory,
               userText: cleanCommand,
               botConfig,
-              isOwner: true
+              isOwner: true,
+              deadline: aiDeadline
             });
             const webReply = String(webAnswer?.reply || '').trim() || `Não consegui concluir a pesquisa web com segurança.\n\nFontes:\n${sources || 'Nenhuma fonte retornada.'}`;
             return recordSelfTurn(filterReply(webReply, { isCopilot: true }).text);

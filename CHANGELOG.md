@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0 — confiabilidade distribuída e operação de IA
+
+- **Catálogo de modelos:** consulta server-side a Gemini, OpenRouter, Qwen e OpenAI com credencial configurada; modelo principal e até três fallbacks publicados pelo painel.
+- **Orçamento por modelo/provedor:** limites mensais usam reserva atômica distribuída, liquidação pelo modelo efetivamente usado e tratamento conservador de uso/tarifa desconhecidos.
+- **Follow-up idempotente:** claim, confirmação e liberação atômicas no Supabase impedem envios concorrentes; sem claim confirmada, não há envio.
+- **Webhooks e mídia:** chaves derivadas sanitizadas melhoram deduplicação de eventos sem ID estável; áudio não é repetido automaticamente quando o resultado da entrega é ambíguo.
+- **Motor e painel:** reforços em tool calling configurável, falhas de provedor, timeout/persistência Supabase, ferramentas e regressões de envio.
+- **Banco:** adicionadas e aplicadas/verificadas no Supabase conectado as migrations `20261113152048_follow_up_atomic_claim.sql`, `20261113153840_atomic_ai_budgets.sql` e `20261113154223_ai_budget_effective_model.sql`; RPCs restritas a `service_role`.
+- **Escopo:** expansão de busca semântica/conhecimento do item 4 permanece adiada, fora desta release.
+- **Validação:** suíte completa, build, contratos e `git diff --check` aprovados.
+
 ## 2.2.8 — Diagnóstico correto de token ausente
 
 - Corrigida a mensagem do guard local: ausência de token não é mais apresentada como erro retornado pelo Supabase.

@@ -6,10 +6,11 @@ const jsonClone = value => JSON.parse(JSON.stringify(value));
 const iso = value => value ? new Date(value).toISOString() : null;
 
 export class SupabaseRestClient {
-  constructor({ url, key, logger = console } = {}) {
+  constructor({ url, key, logger = console, timeoutMs = Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS) || 12000 } = {}) {
     this.url = String(url || '').replace(/\/$/, '');
     this.key = key || '';
     this.logger = logger;
+    this.timeoutMs = Math.max(1000, Math.min(60000, Number(timeoutMs) || 12000));
     this.enabled = Boolean(this.url && this.key);
   }
 
@@ -23,6 +24,7 @@ export class SupabaseRestClient {
         'content-type': 'application/json',
         ...(prefer ? { Prefer: prefer } : {})
       },
+      signal: AbortSignal.timeout(this.timeoutMs),
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const text = await response.text();
@@ -35,6 +37,10 @@ export class SupabaseRestClient {
   async select(table, query) { return this.request(table, { query }); }
   async upsert(table, rows, onConflict) { return this.request(table, { method: 'POST', query: onConflict ? `on_conflict=${encodeURIComponent(onConflict)}` : '', body: rows, prefer: 'resolution=merge-duplicates,return=representation' }); }
   async insert(table, rows) { return this.request(table, { method: 'POST', body: rows, prefer: 'return=minimal' }); }
+  async rpc(name, args = {}) {
+    if (!/^[a-z][a-z0-9_]{0,62}$/.test(name)) throw new Error('Supabase RPC inválida');
+    return this.request(`rpc/${name}`, { method: 'POST', body: args });
+  }
 }
 
 const externalIdFor = (key, index, message) => {
@@ -80,7 +86,11 @@ function rowToSession(row, messages = []) {
     supportModeEnabled: Boolean(meta.supportModeEnabled),
     knowledgeBaseId: meta.knowledgeBaseId || null,
     contactRole: meta.contactRole || null,
-    contactNotes: meta.contactNotes || '',
+    contactNotes: meta.contactNotes || meta.crmNotes || meta.notes || '',
+    crmNotes: meta.crmNotes || meta.contactNotes || meta.notes || '',
+    notes: meta.notes || meta.crmNotes || meta.contactNotes || '',
+    productInterest: meta.productInterest || '',
+    dealStage: meta.dealStage || '',
     audioPreference: meta.audioPreference || undefined,
     askedAudioPreference: Boolean(meta.askedAudioPreference),
     lastIntent: row.last_intent || undefined,
@@ -101,6 +111,10 @@ function rowToSession(row, messages = []) {
     handoffReminder60Sent: Boolean(row.handoff_reminder60_sent),
     lastUserAt: iso(row.last_user_at),
     lastBotAt: iso(row.last_bot_at),
+    followUpCount: Number(row.follow_up_count ?? meta.followUpCount ?? 0),
+    followUpSentAt: iso(row.follow_up_sent_at || meta.followUpSentAt),
+    followUpClaimedAt: iso(row.follow_up_claimed_at || meta.followUpClaimedAt),
+    followUpClaimToken: row.follow_up_claim_token || null,
     archivedAt: iso(row.archived_at),
     status: row.status,
     archiveReason: row.archive_reason || undefined,
@@ -144,6 +158,10 @@ function sessionToConversation(key, session, contactId) {
     handoff_reminder60_sent: Boolean(session.handoffReminder60Sent),
     last_user_at: date(session.lastUserAt),
     last_bot_at: date(session.lastBotAt),
+    follow_up_count: Number(session.followUpCount || 0),
+    follow_up_sent_at: date(session.followUpSentAt),
+    follow_up_claimed_at: date(session.followUpClaimedAt),
+    follow_up_claim_token: session.followUpClaimToken || null,
     archived_at: date(session.archivedAt),
     archive_reason: session.archiveReason || null,
     metadata: {
@@ -152,9 +170,16 @@ function sessionToConversation(key, session, contactId) {
       supportModeEnabled: Boolean(session.supportModeEnabled),
       knowledgeBaseId: session.knowledgeBaseId || null,
       contactRole: session.contactRole || null,
-      contactNotes: session.contactNotes || '',
+      contactNotes: session.contactNotes || session.crmNotes || session.notes || '',
+      crmNotes: session.crmNotes || session.contactNotes || session.notes || '',
+      notes: session.notes || session.crmNotes || session.contactNotes || '',
+      productInterest: session.productInterest || '',
+      dealStage: session.dealStage || '',
       audioPreference: session.audioPreference || null,
       askedAudioPreference: Boolean(session.askedAudioPreference),
+      followUpCount: Number(session.followUpCount || 0),
+      followUpSentAt: date(session.followUpSentAt),
+      followUpClaimedAt: date(session.followUpClaimedAt),
       legalHold: Boolean(session.legalHold || session.metadata?.legalHold),
       legal_hold: Boolean(session.legal_hold || session.metadata?.legal_hold)
     }
@@ -303,6 +328,39 @@ export class SupabaseSessionStore extends SessionStore {
     return this.refreshing;
   }
 
+  async claimFollowUp(externalKey, claimedAt, leaseSeconds = 900) {
+    if (!this.client?.enabled) throw new Error('Supabase necessário para claim distribuída');
+    const token = await this.client.rpc('claim_follow_up', {
+      p_external_key: externalKey,
+      p_claimed_at: new Date(claimedAt).toISOString(),
+      p_lease_seconds: leaseSeconds
+    });
+    if (token === null || token === undefined || token === false || (typeof token === 'string' && !token.trim())) return null;
+    if (typeof token !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+      throw new Error('Resposta inválida ao reservar follow-up no Supabase');
+    }
+    return token;
+  }
+
+  async completeFollowUp(externalKey, claimToken, sentAt) {
+    if (!this.client?.enabled || !claimToken) return false;
+    const completed = await this.client.rpc('complete_follow_up', {
+      p_external_key: externalKey,
+      p_claim_token: claimToken,
+      p_sent_at: new Date(sentAt).toISOString()
+    });
+    return completed === true;
+  }
+
+  async releaseFollowUpClaim(externalKey, claimToken) {
+    if (!this.client?.enabled || !claimToken) return false;
+    const released = await this.client.rpc('release_follow_up_claim', {
+      p_external_key: externalKey,
+      p_claim_token: claimToken
+    });
+    return released === true;
+  }
+
   async flush() {
     const local = super.flush();
     if (!this.client?.enabled) return local;
@@ -383,7 +441,7 @@ export class SupabaseSessionStore extends SessionStore {
 
   async recordAICall(call) {
     if (!this.client?.enabled) return;
-    try { await this.client.insert('ai_calls', [{ provider: call.provider || 'desconhecido', model: call.model || null, latency_ms: call.latencyMs || 0, prompt_tokens: call.promptTokens || 0, completion_tokens: call.completionTokens || 0, total_tokens: call.totalTokens || 0, intent: call.intent || null, success: call.success !== false, error_message: call.error || null }]); } catch (error) { this.logger.warn?.(`[supabase] ai_calls indisponível: ${error.message}`); }
+    try { await this.client.insert('ai_calls', [{ request_id: call.requestId || null, provider: call.provider || 'desconhecido', model: call.model || null, latency_ms: call.latencyMs || 0, prompt_tokens: call.promptTokens || 0, completion_tokens: call.completionTokens || 0, total_tokens: call.totalTokens || 0, intent: call.intent || null, success: call.success !== false, error_message: call.error || null }]); } catch (error) { this.logger.warn?.(`[supabase] ai_calls indisponível: ${error.message}`); }
   }
 }
 

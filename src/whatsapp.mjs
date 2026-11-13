@@ -75,6 +75,11 @@ export function parsePayload(data) {
   else if (message.stickerMessage) mediaType = 'sticker';
 
   const nonText = !text && Boolean(mediaType);
+  const rawTimestamp = d.messageTimestamp || d.message?.messageTimestamp || d.timestamp || key.messageTimestamp;
+  const timestampNumber = Number(rawTimestamp);
+  const eventTimestamp = Number.isFinite(timestampNumber) && timestampNumber > 0
+    ? (timestampNumber < 1e12 ? timestampNumber * 1000 : timestampNumber)
+    : (rawTimestamp ? new Date(rawTimestamp).getTime() : 0);
 
   return {
     event: data?.event || data?.type || '',
@@ -86,6 +91,7 @@ export function parsePayload(data) {
     text,
     nonText,
     mediaType,
+    eventTimestamp: Number.isFinite(eventTimestamp) && eventTimestamp > 0 ? eventTimestamp : null,
     fromMe: Boolean(key.fromMe || d.fromMe),
     pushName: d.pushName || d.pushname || key.pushName || ''
   };
@@ -125,11 +131,22 @@ const providerTimeoutMs = () => Math.max(1000, Number(process.env.EVOLUTION_SEND
 export const providerKey = (kind, jid, payload) => `lia:${kind}:${crypto.createHash('sha256').update(JSON.stringify({ jid, payload }), 'utf8').digest('hex')}`;
 async function providerSend(url, payload, kind, jid) {
   const key = providerKey(kind, jid, payload);
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', apikey: config.evolutionKey, 'x-idempotency-key': key, 'idempotency-key': key }, signal: AbortSignal.timeout(providerTimeoutMs()), body: JSON.stringify(payload) });
-  if (!response.ok) throw Error(`Evolution ${response.status}`);
-  const text = await response.text();
+  let response;
+  try {
+    response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', apikey: config.evolutionKey, 'x-idempotency-key': key, 'idempotency-key': key }, signal: AbortSignal.timeout(providerTimeoutMs()), body: JSON.stringify(payload) });
+  } catch (cause) {
+    throw Object.assign(new Error('Evolution resultado de entrega desconhecido'), { code: 'evolution_delivery_unknown', deliveryUnknown: true, cause });
+  }
+  if (!response.ok) {
+    const deliveryUnknown = response.status >= 500;
+    throw Object.assign(new Error(`Evolution ${response.status}`), { code: deliveryUnknown ? 'evolution_delivery_unknown' : `evolution_http_${response.status}`, deliveryUnknown });
+  }
+  let text;
+  try { text = await response.text(); }
+  catch (cause) { throw Object.assign(new Error('Evolution resultado de entrega desconhecido'), { code: 'evolution_delivery_unknown', deliveryUnknown: true, cause }); }
   let result = {};
-  try { result = text ? JSON.parse(text) : {}; } catch { throw Error('Evolution resposta inválida'); }
+  try { result = text ? JSON.parse(text) : {}; }
+  catch (cause) { throw Object.assign(new Error('Evolution resposta inválida; resultado de entrega desconhecido'), { code: 'evolution_delivery_unknown', deliveryUnknown: true, cause }); }
   if (result?.error) throw Error('Evolution rejeitou o envio');
   return { result, id: result?.key?.id || result?.data?.key?.id || result?.message?.key?.id };
 }
@@ -207,7 +224,7 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
   throw last;
 }
 
-export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } = {}) {
+export async function sendWhatsAppAudio(jid, audioBase64, { retry = 0, onSent } = {}) {
   await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(audioBase64).replace(/^data:audio\/[^;]+;base64,/, '');
@@ -227,7 +244,8 @@ export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } 
       return j;
     } catch (e) {
       last = e;
-      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+      if (e?.deliveryUnknown || !/^evolution_http_429$/.test(e?.code || '') || i >= retry) throw e;
+      await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
     }
   }
   throw last;

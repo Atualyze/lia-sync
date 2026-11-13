@@ -21,7 +21,7 @@ test('Habilidade 2: Processamento de PDF retorna estrutura com summary e docType
   assert.equal(emptyRes, null);
 });
 
-test('Habilidade 3: Follow-up proativo reengaja lead qualificado entre 24h e 72h', async () => {
+test('Habilidade 3: Follow-up local sem claim distribuída permanece bloqueado', async () => {
   const storeFile = path.join(os.tmpdir(), `test-store-followup-${Date.now()}.json`);
   const store = new SessionStore(storeFile);
   await store.load();
@@ -33,6 +33,7 @@ test('Habilidade 3: Follow-up proativo reengaja lead qualificado entre 24h e 72h
   session.inactivityClosed = false;
   // Conversa com 30 horas de inatividade após última mensagem da Lia
   const nowTime = new Date('2026-11-06T14:00:00.000Z').getTime();
+  session.lastUserAt = new Date(nowTime - 31 * 3600000).toISOString();
   session.lastBotAt = new Date(nowTime - 30 * 3600000).toISOString();
   session.history = [
     { role: 'user', content: 'Quanto fica o desenvolvimento de um site e bot?' },
@@ -52,12 +53,9 @@ test('Habilidade 3: Follow-up proativo reengaja lead qualificado entre 24h e 72h
     followUpMaxHours: 72
   });
 
-  assert.equal(sentMessages.length, 1);
-  assert.equal(sentMessages[0].phone, phone);
-  assert.match(sentMessages[0].msg, /Oi, Lucas!/);
-  assert.match(sentMessages[0].msg, /avaliar a proposta|dúvida sobre o que conversamos/);
-  assert.equal(session.followUpCount, 1);
-  assert.ok(session.followUpSentAt);
+  assert.equal(sentMessages.length, 0, 'Não deve enviar follow-up sem claim distribuída persistente');
+  assert.equal(session.followUpCount, 0);
+  assert.equal(session.followUpSentAt, undefined);
 
   // Na próxima rodada, a trava impede novo follow-up
   sentMessages.length = 0;
@@ -70,7 +68,7 @@ test('Habilidade 3: Follow-up proativo reengaja lead qualificado entre 24h e 72h
     timeZone: 'America/Fortaleza',
     enableLeadFollowUp: true
   });
-  assert.equal(sentMessages.length, 0, 'Não deve reenviar follow-up para quem já foi contatado');
+  assert.equal(sentMessages.length, 0, 'Sem persistência distribuída, o follow-up continua bloqueado');
 });
 
 test('Habilidade 3: Follow-up NÃO incomoda quem está em atendimento humano ativo', async () => {

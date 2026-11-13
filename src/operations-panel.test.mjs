@@ -63,6 +63,28 @@ test('OperationsStore persiste somente metadata permitida na auditoria', async (
   assert.deepEqual(written.row.metadata, { role: 'operator', active: true, source: 'dashboard' });
 });
 
+test('OperationsStore lê uso mensal paginado com LIMIT explícito e falha se o histórico exceder o teto', async () => {
+  const queries = [];
+  const store = new OperationsStore({ client: {
+    enabled: true,
+    async select(_table, query) {
+      queries.push(query);
+      return [{ request_id: uuid, provider: 'gemini', model: 'model-a', prompt_tokens: 10, completion_tokens: 5, success: true, created_at: '2026-11-13T00:00:00Z' }];
+    }
+  } });
+  const rows = await store.listMonthlyCalls('2026-11-01T00:00:00.000Z');
+  assert.equal(rows.length, 1);
+  assert.match(queries[0], /limit=1000/);
+  assert.match(queries[0], /offset=0/);
+  assert.match(queries[0], /created_at=gte\./);
+
+  const truncated = new OperationsStore({ client: {
+    enabled: true,
+    async select() { return Array.from({ length: 1000 }, () => ({ created_at: '2026-11-13T00:00:00Z' })); }
+  } });
+  await assert.rejects(truncated.listMonthlyCalls('2026-11-01T00:00:00Z'), error => error.code === 'budget_history_truncated');
+});
+
 function fakeWebhookClient() {
   const rows = [];
   const keyFrom = query => query.match(/event_key=eq\.([^&]+)/)?.[1];

@@ -1,7 +1,7 @@
 {
   "name": "Lia Sync",
-  "version": "2.2.0",
-  "description": "Assistente de suporte multicliente: WhatsApp via Evolution API v2, respostas apoiadas em base de conhecimento por cliente, regras determinísticas de segurança e dashboard de monitoramento.",
+  "version": "2.3.0",
+  "description": "Assistente operacional via WhatsApp com catálogo de modelos por provedor, fallbacks configuráveis, orçamento de IA distribuído, follow-up confiável, regras determinísticas de segurança e dashboard administrativo.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

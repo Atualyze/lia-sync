@@ -47,6 +47,9 @@ export const DEFAULT_BOT_CONFIG = {
     maxClinicalTurns: 3,
     handoffReminderMinutes: 15,
     inactivityStaleHours: 12,
+    leadFollowUpEnabled: true,
+    leadFollowUpMinHours: 24,
+    leadFollowUpMaxHours: 72,
     fallbackMessage: 'Estou com uma pequena instabilidade no momento 🙏 Já avisei nossa equipe para dar continuidade ao seu atendimento.'
   },
   safety: {
@@ -90,11 +93,22 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!value.identity?.companyName?.trim()) errors.push('O nome da empresa é obrigatório.');
   if (!value.messages?.greeting?.trim()) errors.push('A mensagem de saudação é obrigatória.');
   if (!Array.isArray(value.knowledge?.faq)) errors.push('A base de conhecimento precisa ser uma lista.');
+  if (value.behavior?.leadFollowUpEnabled !== undefined && typeof value.behavior.leadFollowUpEnabled !== 'boolean') errors.push('A ativação do follow-up deve ser verdadeiro/falso.');
+  const followUpMin = Number(value.behavior?.leadFollowUpMinHours);
+  const followUpMax = Number(value.behavior?.leadFollowUpMaxHours);
+  if (!Number.isFinite(followUpMin) || followUpMin < 1 || followUpMin > 720 || !Number.isFinite(followUpMax) || followUpMax <= followUpMin || followUpMax > 720) errors.push('A janela do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
   const providers = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
   const provider = value.ai?.activeProvider || '';
   if (requirePublishedAI && (!provider || !providers.has(provider))) errors.push('Publique um provedor de IA válido no dashboard.');
   if (requirePublishedAI && !value.ai?.activeModel?.trim()) errors.push('Publique um modelo de IA no dashboard.');
   if (!Array.isArray(value.ai?.fallbackModels)) errors.push('Os modelos de fallback precisam ser uma lista.');
+  else {
+    if (value.ai.fallbackModels.length > 3) errors.push('Configure no máximo três modelos de fallback.');
+    if (value.ai.fallbackModels.some(model => typeof model !== 'string' || !model.trim() || model.trim().length > 200)) errors.push('Cada modelo de fallback precisa ser um identificador válido de até 200 caracteres.');
+    const normalizedFallbacks = value.ai.fallbackModels.filter(model => typeof model === 'string').map(model => model.trim());
+    if (new Set(normalizedFallbacks).size !== normalizedFallbacks.length) errors.push('Não repita o mesmo modelo de fallback.');
+    if (typeof value.ai?.activeModel === 'string' && normalizedFallbacks.includes(value.ai.activeModel.trim())) errors.push('O modelo principal não pode também constar como fallback.');
+  }
   if (value.webSearch && typeof value.webSearch.enabled !== 'boolean') errors.push('A configuração da busca web precisa ser verdadeiro/falso.');
   if (value.tools?.enabled && (typeof value.tools.enabled !== 'object' || Array.isArray(value.tools.enabled) || Object.values(value.tools.enabled).some(item => typeof item !== 'boolean'))) errors.push('O catálogo de ferramentas deve conter somente estados verdadeiro/falso.');
   const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
@@ -144,7 +158,10 @@ export class AdminConfigStore {
     return { schemaVersion: 1, revision: this.revision, updatedAt: this.updatedAt, active: clone(this.active), draft: clone(this.draft), history: clone(this.history.slice(-10)) };
   }
 
-  updateDraft(patch = {}, actor = 'dashboard') {
+  async updateDraft(patch = {}, actor = 'dashboard') {
+    const previousDraft = clone(this.draft);
+    const previousUpdatedAt = this.updatedAt;
+    const previousHistory = clone(this.history);
     const next = merge(this.draft, patch);
     const errors = validate(next, { requirePublishedAI: false });
     if (errors.length) return { ok: false, errors };
@@ -152,8 +169,17 @@ export class AdminConfigStore {
     this.updatedAt = new Date(this.now()).toISOString();
     this.history.push({ revision: this.revision, action: 'draft_updated', actor, at: this.updatedAt });
     this.history = this.history.slice(-30);
-    this.flush().catch(error => this.logger.error?.(`[admin-config] ${error.message}`));
-    return { ok: true, snapshot: this.snapshot() };
+    try {
+      await this.flush();
+      if (this.client?.enabled && this.persistence !== 'supabase') throw new Error(this.remoteError || 'Supabase não confirmou a gravação.');
+    } catch (error) {
+      this.draft = previousDraft;
+      this.updatedAt = previousUpdatedAt;
+      this.history = previousHistory;
+      await this.flush().catch(() => {});
+      return { ok: false, errors: [`Não foi possível confirmar a persistência do rascunho: ${error.message}`] };
+    }
+    return { ok: true, snapshot: this.snapshot(), persistence: this.persistence || 'fallback', persistenceError: this.remoteError || null };
   }
 
   async publish(actor = 'dashboard') {

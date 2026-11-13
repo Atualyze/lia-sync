@@ -2,7 +2,15 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.2.2**
+**Versão atual: 2.3.0** (pacote, lockfile, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.3.0 — confiabilidade e operação de IA
+
+- O dashboard consulta catálogos de modelos pelo backend e permite publicar um modelo principal e até três modelos de fallback, sem enviar credenciais ao navegador.
+- Limites mensais por provedor/modelo usam reserva distribuída e contabilizam o modelo efetivamente usado; custo/uso desconhecido não é tratado como zero.
+- Follow-ups usam claim atômica no Supabase e falham fechados se a coordenação não puder ser confirmada.
+- Webhooks sem ID estável recebem chave derivada sanitizada; o envio de áudio não é repetido automaticamente quando a entrega fica ambígua.
+- O item 4 — expansão de busca semântica/conhecimento — permanece adiado e fora deste release.
 
 ## Novidades da Versão 2.2.2 — Widget Turnstile compartilhado
 
@@ -145,15 +153,22 @@ Se a proteção estiver ativada sem `SUPABASE_CAPTCHA_SITE_KEY`, o Supabase reto
 
 O repositório inclui migrações para um projeto Supabase próprio, separado do CRM original. A estrutura cobre autenticação, perfis, planos, FAQ, preferências, contatos, pets, conversas, mensagens, handoffs, eventos, configuração versionada, métricas de IA e auditoria.
 
-Execute no SQL Editor, nesta ordem:
+Para um projeto novo, execute no SQL Editor as migrações pendentes nesta ordem; confirme o histórico do banco antes de reaplicar. `seed.sql` é opcional e destinado a testes:
 
 ```text
 supabase/migrations/20261015222000_initial_bot_schema.sql
 supabase/migrations/20261015223000_operational_bot_schema.sql
-supabase/seed.sql  # opcional para testes
+supabase/migrations/20261016000000_faq_table.sql
+supabase/migrations/20261112210000_campaigns_bridge.sql
+supabase/migrations/20261112220000_phone_suppressions.sql
+supabase/migrations/20261113000000_operations_observability.sql
+supabase/migrations/20261113152048_follow_up_atomic_claim.sql
+supabase/migrations/20261113153840_atomic_ai_budgets.sql
+supabase/migrations/20261113154223_ai_budget_effective_model.sql
+supabase/seed.sql  # opcional, somente desenvolvimento/teste
 ```
 
-Consulte [`supabase/README.md`](supabase/README.md) para configurar o usuário administrador, RLS e as variáveis. Na primeira inicialização com o runtime configurado, sessões e configuração locais existentes são importadas quando ainda não existem no banco; as APIs do painel informam `persistence: supabase` ou `fallback`.
+As três migrations de follow-up/orçamento foram aplicadas e verificadas no Supabase conectado durante a release 2.3.0. Consulte [`supabase/README.md`](supabase/README.md) para detalhes de cada etapa, RLS, RPCs e configuração do usuário administrador. Na primeira inicialização com o runtime configurado, sessões e configuração locais existentes são importadas quando ainda não existem no banco; as APIs do painel informam `persistence: supabase` ou `fallback`.
 
 ## Provedores de IA e diagnóstico de conexão
 
@@ -179,7 +194,7 @@ curl -X POST 'http://127.0.0.1:3000/api/dashboard/simulate?x=1' \
 
 ## Deploy e rollback do webhook
 
-Salve a configuração atual da instância Evolution e confirme `curl http://127.0.0.1:3000/health`. Execute `docker compose up -d --build`, confirme o healthcheck e valide um payload de teste. Só então configure o webhook para `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a configuração salva, valide o health da Evolution e mantenha o container anterior disponível até a confirmação.
+Antes do deploy, execute `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run test:contract` e `git diff --check`. Salve a configuração atual da instância Evolution e a referência da imagem anterior. Atualize com `docker compose up -d --build bot`, confirme o container com `docker compose ps bot` e valide `curl --fail http://127.0.0.1:3000/health` e `/ready`. Só então valide um payload de teste sem envio a clientes e configure o webhook para `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a imagem/configuração anterior, valide health/readiness e mantenha os volumes de dados.
 
 ## Limites operacionais
 

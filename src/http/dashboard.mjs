@@ -4,6 +4,7 @@ import { validPhone } from '../dashboard.mjs';
 import { sendText } from '../whatsapp.mjs';
 import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS } from '../ai.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
+import { listProviderModels } from '../ai/catalog.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f }) {
@@ -143,7 +144,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
 }
 
 // Modelos/estrutura/métricas/ping de IA do painel (executadas após as rotas administrativas).
-export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, adminConfig, operationsStore }) {
+export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, adminConfig, operationsStore, aiBudgetGate }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/health-summary') {
     const readiness = await readinessCheck();
     const metrics = getAIMetrics();
@@ -153,7 +154,14 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     }
     return json(res, 200, { ok: true, liveness: { status: 'alive', uptimeSeconds: Math.round(process.uptime()) }, readiness: { status: readiness.status, ok: readiness.ok, checks }, system: { provider: runtimeAI().provider, model: runtimeAI().model, circuitBreakers: metrics.circuitBreakers || getCircuitBreakers() } });
   }
-  if (req.method === 'GET' && u.pathname === '/api/dashboard/models') return json(res, 200, { activeProvider: runtimeAI().provider, openrouterModels: OPENROUTER_FREE_MODELS, configuredModel: runtimeAI().model, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers() });
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/models') {
+    const provider = u.searchParams.get('provider');
+    if (provider) {
+      const result = await listProviderModels(provider, { forceRefresh: u.searchParams.get('refresh') === 'true' });
+      return json(res, result.ok ? 200 : (result.error === 'provider_not_supported' ? 400 : 502), result);
+    }
+    return json(res, 200, { activeProvider: runtimeAI().provider, openrouterModels: OPENROUTER_FREE_MODELS, configuredModel: runtimeAI().model, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers() });
+  }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/agent-structure') return json(res, 200, AI_AGENT_STRUCTURE);
   if (req.method === 'GET' && u.pathname === '/api/dashboard/metrics') {
     let metrics;
@@ -192,7 +200,7 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/ping-ai') {
     const body = await readBody(req).catch(() => ({}));
-    const active = runtimeAI(); const pingRes = await pingAI(body?.provider || active.provider, body?.model || active.model);
+    const active = runtimeAI(); const pingRes = await pingAI(body?.provider || active.provider, body?.model || active.model, { budgetGate: aiBudgetGate, aiConfig: adminConfig?.active?.ai || {} });
     return json(res, 200, pingRes);
   }
   return NOT_HANDLED;

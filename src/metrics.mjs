@@ -30,6 +30,7 @@ export function setMetricsPersistenceSink(sink) {
 }
 
 export function recordAICall({
+  requestId = null,
   provider = 'desconhecido',
   model = '',
   latencyMs = 0,
@@ -98,7 +99,7 @@ export function recordAICall({
     if (state.errors.length > MAX_ERRORS) state.errors.pop();
   }
 
-  persistenceSink?.({ provider, model: entry.model, latencyMs: safeLatency, promptTokens: safePrompt, completionTokens: safeCompletion, totalTokens: safeTotal, intent: entry.intent, success: entry.success, error: entry.error });
+  return persistenceSink?.({ requestId, provider, model: entry.model, latencyMs: safeLatency, promptTokens: safePrompt, completionTokens: safeCompletion, totalTokens: safeTotal, intent: entry.intent, success: entry.success, error: entry.error });
 }
 
 function safeTotalTokens(prompt, completion, total) {
@@ -110,9 +111,10 @@ function sanitizeErrorMessage(msg) {
   if (typeof msg !== 'string') return 'Erro desconhecido';
   // Remove eventuais dados de cliente ou números longos
   return msg
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL]')
     .replace(/\b\d{8,15}\b/g, '[NUMERO]')
     .replace(/(bearer\s+)[a-zA-Z0-9_\-\.]+/gi, '$1[REDACTED]')
-    .replace(/(key=)[a-zA-Z0-9_\-\.]+/gi, '$1[REDACTED]')
+    .replace(/((?:key|api[_-]?key|token|secret)=)[^\s&]+/gi, '$1[REDACTED]')
     .slice(0, 160);
 }
 

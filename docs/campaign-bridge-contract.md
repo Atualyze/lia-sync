@@ -13,8 +13,14 @@ Todas as rotas `/api/bridge/campaigns*` exigem `Authorization: Bearer $WEBHOOK_T
 - `GET /api/bridge/campaigns/:id` consulta campanha e destinatários.
 - `POST /api/bridge/campaigns/:id/pause` pausa sem apagar pendências.
 - `POST /api/bridge/campaigns/:id/cancel` cancela e impede novos envios.
-- `POST /api/bridge/campaigns/:id/execute` executa no máximo um lote seguro (10 destinatários por chamada), atualizando cada destinatário para `sent` ou `failed` somente após o provedor confirmar ou falhar.
+- `POST /api/bridge/campaigns/:id/execute` executa no máximo um lote seguro (10 destinatários por chamada), atualizando o destinatário conforme o resultado efetivamente conhecido do provedor.
 
-Estados da campanha: `pending`, `running`, `paused`, `completed`, `cancelled`. Estados do destinatário: `pending`, `sent`, `failed`. O worker não inventa sucesso e limita cada execução a 10 destinatários; a ligação a uma fonte canônica de opt-out ainda depende da tabela/política de opt-out do ambiente e permanece uma pendência explícita desta tranche. A migração mantém RLS e não expõe escritas ao browser.
+## Estados e regras de envio
 
-A migração `20261112210000_campaigns_bridge.sql` é aditiva e deve ser aplicada explicitamente em ambiente controlado. Não foi executada nesta tranche. Sem Supabase configurado, o endpoint responde `503 campaign_persistence_unavailable`; não há falso sucesso nem fallback local para campanhas.
+Estados da campanha: `pending`, `running`, `paused`, `completed`, `cancelled`. Estados do destinatário: `pending`, `sending`, `sent`, `failed`, `suppressed`.
+
+`phone_suppressions` é a fonte canônica de opt-out/supressão. A execução de campanhas e os envios pelo adaptador central da Evolution verificam essa fonte; destinatários suprimidos são ignorados e marcados como `suppressed`. Se a consulta à fonte de supressão falhar ou não estiver disponível, o envio falha fechado: não se presume consentimento nem sucesso. A verificação e a execução permanecem no backend, não no browser.
+
+As tabelas e os controles são introduzidos pelas migrations `20261112210000_campaigns_bridge.sql`, `20261112220000_phone_suppressions.sql` e `20261113000000_operations_observability.sql`. Ambientes existentes devem confirmar que essas migrations estão aplicadas antes de habilitar campanhas. Campanhas, destinatários e supressões usam RLS; chaves de idempotência não têm acesso direto por políticas do browser.
+
+Sem persistência Supabase, os endpoints de campanha respondem `503 campaign_persistence_unavailable`; não há falso sucesso nem fallback local para campanhas. A busca semântica/conhecimento do item 4 continua adiada e não faz parte deste contrato.

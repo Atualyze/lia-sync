@@ -7,10 +7,14 @@ export function resolveAIConfig(botConfig = {}) {
   const rawModel = typeof ai.activeModel === 'string' && ai.activeModel.trim()
     ? ai.activeModel.trim()
     : (typeof ai.model === 'string' && ai.model.trim() ? ai.model.trim() : (config.defaultModel || 'gemini-3.8-flash'));
+  const fallbackModels = [...new Set((Array.isArray(ai.fallbackModels) ? ai.fallbackModels : [])
+    .filter(model => typeof model === 'string')
+    .map(model => model.trim())
+    .filter(model => model && model !== rawModel))].slice(0, 3);
   return {
     provider: provider || 'gemini',
     model: rawModel || 'gemini-3.8-flash',
-    fallbackModels: Array.isArray(ai.fallbackModels) ? ai.fallbackModels.filter(Boolean) : [],
+    fallbackModels,
     maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || config.aiMaxOutputTokens || 2048),
     structuredOutputs: ai.structuredOutputs === true,
     requireParameters: ai.requireParameters === true

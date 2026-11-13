@@ -149,7 +149,7 @@ export async function handleOperationsRoutes({ req, res, u, campaignStore, opera
     if (!toggles || typeof toggles !== 'object' || Array.isArray(toggles) || Object.entries(toggles).some(([name, enabled]) => !knownNames.has(name) || typeof enabled !== 'boolean') || (body.webSearchEnabled !== undefined && typeof body.webSearchEnabled !== 'boolean')) {
       return json(res, 400, { error: 'invalid_tool_settings' });
     }
-    const result = adminConfig.updateDraft({
+    const result = await adminConfig.updateDraft({
       tools: { enabled: { ...(existing.tools?.enabled || {}), ...toggles } },
       ...(body.webSearchEnabled === undefined ? {} : { webSearch: { enabled: body.webSearchEnabled } })
     }, `user:${actorId || 'admin'}`);

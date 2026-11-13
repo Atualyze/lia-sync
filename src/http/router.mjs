@@ -26,7 +26,7 @@ function requiredRole(pathname, method) {
   return 'viewer';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -89,7 +89,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (adminResult !== NOT_HANDLED) return adminResult;
     const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {} });
     if (operationsResult !== NOT_HANDLED) return operationsResult;
-    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore });
+    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore });
     if (webhookResult !== NOT_HANDLED) return webhookResult;

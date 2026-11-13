@@ -41,15 +41,24 @@ export const toolConsultarContato = {
         if (data && !error) contact = data;
       }
 
-      // Fallback para store local se não encontrou no Supabase
-      if (!contact && context.store?.get) {
-        const session = await context.store.get(cleanPhone || context.phone);
+      // Fallback para sessões realmente existentes; não use store.get(), pois
+      // SessionStore.get cria uma sessão vazia e produziria um falso contato.
+      if (!contact && context.store) {
+        const target = cleanPhone || String(context.phone || '').replace(/\D/g, '');
+        const targetName = String(name || '').trim().toLowerCase();
+        const sessions = Object.values(context.store.sessions || {});
+        let session = target
+          ? sessions.find(item => String(item?.phone || '').replace(/\D/g, '') === target)
+          : null;
+        if (!session && targetName) session = sessions.find(item => [item?.clientName, item?.contactName, item?.pushName].some(value => String(value || '').toLowerCase().includes(targetName)));
+        if (!session && context.session && (!target || String(context.session.phone || '').replace(/\D/g, '') === target)) session = context.session;
         if (session) {
           contact = {
             name: session.clientName || session.pushName || 'Cliente',
-            phone: cleanPhone || context.phone,
+            phone: session.phone || target || context.phone,
             labels: session.labels || [],
-            notes: session.notes || ''
+            notes: session.contactNotes || session.crmNotes || session.notes || '',
+            customer_type: session.dealStage || 'lead'
           };
         }
       }
