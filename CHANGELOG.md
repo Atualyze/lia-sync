@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.6 — Carregamento compatível com `turnstile.ready()`
+
+- Removidos `async` e `defer` do script dinâmico `api.js`, conforme exigido pelo Turnstile ao usar `turnstile.ready()`.
+
 ## 2.2.5 — Renderização oficial do Turnstile em SPA
 
 - A renderização explícita agora aguarda `turnstile.ready()` conforme a documentação da Cloudflare.

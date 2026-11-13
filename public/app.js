@@ -42,8 +42,6 @@ async function setupCaptcha(authConfig) {
       const script = document.createElement('script');
       script.id = scriptId;
       script.src = scriptSrc;
-      script.async = true;
-      script.defer = true;
       script.onload = resolve;
       script.onerror = () => reject(new Error('Não foi possível carregar o widget CAPTCHA.'));
       document.head.appendChild(script);
