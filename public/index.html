@@ -287,7 +287,7 @@
                     <label>Reserva 2<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
                     <label>Reserva 3<select class="admin-ai-fallback-model"><option value="">Nenhum</option></select></label>
                   </div>
-                  <input id="admin-ai-fallbacks" data-config="ai.fallbackModels" type="hidden" />
+                  <label class="wide">Reservas entre provedores (opcional)<textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" rows="2" placeholder="Ex.: openrouter:meta-llama/...:free\ngemini:gemini-3.8-flash"></textarea><small class="field-hint">Uma por linha ou vírgula. Use <code>provedor:modelo</code> para reservar outro provedor.</small></label>
                 </div>
                 <label class="toggle-field">
                   <input data-config="ai.autoRouting" type="checkbox" />

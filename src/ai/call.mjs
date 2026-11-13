@@ -2,7 +2,7 @@ import { config } from '../config.mjs';
 import { recordAICall, getMetricsSummary, resetMetrics } from '../metrics.mjs';
 import { decidirModeloPorContexto } from '../model-router.mjs';
 import { failures, opened, PROVIDERS } from './state.mjs';
-import { resolveAIConfig, providers, available, providerDefaultModel, getCircuitBreakers } from './config.mjs';
+import { resolveAIConfig, providers, available, providerDefaultModel, fallbackModelsForProvider, getCircuitBreakers } from './config.mjs';
 import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail, parseAIResponse } from './parsing.mjs';
 import { shouldEnableGoogleSearch } from './search.mjs';
 import { getEnabledTools, getGeminiToolDeclarations } from '../tools/index.mjs';
@@ -166,7 +166,7 @@ export async function call(provider, {
     if (config.openrouterSiteUrl) headers['HTTP-Referer'] = config.openrouterSiteUrl;
     if (config.openrouterAppName) headers['X-Title'] = config.openrouterAppName;
   }
-  const sameProviderFallbacks = provider === runtime.provider ? runtime.fallbackModels : [];
+  const sameProviderFallbacks = provider === runtime.provider ? fallbackModelsForProvider(runtime, provider) : [];
   const safeFallbacks = provider === 'openrouter' && runtime.openrouterFreeOnly
     ? sameProviderFallbacks.filter(candidate => candidate === 'openrouter/free' || candidate.endsWith(':free'))
     : sameProviderFallbacks;

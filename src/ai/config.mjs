@@ -41,6 +41,26 @@ export const available = provider =>
   provider === 'qwen' ? config.qwenKey :
   config.openaiKey;
 
+const PROVIDER_PREFIX = /^(gemini|openrouter|qwen|openai):(.*)$/i;
+
+export function parseFallbackModel(value) {
+  const raw = String(value || '').trim();
+  const explicit = raw.match(PROVIDER_PREFIX);
+  if (explicit) return { provider: explicit[1].toLowerCase(), model: explicit[2].trim() };
+  if (/^gemini[-\w.]/i.test(raw)) return { provider: 'gemini', model: raw };
+  if (/^(?:gpt-|o[1-9](?:-|$)|chatgpt-)/i.test(raw)) return { provider: 'openai', model: raw };
+  if (/^qwen[-/]/i.test(raw)) return { provider: 'qwen', model: raw };
+  if (raw === 'openrouter/free' || raw.includes('/') || raw.endsWith(':free')) return { provider: 'openrouter', model: raw };
+  return { provider: null, model: raw };
+}
+
+export function fallbackModelsForProvider(aiConfig, provider) {
+  return (Array.isArray(aiConfig?.fallbackModels) ? aiConfig.fallbackModels : [])
+    .map(parseFallbackModel)
+    .filter(item => item.provider === provider && item.model)
+    .map(item => item.model);
+}
+
 export function getCircuitBreakers() {
   const all = ['gemini', 'openrouter', 'qwen', 'openai'];
   const res = {};
@@ -190,11 +210,13 @@ export const OPENROUTER_FREE_MODELS = [
  */
 export function providerDefaultModel(provider, aiConfig, fixedModel) {
   if (provider === 'openrouter' && aiConfig.openrouterFreeOnly) {
-    const candidate = fixedModel || (provider === aiConfig.provider ? aiConfig.model : '');
+    const candidate = fixedModel || (provider === aiConfig.provider ? aiConfig.model : fallbackModelsForProvider(aiConfig, provider)[0] || '');
     return candidate === 'openrouter/free' || candidate.endsWith(':free') ? candidate : 'openrouter/free';
   }
   if (fixedModel && provider === aiConfig.provider) return fixedModel;
   if (provider === aiConfig.provider) return aiConfig.model;
+  const configuredFallback = fallbackModelsForProvider(aiConfig, provider)[0];
+  if (configuredFallback) return configuredFallback;
   if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
   return '';
 }

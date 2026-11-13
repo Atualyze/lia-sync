@@ -730,11 +730,12 @@ function syncFallbackModelInputs() {
   const hidden = $('#admin-ai-fallbacks');
   if (!hidden) return;
   const primary = $('#admin-ai-model')?.value;
+  const explicit = hidden.value.split(/[\n,]/).map(value => value.trim()).filter(value => /^(gemini|openrouter|qwen|openai):/i.test(value));
   const selected = [...document.querySelectorAll('.admin-ai-fallback-model')]
     .map(select => select.value)
     .filter((value, index, all) => value && value !== primary && all.indexOf(value) === index)
     .slice(0, 3);
-  hidden.value = selected.join('\n');
+  hidden.value = [...new Set([...explicit, ...selected])].slice(0, 3).join('\n');
   queueAdminSave();
 }
 
