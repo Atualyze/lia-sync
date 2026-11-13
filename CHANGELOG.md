@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.3 — Correção de renderização do Turnstile
+
+- Corrigida a inicialização do Turnstile para renderizar o widget somente após a tela de login ficar visível.
+- O login agora impede o envio quando o widget não emitiu um token CAPTCHA.
+
 ## 2.2.2 — Widget Turnstile compartilhado
 
 - Documentada a integração do widget Turnstile existente no dashboard.

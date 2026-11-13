@@ -66,7 +66,6 @@ async function initAuth() {
     }
     const { createClient } = await import('/dashboard/vendor/supabase.js');
     supabase = createClient(config.supabaseUrl, config.publishableKey);
-    if (config.captchaSiteKey) await setupCaptcha(config);
     const { data } = await supabase.auth.getSession();
     if (data.session?.access_token) {
       accessToken = data.session.access_token;
@@ -74,12 +73,19 @@ async function initAuth() {
       return;
     }
     showLogin();
+    // O Turnstile precisa ser renderizado depois que o formulário e todos os
+    // seus ancestrais deixam de estar com display:none. Renderizá-lo antes de
+    // showLogin() faz o widget ficar preso em "Verifying..." e não emitir token.
+    if (config.captchaSiteKey) await setupCaptcha(config);
     $('#login-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       $('#login-error').textContent = '';
       const submit = $('#login-form button[type="submit"]');
       if (submit) submit.disabled = true;
       try {
+        if (captcha.configured && !captcha.token) {
+          throw new Error('Conclua a validação CAPTCHA antes de entrar.');
+        }
         const { data: result, error } = await supabase.auth.signInWithPassword({
           email: $('#login-email').value.trim(),
           password: $('#login-password').value,
