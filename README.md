@@ -2,9 +2,17 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.1.0**
+**Versão atual: 2.2.0**
 
-## Novidades da Versão 2.1.0
+## Novidades da Versão 2.2.0 — Operação Centralizada
+
+- **Painel Saúde & Operação:** visão autenticada de readiness, dependências, provedores, modelos, circuit breakers, tokens e incidentes.
+- **Controle central no motor:** configurações, ferramentas, campanhas e supressões continuam no `lia-sync`; o Chatwoot Lia apenas consome a ponte autenticada.
+- **Operação segura:** custos são identificados como estimativas quando não existe tabela de preços confiável, telefones de supressão são mascarados e o teste de integração não envia WhatsApp por padrão.
+- **Persistência e contratos:** campanhas e opt-out usam as migrações canônicas do Supabase, com idempotência, RLS e contratos verificáveis.
+- **Readiness reproduzível:** healthcheck, readiness, CI e documentação de deploy/rollback foram alinhados para publicação controlada.
+
+## Base consolidada da Versão 2.1.0
 
 - **Arquitetura modular:** IA, HTTP, fluxo de atendimento e identidade foram separados em módulos coesos, mantendo `ai.mjs`, `flow.mjs` e `server.mjs` como fachadas compatíveis.
 - **Identidade publicada pelo painel:** nome da assistente, responsável, empresa, apelidos, tom e telefone humano não são definidos no código operacional.

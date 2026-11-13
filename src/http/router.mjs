@@ -6,10 +6,13 @@ import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRu
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
+import { checkReadiness } from './readiness.mjs';
+import { getCircuitBreakers } from '../ai.mjs';
+import packageJson from '../../package.json' with { type: 'json' };
 
 // Monta o handler de requests do createApp. A ORDEM dos despachos abaixo é
 // parte do contrato do servidor e deve permanecer idêntica.
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -22,7 +25,11 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       res.writeHead(204, { 'access-control-allow-origin': config.dashboardOrigin, 'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization', vary: 'Origin' });
       return res.end();
     }
-    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true });
+    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, version: packageJson.version, uptime: Math.round(process.uptime()), providers: getCircuitBreakers() });
+    if (req.method === 'GET' && u.pathname === '/ready') {
+      const readiness = await readinessCheck();
+      return json(res, readiness.ok ? 200 : 503, readiness);
+    }
     if (isChatwootApiPath(u.pathname)) {
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
       if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);
@@ -45,13 +52,13 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f });
     if (dashboardResult !== NOT_HANDLED) return dashboardResult;
-    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize });
+    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
     const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI });
     if (settingsResult !== NOT_HANDLED) return settingsResult;
     const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor });
     if (adminResult !== NOT_HANDLED) return adminResult;
-    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI });
+    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage });
     if (webhookResult !== NOT_HANDLED) return webhookResult;

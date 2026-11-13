@@ -7,6 +7,7 @@ import { toolEnviarMensagemContato } from './enviar_mensagem_contato.mjs';
 import { toolConsultarSaudeInfra } from './consultar_saude_infra.mjs';
 import { toolGerenciarAgendaGoogle } from './gerenciar_agenda_google.mjs';
 import { toolGerarDocumentoPdf } from './gerar_documento_pdf.mjs';
+import { toolConsultarWeb } from './consultar_web.mjs';
 
 export const ALL_TOOLS = [
   toolTransferirSetor,
@@ -17,12 +18,14 @@ export const ALL_TOOLS = [
   toolEnviarMensagemContato,
   toolConsultarSaudeInfra,
   toolGerenciarAgendaGoogle,
-  toolGerarDocumentoPdf
+  toolGerarDocumentoPdf,
+  toolConsultarWeb
 ];
 
 const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'agendar_retorno_ou_followup',
-  'consultar_base_conhecimento'
+  'consultar_base_conhecimento',
+  'consultar_web'
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(toolName);
 
@@ -35,7 +38,8 @@ export {
   toolEnviarMensagemContato,
   toolConsultarSaudeInfra,
   toolGerenciarAgendaGoogle,
-  toolGerarDocumentoPdf
+  toolGerarDocumentoPdf,
+  toolConsultarWeb
 };
 
 /**

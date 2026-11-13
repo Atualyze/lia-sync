@@ -20,6 +20,7 @@ import { createChatwootProxy } from './http/proxy.mjs';
 import { createRouter } from './http/router.mjs';
 import { deliveryTarget, json } from './http/utils.mjs';
 import { broadcastBridgeEvent } from './http/bridge.mjs';
+import { CampaignStore } from './campaigns.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -29,7 +30,7 @@ const supabaseRuntime = config.supabaseRuntimeEnabled ? createSupabaseRuntime({ 
 const defaultStore = supabaseRuntime.enabled ? new SupabaseSessionStore(config.dataFile, { client: supabaseRuntime.client, ttlMs: config.sessionTtlMs }) : new SessionStore(config.dataFile, { ttlMs: config.sessionTtlMs });
 const defaultAdminConfig = supabaseRuntime.enabled ? new SupabaseAdminConfigStore(undefined, { client: supabaseRuntime.client }) : new AdminConfigStore();
 
-export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl } = {}) {
+export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl, readinessCheck } = {}) {
   await store.load();
   await adminConfig.load();
   if (!store.client?.enabled) console.warn('[persistence] Supabase runtime desativado: configure SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; usando fallback local.');
@@ -164,6 +165,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     pending.set(job.phone, job);
   };
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
+  const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
 
   const app = createRouter({
     store,
@@ -178,7 +180,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getHumanPhone,
     getCachedInstanceOwner,
     updateInstanceOwner,
-    proxyToChatwoot
+    proxyToChatwoot,
+    readinessCheck,
+    campaignStore
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; return app;
 }

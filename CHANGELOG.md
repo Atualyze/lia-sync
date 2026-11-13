@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0 — Operação centralizada, campanhas e readiness
+
+- Adicionada a visão autenticada **Saúde & Operação** ao dashboard, com readiness, dependências, modelos, circuit breakers, tokens, incidentes, campanhas, fila e supressões.
+- Consolidado o `lia-sync` como fonte de verdade para configurações, ferramentas, campanhas, opt-out e métricas; o Chatwoot Lia permanece como ponte/console.
+- Adicionadas rotas autenticadas de resumo operacional, com custos explicitamente estimados quando não há tabela de preços confiável e telefones sempre mascarados.
+- Adicionadas migrações de campanhas/idempotência e supressões canônicas com RLS e bloqueio de envio para destinatários suprimidos.
+- Incluídos contratos e documentação de deploy, readiness, rollback e teste seguro sem envio WhatsApp por padrão.
+- Validação da release: 126 testes, build de 77 módulos e checks de contrato aprovados.
+
 ## 2.1.0 — Arquitetura modular e operação configurável
 
 - **Build multiplataforma:** `npm run build` e `npm run lint` deixaram de depender de `find` e `xargs`; ambos usam `scripts/check-syntax.mjs`, compatível com Windows, Linux e macOS.

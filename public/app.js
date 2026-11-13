@@ -1,7 +1,7 @@
 const state = {
   sessions: [],
   selected: null,
-  view: 'inbox',
+  view: 'overview',
   mode: 'real',
   agent: null,
   metrics: null,
@@ -724,6 +724,7 @@ function render() {
   if (state.view === 'settings') { try { renderSettings(); } catch (e) { console.error('[renderSettings]', e); } }
   if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
   if (state.view === 'metrics') { try { renderMetrics(); } catch (e) { console.error('[renderMetrics]', e); } }
+  if (state.view === 'overview') { try { renderOverview(); } catch (e) { console.error('[renderOverview]', e); } }
   const lastSync = $('#last-sync');
   if (lastSync) lastSync.textContent = `atualizado ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 }
@@ -794,12 +795,15 @@ function showView(view) {
       ? 'Monitoramento & Consumo'
       : view === 'admin'
       ? 'Administração'
+      : view === 'overview'
+      ? 'Saúde & Operação'
       : 'Transferências';
   if (view === 'settings') renderSettings();
   if (view === 'handoff') renderHandoff();
   if (view === 'agent') renderAgent();
   if (view === 'metrics') renderMetrics();
   if (view === 'admin') renderAdminData();
+  if (view === 'overview') renderOverview();
 }
 
 function startDashboard() {
@@ -836,6 +840,8 @@ function startDashboard() {
     }
   };
   $('#refresh')?.addEventListener('click', () => triggerRefreshWithIcon($('#refresh')));
+  $('#refresh-overview')?.addEventListener('click', () => renderOverview());
+  $('#overview-open-simulation')?.addEventListener('click', () => { state.mode = 'simulation'; $('#mode-selector').value = 'simulation'; showView('inbox'); $('#new-sim')?.click(); });
   $('#refresh-handoff')?.addEventListener('click', async () => {
     const btn = $('#refresh-handoff');
     if (btn) {

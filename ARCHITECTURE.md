@@ -1,10 +1,10 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.1.0**
+Versão: **2.2.0**
 
 ## Objetivo
 
-O Lia Sync recebe eventos do WhatsApp, decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel e as integrações sincronizados. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA.
+O Lia Sync recebe eventos do WhatsApp, decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel e as integrações sincronizados. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA. A partir da 2.2.0, o Lia Sync é também a fonte central das configurações, ferramentas, campanhas, supressões, métricas e readiness operacional; o Chatwoot Lia atua como ponte e console de atendimento.
 
 ## Camadas
 
@@ -32,6 +32,7 @@ Evolution / Chatwoot / Dashboard
 | --- | --- |
 | `server.mjs` | Inicializa stores, dependências, manutenção e o servidor HTTP. |
 | `http/` | Roteamento, autenticação, webhooks, bridge Chatwoot/SSE, painel e proxy. |
+| `http/dashboard.mjs` | Visão operacional autenticada, saúde, operações, modelos, métricas, campanhas e supressões mascaradas. |
 | `flow.mjs` | Seleciona atendimento do cliente ou Copiloto do responsável. |
 | `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento e resposta segura. |
 | `flow/owner.mjs` | Comandos do Copiloto, ações operacionais e confirmação de envio. |
@@ -57,6 +58,8 @@ Aliases e textos históricos são aceitos somente para migrar dados e conversas 
 - Sessões reais e simulações usam namespaces distintos.
 - Handoff usa `triggerHandoff`; o fluxo não envia transferências diretamente.
 - PDFs e áudios são entregues por adaptadores específicos, com fallback para texto quando a entrega não é possível.
+- O dashboard não retorna chaves, tokens, prompts, respostas completas ou telefones sem mascaramento.
+- Testes de integração do painel são simulados por padrão e não enviam mensagens reais.
 
 ## Desenvolvimento
 

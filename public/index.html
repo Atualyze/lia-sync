@@ -48,7 +48,11 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="inbox">
+        <button class="nav-item active" data-view="overview">
+          <span class="nav-icon">◈</span>
+          Saúde & Operação <b id="overview-status-badge" class="badge-mini ok">ok</b>
+        </button>
+        <button class="nav-item" data-view="inbox">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Conversas <b id="conversation-count">0</b>
         </button>
@@ -103,6 +107,15 @@
       </header>
 
       <!-- VIEW: CONVERSAS (INBOX) -->
+      <section id="overview-view" class="view">
+        <div class="ops-container">
+          <div class="ops-hero panel"><div><div class="eyebrow">Fonte central · Lia Sync</div><h2>Saúde e operação</h2><p>Liveness, readiness, dependências, custos estimados e fila operacional — sem expor secrets.</p></div><button class="action-btn-ping" id="refresh-overview">Atualizar visão</button></div>
+          <div id="overview-health" class="health-grid"></div>
+          <div class="ops-grid"><section class="panel ops-section"><div class="panel-head"><div><strong>Consumo e limites</strong><span>Valores monetários são estimativas</span></div><span class="pill mini amber">ESTIMATIVA</span></div><div id="overview-costs" class="ops-list"></div></section><section class="panel ops-section"><div class="panel-head"><div><strong>Modelos e circuit breakers</strong><span>Ativo, fallback, latência e erros</span></div></div><div id="overview-models" class="ops-list"></div></section></div>
+          <div class="ops-grid"><section class="panel ops-section"><div class="panel-head"><div><strong>Campanhas, supressões e fila</strong><span>Operação sem envio automático pelo painel</span></div></div><div id="overview-operations" class="ops-list"></div></section><section class="panel ops-section"><div class="panel-head"><div><strong>Teste seguro</strong><span>Simulação isolada por padrão</span></div></div><p class="ops-safe-copy">Use o modo <b>Simulador Isolado</b> ou o ping autenticado para validar integrações. Nenhuma dessas ações envia WhatsApp real.</p><button class="admin-primary-btn" id="overview-open-simulation">Abrir simulador</button></section></div>
+        </div>
+      </section>
+
       <section id="inbox-view" class="view active-view">
         <div class="inbox-grid">
           <section class="conversation-list panel">

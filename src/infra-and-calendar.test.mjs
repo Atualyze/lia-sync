@@ -11,6 +11,10 @@ test('Habilidade 4: Diagnóstico Ativo de Infraestrutura reporta integridade e m
 });
 
 test('Habilidade 5: Integração Google Calendar consulta horários livres e confirma agendamento', async () => {
+  const oldNodeEnv = process.env.NODE_ENV;
+  const oldMock = process.env.GOOGLE_CALENDAR_MOCK;
+  process.env.NODE_ENV = 'test';
+  process.env.GOOGLE_CALENDAR_MOCK = 'true';
   const livres = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, {});
   assert.equal(livres.success, true);
   assert.ok(Array.isArray(livres.availableSlots));
@@ -25,4 +29,20 @@ test('Habilidade 5: Integração Google Calendar consulta horários livres e con
   assert.equal(agendamento.success, true);
   assert.equal(agendamento.event.status, 'confirmed');
   assert.match(agendamento.message, /14:30/);
+  if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv;
+  if (oldMock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldMock;
+});
+
+test('Google Calendar não retorna sucesso sem integração real ou mock explícito', async () => {
+  const oldNodeEnv = process.env.NODE_ENV;
+  const oldMock = process.env.GOOGLE_CALENDAR_MOCK;
+  process.env.NODE_ENV = 'production';
+  delete process.env.GOOGLE_CALENDAR_MOCK;
+  delete process.env.GOOGLE_CALENDAR_API_KEY;
+  delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+  const result = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, {});
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'google_calendar_unavailable');
+  if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv;
+  if (oldMock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldMock;
 });

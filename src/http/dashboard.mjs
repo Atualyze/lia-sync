@@ -143,7 +143,47 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
 }
 
 // Modelos/estrutura/métricas/ping de IA do painel (executadas após as rotas /api/admin/*).
-export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI }) {
+function maskPhone(phone = '') {
+  const digits = String(phone).replace(/\D/g, '');
+  return digits.length > 4 ? `${digits.slice(0, 2)}••••${digits.slice(-2)}` : '••••';
+}
+
+function estimatedCost(metrics) {
+  const byProvider = Object.entries(metrics?.byProvider || {}).map(([provider, value]) => ({
+    provider,
+    model: 'agregado',
+    requests: value.requests || 0,
+    tokens: value.totalTokens || 0,
+    estimatedUsd: 0,
+    estimate: true,
+    note: 'Preço não informado pelo provedor; valor monetário não foi calculado.'
+  }));
+  return { currency: 'USD', total: 0, estimate: true, note: 'Estimativa conservadora: custo monetário depende da tabela do provedor e não é inferido por secrets.', byProvider };
+}
+
+export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig }) {
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/health-summary') {
+    const readiness = await readinessCheck();
+    const metrics = getAIMetrics();
+    const checks = [...(readiness.checks || [])];
+    for (const name of ['web_search', 'calendar']) {
+      if (!checks.some(item => item.name === name)) checks.push({ name, status: 'not_configured', reason: 'health probe não configurado' });
+    }
+    return json(res, 200, { ok: true, liveness: { status: 'alive', uptimeSeconds: Math.round(process.uptime()) }, readiness: { status: readiness.status, ok: readiness.ok, checks }, system: { provider: runtimeAI().provider, model: runtimeAI().model, circuitBreakers: metrics.circuitBreakers || getCircuitBreakers() } });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/operations') {
+    const campaigns = campaignStore ? await campaignStore.list().catch(() => []) : [];
+    const sessions = Object.values(store.sessions || {});
+    let suppressions = [];
+    if (campaignStore?.client?.select) suppressions = await campaignStore.client.select('phone_suppressions', 'select=phone,reason,source,suppressed_at&order=suppressed_at.desc&limit=25').catch(() => []);
+    return json(res, 200, {
+      ok: true,
+      campaigns: campaigns.slice(0, 25).map(({ message, recipients, ...safe }) => ({ ...safe, recipientCount: recipients?.length || safe.total_recipients || 0 })),
+      suppressions: suppressions.map(item => ({ ...item, phone: maskPhone(item.phone) })),
+      queue: { handoff: sessions.filter(item => item.human).length, active: sessions.filter(item => !item.inactivityClosed).length },
+      audit: (adminConfig?.history || []).slice(-10).map(item => ({ revision: item.revision, action: item.action, actor: item.actor, at: item.at, sourceRevision: item.sourceRevision }))
+    });
+  }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/models') return json(res, 200, { activeProvider: runtimeAI().provider, openrouterModels: OPENROUTER_FREE_MODELS, configuredModel: runtimeAI().model, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers() });
   if (req.method === 'GET' && u.pathname === '/api/dashboard/agent-structure') return json(res, 200, AI_AGENT_STRUCTURE);
   if (req.method === 'GET' && u.pathname === '/api/dashboard/metrics') {
@@ -151,6 +191,7 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     const sessions = Object.values(store.sessions);
     return json(res, 200, {
       ...metrics,
+      estimatedCost: estimatedCost(metrics),
       system: {
         uptime: Math.round(process.uptime()),
         activeProvider: runtimeAI().provider,

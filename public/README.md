@@ -1,6 +1,6 @@
 # Dashboard Lia Sync
 
-Versão do backend: **2.1.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Versão do backend: **2.2.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pelo mesmo processo, usa os endpoints locais `/api/dashboard/*` e `/api/admin/*` e não expõe segredos no navegador.
 
@@ -8,7 +8,8 @@ Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pe
 
 - **Conversas:** sessões de simulação e conversas reais, com alternância bot/humano.
 - **Administração:** contexto, identidade, mensagens-base, comportamento e base de conhecimento.
-- **Monitoramento:** latência, tokens, erros e circuit breakers.
+- **Saúde & Operação:** readiness, dependências, latência, tokens, custos estimados, erros e circuit breakers.
+- **Campanhas e supressões:** visão autenticada de campanhas, fila, opt-out e auditoria com telefones mascarados.
 - **Configuração:** estado do ambiente, modelos e integrações.
 - **Transferências:** sessões aguardando atendimento humano.
 

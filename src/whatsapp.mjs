@@ -1,6 +1,7 @@
 import { config } from './config.mjs';
 import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
+import { idempotencyKey } from './core/idempotency.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -100,6 +101,19 @@ export function isIgnoredJid(jid) {
   return /(@g\.us|@broadcast|^status@broadcast$|@newsletter)$/i.test(jid);
 }
 
+const providerTimeoutMs = () => Math.max(1000, Number(process.env.EVOLUTION_SEND_TIMEOUT_MS || 15000));
+const providerKey = (kind, jid, payload) => idempotencyKey('lia', kind, jid, JSON.stringify(payload));
+async function providerSend(url, payload, kind, jid) {
+  const key = providerKey(kind, jid, payload);
+  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', apikey: config.evolutionKey, 'x-idempotency-key': key, 'idempotency-key': key }, signal: AbortSignal.timeout(providerTimeoutMs()), body: JSON.stringify(payload) });
+  if (!response.ok) throw Error(`Evolution ${response.status}`);
+  const text = await response.text();
+  let result = {};
+  try { result = text ? JSON.parse(text) : {}; } catch { throw Error('Evolution resposta inválida'); }
+  if (result?.error) throw Error('Evolution rejeitou o envio');
+  return { result, id: result?.key?.id || result?.data?.key?.id || result?.message?.key?.id };
+}
+
 export async function getMediaBase64(item) {
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return null;
   const key = item?.key;
@@ -129,17 +143,11 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        signal: AbortSignal.timeout(providerTimeoutMs()),
         body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
       }).catch(() => {});
 
-      const r = await fetch(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({ number: jid, text, delay: Math.min(3000, 400 + 25 * text.length) })
-      });
-      if (!r.ok) throw Error(`Evolution ${r.status}`);
-      const j = await r.json().catch(() => ({}));
-      const id = j?.key?.id || j?.data?.key?.id;
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, text, delay: Math.min(3000, 400 + 25 * text.length) }, 'text', jid);
       j && remember(id);
       onSent?.(id);
       return j;
@@ -161,27 +169,11 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        signal: AbortSignal.timeout(providerTimeoutMs()),
         body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
       }).catch(() => {});
 
-      const r = await fetch(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({
-          number: jid,
-          mediatype: 'document',
-          mimetype,
-          fileName,
-          media: cleanB64,
-          ...(caption ? { caption } : {})
-        })
-      });
-      if (!r.ok) {
-        const errText = await r.text().catch(() => '');
-        throw Error(`Evolution Document ${r.status}: ${errText}`);
-      }
-      const j = await r.json().catch(() => ({}));
-      const id = j?.key?.id || j?.data?.key?.id;
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, mediatype: 'document', mimetype, fileName, media: cleanB64, ...(caption ? { caption } : {}) }, 'document', jid);
       j && remember(id);
       onSent?.(id);
       return j;
@@ -202,20 +194,11 @@ export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } 
       await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        signal: AbortSignal.timeout(providerTimeoutMs()),
         body: JSON.stringify({ number: jid, presence: 'recording', delay: 500 })
       }).catch(() => {});
 
-      const r = await fetch(`${config.evolutionUrl}/message/sendWhatsAppAudio/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        body: JSON.stringify({ number: jid, audio: cleanB64, encoding: true })
-      });
-      if (!r.ok) {
-        const errText = await r.text().catch(() => '');
-        throw Error(`Evolution Audio ${r.status}: ${errText}`);
-      }
-      const j = await r.json().catch(() => ({}));
-      const id = j?.key?.id || j?.data?.key?.id;
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendWhatsAppAudio/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, audio: cleanB64, encoding: true }, 'audio', jid);
       j && remember(id);
       onSent?.(id);
       return j;

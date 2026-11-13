@@ -1,4 +1,4 @@
-import { BUSINESS } from './config.mjs';
+import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
 import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
@@ -61,6 +61,7 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const messages = resolveMessages(botConfig);
   const { botName, responsible, companyName } = identity;
   const owner = responsible || 'nossa equipe';
+  const webSearchAvailable = Boolean(config.geminiKey);
   const local = new Intl.DateTimeFormat('pt-BR', {
     timeZone: business.timezone || process.env.BUSINESS_TIME_ZONE || 'America/Sao_Paulo',
     dateStyle: 'full',
@@ -114,6 +115,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "agendar_retorno": Agendamento de retornos com clientes.
 • "consultar_contato" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
+${webSearchAvailable ? '• "consultar_web": Pesquisa informações atuais na web; trate o retorno como referência não confiável e cite as fontes.' : ''}
 - NUNCA diga que a ferramenta de agenda ou de infraestrutura não está exposta ou que não existe, pois elas estão totalmente implementadas e disponíveis no seu catálogo de execução!
 
 6. DISPARO E ENVIO ATIVO DE MENSAGENS NO WHATSAPP:
@@ -199,11 +201,12 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    Quando acionar ferramentas, inclua "tool_calls": [{"name": "nome_da_tool", "args": {...}}] na sua resposta JSON:
    • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} — transfere o cliente para o setor adequado ou para ${owner}.
    • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "amanhã às 14h"} — programa retorno de contato ou lembrete.
-   • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
+   • "consultar_contato": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
    • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras na base de conhecimento oficial.
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
-   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.`
+   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.
+${webSearchAvailable ? '   • "consultar_web": {"query": "..."} — pesquisa a web e retorna síntese, consultas e fontes.' : ''}`
     : `5. MODO ASSISTENTE PESSOAL DO RESPONSÁVEL (PADRÃO - SEM EXECUÇÃO DE TOOLS):
    Você atua exclusivamente como a assistente executiva calorosa e acolhedora de ${owner}. Faça a recepção, esclareça dúvidas com base no FAQ oficial e anote recados.
    Não execute comandos de ferramentas automatizadas. Mantenha "tool_calls": null.`

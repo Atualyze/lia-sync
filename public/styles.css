@@ -954,6 +954,21 @@ body {
 .login-button:hover { background: var(--accent-primary-hover); }
 
 .hidden { display: none !important; }
+.nav-icon { width: 16px; text-align: center; color: #60a5fa; }
+.ops-container { display:flex; flex-direction:column; gap:14px; }
+.ops-hero { padding:20px 24px; display:flex; justify-content:space-between; align-items:center; }
+.ops-hero h2 { margin:2px 0 0; font-size:18px; }
+.ops-hero p { margin:3px 0 0; color:var(--text-secondary); font-size:12px; }
+.health-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+.health-card { padding:14px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); }
+.health-card strong { display:block; font-size:12px; margin-bottom:5px; }
+.health-card span { color:var(--text-tertiary); font-size:11px; }
+.health-card.ok { border-color:rgba(16,185,129,.35); }.health-card.warn { border-color:rgba(245,158,11,.4); }.health-card.err { border-color:rgba(244,63,94,.4); }
+.ops-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.ops-section { min-height:150px; }.ops-list { padding:14px; display:flex; flex-direction:column; gap:8px; }
+.ops-row { display:flex; justify-content:space-between; gap:12px; padding:9px 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--bg-surface-raised); font-size:11px; }
+.ops-row span { color:var(--text-tertiary); }.ops-safe-copy { margin:14px; color:var(--text-secondary); font-size:12px; line-height:1.6; }
+.mini.amber { background:rgba(245,158,11,.12); color:#fbbf24; border-color:rgba(245,158,11,.25); }
 .view { display: none; }
 .view.active-view { display: block; }
 
@@ -971,6 +986,8 @@ body {
   .inbox-grid { display: block; height: calc(100vh - 100px); }
   .conversation-list { display: none; }
   .admin-grid, .agent-card-list, .metrics-kpi-grid { grid-template-columns: 1fr; }
+  .ops-grid, .health-grid { grid-template-columns: 1fr; }
+  .ops-hero { align-items:flex-start; gap:12px; flex-direction:column; }
 }
 
 /* ==========================================================================

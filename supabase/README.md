@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **2.1.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **2.2.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Este diretório contém o banco de desenvolvimento/staging da Lia Sync. Ele é independente do Supabase do CRM original.
 
@@ -12,6 +12,8 @@ Execute nesta ordem:
 2. `migrations/20261015223000_operational_bot_schema.sql`
 3. `migrations/20261016000000_faq_table.sql` — compatibilidade para bancos que já executaram as migrations anteriores
 4. `seed.sql` — carga inicial do conteúdo público inicial
+5. `migrations/20261112210000_campaigns_bridge.sql` — campanhas, idempotência e estados da ponte
+6. `migrations/20261112220000_phone_suppressions.sql` — supressões/opt-out canônicos, RLS e status de destinatário
 
 A primeira migração cria a camada de integração atual. A segunda contém o domínio operacional usado pelo runtime híbrido: o Supabase é a fonte primária quando a `service_role` está configurada, com dual-write e fallback para `sessions.json` e `bot-config.json`.
 

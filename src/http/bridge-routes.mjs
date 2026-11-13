@@ -5,6 +5,11 @@ import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { getKnowledgeBaseContentSync, listKnowledgeBases, saveKnowledgeBase } from '../knowledge-bases.mjs';
 import { sendText } from '../whatsapp.mjs';
 import { broadcastBridgeEvent, bridgeSubscribers } from './bridge.mjs';
+import { TtlIdempotencyStore, idempotencyKey } from '../core/idempotency.mjs';
+import { CampaignStore } from '../campaigns.mjs';
+
+const bridgeActions = new TtlIdempotencyStore({ ttlMs: Number(process.env.BRIDGE_IDEMPOTENCY_TTL_MS || 10 * 60 * 1000) });
+const safeError = error => error?.code || (error?.name === 'TimeoutError' ? 'provider_timeout' : 'request_failed');
 
 async function isBridgeAuthorized(req, webhookAuthorize) {
   try {
@@ -24,17 +29,39 @@ function bridgeCorsHeaders(req) {
 }
 
 // Rotas /api/bridge/* (inclui o stream SSE de eventos).
-export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize }) {
+export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore }) {
+  if (u.pathname === '/api/bridge/campaigns' || u.pathname.startsWith('/api/bridge/campaigns/')) {
+    if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
+    if (!campaignStore) return json(res, 503, { ok: false, error: 'campaign_worker_unavailable' });
+    try {
+      if (req.method === 'GET' && u.pathname === '/api/bridge/campaigns') return json(res, 200, { ok: true, campaigns: await campaignStore.list() });
+      if (req.method === 'POST' && u.pathname === '/api/bridge/campaigns') {
+        const body = await readBody(req);
+        return json(res, 201, { ok: true, campaign: await campaignStore.create({ ...body, idempotencyKey: req.headers['idempotency-key'] || body.idempotencyKey }) });
+      }
+      const match = u.pathname.match(/^\/api\/bridge\/campaigns\/([^/]+)(?:\/(pause|cancel|execute))?$/);
+      if (!match) return json(res, 404, { ok: false, error: 'not_found' });
+      const [, id, action] = match;
+      if (req.method === 'GET' && !action) { const campaign = await campaignStore.get(id); return campaign ? json(res, 200, { ok: true, campaign }) : json(res, 404, { ok: false, error: 'campaign_not_found' }); }
+      if (req.method === 'POST' && action === 'pause') return json(res, 200, { ok: true, campaign: await campaignStore.transition(id, 'paused') });
+      if (req.method === 'POST' && action === 'cancel') return json(res, 200, { ok: true, campaign: await campaignStore.transition(id, 'cancelled') });
+      if (req.method === 'POST' && action === 'execute') return json(res, 200, { ok: true, campaign: await campaignStore.execute(id) });
+      return json(res, 405, { ok: false, error: 'method_not_allowed' });
+    } catch (error) {
+      const status = ['campaign_persistence_unavailable', 'campaign_worker_unavailable'].includes(error?.code) ? 503 : error?.code === 'invalid_campaign' ? 400 : 502;
+      return json(res, status, { ok: false, error: error?.code || 'campaign_request_failed' });
+    }
+  }
   if (req.method === 'POST' && u.pathname === '/api/bridge/message') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
     const rawPhone = String(body.phone || body.senderIdentifier || '').trim();
     const text = String(body.text || body.content || '').trim();
     const pushName = String(body.pushName || body.senderName || '').trim();
     const origin = body.origin === 'simulation' ? 'simulation' : 'real';
-    if (!rawPhone || !text) return json(res, 400, { error: 'phone_and_text_required' });
+    if (!rawPhone || !text) return json(res, 400, { ok: false, error: 'phone_and_text_required' });
     let digits = isOwnerKey(rawPhone)
       ? OWNER_SELF_KEY
       : rawPhone.replace(/@.*$/, '').replace(/\D/g, '');
@@ -72,14 +99,14 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         clientName: session.clientName || session.contactName || pushName || digits
       });
     } catch (err) {
-      return json(res, 400, { ok: false, error: err.message });
+      return json(res, 400, { ok: false, error: safeError(err) });
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/mode') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
     const rawPhone = String(body.phone || '').trim();
     let digits = rawPhone.replace(/@.*$/, '').replace(/\D/g, '');
     if (digits.length < 8 && rawPhone) {
@@ -89,7 +116,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     } else if (digits.length > 15) {
       digits = digits.slice(0, 15);
     }
-    if (!digits || !['human', 'bot'].includes(body.mode)) return json(res, 400, { error: 'invalid_mode_or_phone' });
+    if (!digits || !['human', 'bot'].includes(body.mode)) return json(res, 400, { ok: false, error: 'invalid_mode_or_phone' });
     try {
       const session = store.get(digits);
       const isHuman = body.mode === 'human';
@@ -117,20 +144,23 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
       });
       return json(res, 200, { ok: true, phone: digits, mode: session.human ? 'human' : 'bot', human: session.human });
     } catch (err) {
-      return json(res, 400, { ok: false, error: err.message });
+      return json(res, 400, { ok: false, error: safeError(err) });
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/send') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
     const rawPhone = String(body.phone || '').trim();
     const text = String(body.text || '').trim();
     const skipSession = Boolean(body.skipSession);
-    if (!rawPhone || !text) return json(res, 400, { error: 'phone_and_text_required' });
+    if (!rawPhone || !text) return json(res, 400, { ok: false, error: 'phone_and_text_required' });
     const digits = rawPhone.replace(/@.*$/, '').replace(/\D/g, '');
     const targetJid = /@lid$/i.test(rawPhone) ? rawPhone : (digits || rawPhone);
+    const actionKey = String(req.headers['idempotency-key'] || body.idempotencyKey || idempotencyKey('bridge-send', targetJid, text));
+    const previous = bridgeActions.get(actionKey);
+    if (previous) return json(res, previous.status, previous.body);
     try {
       if (!skipSession && (digits.length >= 8 || /@lid$/i.test(rawPhone))) {
         const session = store.get(targetJid);
@@ -169,15 +199,17 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
           timestamp: Date.now()
         });
       }
-      return json(res, 200, { ok: true, sent, error: sendError });
+      const result = { status: sent ? 200 : 502, body: { ok: sent, sent, ...(sent ? {} : { error: 'provider_unavailable' }) } };
+      bridgeActions.set(actionKey, result);
+      return json(res, result.status, result.body);
     } catch (err) {
-      return json(res, 400, { ok: false, error: err.message });
+      return json(res, 400, { ok: false, error: safeError(err) });
     }
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/events') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
-    if (req.headers.origin && (!config.dashboardOrigin || req.headers.origin !== config.dashboardOrigin)) return json(res, 403, { error: 'origin_not_allowed' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
+    if (req.headers.origin && (!config.dashboardOrigin || req.headers.origin !== config.dashboardOrigin)) return json(res, 403, { ok: false, error: 'origin_not_allowed' });
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -198,7 +230,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/conversations') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     if (Object.keys(store.sessions).length === 0) {
       await store.refresh?.().catch(() => {});
     }
@@ -246,11 +278,11 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
   }
   if (req.method === 'GET' && u.pathname === '/api/bridge/knowledge-bases') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     const id = u.searchParams.get('id');
     if (id) {
       const kb = getKnowledgeBaseContentSync(id);
-      if (!kb) return json(res, 404, { error: 'not_found' });
+      if (!kb) return json(res, 404, { ok: false, error: 'not_found' });
       return json(res, 200, { ok: true, knowledgeBase: kb });
     }
     const bases = await listKnowledgeBases();
@@ -258,25 +290,25 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/knowledge-bases') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req, 2 * 1024 * 1024); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    try { body = await readBody(req, 2 * 1024 * 1024); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
     try {
       const saved = await saveKnowledgeBase({ id: body.id, title: body.title, content: body.content });
       return json(res, 200, { ok: true, knowledgeBase: saved });
     } catch (err) {
-      return json(res, 400, { ok: false, error: err.message });
+      return json(res, 400, { ok: false, error: safeError(err) });
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/contact-context') {
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
-    if (!isBridgeAuth) return json(res, 401, { error: 'unauthorized' });
+    if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
     const rawPhone = String(body.phone || '').trim();
     const isCopilotKey = isOwnerKey(rawPhone);
     const digits = isCopilotKey ? OWNER_SELF_KEY : normalizePhone(rawPhone.replace(/@.*$/, '').replace(/\D/g, ''));
-    if (!isCopilotKey && (!digits || digits.length < 8)) return json(res, 400, { error: 'invalid_phone' });
+    if (!isCopilotKey && (!digits || digits.length < 8)) return json(res, 400, { ok: false, error: 'invalid_phone' });
     try {
       const applyContextToSession = (sess) => {
         if (typeof body.name === 'string' && body.name.trim()) {
@@ -327,7 +359,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         contactNotes: session.contactNotes || ''
       });
     } catch (err) {
-      return json(res, 400, { ok: false, error: err.message });
+      return json(res, 400, { ok: false, error: safeError(err) });
     }
   }
   return NOT_HANDLED;
