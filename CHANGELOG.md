@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.2 — Widget Turnstile compartilhado
+
+- Documentada a integração do widget Turnstile existente no dashboard.
+- O login usa a site key pública do ambiente e envia `captcha_token` ao Supabase, mantendo a validação server-side no provedor.
+- Documentados os hostnames de produção compartilhados entre Lia Sync e Chatwoot Lia.
+
 ## 2.2.1 — Consulta web resiliente
 
 - Corrigido o retorno `INVALID_QUERY` quando o modelo emite `consultar_web` sem o argumento `query`.

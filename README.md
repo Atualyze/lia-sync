@@ -2,7 +2,13 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.2.1**
+**Versão atual: 2.2.2**
+
+## Novidades da Versão 2.2.2 — Widget Turnstile compartilhado
+
+- O painel Lia Sync usa o widget Cloudflare Turnstile existente com a site key pública configurada por `SUPABASE_CAPTCHA_SITE_KEY`.
+- O mesmo widget pode autorizar `liasync.atualyze.com.br` e `chat.atualyze.com.br`; o secret permanece exclusivamente no Supabase em **Authentication > Bot and Abuse Protection**.
+- O painel envia o token CAPTCHA ao Supabase no login, sem armazenar secrets no frontend, no repositório ou nos logs.
 
 ## Novidades da Versão 2.2.1 — Consulta web resiliente
 
