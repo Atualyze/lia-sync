@@ -29,6 +29,15 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(toolName);
 
+export function isToolEnabled(toolName, botConfig = {}) {
+  if (toolName === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
+  return botConfig?.tools?.enabled?.[toolName] !== false;
+}
+
+export function getEnabledTools(botConfig = {}, { actor = 'owner' } = {}) {
+  return ALL_TOOLS.filter(tool => isToolEnabled(tool.name, botConfig) && (actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name)));
+}
+
 export {
   toolConsultarContato,
   toolAgendarRetorno,
@@ -61,6 +70,9 @@ export function getGeminiToolDeclarations(tools = ALL_TOOLS) {
  * Executa uma ferramenta pelo nome com os argumentos passados
  */
 export async function executeToolCall(toolName, args = {}, context = {}) {
+  if (!isToolEnabled(toolName, context.botConfig || {})) {
+    return { error: `A ferramenta "${toolName}" está desativada na configuração publicada.` };
+  }
   if (context.actor === 'client' && !CLIENT_ALLOWED_TOOL_NAMES.has(toolName)) {
     return { error: 'Ferramenta indisponível neste fluxo.' };
   }

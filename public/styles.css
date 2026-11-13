@@ -1251,3 +1251,31 @@ button:disabled {
   border: 0;
   color: #0d1117;
 }
+
+/* Views do painel operacional central */
+.tool-catalog, .integration-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:14px; }
+.tool-card, .integration-card { border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface-raised); padding:14px; min-width:0; }
+.tool-card-head, .integration-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.tool-card strong, .integration-card strong { display:block; font-size:12px; color:var(--text-primary); overflow-wrap:anywhere; }
+.tool-card p, .integration-card p { color:var(--text-secondary); font-size:11px; line-height:1.55; margin:8px 0 0; }
+.tool-meta { margin-top:9px; color:var(--text-tertiary); font-size:10px; }
+.suppression-form { display:grid; grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto; gap:10px; align-items:end; padding:14px; }
+.suppression-form label { display:flex; flex-direction:column; gap:5px; color:var(--text-secondary); font-size:11px; }
+.suppression-form input, .suppression-form select { background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:9px; font:inherit; }
+.ops-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.ops-actions button { background:var(--bg-surface); color:var(--text-secondary); border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:6px 8px; font-size:10px; cursor:pointer; }
+.ops-actions button.danger { color:#fb7185; }
+.ops-muted { color:var(--text-tertiary); font-size:10px; }
+.status-text { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); }
+.status-text.ok { color:#34d399; }.status-text.warn { color:#fbbf24; }.status-text.err { color:#fb7185; }
+.metrics-section .admin-form-grid { padding:14px; }
+.metrics-section .field-hint { color:var(--text-tertiary); font-size:10px; }
+#metrics-data-source { align-items:center; color:var(--text-secondary); font-size:11px; }
+#metrics-provider-model td { vertical-align:top; }
+.user-action-select { background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border-strong); border-radius:4px; padding:5px; font:inherit; }
+@media(max-width:768px) {
+  .tool-catalog, .integration-grid { grid-template-columns:1fr; }
+  .suppression-form { grid-template-columns:1fr; }
+  .suppression-form button { justify-self:start; }
+  .metrics-table { min-width:720px; }
+}

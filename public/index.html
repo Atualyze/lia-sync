@@ -52,12 +52,12 @@
           <span class="nav-icon">◈</span>
           Saúde & Operação <b id="overview-status-badge" class="badge-mini ok">ok</b>
         </button>
-        <button class="nav-item" data-view="inbox">
+        <button class="nav-item" data-view="inbox" data-role="operator">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Conversas <b id="conversation-count">0</b>
         </button>
 
-        <button class="nav-item" data-view="admin">
+        <button class="nav-item" data-view="admin" data-role="admin">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           Configurações <b id="admin-draft-badge" class="badge-mini warn hidden">rascunho</b>
         </button>
@@ -72,7 +72,12 @@
           Monitoramento <b id="metrics-status-badge" class="badge-mini ok">ok</b>
         </button>
 
-        <button class="nav-item" data-view="handoff">
+        <button class="nav-item" data-view="tools"><span class="nav-icon">⌘</span>Ferramentas & Web</button>
+        <button class="nav-item" data-view="campaigns" data-role="operator"><span class="nav-icon">◉</span>Campanhas & Opt-out</button>
+        <button class="nav-item" data-view="integrations"><span class="nav-icon">⇄</span>Integrações</button>
+        <button class="nav-item" data-view="users" data-role="admin"><span class="nav-icon">♙</span>Usuários & Auditoria</button>
+
+        <button class="nav-item" data-view="handoff" data-role="operator">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
           Transbordos <b id="handoff-count">0</b>
         </button>
@@ -413,11 +418,11 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                 Atualizar
               </button>
-              <button class="action-btn-ping" id="btn-reset-metrics" title="Zerar métricas da sessão" style="opacity:0.8;">
+              <button class="action-btn-ping" id="btn-reset-metrics" data-role="admin" title="Zerar métricas em memória; o histórico persistente será preservado" style="opacity:0.8;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 Zerar
               </button>
-              <button class="action-btn-ping primary-ping" id="btn-ping-ai">
+              <button class="action-btn-ping primary-ping" id="btn-ping-ai" data-role="operator">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 ⚡ Testar Latência (Ping)
               </button>
@@ -452,10 +457,10 @@
             </div>
 
             <div class="metric-card">
-              <div class="metric-label">Tokens & Custo</div>
+              <div class="metric-label">Tokens & custo estimado</div>
               <div class="metric-value-row">
                 <span class="metric-number" id="metric-total-tokens">0</span>
-                <span id="metric-cost-badge" class="pill mini mint" style="margin-left:auto;">Grátis</span>
+                <span id="metric-cost-badge" class="pill mini pale" style="margin-left:auto;">Não calculado</span>
               </div>
               <div class="metric-sub-row">
                 <span>Prompt: <b id="metric-prompt-tokens">0</b></span>
@@ -523,6 +528,52 @@
             </div>
             <div id="metrics-errors-list" class="errors-list"></div>
           </section>
+          <div id="metrics-data-source" class="ops-row">Carregando telemetria…</div>
+          <section class="panel metrics-section">
+            <div class="panel-head"><div><strong>Uso, custo estimado e orçamento</strong><span>Separado por provedor/modelo; somente tarifas configuradas são calculadas</span></div></div>
+            <div class="metrics-table-wrapper"><table class="metrics-table"><thead><tr><th>Provedor / modelo</th><th>Chamadas</th><th>Tokens (entrada / saída)</th><th>Latência média</th><th>Custo mês UTC</th><th>Orçamento / uso</th></tr></thead><tbody id="metrics-provider-model"><tr><td colspan="6" class="table-empty">Carregando…</td></tr></tbody></table></div>
+          </section>
+          <section class="panel metrics-section" data-role="admin">
+            <div class="panel-head"><div><strong>Tarifas & limites publicados</strong><span>USD por milhão de tokens; aplicar ao bot exige publicar a configuração</span></div><button class="admin-primary-btn" id="metrics-rates-save">Salvar no rascunho</button></div>
+            <div class="admin-form-grid"><label class="wide">Tarifas JSON<textarea id="metrics-pricing-rates" rows="4" placeholder='[{"provider":"gemini","model":"gemini-3.8-flash","inputUsdPerMillion":0.1,"outputUsdPerMillion":0.4}]'></textarea><span class="field-hint">Formato: provider, model, inputUsdPerMillion e outputUsdPerMillion.</span></label><label class="wide">Orçamentos mensais JSON<textarea id="metrics-monthly-budgets" rows="3" placeholder='[{"provider":"gemini","model":"","amountUsd":25}]'></textarea><span class="field-hint">Pode definir limite por provedor/modelo ou limite global.</span></label></div><div id="metrics-rates-feedback" class="admin-feedback hidden" role="status"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tools-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel"><div><div class="eyebrow">Lia Sync · catálogo operacional</div><h2>Ferramentas & consulta web</h2><p>Ative ou desative ferramentas publicadas. Alterações ficam em rascunho até um administrador publicar a configuração.</p></div><button class="action-btn-ping" id="tools-refresh">Atualizar catálogo</button></div>
+          <div id="tools-feedback" class="admin-feedback hidden" role="status"></div>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Consulta web</strong><span>Controla a ferramenta consultar_web e o Google Search grounding do Gemini</span></div></div><label class="toggle-field"><input id="tools-web-search" type="checkbox" /><span>Permitir consulta web</span></label><div id="tools-web-search-meta" class="ops-safe-copy"></div></section>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Catálogo de ferramentas da Lia</strong><span id="tools-catalog-count">Carregando…</span></div><button class="admin-primary-btn" id="tools-save" data-role="admin">Salvar rascunho</button></div><div id="tools-catalog" class="tool-catalog"></div></section>
+        </div>
+      </section>
+
+      <section id="campaigns-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel"><div><div class="eyebrow">Operação controlada</div><h2>Campanhas & opt-out</h2><p>Campanhas são persistidas no Supabase e nunca disparam ao serem criadas. A execução exige confirmação explícita e respeita supressões.</p></div><button class="action-btn-ping" id="campaigns-refresh">Atualizar dados</button></div>
+          <div id="campaigns-feedback" class="admin-feedback hidden" role="status"></div>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Nova campanha</strong><span>Um destinatário por linha: telefone,nome</span></div></div><div class="admin-form-grid"><label>Título<input id="campaign-title" maxlength="200" /></label><label class="wide">Mensagem<textarea id="campaign-message" rows="4" maxlength="4000"></textarea></label><label>Intervalo mínimo (s)<input id="campaign-min-delay" type="number" min="3" value="6" /></label><label>Intervalo máximo (s)<input id="campaign-max-delay" type="number" min="3" value="15" /></label><label class="wide">Destinatários<textarea id="campaign-recipients" rows="5" placeholder="5511999999999,Ana&#10;5511888888888,João"></textarea></label></div><button class="admin-primary-btn" id="campaign-create">Criar campanha (não envia)</button></section>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Campanhas recentes</strong><span id="campaign-summary">Carregando…</span></div></div><div id="campaign-list" class="ops-list"></div></section>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Lista de supressão</strong><span>Telefones mascarados; contatos suprimidos não recebem campanhas nem mensagens avulsas.</span></div></div><div class="suppression-form"><label>Telefone<input id="suppression-phone" inputmode="numeric" placeholder="DDI + DDD + número" /></label><label>Motivo<select id="suppression-reason"><option>Solicitação de opt-out</option><option>Pedido via atendimento</option><option>Solicitação administrativa</option></select></label><button class="admin-primary-btn" id="suppression-add">Adicionar supressão</button></div><div id="suppression-list" class="ops-list"></div></section>
+        </div>
+      </section>
+
+      <section id="integrations-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel"><div><div class="eyebrow">Dependências em produção</div><h2>Integrações & webhooks</h2><p>Estado obtido do serviço ativo. Segredos e payloads de webhook não são mostrados.</p></div><button class="action-btn-ping" id="integrations-refresh">Verificar agora</button></div>
+          <div id="integrations-feedback" class="admin-feedback hidden" role="status"></div>
+          <div id="integrations-status" class="integration-grid"></div>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Histórico recente de webhooks</strong><span id="webhook-summary">Ledger sanitizado</span></div></div><div class="metrics-table-wrapper"><table class="metrics-table"><thead><tr><th>Recebido</th><th>Evento</th><th>Instância</th><th>Estado</th><th>Tentativas</th><th>Código</th></tr></thead><tbody id="webhook-events"><tr><td colspan="6" class="table-empty">Carregando…</td></tr></tbody></table></div></section>
+        </div>
+      </section>
+
+      <section id="users-view" class="view" data-role="admin">
+        <div class="ops-container">
+          <div class="admin-hero panel"><div><div class="eyebrow">Acesso e rastreabilidade</div><h2>Usuários, perfis & auditoria</h2><p>Gerencie perfis existentes. Convites e credenciais permanecem sob gestão do Supabase Auth.</p></div><button class="action-btn-ping" id="users-refresh">Atualizar</button></div>
+          <div id="users-feedback" class="admin-feedback hidden" role="status"></div>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Perfis ativos e pendentes</strong><span>Admin, operator e viewer</span></div></div><div class="metrics-table-wrapper"><table class="metrics-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Ativo</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody id="users-table"><tr><td colspan="6" class="table-empty">Carregando…</td></tr></tbody></table></div></section>
+          <section class="panel ops-section"><div class="panel-head"><div><strong>Auditoria recente</strong><span>Metadados sanitizados; sem conteúdo de mensagens ou telefones</span></div></div><div id="audit-list" class="ops-list"></div></section>
         </div>
       </section>
 

@@ -6,11 +6,11 @@ A partir da versão 2.2.0, o `lia-sync` é a fonte de verdade operacional da Lia
 
 O painel em `/dashboard` exige autenticação Supabase/JWT e reúne Saúde & Operação, configurações administrativas, modelos/provedores, métricas, campanhas, supressões e auditoria observacional. Rotas administrativas validam o perfil e os papéis permitidos antes de ler ou alterar dados.
 
-Custos monetários são estimativas enquanto não houver uma tabela de preços versionada por provedor/modelo. Tokens, latência, falhas e circuit breakers são métricas operacionais. Telefones de supressão devem permanecer mascarados no browser.
+Custos monetários são estimativas enquanto não houver uma tabela de preços versionada por provedor/modelo. Tarifas ausentes/nulas, uso de tokens desconhecido em chamadas com falha ou histórico truncado tornam o total incompleto; nunca assumir esses custos como zero. Tokens conhecidos, latência, falhas e circuit breakers são métricas operacionais. Telefones de supressão devem permanecer mascarados no browser.
 
 ## Teste seguro
 
-O teste de integração padrão é simulado: não envia WhatsApp, não cria conversa real e não dispara handoff. Qualquer operação que execute envio deve passar pelos endpoints autenticados da ponte, com idempotência e verificação de supressão.
+O teste de integração padrão é simulado: não envia WhatsApp, não cria conversa real e não dispara handoff. Qualquer operação que execute envio deve passar pelos endpoints autenticados da ponte, com idempotência e verificação de supressão. Se a verificação de opt-out estiver ausente ou indisponível, o envio falha fechado.
 
 ## Publicação
 

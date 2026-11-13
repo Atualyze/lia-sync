@@ -8,7 +8,7 @@ import { splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
-import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, getMediaBase64 } from './whatsapp.mjs';
+import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -21,6 +21,8 @@ import { createRouter } from './http/router.mjs';
 import { deliveryTarget, json } from './http/utils.mjs';
 import { broadcastBridgeEvent } from './http/bridge.mjs';
 import { CampaignStore } from './campaigns.mjs';
+import { OperationsStore } from './operations.mjs';
+import { WebhookEventStore } from './webhook-events.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -166,6 +168,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   };
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
   const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
+  setOutboundSuppressionCheck(phone => campaignStore.isSuppressed(phone));
+  const operationsStore = new OperationsStore({ client: supabaseRuntime.client });
+  const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
 
   const app = createRouter({
     store,
@@ -182,7 +187,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     updateInstanceOwner,
     proxyToChatwoot,
     readinessCheck,
-    campaignStore
+    campaignStore,
+    operationsStore,
+    webhookEventStore
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; return app;
 }

@@ -9,6 +9,9 @@ const state = {
   metricsTimer: null,
   adminConfig: null,
   adminSaveTimer: null,
+  role: 'viewer',
+  tools: null,
+  operations: null,
   initialized: false
 };
 
@@ -389,7 +392,7 @@ async function renderMetrics() {
   try {
     const data = await api('/api/dashboard/metrics');
     state.metrics = data;
-    const { overview, circuitBreakers, recentCalls, recentErrors, system } = data || {};
+    const { overview, circuitBreakers, recentCalls, recentErrors, system, estimatedCost, byProviderModel, source, scope, truncated } = data || {};
 
     // 1. Latência
     const avg = overview?.avgLatencyMs || 0;
@@ -429,9 +432,26 @@ async function renderMetrics() {
     if (elPromptTok) elPromptTok.textContent = overview?.totalPromptTokens || 0;
     const elCompTok = $('#metric-completion-tokens');
     if (elCompTok) elCompTok.textContent = overview?.totalCompletionTokens || 0;
-    const isFree = String(system?.activeModel || '').includes(':free');
     const elCost = $('#metric-cost-badge');
-    if (elCost) elCost.textContent = isFree ? 'Grátis (:free)' : 'R$ 0,00';
+    if (elCost) {
+      elCost.textContent = estimatedCost?.complete
+        ? `US$ ${Number(estimatedCost.totalUsd || 0).toFixed(4)} / mês`
+        : estimatedCost?.knownUsd > 0 ? `≥ US$ ${Number(estimatedCost.knownUsd).toFixed(4)}*` : 'Não calculado';
+      elCost.className = `pill mini ${estimatedCost?.complete ? 'mint' : 'pale'}`;
+      elCost.title = estimatedCost?.note || 'Custo monetário não calculado.';
+    }
+
+    const sourceEl = $('#metrics-data-source');
+    if (sourceEl) sourceEl.textContent = `Origem: ${source === 'supabase' ? 'histórico persistido no Supabase' : 'memória desta instância'} · ${scope || 'escopo indisponível'}${truncated ? ' · histórico limitado a 5.000 chamadas' : ''}${estimatedCost?.complete === false ? ' · custo incompleto por tarifa ausente, uso desconhecido ou histórico limitado' : ''}${overview?.tokenUsageComplete === false ? ' · tokens de falhas não contabilizados' : ''}`;
+    const providerTable = $('#metrics-provider-model');
+    if (providerTable) providerTable.innerHTML = byProviderModel?.length ? byProviderModel.map(item => {
+      const monthCost = item.monthlyEstimatedUsd === null ? 'Não calculado' : `US$ ${Number(item.monthlyEstimatedUsd || 0).toFixed(4)}`;
+      const budget = item.budgetUsd === null ? '—' : `US$ ${Number(item.budgetUsd).toFixed(2)} · ${item.budgetUsagePercent === null ? (item.monthlyTokenUsageComplete ? 'sem tarifa' : 'uso incompleto') : `${item.budgetUsagePercent}%`}`;
+      const tokenUse = item.tokenUsageComplete ? `${Number(item.promptTokens || 0).toLocaleString('pt-BR')} / ${Number(item.completionTokens || 0).toLocaleString('pt-BR')}` : `${Number(item.promptTokens || 0).toLocaleString('pt-BR')} / ${Number(item.completionTokens || 0).toLocaleString('pt-BR')} · parcial`;
+      return `<tr><td><strong>${esc(item.provider)}</strong><div class="ops-muted">${esc(item.model)}</div></td><td>${item.requests} <span class="ops-muted">(${item.failedRequests} falhas)</span></td><td title="Chamadas com falha não têm tokens presumidos">${tokenUse}</td><td>${Number(item.avgLatencyMs || 0)} ms</td><td>${monthCost}</td><td>${budget}</td></tr>`;
+    }).join('') : '<tr><td colspan="6" class="table-empty">Nenhuma chamada persistida no escopo informado.</td></tr>';
+
+    if (state.role === 'admin') await loadPricingDraft();
 
     // 3. Taxa de Sucesso
     const rate = overview?.successRate ?? 100;
@@ -503,7 +523,7 @@ async function renderMetrics() {
                 <span>${item.latencyMs} ms</span>
               </div>
             </td>
-            <td><span style="color:var(--muted)">↓${item.promptTokens || 0} ↑${item.completionTokens || 0}</span> <b>(${item.totalTokens || 0})</b></td>
+            <td>${item.tokenUsageKnown === false ? '<span class="ops-muted">tokens desconhecidos</span>' : `<span style="color:var(--muted)">↓${item.promptTokens || 0} ↑${item.completionTokens || 0}</span> <b>(${item.totalTokens || 0})</b>`}</td>
             <td>${statusHtml}</td>
           </tr>`;
           })
@@ -727,6 +747,111 @@ async function renderAdminData() {
   }
 }
 
+const ROLE_LEVEL = { viewer: 0, operator: 1, admin: 2 };
+function applyRoleVisibility() {
+  const level = ROLE_LEVEL[state.role] ?? 0;
+  document.querySelectorAll('[data-role]').forEach(el => el.classList.toggle('hidden', level < (ROLE_LEVEL[el.dataset.role] ?? 2)));
+  const operationalControls = ['#mode-selector', '#refresh', '#new-sim', '#overview-open-simulation'];
+  operationalControls.forEach(selector => $(selector)?.classList.toggle('hidden', level < ROLE_LEVEL.operator));
+  if (level < ROLE_LEVEL.operator && ['inbox', 'handoff', 'campaigns', 'admin'].includes(state.view)) showView('overview');
+}
+
+function opsFeedback(id, message, type = 'success') {
+  const element = $(`#${id}`);
+  if (!element) return;
+  element.textContent = message;
+  element.className = `admin-feedback ${type}`;
+}
+
+async function renderOverview() {
+  const healthEl = $('#overview-health');
+  const costsEl = $('#overview-costs');
+  const modelsEl = $('#overview-models');
+  const operationsEl = $('#overview-operations');
+  if (!healthEl) return;
+  healthEl.innerHTML = '<div class="ops-row">Consultando estado do serviço…</div>';
+  const tasks = [api('/api/dashboard/health-summary'), api('/api/dashboard/metrics'), state.role === 'viewer' ? Promise.resolve(null) : api('/api/dashboard/operations')];
+  const [healthResult, metricsResult, operationsResult] = await Promise.allSettled(tasks);
+  const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+  const metrics = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
+  const operations = operationsResult.status === 'fulfilled' ? operationsResult.value : null;
+  healthEl.innerHTML = health?.readiness?.checks?.length ? health.readiness.checks.map(item => `<div class="ops-row"><strong>${esc(item.name || 'dependência')}</strong><span class="status-text ${item.status === 'ok' || item.status === 'ready' ? 'ok' : item.status === 'not_configured' ? 'warn' : 'err'}">${esc(item.status || 'desconhecido')}</span></div>`).join('') : `<div class="ops-row"><strong>Lia Sync</strong><span class="status-text ${health?.liveness?.status === 'alive' ? 'ok' : 'err'}">${health?.liveness?.status === 'alive' ? 'viva' : 'sem resposta'}</span></div>`;
+  const cost = metrics?.estimatedCost;
+  if (costsEl) costsEl.innerHTML = `<div class="ops-row"><strong>Custo estimado no mês (UTC)</strong><span>${cost?.complete ? `US$ ${Number(cost.totalUsd || 0).toFixed(4)}` : cost?.knownUsd > 0 ? `≥ US$ ${Number(cost.knownUsd).toFixed(4)}` : 'não calculado'}</span></div><div class="ops-row"><strong>Telemetria</strong><span>${metrics?.source === 'supabase' ? 'persistente' : 'memória local'} · ${Number(metrics?.overview?.totalRequests || 0)} chamadas</span></div>`;
+  if (modelsEl) modelsEl.innerHTML = Object.entries(metrics?.circuitBreakers || {}).map(([provider, item]) => `<div class="ops-row"><strong>${esc(provider)}</strong><span>${esc(item.status || 'desconhecido')} · ${item.configured ? `${Number(item.failures || 0)} falhas` : 'não configurado'}</span></div>`).join('') || '<div class="ops-row">Nenhum provedor reportado.</div>';
+  if (operationsEl) operationsEl.innerHTML = operations ? `<div class="ops-row"><strong>Campanhas registradas</strong><span>${operations.campaigns?.length || 0}</span></div><div class="ops-row"><strong>Supressões registradas</strong><span>${operations.suppressions?.length || 0} recentes</span></div><div class="ops-row"><strong>Persistência</strong><span>${operations.configured ? 'Supabase ativo' : 'não configurada'}</span></div>` : '<div class="ops-row">Detalhes operacionais de campanhas exigem papel operator.</div>';
+}
+
+async function renderTools() {
+  try {
+    state.tools = await api('/api/dashboard/tools');
+    const catalog = state.role === 'admin' && state.tools.draft ? state.tools.draft : state.tools;
+    const activeTools = new Map((state.tools.active?.tools || state.tools.tools || []).map(tool => [tool.name, tool.enabled]));
+    const list = $('#tools-catalog');
+    $('#tools-catalog-count').textContent = `${catalog.tools.length} ferramentas · ${state.tools.persistence || 'configuração local'}${state.role === 'admin' ? ' · exibindo rascunho' : ''}`;
+    $('#tools-web-search').checked = catalog.webSearch.enabled;
+    $('#tools-web-search').disabled = state.role !== 'admin';
+    $('#tools-web-search-meta').textContent = `${catalog.webSearch.provider} · ${catalog.webSearch.configured ? 'provedor configurado' : 'chave do provedor ausente'} · aplicado a ${catalog.webSearch.appliesTo.join(' e ')}`;
+    list.innerHTML = catalog.tools.map(tool => {
+      const active = activeTools.get(tool.name) !== false;
+      const draftDiffers = tool.enabled !== active;
+      return `<article class="tool-card"><div class="tool-card-head"><strong>${esc(tool.name)}</strong><input type="checkbox" class="tool-toggle" data-tool="${esc(tool.name)}" aria-label="Ativar ${esc(tool.name)}" ${tool.enabled ? 'checked' : ''} ${state.role === 'admin' ? '' : 'disabled'} /></div><p>${esc(tool.description)}</p><div class="tool-meta">${tool.clientAllowed ? 'Disponível no fluxo de cliente' : 'Apenas fluxos internos'}${draftDiffers ? ` · estado ativo: ${active ? 'ligado' : 'desligado'}` : ''}</div></article>`;
+    }).join('');
+  } catch (error) { opsFeedback('tools-feedback', `Falha ao carregar catálogo: ${error.message}`, 'error'); }
+}
+
+async function renderCampaigns() {
+  try {
+    const data = await api('/api/dashboard/operations');
+    state.operations = data;
+    $('#campaign-summary').textContent = `${data.campaigns?.length || 0} campanhas · persistência ${data.configured ? 'Supabase' : 'indisponível'}`;
+    $('#campaign-list').innerHTML = (data.campaigns || []).map(campaign => {
+      const stats = campaign.recipientStats || {};
+      const count = Number(campaign.total_recipients || 0);
+      const status = String(campaign.status || '').toLowerCase();
+      const actions = [];
+      if (state.role === 'admin' && ['pending', 'paused'].includes(status)) actions.push(`<button data-campaign-action="execute" data-campaign-id="${esc(campaign.id)}">Confirmar envio</button>`);
+      if (['pending', 'running'].includes(status)) actions.push(`<button data-campaign-action="pause" data-campaign-id="${esc(campaign.id)}">Pausar</button>`);
+      if (!['cancelled', 'completed'].includes(status)) actions.push(`<button class="danger" data-campaign-action="cancel" data-campaign-id="${esc(campaign.id)}">Cancelar</button>`);
+      return `<article class="ops-row"><div><strong>${esc(campaign.title)}</strong><div class="ops-muted">${esc(status)} · ${count} destinatários · ${Number(stats.sent || 0)} enviados · ${Number(stats.failed || 0)} falhas · ${Number(stats.suppressed || 0)} suprimidos</div><div class="ops-muted">Criada: ${esc(campaign.created_at || '')}</div></div><div class="ops-actions">${actions.join('')}</div></article>`;
+    }).join('') || '<div class="detail-placeholder">Nenhuma campanha cadastrada.</div>';
+    $('#suppression-list').innerHTML = (data.suppressions || []).map(item => `<article class="ops-row"><div><strong>${esc(item.phone)}</strong><div class="ops-muted">${esc(item.reason)} · ${esc(item.source)} · ${esc(item.suppressedAt || '')}</div></div><div class="ops-actions">${state.role === 'admin' ? `<button class="danger" data-unsuppress="1">Remover</button>` : ''}</div></article>`).join('') || '<div class="detail-placeholder">Nenhuma supressão recente.</div>';
+  } catch (error) { opsFeedback('campaigns-feedback', `Falha ao carregar campanhas/supressões: ${error.message}`, 'error'); }
+}
+
+async function renderUsers() {
+  try {
+    const [usersResult, auditResult] = await Promise.all([api('/api/dashboard/users'), api('/api/dashboard/audit')]);
+    $('#users-table').innerHTML = usersResult.users.map(user => `<tr><td>${esc(user.fullName || 'Sem nome')}</td><td>${esc(user.email || '—')}</td><td><select class="user-action-select" data-user-role="${esc(user.id)}"><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>viewer</option><option value="operator" ${user.role === 'operator' ? 'selected' : ''}>operator</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option></select></td><td><input type="checkbox" data-user-active="${esc(user.id)}" ${user.active ? 'checked' : ''} aria-label="Perfil ativo" /></td><td>${esc(user.lastSignInAt || '—')}</td><td><button class="admin-ghost-btn" data-user-save="${esc(user.id)}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum perfil encontrado.</td></tr>';
+    $('#audit-list').innerHTML = auditResult.entries.map(entry => `<article class="ops-row"><div><strong>${esc(entry.action)}</strong><div class="ops-muted">${esc(entry.entityType || 'sistema')} · ator ${esc(entry.actorId || 'não identificado')} · ${esc(entry.createdAt || '')}</div><div class="ops-muted">${esc(JSON.stringify(entry.metadata || {}))}</div></div></article>`).join('') || '<div class="detail-placeholder">Nenhum evento de auditoria registrado.</div>';
+  } catch (error) { opsFeedback('users-feedback', `Falha ao carregar usuários/auditoria: ${error.message}`, 'error'); }
+}
+
+async function renderIntegrations() {
+  try {
+    const data = await api('/api/dashboard/integrations');
+    const statuses = [
+      ['Evolution API', data.evolution.status, `Host ${data.evolution.apiHost || '—'} · instância ${data.evolution.instance || '—'} · latência ${data.evolution.latencyMs ?? '—'} ms`],
+      ['Supabase', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '—'} · backend-only`],
+      ['Autenticação do webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
+      ...(data.providers || []).map(item => [item.name, item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
+    ];
+    $('#integrations-status').innerHTML = statuses.map(([name, status, detail]) => `<article class="integration-card"><div class="integration-card-head"><strong>${esc(name)}</strong><span class="status-text ${/connected|ok|configured|token configured|operacional/i.test(status) ? 'ok' : /not_configured|não configurado|disconnected|unreachable|timeout/i.test(status) ? 'warn' : 'err'}">${esc(status)}</span></div><p>${esc(detail)}</p>${name === 'Evolution API' ? `<p>${data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'}</p>` : ''}</article>`).join('');
+    const events = data.webhook.recentEvents || [];
+    $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
+    $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '—')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '—')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
+  } catch (error) { opsFeedback('integrations-feedback', `Falha ao consultar integrações: ${error.message}`, 'error'); }
+}
+
+async function loadPricingDraft() {
+  if (state.role !== 'admin' || !$('#metrics-pricing-rates') || document.activeElement === $('#metrics-pricing-rates') || document.activeElement === $('#metrics-monthly-budgets')) return;
+  try {
+    if (!state.adminConfig) state.adminConfig = await api('/api/admin/config');
+    $('#metrics-pricing-rates').value = JSON.stringify(state.adminConfig.draft?.ai?.pricingRates || [], null, 2);
+    $('#metrics-monthly-budgets').value = JSON.stringify(state.adminConfig.draft?.ai?.monthlyBudgets || [], null, 2);
+  } catch (error) { opsFeedback('metrics-rates-feedback', `Configuração não carregada: ${error.message}`, 'error'); }
+}
+
 function render() {
   try { renderList(); } catch (e) { console.error('[renderList]', e); }
   try { renderChat(); } catch (e) { console.error('[renderChat]', e); }
@@ -736,6 +861,10 @@ function render() {
   if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
   if (state.view === 'metrics') { try { renderMetrics(); } catch (e) { console.error('[renderMetrics]', e); } }
   if (state.view === 'overview') { try { renderOverview(); } catch (e) { console.error('[renderOverview]', e); } }
+  if (state.view === 'tools') { try { renderTools(); } catch (e) { console.error('[renderTools]', e); } }
+  if (state.view === 'campaigns') { try { renderCampaigns(); } catch (e) { console.error('[renderCampaigns]', e); } }
+  if (state.view === 'users') { try { renderUsers(); } catch (e) { console.error('[renderUsers]', e); } }
+  if (state.view === 'integrations') { try { renderIntegrations(); } catch (e) { console.error('[renderIntegrations]', e); } }
   const lastSync = $('#last-sync');
   if (lastSync) lastSync.textContent = `atualizado ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 }
@@ -808,6 +937,14 @@ function showView(view) {
       ? 'Administração'
       : view === 'overview'
       ? 'Saúde & Operação'
+      : view === 'tools'
+      ? 'Ferramentas & Web'
+      : view === 'campaigns'
+      ? 'Campanhas & Opt-out'
+      : view === 'users'
+      ? 'Usuários & Auditoria'
+      : view === 'integrations'
+      ? 'Integrações & Webhooks'
       : 'Transferências';
   if (view === 'settings') renderSettings();
   if (view === 'handoff') renderHandoff();
@@ -815,9 +952,14 @@ function showView(view) {
   if (view === 'metrics') renderMetrics();
   if (view === 'admin') renderAdminData();
   if (view === 'overview') renderOverview();
+  if (view === 'tools') renderTools();
+  if (view === 'campaigns') renderCampaigns();
+  if (view === 'users') renderUsers();
+  if (view === 'integrations') renderIntegrations();
 }
 
 function startDashboard() {
+  showView('overview');
   $('#mode-selector').value = state.mode;
   $('#mode-selector').addEventListener('change', () => {
     state.mode = $('#mode-selector').value;
@@ -852,6 +994,96 @@ function startDashboard() {
   };
   $('#refresh')?.addEventListener('click', () => triggerRefreshWithIcon($('#refresh')));
   $('#refresh-overview')?.addEventListener('click', () => renderOverview());
+  $('#tools-refresh')?.addEventListener('click', renderTools);
+  $('#tools-save')?.addEventListener('click', async () => {
+    try {
+      const enabled = Object.fromEntries([...document.querySelectorAll('.tool-toggle')].map(input => [input.dataset.tool, input.checked]));
+      const result = await api('/api/dashboard/tools', { method: 'PATCH', body: JSON.stringify({ enabled, webSearchEnabled: $('#tools-web-search').checked }) });
+      opsFeedback('tools-feedback', `Rascunho salvo (revisão ${result.revision}). Publicação ainda necessária.`, 'success');
+      await renderTools();
+    } catch (error) { opsFeedback('tools-feedback', `Não foi possível salvar: ${error.message}`, 'error'); }
+  });
+  $('#campaigns-refresh')?.addEventListener('click', renderCampaigns);
+  $('#campaign-create')?.addEventListener('click', async () => {
+    const recipients = $('#campaign-recipients').value.split(/\r?\n/).map(line => {
+      const [phone, ...name] = line.split(',');
+      return { phone: phone.trim(), name: name.join(',').trim() || 'Cliente' };
+    }).filter(item => item.phone);
+    try {
+      const result = await api('/api/dashboard/campaigns', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ title: $('#campaign-title').value.trim(), message: $('#campaign-message').value.trim(), minDelay: Number($('#campaign-min-delay').value), maxDelay: Number($('#campaign-max-delay').value), recipients }) });
+      $('#campaign-title').value = '';
+      $('#campaign-message').value = '';
+      $('#campaign-recipients').value = '';
+      opsFeedback('campaigns-feedback', `Campanha ${result.campaign?.id || ''} criada em rascunho. Nenhuma mensagem foi enviada.`, 'success');
+      await renderCampaigns();
+    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível criar campanha: ${error.message}`, 'error'); }
+  });
+  $('#campaign-list')?.addEventListener('click', async event => {
+    const button = event.target.closest('[data-campaign-action]');
+    if (!button) return;
+    const action = button.dataset.campaignAction;
+    const campaign = state.operations?.campaigns?.find(item => item.id === button.dataset.campaignId);
+    if (!campaign) return;
+    if (action === 'execute' && !window.confirm(`Confirmar envio real da campanha “${campaign.title}” para até ${campaign.total_recipients} destinatários? A ação enviará mensagens via WhatsApp.`)) return;
+    if (action === 'cancel' && !window.confirm(`Cancelar a campanha “${campaign.title}”?`)) return;
+    button.disabled = true;
+    try {
+      await api(`/api/dashboard/campaigns/${encodeURIComponent(campaign.id)}/${action}`, { method: 'POST', body: JSON.stringify(action === 'execute' ? { confirm: true } : {}) });
+      opsFeedback('campaigns-feedback', action === 'execute' ? 'Execução solicitada. O worker processa até o limite por execução.' : `Campanha ${action === 'pause' ? 'pausada' : 'cancelada'}.`, 'success');
+      await renderCampaigns();
+    } catch (error) { opsFeedback('campaigns-feedback', `Operação não concluída: ${error.message}`, 'error'); }
+  });
+  $('#suppression-add')?.addEventListener('click', async () => {
+    try {
+      await api('/api/dashboard/suppressions', { method: 'POST', body: JSON.stringify({ phone: $('#suppression-phone').value.trim(), reason: $('#suppression-reason').value }) });
+      $('#suppression-phone').value = '';
+      opsFeedback('campaigns-feedback', 'Supressão registrada. O envio para esse telefone será bloqueado.', 'success');
+      await renderCampaigns();
+    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível registrar opt-out: ${error.message}`, 'error'); }
+  });
+  $('#suppression-list')?.addEventListener('click', async event => {
+    if (!event.target.closest('[data-unsuppress]')) return;
+    const phone = window.prompt('Por privacidade, informe o telefone completo que deseja remover da supressão:');
+    if (!phone) return;
+    if (!window.confirm('Remover o opt-out deste telefone? Isso permitirá novos envios sujeitos às demais regras.')) return;
+    try {
+      await api('/api/dashboard/suppressions', { method: 'DELETE', body: JSON.stringify({ phone, confirm: true }) });
+      opsFeedback('campaigns-feedback', 'Supressão removida após confirmação.', 'success');
+      await renderCampaigns();
+    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível remover: ${error.message}`, 'error'); }
+  });
+  $('#integrations-refresh')?.addEventListener('click', renderIntegrations);
+  $('#users-refresh')?.addEventListener('click', renderUsers);
+  $('#users-table')?.addEventListener('click', async event => {
+    const button = event.target.closest('[data-user-save]');
+    if (!button) return;
+    const id = button.dataset.userSave;
+    const role = $(`[data-user-role="${id}"]`)?.value;
+    const active = $(`[data-user-active="${id}"]`)?.checked;
+    button.disabled = true;
+    try {
+      await api(`/api/dashboard/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ role, active }) });
+      opsFeedback('users-feedback', 'Perfil atualizado e evento auditado.', 'success');
+      await renderUsers();
+    } catch (error) { opsFeedback('users-feedback', `Não foi possível atualizar perfil: ${error.message}`, 'error'); }
+    finally { button.disabled = false; }
+  });
+  $('#metrics-rates-save')?.addEventListener('click', async () => {
+    try {
+      const pricingRates = JSON.parse($('#metrics-pricing-rates').value || '[]');
+      const monthlyBudgets = JSON.parse($('#metrics-monthly-budgets').value || '[]');
+      if (!Array.isArray(pricingRates) || !Array.isArray(monthlyBudgets)) throw new Error('Tarifas e orçamentos precisam ser listas JSON.');
+      const snapshot = state.adminConfig || await api('/api/admin/config');
+      snapshot.draft.ai ||= {};
+      snapshot.draft.ai.pricingRates = pricingRates;
+      snapshot.draft.ai.monthlyBudgets = monthlyBudgets;
+      const result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(snapshot.draft) });
+      if (!result.ok) throw new Error((result.errors || []).join(' '));
+      state.adminConfig = result.snapshot;
+      opsFeedback('metrics-rates-feedback', 'Tarifas e limites salvos no rascunho. Publique para que passem a valer.', 'success');
+      await renderMetrics();
+    } catch (error) { opsFeedback('metrics-rates-feedback', `Não foi possível salvar: ${error.message}`, 'error'); }
+  });
   $('#overview-open-simulation')?.addEventListener('click', () => { state.mode = 'simulation'; $('#mode-selector').value = 'simulation'; showView('inbox'); $('#new-sim')?.click(); });
   $('#refresh-handoff')?.addEventListener('click', async () => {
     const btn = $('#refresh-handoff');
@@ -1077,17 +1309,23 @@ function startDashboard() {
     item.addEventListener('click', () => showView(item.dataset.view))
   );
 
-  refresh()
-    .then(() => {
-      state.refreshTimer = setInterval(() => {
-        if (!document.hidden) refresh().catch(() => {});
-      }, 5000);
-    })
-    .catch((error) => {
-      $('#conversation-items').innerHTML = `<div class="detail-placeholder" style="padding:18px">Não foi possível carregar o dashboard.<br>${esc(
-        error.message
-      )}</div>`;
-    });
+  api('/api/dashboard/session').then(async session => {
+    state.role = ROLE_LEVEL[session.role] === undefined ? 'viewer' : session.role;
+    applyRoleVisibility();
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
+      try {
+        await refresh();
+        state.refreshTimer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 5000);
+      } catch (error) {
+        $('#conversation-items').innerHTML = `<div class="detail-placeholder" style="padding:18px">Não foi possível carregar o dashboard.<br>${esc(error.message)}</div>`;
+      }
+    } else {
+      state.sessions = [];
+      renderOverview();
+    }
+  }).catch(error => {
+    opsFeedback('overview-health', `Não foi possível verificar permissões: ${error.message}`, 'error');
+  });
 }
 
 initAuth().catch((error) => {
@@ -1101,7 +1339,7 @@ document.addEventListener('visibilitychange', () => {
       clearInterval(state.refreshTimer);
       state.refreshTimer = null;
     }
-  } else if (!state.refreshTimer && state.initialized) {
+  } else if (!state.refreshTimer && state.initialized && (ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
     refresh().catch(() => {});
     state.refreshTimer = setInterval(() => {
       if (!document.hidden) refresh().catch(() => {});

@@ -5,6 +5,24 @@ import { normalize } from './safety.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
+let outboundSuppressionCheck = null;
+
+export function setOutboundSuppressionCheck(check) {
+  outboundSuppressionCheck = typeof check === 'function' ? check : null;
+}
+
+async function assertNotSuppressed(jid) {
+  if (!outboundSuppressionCheck) throw Object.assign(new Error('suppression_check_unavailable'), { code: 'suppression_check_unavailable' });
+  const recipient = normalizePhone(String(jid || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  if (!/^\d{8,15}$/.test(recipient)) throw Object.assign(new Error('invalid_suppression_target'), { code: 'invalid_suppression_target' });
+  let suppression;
+  try {
+    suppression = await outboundSuppressionCheck(recipient);
+  } catch {
+    throw Object.assign(new Error('supression_check_unavailable'), { code: 'suppression_check_unavailable' });
+  }
+  if (suppression) throw Object.assign(new Error('recipient_opted_out'), { code: 'recipient_opted_out' });
+}
 
 const remember = id => {
   if (!id) return;
@@ -137,6 +155,7 @@ export async function getMediaBase64(item) {
 }
 
 export async function sendText(jid, text, { retry = 2, onSent } = {}) {
+  await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   recordBotSend(jid, text);
   let last;
@@ -162,6 +181,7 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
 }
 
 export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento.pdf', mimetype = 'application/pdf', caption = '' } = {}, { retry = 2, onSent } = {}) {
+  await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(dataUrl || base64 || '').replace(/^data:[^;]+;base64,/, '');
   if (!cleanB64) throw Error('Documento sem conteúdo para envio');
@@ -188,6 +208,7 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
 }
 
 export async function sendWhatsAppAudio(jid, audioBase64, { retry = 2, onSent } = {}) {
+  await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(audioBase64).replace(/^data:audio\/[^;]+;base64,/, '');
   let last;

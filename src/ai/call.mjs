@@ -42,7 +42,8 @@ export async function call(provider, {
 
     let primaryErr = null;
     let lastErr = null;
-    const needsSearch = Boolean(enableSearch || shouldEnableGoogleSearch(userText));
+    const webSearchEnabled = aiConfig?.webSearch?.enabled !== false;
+    const needsSearch = webSearchEnabled && Boolean(enableSearch || shouldEnableGoogleSearch(userText));
 
     for (const model of candidateModels) {
       try {

@@ -5,14 +5,28 @@ import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath } from
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
+import { handleOperationsRoutes } from './operations.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { getCircuitBreakers } from '../ai.mjs';
 import packageJson from '../../package.json' with { type: 'json' };
 
-// Monta o handler de requests do createApp. A ORDEM dos despachos abaixo é
-// parte do contrato do servidor e deve permanecer idêntica.
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore }) {
+// Monta o handler de requests do createApp. A ponte de máquina continua independente
+// do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
+const ROLE_RANK = { viewer: 0, operator: 1, admin: 2 };
+function requiredRole(pathname, method) {
+  if (pathname.startsWith('/api/admin/') || pathname === '/api/dashboard/users' || pathname.startsWith('/api/dashboard/users/') || pathname === '/api/dashboard/audit') return 'admin';
+  if (method === 'POST' && /^\/api\/dashboard\/campaigns\/[0-9a-f-]{36}\/execute$/i.test(pathname)) return 'admin';
+  if (pathname === '/api/dashboard/suppressions' && method === 'DELETE') return 'admin';
+  if (pathname === '/api/dashboard/tools' && method !== 'GET') return 'admin';
+  if (pathname === '/api/dashboard/metrics/reset') return 'admin';
+  if (['/api/dashboard/state', '/api/dashboard/send', '/api/dashboard/simulate', '/api/dashboard/mode', '/api/dashboard/clear', '/api/dashboard/operations'].includes(pathname)) return 'operator';
+  if (pathname.startsWith('/api/dashboard/campaigns') || pathname.startsWith('/api/dashboard/suppressions')) return 'operator';
+  if (pathname === '/api/dashboard/ping-ai') return 'operator';
+  return 'viewer';
+}
+
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -36,10 +50,25 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       const authResult = await auth(req, config);
       const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
       if (!authorizedRequest) return json(res, typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
+      const role = typeof authResult === 'object' ? authResult.role : 'admin';
+      if (!(ROLE_RANK[role] >= ROLE_RANK.operator)) return json(res, 403, { error: 'dashboard_role_not_authorized' });
       return proxyToChatwoot(req, res);
     }
     if (u.pathname === '/api/dashboard/auth/config') return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: false });
-    if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) { const authResult = await auth(req, config); const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true; if (!authorizedRequest) { const status = typeof authResult === 'object' ? authResult.status || 401 : 401; const reason = typeof authResult === 'object' ? authResult.reason || 'dashboard_auth_required' : 'dashboard_auth_required'; return json(res, status, { error: status === 403 ? 'dashboard_profile_not_authorized' : status === 503 ? 'dashboard_auth_unavailable' : 'dashboard_auth_required', reason }); } }
+    let authContext = null;
+    if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) {
+      const authResult = await auth(req, config);
+      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      if (!authorizedRequest) {
+        const status = typeof authResult === 'object' ? authResult.status || 401 : 401;
+        const reason = typeof authResult === 'object' ? authResult.reason || 'dashboard_auth_required' : 'dashboard_auth_required';
+        return json(res, status, { error: status === 403 ? 'dashboard_profile_not_authorized' : status === 503 ? 'dashboard_auth_unavailable' : 'dashboard_auth_required', reason });
+      }
+      authContext = typeof authResult === 'object' ? authResult : { ok: true, role: 'admin' };
+      const minimumRole = requiredRole(u.pathname, req.method);
+      if (!(ROLE_RANK[authContext.role] >= ROLE_RANK[minimumRole])) return json(res, 403, { error: 'dashboard_role_not_authorized', requiredRole: minimumRole });
+      req.dashboardAuth = authContext;
+    }
     if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
       if (isLegacyStaticPath(u.pathname)) {
         if (u.pathname === '/legacy-dashboard') req.url = '/index.html';
@@ -58,9 +87,11 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (settingsResult !== NOT_HANDLED) return settingsResult;
     const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor });
     if (adminResult !== NOT_HANDLED) return adminResult;
-    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig });
+    const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {} });
+    if (operationsResult !== NOT_HANDLED) return operationsResult;
+    const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
-    const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage });
+    const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore });
     if (webhookResult !== NOT_HANDLED) return webhookResult;
     return json(res, 404, { error: 'not_found' });
   };

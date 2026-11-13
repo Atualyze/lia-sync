@@ -64,8 +64,12 @@ export const DEFAULT_BOT_CONFIG = {
     fallbackModels: ['nvidia/nemotron-3.5-lightning:free'],
     maxOutputTokens: 2048,
     structuredOutputs: false,
-    requireParameters: false
+    requireParameters: false,
+    pricingRates: [],
+    monthlyBudgets: []
   },
+  tools: { enabled: {} },
+  webSearch: { enabled: true },
   voice: {
     voiceName: 'Aoede', // 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Puck' | 'Charon' | 'Fenrir'
     tone: 'Acolhedor, dinâmico e profissional',
@@ -91,6 +95,12 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (requirePublishedAI && (!provider || !providers.has(provider))) errors.push('Publique um provedor de IA válido no dashboard.');
   if (requirePublishedAI && !value.ai?.activeModel?.trim()) errors.push('Publique um modelo de IA no dashboard.');
   if (!Array.isArray(value.ai?.fallbackModels)) errors.push('Os modelos de fallback precisam ser uma lista.');
+  if (value.webSearch && typeof value.webSearch.enabled !== 'boolean') errors.push('A configuração da busca web precisa ser verdadeiro/falso.');
+  if (value.tools?.enabled && (typeof value.tools.enabled !== 'object' || Array.isArray(value.tools.enabled) || Object.values(value.tools.enabled).some(item => typeof item !== 'boolean'))) errors.push('O catálogo de ferramentas deve conter somente estados verdadeiro/falso.');
+  const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
+  const validNonNegativeAmount = amount => (typeof amount === 'number' || typeof amount === 'string') && String(amount).trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) >= 0;
+  if (value.ai?.pricingRates !== undefined && (!Array.isArray(value.ai.pricingRates) || value.ai.pricingRates.length > 100 || value.ai.pricingRates.some(rate => !allowedProviders.has(rate?.provider) || typeof rate?.model !== 'string' || !rate.model.trim() || !validNonNegativeAmount(rate.inputUsdPerMillion) || !validNonNegativeAmount(rate.outputUsdPerMillion)))) errors.push('Tarifas precisam ser uma lista válida por provedor/modelo e valores USD por milhão de tokens.');
+  if (value.ai?.monthlyBudgets !== undefined && (!Array.isArray(value.ai.monthlyBudgets) || value.ai.monthlyBudgets.length > 100 || value.ai.monthlyBudgets.some(budget => !Number.isFinite(Number(budget?.amountUsd)) || Number(budget.amountUsd) <= 0 || (budget.provider && !allowedProviders.has(budget.provider)) || (budget.model !== undefined && typeof budget.model !== 'string')))) errors.push('Limites mensais precisam ser valores USD positivos com provedor/modelo opcionais.');
   const alertDest = value.human?.alertDestination || 'same_as_bot';
   if (value.human?.enabled && alertDest === 'custom') {
     const rawDigits = String(value.human?.phone || '').replace(/\D/g, '');
