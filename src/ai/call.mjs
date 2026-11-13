@@ -167,7 +167,10 @@ export async function call(provider, {
     if (config.openrouterAppName) headers['X-Title'] = config.openrouterAppName;
   }
   const sameProviderFallbacks = provider === runtime.provider ? runtime.fallbackModels : [];
-  const candidateModels = [...new Set([model, ...sameProviderFallbacks].filter(candidate => typeof candidate === 'string' && candidate.trim()))].slice(0, 4);
+  const safeFallbacks = provider === 'openrouter' && runtime.openrouterFreeOnly
+    ? sameProviderFallbacks.filter(candidate => candidate === 'openrouter/free' || candidate.endsWith(':free'))
+    : sameProviderFallbacks;
+  const candidateModels = [...new Set([model, ...safeFallbacks].filter(candidate => typeof candidate === 'string' && candidate.trim()))].slice(0, 4);
   let lastError = null;
   for (const candidateModel of candidateModels) {
     let permit = null;
