@@ -1,7 +1,7 @@
+import crypto from 'node:crypto';
 import { config } from './config.mjs';
 import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
-import { idempotencyKey } from './core/idempotency.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -102,7 +102,9 @@ export function isIgnoredJid(jid) {
 }
 
 const providerTimeoutMs = () => Math.max(1000, Number(process.env.EVOLUTION_SEND_TIMEOUT_MS || 15000));
-const providerKey = (kind, jid, payload) => idempotencyKey('lia', kind, jid, JSON.stringify(payload));
+// Headers HTTP precisam conter apenas caracteres ByteString. O texto da resposta
+// pode conter emoji/Unicode; portanto o payload nunca deve ser colocado no header.
+export const providerKey = (kind, jid, payload) => `lia:${kind}:${crypto.createHash('sha256').update(JSON.stringify({ jid, payload }), 'utf8').digest('hex')}`;
 async function providerSend(url, payload, kind, jid) {
   const key = providerKey(kind, jid, payload);
   const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', apikey: config.evolutionKey, 'x-idempotency-key': key, 'idempotency-key': key }, signal: AbortSignal.timeout(providerTimeoutMs()), body: JSON.stringify(payload) });
