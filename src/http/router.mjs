@@ -26,7 +26,7 @@ function requiredRole(pathname, method) {
   return 'viewer';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -81,13 +81,13 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f });
     if (dashboardResult !== NOT_HANDLED) return dashboardResult;
-    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore });
+    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
     const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI });
     if (settingsResult !== NOT_HANDLED) return settingsResult;
     const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor });
     if (adminResult !== NOT_HANDLED) return adminResult;
-    const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {} });
+    const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {}, sectorProjection });
     if (operationsResult !== NOT_HANDLED) return operationsResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;

@@ -1,6 +1,7 @@
 # Painel operacional central
 
 A partir da versão **2.3.0**, o `lia-sync` é a fonte de verdade operacional da Lia. O Chatwoot Lia continua sendo o console de atendimento e a ponte autenticada; ele não deve duplicar ferramentas, regras de campanha, configurações de modelo ou políticas de opt-out.
+A partir da **2.3.1**, o expediente da Lia também é administrado aqui. Setores e triagem continuam sendo dados do Chatwoot e chegam ao motor apenas como projeção de runtime.
 
 ## Áreas do painel
 
@@ -9,6 +10,16 @@ O painel em `/dashboard` exige autenticação Supabase/JWT e reúne Saúde & Ope
 A lista de modelos é consultada pelo backend nas APIs dos provedores suportados quando suas credenciais estão configuradas. O usuário pode publicar um modelo principal e até três fallbacks. As credenciais permanecem no servidor e não são incluídas nas respostas do painel.
 
 Custos são estimativas enquanto não houver tabela de preços confiável por provedor/modelo. Tarifas ausentes/nulas, uso de tokens desconhecido em chamadas com falha ou histórico truncado tornam o total incompleto; nunca assumir esses custos como zero. Limites mensais configurados por provedor/modelo usam reserva distribuída e não admitem chamada quando a reserva não pode ser confirmada. Tokens conhecidos, latência, falhas e circuit breakers são métricas operacionais. Telefones de supressão permanecem mascarados no browser.
+
+## Janela de atendimento e setores
+
+O card **Janela de Atendimento** edita `business.hoursConfig`: ativação, dias da semana, início, fim, fuso, retomada automática de conversas pendentes e aviso de fora do expediente. As alterações seguem rascunho → validação → publicação, como qualquer outra configuração; nada é salvo por caminho paralelo.
+
+A validação é fail-closed antes de publicar (formato `HH:MM`, fim depois do início, fuso IANA válido, dias entre 0 e 6 sem repetição, aviso de até 2000 caracteres). Em tempo de execução a avaliação continua fail-open: se a janela publicada estiver corrompida, o atendimento **não** é silenciado.
+
+A tela de Integrações mostra, além da ponte que informa qual revisão o Chatwoot já leu, dois cartões calculados no servidor: **Expediente da Lia** (resumo publicado, aberto/fechado e próxima reabertura) e **Setores do Chatwoot** (quantidade projetada e data da última sincronização). O painel nunca apresenta o texto do aviso ao cliente nem credenciais.
+
+Setores são recebidos por `PUT /api/bridge/v1/sectors` e guardados em `data/sectors-projection.json`, com no máximo 100 itens e somente `id`, `name`, `description` e `isActive`; telefones e campos de roteamento são descartados. Essa rota **não** cria rascunho, não valida configuração e não aumenta a revisão publicada — ver [`config-bridge-contract.md`](config-bridge-contract.md).
 
 ## Follow-up e confiabilidade de entrega
 

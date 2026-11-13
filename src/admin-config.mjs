@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BUSINESS } from './config.mjs';
 import { FAQ, GREETING_MESSAGE, PLANS_DETAIL, RECOMMENDED_SERVICES_MESSAGE, POLICIES_MESSAGE, PAYMENT_MESSAGE } from './knowledge.mjs';
-
+import { resumoJanelaDeAtendimento } from './business-hours.mjs';
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const merge = (base, extra) => {
   if (!extra || typeof extra !== 'object' || Array.isArray(extra)) return extra === undefined ? clone(base) : clone(extra);
@@ -10,6 +10,15 @@ export const merge = (base, extra) => {
   for (const [key, value] of Object.entries(extra)) result[key] = value && typeof value === 'object' && !Array.isArray(value) ? merge(result[key] || {}, value) : clone(value);
   return result;
 };
+
+export function normalizeBotConfig(raw = {}) {
+  const source = clone(raw && typeof raw === 'object' ? raw : {});
+  if (typeof source.automation?.enableWebSearch === 'boolean') {
+    source.webSearch = { ...(source.webSearch || {}), enabled: source.automation.enableWebSearch };
+    delete source.automation.enableWebSearch;
+  }
+  return merge(DEFAULT_BOT_CONFIG, source);
+}
 
 export const DEFAULT_BOT_CONFIG = {
   schemaVersion: 1,
@@ -65,6 +74,8 @@ export const DEFAULT_BOT_CONFIG = {
     activeProvider: 'gemini',
     activeModel: 'gemini-3.8-flash',
     fallbackModels: ['nvidia/nemotron-3.5-lightning:free'],
+    agentMode: 'assistente',
+    enableToolCalling: false,
     maxOutputTokens: 2048,
     structuredOutputs: false,
     requireParameters: false,
@@ -73,6 +84,16 @@ export const DEFAULT_BOT_CONFIG = {
   },
   tools: { enabled: {} },
   webSearch: { enabled: true },
+  automation: {
+    enableMediaProcessing: true,
+    enableProactiveFollowUp: true,
+    businessHoursOnly: true,
+    autoHandoffOnHumanPresence: true,
+    maxDailyFollowUps: 30,
+    followUpMinHours: 24,
+    followUpMaxHours: 72,
+    followUpTemplate: 'Oi! Tudo bem? Passando para saber se você conseguiu ver a proposta que conversamos.'
+  },
   voice: {
     voiceName: 'Aoede', // 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Puck' | 'Charon' | 'Fenrir'
     tone: 'Acolhedor, dinâmico e profissional',
@@ -111,6 +132,19 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   }
   if (value.webSearch && typeof value.webSearch.enabled !== 'boolean') errors.push('A configuração da busca web precisa ser verdadeiro/falso.');
   if (value.tools?.enabled && (typeof value.tools.enabled !== 'object' || Array.isArray(value.tools.enabled) || Object.values(value.tools.enabled).some(item => typeof item !== 'boolean'))) errors.push('O catálogo de ferramentas deve conter somente estados verdadeiro/falso.');
+  if (!['assistente', 'super_agente'].includes(value.ai?.agentMode)) errors.push('O modo do agente precisa ser assistente ou super_agente.');
+  if (typeof value.ai?.enableToolCalling !== 'boolean') errors.push('A ativação de chamadas de ferramentas deve ser verdadeiro/falso.');
+  const automationBooleanFields = ['enableMediaProcessing', 'enableProactiveFollowUp', 'businessHoursOnly', 'autoHandoffOnHumanPresence'];
+  if (automationBooleanFields.some(field => typeof value.automation?.[field] !== 'boolean')) errors.push('As opções operacionais da Lia devem ser verdadeiro/falso.');
+  const operationMin = Number(value.automation?.followUpMinHours);
+  const operationMax = Number(value.automation?.followUpMaxHours);
+  if (!Number.isFinite(operationMin) || operationMin < 1 || operationMin > 719 || !Number.isFinite(operationMax) || operationMax <= operationMin || operationMax > 720) errors.push('A janela operacional do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
+  if (!Number.isInteger(value.automation?.maxDailyFollowUps) || value.automation.maxDailyFollowUps < 0 || value.automation.maxDailyFollowUps > 10000) errors.push('O limite diário de follow-ups deve ser um inteiro entre 0 e 10000.');
+  if (typeof value.automation?.followUpTemplate !== 'string' || value.automation.followUpTemplate.length > 2000) errors.push('O texto do follow-up deve ter até 2000 caracteres.');
+  const supportedVoices = new Set(['Aoede', 'Kore', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir']);
+  if (!supportedVoices.has(value.voice?.voiceName)) errors.push('Selecione uma voz suportada.');
+  if (typeof value.voice?.tone !== 'string' || value.voice.tone.length > 500) errors.push('O tom da voz deve ter até 500 caracteres.');
+  if (typeof value.voice?.autoVoiceOnAudio !== 'boolean') errors.push('A resposta automática em áudio deve ser verdadeiro/falso.');
   const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
   const validNonNegativeAmount = amount => (typeof amount === 'number' || typeof amount === 'string') && String(amount).trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) >= 0;
   if (value.ai?.pricingRates !== undefined && (!Array.isArray(value.ai.pricingRates) || value.ai.pricingRates.length > 100 || value.ai.pricingRates.some(rate => !allowedProviders.has(rate?.provider) || typeof rate?.model !== 'string' || !rate.model.trim() || !validNonNegativeAmount(rate.inputUsdPerMillion) || !validNonNegativeAmount(rate.outputUsdPerMillion)))) errors.push('Tarifas precisam ser uma lista válida por provedor/modelo e valores USD por milhão de tokens.');
@@ -122,8 +156,53 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
       errors.push('O telefone humano personalizado deve conter entre 8 e 15 dígitos.');
     }
   }
+  const hoursErrors = validateHoursConfig(value.business?.hoursConfig);
+  errors.push(...hoursErrors);
   return errors;
 };
+
+const HORA_RX = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+/**
+ * Valida a janela de atendimento publicada pelo painel.
+ * O motor continua fail-open em tempo de execução, mas o painel é fail-closed:
+ * um horário inválido nunca chega a uma revisão publicada.
+ */
+function validateHoursConfig(hours) {
+  const errors = [];
+  if (hours === undefined || hours === null) return errors;
+  if (typeof hours !== 'object' || Array.isArray(hours)) {
+    return ['A janela de atendimento deve ser um objeto de configuração.'];
+  }
+  if (typeof hours.enabled !== 'boolean') errors.push('A ativação da janela de atendimento deve ser verdadeiro/falso.');
+  if (hours.autoResumeOnOpen !== undefined && typeof hours.autoResumeOnOpen !== 'boolean') errors.push('A retomada automática na abertura deve ser verdadeiro/falso.');
+  if (hours.outOfHoursNotice !== undefined && (typeof hours.outOfHoursNotice !== 'string' || hours.outOfHoursNotice.length > 2000)) errors.push('O aviso de fora do expediente deve ter até 2000 caracteres.');
+  const timezone = typeof hours.timezone === 'string' ? hours.timezone.trim() : '';
+  if (!timezone) errors.push('Informe o fuso horário da janela de atendimento.');
+  if (hours.start !== undefined && !HORA_RX.test(String(hours.start))) errors.push('O início da janela deve estar no formato HH:MM (24 horas).');
+  if (hours.end !== undefined && !HORA_RX.test(String(hours.end))) errors.push('O fim da janela deve estar no formato HH:MM (24 horas).');
+  if (hours.weekdays !== undefined) {
+    if (!Array.isArray(hours.weekdays)) errors.push('Os dias da janela devem ser uma lista.');
+    else {
+      const dias = hours.weekdays;
+      if (dias.some(d => !Number.isInteger(d) || d < 0 || d > 6)) errors.push('Cada dia da janela deve ser um inteiro entre 0 (domingo) e 6 (sábado).');
+      if (new Set(dias).size !== dias.length) errors.push('Não repita o mesmo dia da janela.');
+    }
+  }
+  if (typeof hours.enabled === 'boolean' && hours.enabled) {
+    if (!Array.isArray(hours.weekdays) || hours.weekdays.length === 0) errors.push('Selecione ao menos um dia de atendimento quando a janela estiver ativada.');
+    const inicio = HORA_RX.test(String(hours.start ?? '')) ? Number(hours.start.slice(0, 2)) * 60 + Number(hours.start.slice(3)) : null;
+    const fim = HORA_RX.test(String(hours.end ?? '')) ? Number(hours.end.slice(0, 2)) * 60 + Number(hours.end.slice(3)) : null;
+    if (inicio !== null && fim !== null && fim <= inicio) errors.push('O fim da janela deve ser depois do início.');
+    if (!timezone) errors.push('Informe um fuso horário válido para a janela ativada.');
+    else {
+      try { new Intl.DateTimeFormat('pt-BR', { timeZone: timezone }).format(new Date(0)); }
+      catch { errors.push('O fuso horário da janela de atendimento não é válido.'); }
+    }
+    // Regra canônica do motor: se a própria janela considera a configuração corrompida, não publica.
+    if (!errors.length && !resumoJanelaDeAtendimento(hours).enabled) errors.push('A janela de atendimento ativada precisa ter dias, início, fim e fuso consistentes.');
+  }
+  return errors;
+}
 
 export class AdminConfigStore {
   constructor(file = path.resolve('./data/bot-config.json'), { historyDir = path.resolve('./data/bot-config.history'), now = () => Date.now(), logger = console } = {}) {
@@ -142,8 +221,8 @@ export class AdminConfigStore {
   async load() {
     try {
       const raw = JSON.parse(await fs.readFile(this.file, 'utf8'));
-      this.active = merge(DEFAULT_BOT_CONFIG, raw.active || {});
-      this.draft = merge(this.active, raw.draft || {});
+      this.active = normalizeBotConfig(raw.active || {});
+      this.draft = normalizeBotConfig(merge(this.active, raw.draft || {}));
       this.revision = Number(raw.revision) || 0;
       this.updatedAt = raw.updatedAt || null;
       this.history = Array.isArray(raw.history) ? raw.history.slice(-30) : [];
@@ -155,14 +234,25 @@ export class AdminConfigStore {
   }
 
   snapshot() {
-    return { schemaVersion: 1, revision: this.revision, updatedAt: this.updatedAt, active: clone(this.active), draft: clone(this.draft), history: clone(this.history.slice(-10)) };
+    return {
+      schemaVersion: 1,
+      revision: this.revision,
+      updatedAt: this.updatedAt,
+      active: clone(this.active),
+      draft: clone(this.draft),
+      history: clone(this.history.slice(-10)),
+      // Prévia calculada no servidor: a tela não duplica a regra do expediente.
+      // `hoursPreview` é o que está valendo; `hoursDraftPreview` é o que falta publicar.
+      hoursPreview: resumoJanelaDeAtendimento(this.active.business?.hoursConfig, new Date(this.now())),
+      hoursDraftPreview: resumoJanelaDeAtendimento(this.draft.business?.hoursConfig, new Date(this.now()))
+    };
   }
 
   async updateDraft(patch = {}, actor = 'dashboard') {
     const previousDraft = clone(this.draft);
     const previousUpdatedAt = this.updatedAt;
     const previousHistory = clone(this.history);
-    const next = merge(this.draft, patch);
+    const next = normalizeBotConfig(merge(this.draft, patch));
     const errors = validate(next, { requirePublishedAI: false });
     if (errors.length) return { ok: false, errors };
     this.draft = next;
@@ -185,24 +275,36 @@ export class AdminConfigStore {
   async publish(actor = 'dashboard') {
     const errors = validate(this.draft);
     if (errors.length) return { ok: false, errors };
+    const previous = { active: clone(this.active), draft: clone(this.draft), revision: this.revision, updatedAt: this.updatedAt, history: clone(this.history) };
     this.revision += 1;
     this.active = clone(this.draft);
     this.updatedAt = new Date(this.now()).toISOString();
     this.history.push({ revision: this.revision, action: 'published', actor, at: this.updatedAt, snapshot: clone(this.active) });
     this.history = this.history.slice(-30);
     await this.flush();
+    if (this.client?.enabled && this.persistence !== 'supabase') {
+      Object.assign(this, previous);
+      await this.flush().catch(() => {});
+      return { ok: false, errors: [`Não foi possível confirmar a publicação no Supabase: ${this.remoteError || 'persistência indisponível'}`] };
+    }
     return { ok: true, snapshot: this.snapshot() };
   }
 
   async rollback(revision, actor = 'dashboard') {
     const target = this.history.find(item => Number(item.revision) === Number(revision) && item.snapshot);
     if (!target) return { ok: false, errors: ['Versão não encontrada para rollback.'] };
+    const previous = { active: clone(this.active), draft: clone(this.draft), revision: this.revision, updatedAt: this.updatedAt, history: clone(this.history) };
     this.active = clone(target.snapshot);
     this.draft = clone(target.snapshot);
     this.revision += 1;
     this.updatedAt = new Date(this.now()).toISOString();
     this.history.push({ revision: this.revision, action: 'rollback', actor, at: this.updatedAt, sourceRevision: revision });
     await this.flush();
+    if (this.client?.enabled && this.persistence !== 'supabase') {
+      Object.assign(this, previous);
+      await this.flush().catch(() => {});
+      return { ok: false, errors: [`Não foi possível confirmar o rollback no Supabase: ${this.remoteError || 'persistência indisponível'}`] };
+    }
     return { ok: true, snapshot: this.snapshot() };
   }
 

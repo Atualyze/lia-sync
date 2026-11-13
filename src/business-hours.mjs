@@ -11,6 +11,21 @@
 
 const HORA_RX = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
 
+const NOMES_DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+/**
+ * Texto humanizado dos dias da semana (ex: "segunda a sexta").
+ * Fonte única para o aviso de fora do expediente e para o resumo publicado na ponte.
+ */
+export function diasSemanaTexto(weekdays = []) {
+  const dias = [...new Set((Array.isArray(weekdays) ? weekdays : []).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))];
+  if (dias.length === 0) return 'segunda a sexta';
+  if (dias.length === 7) return 'todos os dias';
+  if (dias.length === 5 && dias.every(d => [1, 2, 3, 4, 5].includes(d))) return 'segunda a sexta';
+  if (dias.length === 6 && !dias.includes(0)) return 'segunda a sábado';
+  return dias.map(d => NOMES_DIAS[d]).join(', ');
+}
+
 function minutosDe(hhmm) {
   if (typeof hhmm !== 'string') return null;
   const m = HORA_RX.exec(hhmm.trim());
@@ -137,12 +152,7 @@ export function avaliarJanelaDeAtendimento(configOrJanela, agora = new Date()) {
   }
 
   // Monta texto humanizado dos dias (ex: "segunda a sexta")
-  const NOMES_DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-  let diasTexto = 'segunda a sexta';
-  if (janela.weekdays.length === 7) diasTexto = 'todos os dias';
-  else if (janela.weekdays.length === 5 && janela.weekdays.every(d => [1,2,3,4,5].includes(d))) diasTexto = 'segunda a sexta';
-  else if (janela.weekdays.length === 6 && !janela.weekdays.includes(0)) diasTexto = 'segunda a sábado';
-  else diasTexto = janela.weekdays.map(d => NOMES_DIAS[d]).join(', ');
+  const diasTexto = diasSemanaTexto(janela.weekdays);
 
   const noticeText = janela.outOfHoursNotice
     .replace(/\{dias\}/gi, diasTexto)
@@ -157,5 +167,41 @@ export function avaliarJanelaDeAtendimento(configOrJanela, agora = new Date()) {
     proximaAberturaISO: proximaAberturaDate ? proximaAberturaDate.toISOString() : null,
     periodoFechadoId,
     noticeText
+  };
+}
+
+/**
+ * Projeção operacional da janela de atendimento para consumidores externos (ponte Chatwoot Lia).
+ * Devolve somente a configuração e o estado derivados — nunca o texto do aviso ao cliente,
+ * que é conteúdo do atendimento da Lia e não configuração do console.
+ * @param {object} cfg valor de `business.hoursConfig`
+ * @param {Date} agora
+ */
+export function resumoJanelaDeAtendimento(cfg, agora = new Date()) {
+  const avaliacao = avaliarJanelaDeAtendimento(cfg, agora);
+  const janela = avaliacao.janela;
+  if (!janela) {
+    return {
+      enabled: false,
+      timezone: (typeof cfg?.timezone === 'string' && cfg.timezone.trim()) || 'America/Sao_Paulo',
+      start: null,
+      end: null,
+      weekdays: [],
+      autoResumeOnOpen: false,
+      isOpenNow: true,
+      nextOpenAt: null,
+      summary: 'Atendimento contínuo (24 horas)'
+    };
+  }
+  return {
+    enabled: true,
+    timezone: janela.timezone,
+    start: janela.start,
+    end: janela.end,
+    weekdays: [...janela.weekdays].sort((a, b) => a - b),
+    autoResumeOnOpen: janela.autoResumeOnOpen === true,
+    isOpenNow: avaliacao.isOpen === true,
+    nextOpenAt: avaliacao.isOpen ? null : (avaliacao.proximaAberturaISO || null),
+    summary: `${diasSemanaTexto(janela.weekdays)}, das ${janela.start} às ${janela.end} (${janela.timezone})`
   };
 }

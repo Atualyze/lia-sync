@@ -2,7 +2,15 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.3.0** (pacote, lockfile, metadata e documentação sincronizados).
+**Versão atual: 2.3.1** (pacote, lockfile, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.3.1 — expediente central e setores no seu dono natural
+
+- **Janela de atendimento no painel:** ativação, dias, início, fim, fuso, retomada automática e aviso de fora do expediente são administrados aqui, com rascunho, validação e publicação versionada. Consulte [`docs/release-2.3.1.md`](docs/release-2.3.1.md).
+- **Validação fail-closed:** horas em `HH:MM`, fim depois do início, fuso IANA real, dias válidos e sem repetição, aviso de até 2000 caracteres. O motor continua fail-open em tempo de execução.
+- **Chatwoot lê, não escreve:** a ponte `GET /api/bridge/v1/config` projeta o expediente já derivado (`isOpenNow`, `nextOpenAt`, `summary`) em campo aditivo do contrato v1; o texto do aviso ao cliente não é exposto. Detalhes em [`docs/config-bridge-contract.md`](docs/config-bridge-contract.md).
+- **Setores continuam do Chatwoot:** `PUT/GET /api/bridge/v1/sectors` mantém uma projeção de runtime (máximo 100, apenas `id`, `name`, `description`, `isActive`) sem tocar em rascunho, revisão ou histórico.
+- **Nenhum fluxo externo publica configuração:** publicar deixou de ser um efeito colateral de salvar setores no Chatwoot.
 
 ## Novidades da Versão 2.3.0 — confiabilidade e operação de IA
 

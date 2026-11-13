@@ -324,7 +324,112 @@
               <p class="field-hint">É enviado no máximo um follow-up por conversa elegível. Alterações entram em vigor somente após publicar.</p>
             </section>
 
+            <section class="admin-card panel admin-wide">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Operações & Funil</strong>
+                  <span>Parâmetros centrais consumidos pela ponte Chatwoot Lia</span>
+                </div>
+                <span class="admin-status">Publicável</span>
+              </div>
+              <div class="admin-form-grid">
+                <label>Modo da Lia
+                  <select id="admin-agent-mode" data-config="ai.agentMode">
+                    <option value="assistente">Assistente padrão</option>
+                    <option value="super_agente">Super Agente (ferramentas)</option>
+                  </select>
+                </label>
+                <label class="toggle-field">
+                  <input data-config="automation.enableMediaProcessing" type="checkbox" />
+                  <span>Processar mídia e anexos</span>
+                </label>
+                <label class="toggle-field">
+                  <input data-config="automation.enableProactiveFollowUp" type="checkbox" />
+                  <span>Permitir follow-up proativo</span>
+                </label>
+                <label class="toggle-field">
+                  <input data-config="automation.businessHoursOnly" type="checkbox" />
+                  <span>Restringir follow-up ao horário comercial</span>
+                </label>
+                <label class="toggle-field">
+                  <input data-config="automation.autoHandoffOnHumanPresence" type="checkbox" />
+                  <span>Transferir para humano quando houver presença de atendente</span>
+                </label>
+                <label>Limite diário de follow-ups
+                  <input data-config="automation.maxDailyFollowUps" type="number" min="0" max="10000" step="1" />
+                </label>
+                <label>Intervalo mínimo (horas)
+                  <input data-config="automation.followUpMinHours" type="number" min="1" max="719" step="1" />
+                </label>
+                <label>Intervalo máximo (horas)
+                  <input data-config="automation.followUpMaxHours" type="number" min="2" max="720" step="1" />
+                </label>
+                <label class="wide">Texto de follow-up
+                  <textarea data-config="automation.followUpTemplate" rows="2" maxlength="2000"></textarea>
+                </label>
+                <label>Voz
+                  <select data-config="voice.voiceName">
+                    <option value="Aoede">Aoede</option><option value="Kore">Kore</option><option value="Leda">Leda</option><option value="Zephyr">Zephyr</option><option value="Puck">Puck</option><option value="Charon">Charon</option><option value="Fenrir">Fenrir</option>
+                  </select>
+                </label>
+                <label>Tom da voz
+                  <input data-config="voice.tone" maxlength="500" />
+                </label>
+                <label class="toggle-field">
+                  <input data-config="voice.autoVoiceOnAudio" type="checkbox" />
+                  <span>Responder automaticamente com áudio</span>
+                </label>
+              </div>
+              <p class="field-hint">A busca web e as ferramentas são configuradas em “Ferramentas & Web”. As alterações desta tela ficam em rascunho até serem publicadas.</p>
+            </section>
+
             <!-- TEXTOS PADRÃO -->
+            <!-- JANELA DE ATENDIMENTO -->
+            <section class="admin-card panel admin-wide">
+              <div class="admin-card-head">
+                <div>
+                  <strong>Janela de Atendimento</strong>
+                  <span>Expediente usado pela Lia e lido somente leitura pelo Chatwoot</span>
+                </div>
+                <span id="admin-hours-published" class="admin-status">–</span>
+              </div>
+              <div class="admin-form-grid">
+                <label class="toggle-field">
+                  <input id="admin-hours-enabled" data-config="business.hoursConfig.enabled" type="checkbox" />
+                  <span>Restringir atendimento ao expediente</span>
+                </label>
+                <label class="wide">Dias de atendimento
+                  <div id="admin-hours-weekdays" class="hours-weekdays" role="group" aria-label="Dias de atendimento">
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="0" /><span>Dom</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="1" /><span>Seg</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="2" /><span>Ter</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="3" /><span>Qua</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="4" /><span>Qui</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="5" /><span>Sex</span></label>
+                    <label class="hours-weekday"><input type="checkbox" class="admin-hours-weekday" value="6" /><span>Sáb</span></label>
+                  </div>
+                </label>
+                <label>Início
+                  <input data-config="business.hoursConfig.start" type="time" step="60" />
+                </label>
+                <label>Fim
+                  <input data-config="business.hoursConfig.end" type="time" step="60" />
+                </label>
+                <label>Fuso horário
+                  <input data-config="business.hoursConfig.timezone" maxlength="64" placeholder="America/Sao_Paulo" />
+                </label>
+                <label class="toggle-field">
+                  <input data-config="business.hoursConfig.autoResumeOnOpen" type="checkbox" />
+                  <span>Retomar conversas pendentes na abertura</span>
+                </label>
+                <label class="wide">Aviso de fora do expediente
+                  <textarea data-config="business.hoursConfig.outOfHoursNotice" rows="2" maxlength="2000"></textarea>
+                </label>
+              </div>
+              <p id="admin-hours-summary" class="field-hint">Expediente desligado: a Lia atende 24 horas. O aviso é enviado uma única vez por período fechado.</p>
+              <p class="field-hint">Setores e triagem continuam pertencendo ao Chatwoot e não são publicados por aqui. O Chatwoot lê este expediente pela ponte e não pode alterá-lo.</p>
+            </section>
+
             <section class="admin-card panel admin-wide">
               <div class="admin-card-head">
                 <div>

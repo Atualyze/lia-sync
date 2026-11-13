@@ -12,7 +12,7 @@ import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 export async function handleClientMessage({
   store, ai, whatsapp, faq, reminderStore, logger, now,
   allowClientResume, maxInputChars, notify, isOwnerSender,
-  botConfig, identity, messages, owner, assistant,
+  botConfig, identity, messages, owner, assistant, sectors = [],
   phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
 }) {
       // ==========================================
@@ -298,7 +298,9 @@ export async function handleClientMessage({
       // ==========================================
       // 2.5.2 TRIAGEM LEVE DE SETOR
       // ==========================================
-      const triageSectors = botConfig?.business?.sectors || [];
+      // Autoridade: projeção de runtime enviada pelo Chatwoot através da ponte.
+      // O caminho em botConfig continua aceito apenas por compatibilidade com publicações antigas.
+      const triageSectors = (Array.isArray(sectors) && sectors.length) ? sectors : (botConfig?.business?.sectors || []);
       if (Array.isArray(triageSectors) && triageSectors.length > 0) {
         const triageResult = classificarSetorPorTexto(clean, triageSectors, identity);
         if (triageResult.sectorId && triageResult.confidence >= 0.3) {

@@ -3,6 +3,8 @@ import { config } from '../config.mjs';
 import { getCircuitBreakers } from '../ai.mjs';
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { isUuid, maskPhone } from '../operations.mjs';
+import { getBridgeConfigStatus } from './bridge-config-status.mjs';
+import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 
 const errorStatus = error => {
   if (['campaign_persistence_unavailable', 'campaign_worker_unavailable', 'user_management_unavailable', 'audit_persistence_unavailable', 'metrics_persistence_unavailable', 'invalid_suppression'].includes(error?.code)) return error.code === 'invalid_suppression' ? 400 : 503;
@@ -99,7 +101,7 @@ function safeHost(value = '') {
   try { return new URL(value).host; } catch { return null; }
 }
 
-async function getIntegrations(webhookEventStore) {
+async function getIntegrations(webhookEventStore, sectorProjection, adminConfig) {
   let webhookHistory = { configured: false, events: [] };
   try { webhookHistory = await webhookEventStore?.list(50) || webhookHistory; } catch { webhookHistory = { configured: false, events: [] }; }
   const circuitBreakers = getCircuitBreakers();
@@ -115,6 +117,12 @@ async function getIntegrations(webhookEventStore) {
     return counts;
   }, {});
   return {
+    chatwootBridge: getBridgeConfigStatus({ configured: Boolean(config.webhookToken) }),
+    // O que o motor realmente está usando: expediente publicado e projeção de setores do Chatwoot.
+    businessHours: resumoJanelaDeAtendimento(adminConfig?.active?.business?.hoursConfig),
+    sectorsProjection: sectorProjection
+      ? sectorProjection.status()
+      : { synced: false, count: 0, updatedAt: null },
     evolution: await probeEvolution(),
     supabase: { configured: Boolean(config.supabaseUrl && config.supabaseServiceRoleKey), urlHost: safeHost(config.supabaseUrl) },
     webhook: {
@@ -129,7 +137,7 @@ async function getIntegrations(webhookEventStore) {
   };
 }
 
-export async function handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext = {} }) {
+export async function handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext = {}, sectorProjection }) {
   const actorId = authContext.userId || null;
   const actorRole = authContext.role || 'viewer';
 
@@ -255,7 +263,7 @@ export async function handleOperationsRoutes({ req, res, u, campaignStore, opera
   }
 
   if (req.method === 'GET' && u.pathname === '/api/dashboard/integrations') {
-    return json(res, 200, await getIntegrations(webhookEventStore));
+    return json(res, 200, await getIntegrations(webhookEventStore, sectorProjection, adminConfig));
   }
 
   return NOT_HANDLED;

@@ -45,13 +45,17 @@ Evolution / Chatwoot / Dashboard
 | `core/identity.mjs` | Identidade configurada no painel e reconhecimento do responsável. |
 | `core/messages.mjs` | Mensagens padrão derivadas da identidade publicada. |
 | `admin-config.mjs` | Rascunho, publicação, revisão e rollback da configuração. |
+| `business-hours.mjs` | Regra canônica do expediente: normalização, janela aberta/fechada, próxima abertura, aviso e resumo projetado para a ponte. |
+| `sectors.mjs` | Projeção de runtime dos setores vindos do Chatwoot; valida, limita e persiste em arquivo próprio, sem tocar em rascunho ou revisão. |
 | `maintenance.mjs` | Manutenção das sessões e follow-up; reivindica atomicamente o envio no Supabase. |
 | `webhook-events.mjs` | Deduplicação/estado de eventos por chaves derivadas e sanitizadas. |
 | `sessions.mjs` e `supabase-runtime.mjs` | Estado local, persistência remota e fallback. |
 
 ## Configuração publicada
 
-`botConfig` é a fonte para nome da assistente, responsável, empresa, apelidos, tom, telefone humano, mensagens, IA e comportamento. A alteração é feita no painel, salva como rascunho e só entra no runtime após publicação. A seleção de IA define um provedor e modelo principal, com até três modelos de fallback configuráveis. O backend pode consultar o catálogo do provedor; as chaves permanecem no ambiente do servidor.
+`botConfig` é a fonte para nome da assistente, responsável, empresa, apelidos, tom, telefone humano, mensagens, IA, expediente (`business.hoursConfig`) e comportamento. A alteração é feita no painel, salva como rascunho e só entra no runtime após publicação. A seleção de IA define um provedor e modelo principal, com até três modelos de fallback configuráveis. O backend pode consultar o catálogo do provedor; as chaves permanecem no ambiente do servidor.
+
+O expediente é validado de forma fail-closed antes de publicar, mas avaliado de forma fail-open em tempo de execução: uma configuração corrompida nunca silencia o atendimento. Setores e triagem **não** fazem parte da configuração publicada — chegam do Chatwoot pela projeção de runtime, porque o Chatwoot é o dono desses dados. Ver [`docs/config-bridge-contract.md`](docs/config-bridge-contract.md).
 
 Aliases e textos históricos são aceitos somente para migrar dados e conversas já existentes. Não definem uma pessoa, empresa ou telefone para novas operações.
 

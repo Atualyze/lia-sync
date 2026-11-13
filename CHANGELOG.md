@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.1 — expediente central no painel e setores fora da configuração publicada
+
+- **Janela de atendimento no painel:** `business.hoursConfig` passou a ser administrado no Lia Sync (ativação, dias, início, fim, fuso, retomada automática e aviso de fora do expediente) usando os fluxos existentes de rascunho, validação e publicação.
+- **Validação fail-closed:** só publica com horas na forma HH:MM, fim depois do início, fuso IANA válido, dias entre 0 e 6 sem repetição e aviso de até 2000 caracteres. Uma janela incoerente é rejeitada antes de virar revisão; o motor continua fail-open em tempo de execução.
+- **Expediente lido somente leitura pelo Chatwoot:** `GET /api/bridge/v1/config` acrescenta `settings.business.hours` com `isOpenNow`, `nextOpenAt` e `summary` derivados pelo próprio Lia Sync, para o consumidor não replicar a regra. A mudança é aditiva e a `contractVersion` permanece 1. O texto do aviso ao cliente não é exposto.
+- **Setores voltam a ser dados do Chatwoot:** `PUT/GET /api/bridge/v1/sectors` mantém projeção de runtime em arquivo próprio (máximo 100 itens e apenas `id`, `name`, `description`, `isActive`); telefones e campos administrativos são descartados. Nenhum fluxo externo publica rascunho ou revisão do painel.
+- **Integrações e diagnóstico:** a tela passa a mostrar o expediente efetivo e o estado da projeção de setores; o formulário administrativo exibe a prévia publicada e a pendente de publicação, calculadas no servidor.
+- **Validação:** 190 testes, 26 contratos de arquitetura e build de 98 módulos aprovados. Nenhuma migration foi criada ou executada.
+
 ## 2.3.0 — confiabilidade distribuída e operação de IA
 
 - **Catálogo de modelos:** consulta server-side a Gemini, OpenRouter, Qwen e OpenAI com credencial configurada; modelo principal e até três fallbacks publicados pelo painel.

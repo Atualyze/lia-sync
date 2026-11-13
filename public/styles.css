@@ -630,6 +630,20 @@ body {
 .toggle-field input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
 .toggle-field span { font-size: 12px; color: var(--text-primary); text-transform: none; font-weight: 500; }
 
+.hours-weekdays { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.hours-weekday {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 0;
+}
+.hours-weekday input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+.hours-weekday span { font-size: 11px; text-transform: none; font-weight: 500; color: var(--text-primary); }
+
 .admin-faq-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .admin-faq-item {
   border: 1px solid var(--border-subtle);

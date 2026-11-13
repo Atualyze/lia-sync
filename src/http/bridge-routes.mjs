@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { json, readBody, authorized, formatPhoneNumber, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { normalizePhone, isValidRealMobilePhone } from '../sessions.mjs';
@@ -7,6 +8,9 @@ import { sendText } from '../whatsapp.mjs';
 import { broadcastBridgeEvent, bridgeSubscribers } from './bridge.mjs';
 import { TtlIdempotencyStore, idempotencyKey } from '../core/idempotency.mjs';
 import { CampaignStore } from '../campaigns.mjs';
+import { markBridgeConfigRead } from './bridge-config-status.mjs';
+import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
+import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
 
 const bridgeActions = new TtlIdempotencyStore({ ttlMs: Number(process.env.BRIDGE_IDEMPOTENCY_TTL_MS || 10 * 60 * 1000) });
 const safeError = error => error?.code || (error?.name === 'TimeoutError' ? 'provider_timeout' : 'request_failed');
@@ -22,14 +26,110 @@ async function isBridgeAuthorized(req, webhookAuthorize) {
   }
 }
 
+function publicLiaConfig(active = {}) {
+  const ai = active.ai || {};
+  const automation = active.automation || {};
+  const voice = active.voice || {};
+  return {
+    ai: {
+      activeProvider: String(ai.activeProvider || ''),
+      activeModel: String(ai.activeModel || ''),
+      fallbackModels: Array.isArray(ai.fallbackModels) ? ai.fallbackModels.slice(0, 3).filter(item => typeof item === 'string') : [],
+      agentMode: ai.agentMode === 'super_agente' ? 'super_agente' : 'assistente',
+      enableToolCalling: ai.enableToolCalling === true
+    },
+    webSearch: { enabled: active.webSearch?.enabled !== false },
+    automation: {
+      enableMediaProcessing: automation.enableMediaProcessing !== false,
+      enableProactiveFollowUp: automation.enableProactiveFollowUp !== false,
+      businessHoursOnly: automation.businessHoursOnly !== false,
+      autoHandoffOnHumanPresence: automation.autoHandoffOnHumanPresence !== false,
+      maxDailyFollowUps: Number.isInteger(automation.maxDailyFollowUps) ? automation.maxDailyFollowUps : 30,
+      followUpMinHours: Number.isFinite(Number(automation.followUpMinHours)) ? Number(automation.followUpMinHours) : 24,
+      followUpMaxHours: Number.isFinite(Number(automation.followUpMaxHours)) ? Number(automation.followUpMaxHours) : 72,
+      followUpTemplate: typeof automation.followUpTemplate === 'string' ? automation.followUpTemplate.slice(0, 2000) : ''
+    },
+    voice: {
+      voiceName: String(voice.voiceName || 'Aoede'),
+      tone: typeof voice.tone === 'string' ? voice.tone.slice(0, 500) : '',
+      autoVoiceOnAudio: voice.autoVoiceOnAudio !== false
+    },
+    // Horário de atendimento: projeção somente-leitura do painel central.
+    // Nunca expõe o texto do aviso ao cliente, que é conteúdo do atendimento da Lia.
+    business: {
+      hours: resumoJanelaDeAtendimento(active.business?.hoursConfig)
+    }
+  };
+}
+
+function handlePublishedConfigRead({ req, res, adminConfig }) {
+  if (req.method !== 'GET') return json(res, 405, { ok: false, error: 'method_not_allowed' });
+  if (!adminConfig || adminConfig.persistence !== 'supabase') return json(res, 503, { ok: false, error: 'config_persistence_unavailable' });
+  const revision = Number(adminConfig.revision) || 0;
+  if (revision < 1 || !adminConfig.active) return json(res, 503, { ok: false, error: 'published_config_unavailable' });
+  const settings = publicLiaConfig(adminConfig.active);
+  const published = [...(adminConfig.history || [])].reverse().find(item => Number(item.revision) === revision && ['published', 'rollback'].includes(item.action));
+  const body = {
+    ok: true,
+    contractVersion: 1,
+    configSchemaVersion: Number(adminConfig.active.schemaVersion) || 1,
+    revision,
+    publishedAt: published?.at || null,
+    settings
+  };
+  const hash = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  const etag = `"lia-config-v1-${revision}-${hash}"`;
+  const headers = { etag, 'cache-control': 'private, no-cache', vary: 'Authorization' };
+  const matches = String(req.headers['if-none-match'] || '').split(',').map(value => value.trim()).some(value => value === '*' || value === etag);
+  markBridgeConfigRead(revision);
+  if (matches) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
+}
+
 function bridgeCorsHeaders(req) {
   return config.dashboardOrigin && req.headers.origin === config.dashboardOrigin
     ? { 'Access-Control-Allow-Origin': config.dashboardOrigin, Vary: 'Origin' }
     : {};
 }
 
+/**
+ * Projeção de runtime dos setores do Chatwoot. Grava em memória/arquivo próprios
+ * e jamais toca rascunho, validação, publicação ou revisão do painel administrativo.
+ */
+async function handleSectorProjection({ req, res, sectorProjection }) {
+  if (!sectorProjection || typeof sectorProjection.replace !== 'function') {
+    return json(res, 503, { ok: false, error: 'sector_projection_unavailable' });
+  }
+  if (req.method === 'GET') {
+    return json(res, 200, { ok: true, contractVersion: 1, sectors: sectorProjection.list(), ...sectorProjection.status() });
+  }
+  if (req.method !== 'PUT') return json(res, 405, { ok: false, error: 'method_not_allowed' });
+  let body;
+  try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
+  try {
+    const status = await sectorProjection.replace(Array.isArray(body?.sectors) ? body.sectors : body);
+    return json(res, 200, { ok: true, contractVersion: 1, ...status });
+  } catch (error) {
+    if (error instanceof SectorProjectionError) return json(res, error.status || 400, { ok: false, error: error.code });
+    return json(res, 500, { ok: false, error: 'sector_projection_failed' });
+  }
+}
+
 // Rotas /api/bridge/* (inclui o stream SSE de eventos).
-export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore }) {
+export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection = new SectorProjection() }) {
+  if (u.pathname === '/api/bridge/v1/config') {
+    if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
+    return handlePublishedConfigRead({ req, res, adminConfig });
+  }
+  if (u.pathname === '/api/bridge/v1/sectors') {
+    if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
+    return handleSectorProjection({ req, res, sectorProjection });
+  }
   if (u.pathname === '/api/bridge/campaigns' || u.pathname.startsWith('/api/bridge/campaigns/')) {
     if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
     if (!campaignStore) return json(res, 503, { ok: false, error: 'campaign_worker_unavailable' });

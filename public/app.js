@@ -632,10 +632,40 @@ function renderAdmin() {
   });
   updateHumanDestinationVisibility();
   loadProviderModels();
+  renderHoursWeekdays(draft);
+  renderHoursPreview();
   const revision = state.adminConfig.revision || 0;
   $('#admin-version-badge').textContent = `rascunho · v${revision}`;
   $('#admin-draft-badge').classList.toggle('hidden', JSON.stringify(state.adminConfig.active) === JSON.stringify(draft));
   renderAdminFaq();
+}
+
+// A regra do expediente vive no servidor; a tela apenas reflete a prévia publicada.
+function renderHoursWeekdays(draft) {
+  const days = Array.isArray(draft?.business?.hoursConfig?.weekdays) ? draft.business.hoursConfig.weekdays.map(Number) : [];
+  document.querySelectorAll('.admin-hours-weekday').forEach(input => {
+    input.checked = days.includes(Number(input.value));
+  });
+}
+
+function renderHoursPreview() {
+  const badge = $('#admin-hours-published');
+  const summary = $('#admin-hours-summary');
+  if (!badge || !summary) return;
+  const published = state.adminConfig?.hoursPreview || null;
+  const draftPreview = state.adminConfig?.hoursDraftPreview || null;
+  if (!published && !draftPreview) {
+    badge.textContent = 'sem prévia';
+    summary.textContent = 'Publique uma versão para ver o expediente efetivo usado pela Lia e lido pelo Chatwoot.';
+    return;
+  }
+  badge.textContent = published
+    ? (published.enabled ? (published.isOpenNow ? 'publicado · aberto' : 'publicado · fechado') : 'publicado · 24 horas')
+    : 'sem publicação';
+  const pending = published && draftPreview && JSON.stringify(published) !== JSON.stringify(draftPreview);
+  const next = draftPreview?.enabled && !draftPreview.isOpenNow && draftPreview.nextOpenAt
+    ? ` Reabertura em ${new Date(draftPreview.nextOpenAt).toLocaleString('pt-BR')}.` : '';
+  summary.textContent = `Rascunho: ${draftPreview?.summary || '–'}.${next}${pending ? ' Ainda vale o expediente publicado até você publicar.' : ''}`;
 }
 
 async function loadProviderModels({ refresh = false } = {}) {
@@ -711,6 +741,13 @@ function adminReadForm() {
     }
     adminSet(draft, input.dataset.config, value);
   });
+  draft.business ||= {};
+  draft.business.hoursConfig ||= {};
+  // Os dias são um grupo de checkboxes, não um campo data-config simples.
+  draft.business.hoursConfig.weekdays = [...document.querySelectorAll('.admin-hours-weekday')]
+    .filter(input => input.checked)
+    .map(input => Number(input.value))
+    .sort((a, b) => a - b);
   const fallbackInput = $('#admin-ai-fallbacks');
   if (fallbackInput) draft.ai.fallbackModels = fallbackInput.value.split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 3);
   document.querySelectorAll('.admin-faq-row').forEach(row => {
@@ -721,6 +758,7 @@ function adminReadForm() {
     item.answer = row.querySelector('[data-faq-answer]').value.trim();
     item.enabled = row.querySelector('[data-faq-enabled]').checked;
   });
+  draft.ai.enableToolCalling = draft.ai.agentMode === 'super_agente';
 }
 
 async function saveAdminDraft(showMessage = false) {
@@ -832,13 +870,20 @@ async function renderUsers() {
 async function renderIntegrations() {
   try {
     const data = await api('/api/dashboard/integrations');
+    const hours = data.businessHours || {};
+    const sectors = data.sectorsProjection || {};
+    const hoursDetail = `${hours.summary || 'Expediente indisponível.'}${hours.enabled && !hours.isOpenNow && hours.nextOpenAt ? ` · reabertura ${new Date(hours.nextOpenAt).toLocaleString('pt-BR')}` : ''}`;
+    const sectorsDetail = `${Number(sectors.count) || 0} setor(es) na projeção · última leitura ${sectors.updatedAt ? new Date(sectors.updatedAt).toLocaleString('pt-BR') : 'ainda não sincronizada'}`;
     const statuses = [
+      ['Ponte Chatwoot Lia', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '—'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
+      ['Expediente da Lia', !hours.enabled ? '24 horas' : (hours.isOpenNow ? 'aberto' : 'fechado'), hoursDetail],
+      ['Setores do Chatwoot', sectors.synced ? 'sincronizado' : 'aguardando sincronização', sectorsDetail],
       ['Evolution API', data.evolution.status, `Host ${data.evolution.apiHost || '—'} · instância ${data.evolution.instance || '—'} · latência ${data.evolution.latencyMs ?? '—'} ms`],
       ['Supabase', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '—'} · backend-only`],
       ['Autenticação do webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
       ...(data.providers || []).map(item => [item.name, item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
     ];
-    $('#integrations-status').innerHTML = statuses.map(([name, status, detail]) => `<article class="integration-card"><div class="integration-card-head"><strong>${esc(name)}</strong><span class="status-text ${/connected|ok|configured|token configured|operacional/i.test(status) ? 'ok' : /not_configured|não configurado|disconnected|unreachable|timeout/i.test(status) ? 'warn' : 'err'}">${esc(status)}</span></div><p>${esc(detail)}</p>${name === 'Evolution API' ? `<p>${data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'}</p>` : ''}</article>`).join('');
+    $('#integrations-status').innerHTML = statuses.map(([name, status, detail]) => `<article class="integration-card"><div class="integration-card-head"><strong>${esc(name)}</strong><span class="status-text ${/connected|ok|configured|token configured|operacional|aberto|24 horas|sincronizado/i.test(status) ? 'ok' : /not_configured|não configurado|disconnected|unreachable|timeout|awaiting_first_read|stale|unknown|fechado|aguardando/i.test(status) ? 'warn' : 'err'}">${esc(status)}</span></div><p>${esc(detail)}</p>${name === 'Evolution API' ? `<p>${data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'}</p>` : ''}</article>`).join('');
     const events = data.webhook.recentEvents || [];
     $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
     $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '—')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '—')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
@@ -1123,6 +1168,9 @@ function startDashboard() {
       updateHumanDestinationVisibility();
       queueAdminSave();
     });
+  });
+  document.querySelectorAll('.admin-hours-weekday').forEach(input => {
+    input.addEventListener('change', queueAdminSave);
   });
   $('#admin-ai-provider')?.addEventListener('change', () => {
     state.modelCatalogProvider = null;

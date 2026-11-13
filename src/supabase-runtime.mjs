@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { SessionStore, normalizePhone } from './sessions.mjs';
-import { AdminConfigStore, DEFAULT_BOT_CONFIG, merge } from './admin-config.mjs';
+import { AdminConfigStore, DEFAULT_BOT_CONFIG, merge, normalizeBotConfig } from './admin-config.mjs';
 
 const jsonClone = value => JSON.parse(JSON.stringify(value));
 const iso = value => value ? new Date(value).toISOString() : null;
@@ -446,22 +446,30 @@ export class SupabaseSessionStore extends SessionStore {
 }
 
 export class SupabaseAdminConfigStore extends AdminConfigStore {
-  constructor(file, { client, logger = console, ...options } = {}) { super(file, { logger, ...options }); this.client = client; this.logger = logger; this.persistence = 'fallback'; this.remoteError = null; }
+  constructor(file, { client, logger = console, ...options } = {}) { super(file, { logger, ...options }); this.client = client; this.logger = logger; this.persistence = 'fallback'; this.remoteError = null; this.remoteLoadComplete = false; }
 
   async load() {
+    this.remoteLoadComplete = false;
     await super.load();
     if (!this.client?.enabled) return this;
     try {
       const state = (await this.client.select('bot_config_state', 'select=*&id=eq.true&limit=1'))?.[0];
       if (state?.active_config && Object.keys(state.active_config).length) {
-        this.active = merge(DEFAULT_BOT_CONFIG, state.active_config);
-        this.draft = merge(this.active, state.draft_config || {});
+        this.active = normalizeBotConfig(state.active_config);
+        this.draft = normalizeBotConfig(merge(this.active, state.draft_config || {}));
         this.revision = Number(state.revision || 0);
         this.updatedAt = state.updated_at || null;
         const revisions = await this.client.select('bot_config_revisions', 'select=revision,action,source_revision,snapshot,created_at&order=created_at.desc&limit=30');
         this.history = revisions.reverse().map(item => ({ revision: item.revision, action: item.action, sourceRevision: item.source_revision, at: item.created_at, ...(item.snapshot ? { snapshot: item.snapshot } : {}) }));
-      } else await this.flush();
-      this.persistence = 'supabase'; this.remoteError = null;
+      }
+      this.remoteLoadComplete = true;
+      if (state?.active_config && Object.keys(state.active_config).length) {
+        this.persistence = 'supabase';
+        this.remoteError = null;
+      } else {
+        await this.flush();
+        if (this.persistence !== 'supabase') throw new Error(this.remoteError || 'Supabase não confirmou a inicialização da configuração.');
+      }
     } catch (error) { this.remoteError = error.message; this.logger.warn?.(`[supabase] configuração indisponível; usando arquivo local: ${error.message}`); }
     return this;
   }
@@ -469,6 +477,12 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
   async flush() {
     const local = super.flush();
     if (!this.client?.enabled) return local;
+    if (!this.remoteLoadComplete) {
+      await local;
+      this.persistence = 'fallback';
+      this.remoteError = this.remoteError || 'Leitura inicial do estado Supabase não foi confirmada.';
+      return;
+    }
     const remote = (async () => {
       try {
         await this.client.upsert('bot_config_state', [{ id: true, revision: this.revision, active_config: this.active, draft_config: this.draft }], 'id');

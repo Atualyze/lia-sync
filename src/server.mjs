@@ -24,6 +24,7 @@ import { CampaignStore } from './campaigns.mjs';
 import { OperationsStore } from './operations.mjs';
 import { AIBudgetGate } from './ai/budget.mjs';
 import { WebhookEventStore } from './webhook-events.mjs';
+import { SectorProjection } from './sectors.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -73,6 +74,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const reminderStore = new ReminderStore(path.join(path.dirname(config.dataFile), 'reminders.json'), { client: supabaseRuntime.client });
   await reminderStore.load();
+  // Projeção de runtime dos setores do Chatwoot: nunca entra em rascunho/revisão do painel.
+  const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'));
+  await sectorProjection.load();
 
   const getTelemetry = async () => {
     let evoState = 'desconhecido';
@@ -134,6 +138,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getHumanPhone,
     reminderStore,
     getTelemetry,
+    getSectors: () => sectorProjection.active(),
     allowClientResume: config.humanAllowClientResume,
     maxInputChars: config.maxInputChars,
     rateLimitMax: config.rateLimitMax,
@@ -201,7 +206,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     campaignStore,
     operationsStore,
     webhookEventStore,
-    aiBudgetGate: budgetGate
+    aiBudgetGate: budgetGate,
+    sectorProjection
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; return app;
 }

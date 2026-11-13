@@ -23,6 +23,8 @@ export function createFlow({
   getHumanPhone = () => humanPhone,
   reminderStore = null,
   getTelemetry = async () => ({}),
+  // Projeção de runtime dos setores vindos do Chatwoot; nunca duplicada na config publicada.
+  getSectors = () => [],
   allowClientResume = false,
   maxInputChars = 2000,
   rateLimitMax = 20,
@@ -162,6 +164,7 @@ export function createFlow({
       const botConfig = getBotConfig() || {};
       const identity = resolveIdentity(botConfig);
       const messages = resolveMessages(botConfig);
+      const sectors = typeof getSectors === 'function' ? getSectors() : [];
       const owner = identity.responsible || 'nossa equipe';
       const assistant = identity.botName || 'Lia';
       const ownerLabel = identity.companyName ? `${owner} (${identity.companyName})` : owner;
@@ -182,7 +185,7 @@ export function createFlow({
       return handleClientMessage({
         store, ai, whatsapp, faq, reminderStore, logger, now,
         allowClientResume, maxInputChars, notify, isOwnerSender,
-        botConfig, identity, messages, owner, assistant,
+        botConfig, identity, messages, owner, assistant, sectors,
         phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
       });
     }
