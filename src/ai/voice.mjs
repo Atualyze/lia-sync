@@ -1,6 +1,6 @@
 import { config } from '../config.mjs';
 
-export async function transcribeAudio(base64, mimetype = 'audio/ogg') {
+export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutMs = 45000 } = {}) {
   if (!config.geminiKey || !base64) return null;
   const cleanMime = String(mimetype).split(';')[0].trim() || 'audio/ogg';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${config.geminiKey}`;
@@ -8,6 +8,7 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg') {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(Math.max(5000, Number(timeoutMs) || 45000)),
       body: JSON.stringify({
         contents: [{
           parts: [
@@ -33,6 +34,8 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg') {
 export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {} } = {}) {
   if (!config.geminiKey || !text) return null;
   const selectedVoice = botConfig?.voice?.voiceName || voiceName || 'Aoede';
+  const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
+  const speakingRate = Math.max(0.25, Math.min(2, Number(botConfig?.voice?.speed) || 1));
   const cleanText = String(text)
     .replace(/[*_#`~]/g, '')
     .replace(/https?:\/\/\S+/g, 'link enviado')
@@ -55,9 +58,10 @@ export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {
       responseModalities: ["AUDIO"],
       speechConfig: {
         voiceConfig: {
-          prebuiltVoiceConfig: {
-            voiceName: selectedVoice
-          }
+            prebuiltVoiceConfig: {
+              voiceName: selectedVoice
+            },
+            speakingRate
         }
       }
     }
@@ -69,6 +73,7 @@ export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify(payload)
       });
       if (!res.ok) {

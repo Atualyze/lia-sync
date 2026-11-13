@@ -11,6 +11,10 @@
 
 ## Evidências
 
+## Pendências futuras
+
+- [ ] **Expansão de provedores e roteamento multi-provedor:** adicionar adaptadores diretos para Grok/xAI, Mistral, OpenAI/ChatGPT e Cloudflare Workers AI; avaliar NVIDIA NIM direto; manter NVIDIA via OpenRouter; e integrar Manus como ferramenta assíncrona para tarefas longas, não como fallback síncrono. Evoluir `fallbackModels` para entradas explícitas de `provider` + `model`, com capacidades por modelo (JSON/Schema, tool calling, visão, áudio), teste de conexão, orçamento, timeout e circuit breaker por provedor.
+
 - `npm test`: 190 testes passaram; inclui normalização legada, validação de campos, publish/rollback fail-closed, falha de leitura inicial Supabase, allowlist da bridge, autorização, ETag/304, ausência de segredos, validação do expediente (casos válidos e inválidos) e projeção de setores (normalização, limites, persistência, autorização e ausência de efeito em rascunho/revisão).
 - `npm run test:contract`: 26 verificações passaram, incluindo expediente só no painel central, projeção sem o aviso ao cliente, setores fora da configuração publicada e tela de Integrações com expediente e projeção de setores.
 - `npm run build`: sintaxe dos 98 módulos verificada.

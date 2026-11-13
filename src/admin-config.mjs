@@ -74,8 +74,11 @@ export const DEFAULT_BOT_CONFIG = {
     activeProvider: 'gemini',
     activeModel: 'gemini-3.8-flash',
     fallbackModels: ['nvidia/nemotron-3.5-lightning:free'],
-    agentMode: 'assistente',
-    enableToolCalling: false,
+    agentMode: 'super_agente',
+    enableToolCalling: true,
+    autoRouting: true,
+    contextTurns: 24,
+    maxStoredHistory: 100,
     maxOutputTokens: 2048,
     structuredOutputs: false,
     requireParameters: false,
@@ -98,7 +101,19 @@ export const DEFAULT_BOT_CONFIG = {
     voiceName: 'Aoede', // 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Puck' | 'Charon' | 'Fenrir'
     tone: 'Acolhedor, dinâmico e profissional',
     speed: 1.0,
-    autoVoiceOnAudio: true
+    autoVoiceOnAudio: true,
+    requestTimeoutMs: 45000
+  },
+  integrations: {
+    googleCalendar: {
+      enabled: true,
+      timezone: 'America/Sao_Paulo',
+      workdayStart: '08:00',
+      workdayEnd: '18:00',
+      slotDurationMinutes: 30,
+      defaultEventDurationMinutes: 30,
+      showMockSlotsWhenUnavailable: false
+    }
   },
   human: {
     alertDestination: 'same_as_bot', // 'same_as_bot' | 'custom'
@@ -134,6 +149,9 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (value.tools?.enabled && (typeof value.tools.enabled !== 'object' || Array.isArray(value.tools.enabled) || Object.values(value.tools.enabled).some(item => typeof item !== 'boolean'))) errors.push('O catálogo de ferramentas deve conter somente estados verdadeiro/falso.');
   if (!['assistente', 'super_agente'].includes(value.ai?.agentMode)) errors.push('O modo do agente precisa ser assistente ou super_agente.');
   if (typeof value.ai?.enableToolCalling !== 'boolean') errors.push('A ativação de chamadas de ferramentas deve ser verdadeiro/falso.');
+  if (typeof value.ai?.autoRouting !== 'boolean') errors.push('O roteamento automático deve ser verdadeiro/falso.');
+  if (!Number.isInteger(value.ai?.contextTurns) || value.ai.contextTurns < 4 || value.ai.contextTurns > 100) errors.push('O contexto enviado à IA deve ter entre 4 e 100 turnos.');
+  if (!Number.isInteger(value.ai?.maxStoredHistory) || value.ai.maxStoredHistory < 20 || value.ai.maxStoredHistory > 500) errors.push('O histórico armazenado deve ter entre 20 e 500 registros.');
   const automationBooleanFields = ['enableMediaProcessing', 'enableProactiveFollowUp', 'businessHoursOnly', 'autoHandoffOnHumanPresence'];
   if (automationBooleanFields.some(field => typeof value.automation?.[field] !== 'boolean')) errors.push('As opções operacionais da Lia devem ser verdadeiro/falso.');
   const operationMin = Number(value.automation?.followUpMinHours);
@@ -145,6 +163,16 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!supportedVoices.has(value.voice?.voiceName)) errors.push('Selecione uma voz suportada.');
   if (typeof value.voice?.tone !== 'string' || value.voice.tone.length > 500) errors.push('O tom da voz deve ter até 500 caracteres.');
   if (typeof value.voice?.autoVoiceOnAudio !== 'boolean') errors.push('A resposta automática em áudio deve ser verdadeiro/falso.');
+  if (!Number.isInteger(value.voice?.requestTimeoutMs) || value.voice.requestTimeoutMs < 5000 || value.voice.requestTimeoutMs > 120000) errors.push('O timeout de áudio deve estar entre 5 e 120 segundos.');
+  const calendar = value.integrations?.googleCalendar;
+  if (!calendar || typeof calendar !== 'object' || Array.isArray(calendar)) errors.push('A configuração do Google Calendar é obrigatória.');
+  else {
+    if (typeof calendar.enabled !== 'boolean') errors.push('A integração do Google Calendar deve ser verdadeiro/falso.');
+    if (typeof calendar.timezone !== 'string' || !calendar.timezone.trim()) errors.push('O fuso horário do Google Calendar é obrigatório.');
+    if (!Number.isInteger(calendar.slotDurationMinutes) || calendar.slotDurationMinutes < 5 || calendar.slotDurationMinutes > 240) errors.push('A duração dos slots deve estar entre 5 e 240 minutos.');
+    if (!Number.isInteger(calendar.defaultEventDurationMinutes) || calendar.defaultEventDurationMinutes < 5 || calendar.defaultEventDurationMinutes > 480) errors.push('A duração padrão de eventos deve estar entre 5 e 480 minutos.');
+    if (typeof calendar.showMockSlotsWhenUnavailable !== 'boolean') errors.push('A exibição de horários simulados deve ser verdadeiro/falso.');
+  }
   const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
   const validNonNegativeAmount = amount => (typeof amount === 'number' || typeof amount === 'string') && String(amount).trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) >= 0;
   if (value.ai?.pricingRates !== undefined && (!Array.isArray(value.ai.pricingRates) || value.ai.pricingRates.length > 100 || value.ai.pricingRates.some(rate => !allowedProviders.has(rate?.provider) || typeof rate?.model !== 'string' || !rate.model.trim() || !validNonNegativeAmount(rate.inputUsdPerMillion) || !validNonNegativeAmount(rate.outputUsdPerMillion)))) errors.push('Tarifas precisam ser uma lista válida por provedor/modelo e valores USD por milhão de tokens.');
@@ -253,6 +281,9 @@ export class AdminConfigStore {
     const previousUpdatedAt = this.updatedAt;
     const previousHistory = clone(this.history);
     const next = normalizeBotConfig(merge(this.draft, patch));
+    if (!String(next.ai?.activeModel || '').trim() && String(this.draft.ai?.activeModel || '').trim()) {
+      next.ai.activeModel = this.draft.ai.activeModel;
+    }
     const errors = validate(next, { requirePublishedAI: false });
     if (errors.length) return { ok: false, errors };
     this.draft = next;
@@ -273,6 +304,9 @@ export class AdminConfigStore {
   }
 
   async publish(actor = 'dashboard') {
+    if (!String(this.draft.ai?.activeModel || '').trim() && String(this.active.ai?.activeModel || '').trim()) {
+      this.draft.ai.activeModel = this.active.ai.activeModel;
+    }
     const errors = validate(this.draft);
     if (errors.length) return { ok: false, errors };
     const previous = { active: clone(this.active), draft: clone(this.draft), revision: this.revision, updatedAt: this.updatedAt, history: clone(this.history) };

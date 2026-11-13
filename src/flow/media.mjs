@@ -4,11 +4,11 @@ import { cleanForSpeech } from './text.mjs';
  * Transcreve um áudio recebido do contato. Retorna null quando não há
  * transcrição possível (mídia indisponível, erro do provedor ou resposta vazia).
  */
-export async function transcribeIncomingAudio({ whatsapp, ai, rawItem }) {
+export async function transcribeIncomingAudio({ whatsapp, ai, rawItem, botConfig = {} }) {
   try {
     const media = await whatsapp?.getMediaBase64?.(rawItem);
     if (media?.base64) {
-      const text = await ai?.transcribeAudio?.(media.base64, media.mimetype);
+      const text = await ai?.transcribeAudio?.(media.base64, media.mimetype, { timeoutMs: botConfig?.voice?.requestTimeoutMs });
       return typeof text === 'string' ? text : null;
     }
   } catch (e) {

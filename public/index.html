@@ -288,6 +288,16 @@
                   </div>
                   <input id="admin-ai-fallbacks" data-config="ai.fallbackModels" type="hidden" />
                 </div>
+                <label class="toggle-field">
+                  <input data-config="ai.autoRouting" type="checkbox" />
+                  <span>Roteamento automático por complexidade</span>
+                </label>
+                <label>Turnos de contexto enviados à IA
+                  <input data-config="ai.contextTurns" type="number" min="4" max="100" step="1" />
+                </label>
+                <label>Registros máximos de memória
+                  <input data-config="ai.maxStoredHistory" type="number" min="20" max="500" step="1" />
+                </label>
                 <label class="wide">Destino dos Alertas e Transbordo
                   <select id="admin-human-destination" data-config="human.alertDestination">
                     <option value="same_as_bot">Usar o mesmo número conectado à Lia (copiloto interno no WhatsApp)</option>
@@ -378,6 +388,22 @@
                 <label class="toggle-field">
                   <input data-config="voice.autoVoiceOnAudio" type="checkbox" />
                   <span>Responder automaticamente com áudio</span>
+                </label>
+                <label>Velocidade da voz
+                  <input data-config="voice.speed" type="number" min="0.25" max="2" step="0.05" />
+                </label>
+                <label>Timeout de áudio (ms)
+                  <input data-config="voice.requestTimeoutMs" type="number" min="5000" max="120000" step="1000" />
+                </label>
+                <label class="toggle-field">
+                  <input data-config="integrations.googleCalendar.enabled" type="checkbox" />
+                  <span>Ativar integração com Google Calendar</span>
+                </label>
+                <label>Fuso do Google Calendar
+                  <input data-config="integrations.googleCalendar.timezone" placeholder="America/Sao_Paulo" />
+                </label>
+                <label>Duração padrão de eventos (minutos)
+                  <input data-config="integrations.googleCalendar.defaultEventDurationMinutes" type="number" min="5" max="480" step="5" />
                 </label>
               </div>
               <p class="field-hint">A busca web e as ferramentas são configuradas em “Ferramentas & Web”. As alterações desta tela ficam em rascunho até serem publicadas.</p>

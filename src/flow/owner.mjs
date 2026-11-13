@@ -32,7 +32,8 @@ export async function handleOwnerSession({
         const recordSelfTurn = (replyText) => {
           sSelf.history.push({ role: 'user', content: cleanCommand, createdAt: new Date(now()).toISOString() });
           sSelf.history.push({ role: 'assistant', content: replyText, createdAt: new Date(now()).toISOString() });
-          if (sSelf.history.length > 40) sSelf.history = sSelf.history.slice(-30);
+          const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
+          if (sSelf.history.length > maxStoredHistory) sSelf.history = sSelf.history.slice(-maxStoredHistory);
           sSelf.lastUserAt = new Date(now()).toISOString();
           sSelf.lastBotAt = new Date(now()).toISOString();
           sSelf.updatedAt = new Date(now()).toISOString();
@@ -83,7 +84,7 @@ export async function handleOwnerSession({
           try {
             const media = await whatsapp.getMediaBase64?.(rawItem);
             if (media?.base64) {
-              const transcribed = await ai.transcribeAudio?.(media.base64, media.mimetype);
+              const transcribed = await ai.transcribeAudio?.(media.base64, media.mimetype, { timeoutMs: botConfig?.voice?.requestTimeoutMs });
               if (transcribed && transcribed.trim()) {
                 cleanCommand = transcribed.trim();
               }
@@ -209,15 +210,17 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
 
         // 1.0.7 Atalho Direto: Teste e Consulta do Google Agenda
         if (/(?:google agenda|minha agenda|agenda|horarios livres|horários livres|test(?:e)? da agenda|teste.*agenda|comunica[cç][aã]o com.*agenda)\b/i.test(norm)) {
-          const calRes = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres' }, { clientName: owner });
-          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Conexão com o Google Calendar operacional.'}\n• *Status:* 🟢 Integrada e ativa\n• *Horários Livres Identificados:* ${calRes?.availableSlots ? calRes.availableSlots.join(', ') : '09:00, 10:30, 14:00, 15:30, 17:00'}`;
+          const calRes = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres' }, { clientName: owner, botConfig });
+          const calStatus = calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
+          const slots = calRes?.success && Array.isArray(calRes.availableSlots) ? calRes.availableSlots.join(', ') : 'Nenhum horário confirmado';
+          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *Horários Livres Confirmados:* ${slots}`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
         // 1.0.8 Documentos em PDF: SEMPRE pergunta quais informações usar antes de gerar
-        const pdfDocMatch = norm.match(/(gerar|criar|emitir|fazer|montar|preparar)\s+(?:um\s+|uma\s+)?(relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o|pdf)|(?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o)\s+em\s+pdf/);
+        const pdfDocMatch = norm.match(/(gerar|criar|emitir|fazer|montar|preparar)\s+(?:um\s+|uma\s+)?(relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o|pdf)|((?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o))\s+em\s+pdf/);
         if (pdfDocMatch) {
-          const palavra = pdfDocMatch[2] || pdfDocMatch[1];
+          const palavra = pdfDocMatch[2] || pdfDocMatch[3] || pdfDocMatch[1];
           const tipoInfo = PDF_TYPES.find(t => palavra && (t.label === palavra || t.key === palavra)) || PDF_TYPES.find(t => t.key === 'relatorio');
           const tipo = tipoInfo.key;
           const tipoTitulo = { relatorio: 'Relatório Executivo', orcamento: 'Orçamento', proposta: 'Proposta Comercial', recibo: 'Recibo', declaracao: 'Declaração' }[tipo];
@@ -720,7 +723,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         // 1.9 Chamada Inteligente com Persona de Copiloto do responsável
-        const recentHistory = Array.isArray(sSelf.history) ? sSelf.history.slice(-12) : [];
+        const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
+        const recentHistory = Array.isArray(sSelf.history) ? sSelf.history.slice(-contextTurns) : [];
         const supportContacts = Object.values(store.sessions || {})
           .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes))
           .map(s => ({
@@ -958,7 +962,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const calResult = toolOutputs.find(t => t.tool === 'gerenciar_agenda_google');
         if (calResult) {
           const res = calResult.result;
-          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${res.message || 'Operação realizada com sucesso.'}${res.availableSlots ? `\n• *Horários Livres:* ${res.availableSlots.join(', ')}` : ''}`;
+          const calStatus = res?.success ? '🟢 Operação confirmada' : '🔴 Operação não concluída';
+          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${res?.message || 'Não foi possível concluir a operação.'}\n• *Status:* ${calStatus}${res?.success && res.availableSlots ? `\n• *Horários Livres:* ${res.availableSlots.join(', ')}` : ''}`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 

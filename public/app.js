@@ -9,6 +9,9 @@ const state = {
   metricsTimer: null,
   adminConfig: null,
   adminSaveTimer: null,
+  adminFormDirty: false,
+  adminChangeVersion: 0,
+  adminSaveInFlight: false,
   role: 'viewer',
   tools: null,
   operations: null,
@@ -621,7 +624,10 @@ function updateHumanDestinationVisibility() {
   }
 }
 
-function renderAdmin() {
+function renderAdmin({ force = false } = {}) {
+  // Atualizações globais chegam enquanto o usuário edita. Nunca sobrescreva
+  // controles locais antes da confirmação do autosave.
+  if (state.adminFormDirty && !force) return;
   const draft = state.adminConfig?.draft;
   if (!draft) return;
   document.querySelectorAll('[data-config]').forEach(input => {
@@ -736,6 +742,11 @@ function adminReadForm() {
   const draft = state.adminConfig.draft;
   document.querySelectorAll('[data-config]').forEach(input => {
     let value = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.trim();
+    // A consulta de catálogo pode falhar ou ainda estar carregando. Nesse caso,
+    // um select vazio não significa que o usuário pediu para apagar o modelo.
+    if (input.dataset.config === 'ai.activeModel' && !value) {
+      value = String(draft.ai?.activeModel || '').trim();
+    }
     if (input.dataset.config === 'identity.aliases') {
       value = String(input.value).split(/[\n,]/).map(item => item.trim()).filter(Boolean);
     }
@@ -764,15 +775,26 @@ function adminReadForm() {
 async function saveAdminDraft(showMessage = false) {
   if (!state.adminConfig) return;
   adminReadForm();
-  const result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(state.adminConfig.draft) });
+  const requestVersion = state.adminChangeVersion;
+  const payload = JSON.parse(JSON.stringify(state.adminConfig.draft));
+  state.adminSaveInFlight = true;
+  const result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(payload) }).finally(() => { state.adminSaveInFlight = false; });
   if (!result.ok) throw new Error((result.errors || []).join(' '));
   if (result.persistence && result.persistence !== 'supabase') throw new Error(result.persistenceError || 'O backend não confirmou a persistência do rascunho.');
-  state.adminConfig = result.snapshot;
-  renderAdmin();
+  if (requestVersion === state.adminChangeVersion) {
+    state.adminConfig = result.snapshot;
+    state.adminFormDirty = false;
+    renderAdmin();
+  } else {
+    // Houve nova edição durante a requisição; mantenha a tela e grave a versão atual.
+    queueAdminSave();
+  }
   if (showMessage) adminFeedback('Rascunho salvo. O bot ainda usa a versão publicada.', 'success');
 }
 
 function queueAdminSave() {
+  state.adminFormDirty = true;
+  state.adminChangeVersion += 1;
   clearTimeout(state.adminSaveTimer);
   state.adminSaveTimer = setTimeout(() => saveAdminDraft().catch(error => adminFeedback(error.message, 'error')), 650);
 }
@@ -780,6 +802,7 @@ function queueAdminSave() {
 async function renderAdminData() {
   try {
     state.adminConfig = await api('/api/admin/config');
+    state.adminFormDirty = false;
     renderAdmin();
     if (state.adminConfig.persistence !== 'supabase') adminFeedback(state.adminConfig.persistenceError ? `Banco não gravando: ${state.adminConfig.persistenceError}` : 'Banco não configurado: alterações estão somente no arquivo local.', 'error');
   } catch (error) {

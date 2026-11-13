@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.2 — runtime configurável e execução confiável
+
+- Tool calling e modo Super Agente passam a ter defaults operacionais e continuam derivados pelo painel.
+- Memória do cliente e do Copiloto ganhou contexto enviado à IA e retenção máxima configuráveis.
+- Google Calendar passou a consumir fuso, ativação e duração de evento da configuração publicada e falha sem credenciais sem inventar horários.
+- Corrigida a classificação de propostas, orçamentos, recibos e declarações solicitados na forma “tipo em PDF”.
+- Timeout e velocidade de voz passam a ser lidos do painel; transcrição e síntese têm timeout controlado.
+- Adicionados testes de persistência do painel, agenda fail-closed e novos parâmetros de runtime.
+
 ## 2.3.1 — expediente central no painel e setores fora da configuração publicada
 
 - **Janela de atendimento no painel:** `business.hoursConfig` passou a ser administrado no Lia Sync (ativação, dias, início, fim, fuso, retomada automática e aviso de fora do expediente) usando os fluxos existentes de rascunho, validação e publicação.
