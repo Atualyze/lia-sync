@@ -4,6 +4,11 @@ const ALLOWED_PROVIDERS = new Set(['gemini', 'openrouter', 'openai', 'qwen']);
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();
 
+function applyFreeFilter(provider, value, freeOnly) {
+  if (provider !== 'openrouter' || !freeOnly) return value;
+  return { ...value, models: value.models.filter(model => model.id.endsWith(':free') || model.id === 'openrouter/free') };
+}
+
 function providerConfig(provider) {
   if (provider === 'gemini') return {
     key: config.geminiKey,
@@ -42,11 +47,11 @@ function normalizeModel(provider, model) {
   };
 }
 
-export async function listProviderModels(provider, { forceRefresh = false, timeoutMs = 10000 } = {}) {
+export async function listProviderModels(provider, { forceRefresh = false, timeoutMs = 10000, freeOnly = false } = {}) {
   const name = String(provider || '').toLowerCase();
   if (!ALLOWED_PROVIDERS.has(name)) return { ok: false, provider: name, configured: false, models: [], error: 'provider_not_supported' };
   const cached = cache.get(name);
-  if (!forceRefresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return { ...cached.value, cached: true };
+  if (!forceRefresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return { ...applyFreeFilter(name, cached.value, freeOnly), cached: true };
 
   const settings = providerConfig(name);
   if (!settings.key) return { ok: false, provider: name, configured: false, models: [], error: 'provider_not_configured' };
@@ -83,5 +88,5 @@ export async function listProviderModels(provider, { forceRefresh = false, timeo
   if (normalized.length > 500) truncated = true;
   const value = { ok: true, provider: name, configured: true, fetchedAt: new Date().toISOString(), models, truncated };
   cache.set(name, { at: Date.now(), value });
-  return value;
+  return applyFreeFilter(name, value, freeOnly);
 }

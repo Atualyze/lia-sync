@@ -15,6 +15,7 @@ export function resolveAIConfig(botConfig = {}) {
     provider: provider || 'gemini',
     model: rawModel || 'gemini-3.8-flash',
     fallbackModels,
+    openrouterFreeOnly: ai.openrouterFreeOnly !== false,
     maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || config.aiMaxOutputTokens || 2048),
     structuredOutputs: ai.structuredOutputs === true,
     requireParameters: ai.requireParameters === true
@@ -188,6 +189,10 @@ export const OPENROUTER_FREE_MODELS = [
  * Modelos do Gemini (gemini-*) só são usados no provedor gemini.
  */
 export function providerDefaultModel(provider, aiConfig, fixedModel) {
+  if (provider === 'openrouter' && aiConfig.openrouterFreeOnly) {
+    const candidate = fixedModel || (provider === aiConfig.provider ? aiConfig.model : '');
+    return candidate === 'openrouter/free' || candidate.endsWith(':free') ? candidate : 'openrouter/free';
+  }
   if (fixedModel && provider === aiConfig.provider) return fixedModel;
   if (provider === aiConfig.provider) return aiConfig.model;
   if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';

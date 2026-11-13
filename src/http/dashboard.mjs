@@ -157,7 +157,8 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
   if (req.method === 'GET' && u.pathname === '/api/dashboard/models') {
     const provider = u.searchParams.get('provider');
     if (provider) {
-      const result = await listProviderModels(provider, { forceRefresh: u.searchParams.get('refresh') === 'true' });
+      const freeOnly = provider === 'openrouter' && adminConfig?.draft?.ai?.openrouterFreeOnly !== false;
+      const result = await listProviderModels(provider, { forceRefresh: u.searchParams.get('refresh') === 'true', freeOnly });
       return json(res, result.ok ? 200 : (result.error === 'provider_not_supported' ? 400 : 502), result);
     }
     return json(res, 200, { activeProvider: runtimeAI().provider, openrouterModels: OPENROUTER_FREE_MODELS, configuredModel: runtimeAI().model, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers() });

@@ -82,6 +82,7 @@ export const DEFAULT_BOT_CONFIG = {
     maxOutputTokens: 2048,
     structuredOutputs: false,
     requireParameters: false,
+    openrouterFreeOnly: true,
     pricingRates: [],
     monthlyBudgets: []
   },
@@ -150,6 +151,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!['assistente', 'super_agente'].includes(value.ai?.agentMode)) errors.push('O modo do agente precisa ser assistente ou super_agente.');
   if (typeof value.ai?.enableToolCalling !== 'boolean') errors.push('A ativação de chamadas de ferramentas deve ser verdadeiro/falso.');
   if (typeof value.ai?.autoRouting !== 'boolean') errors.push('O roteamento automático deve ser verdadeiro/falso.');
+  if (typeof value.ai?.openrouterFreeOnly !== 'boolean') errors.push('O filtro de modelos gratuitos do OpenRouter deve ser verdadeiro/falso.');
   if (!Number.isInteger(value.ai?.contextTurns) || value.ai.contextTurns < 4 || value.ai.contextTurns > 100) errors.push('O contexto enviado à IA deve ter entre 4 e 100 turnos.');
   if (!Number.isInteger(value.ai?.maxStoredHistory) || value.ai.maxStoredHistory < 20 || value.ai.maxStoredHistory > 500) errors.push('O histórico armazenado deve ter entre 20 e 500 registros.');
   const automationBooleanFields = ['enableMediaProcessing', 'enableProactiveFollowUp', 'businessHoursOnly', 'autoHandoffOnHumanPresence'];
