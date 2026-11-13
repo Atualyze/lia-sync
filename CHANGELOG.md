@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.5 — Renderização oficial do Turnstile em SPA
+
+- A renderização explícita agora aguarda `turnstile.ready()` conforme a documentação da Cloudflare.
+- O envio consulta `turnstile.getResponse(widgetId)` e bloqueia o Supabase quando não existe token válido.
+- O widget recebe a ação `login` para separar a métrica de autenticação.
+
 ## 2.2.4 — CSP compatível com Turnstile
 
 - Ampliada a CSP do dashboard para os subdomínios dinâmicos de desafio Cloudflare e os canais `data:` usados pelo Turnstile.

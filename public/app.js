@@ -51,8 +51,12 @@ async function setupCaptcha(authConfig) {
   }
   const api = provider === 'hcaptcha' ? window.hcaptcha : window.turnstile;
   if (!api?.render) throw new Error('Widget CAPTCHA indisponível.');
-  const widgetId = api.render(container, { sitekey: authConfig.captchaSiteKey, callback: token => { captcha.token = token; }, 'expired-callback': () => { captcha.token = ''; }, 'error-callback': () => { captcha.token = ''; } });
+  const render = () => api.render(container, { sitekey: authConfig.captchaSiteKey, action: 'login', callback: token => { captcha.token = token; }, 'expired-callback': () => { captcha.token = ''; }, 'error-callback': () => { captcha.token = ''; } });
+  const widgetId = provider === 'turnstile' && typeof api.ready === 'function'
+    ? await new Promise(resolve => api.ready(() => resolve(render())))
+    : render();
   captcha = { token: '', reset: () => api.reset(widgetId), configured: true };
+  captcha.getToken = () => provider === 'turnstile' && typeof api.getResponse === 'function' ? api.getResponse(widgetId) || '' : captcha.token;
 }
 
 async function initAuth() {
@@ -83,13 +87,14 @@ async function initAuth() {
       const submit = $('#login-form button[type="submit"]');
       if (submit) submit.disabled = true;
       try {
-        if (captcha.configured && !captcha.token) {
+        const captchaToken = captcha.getToken ? captcha.getToken() : captcha.token;
+        if (captcha.configured && !captchaToken) {
           throw new Error('Conclua a validação CAPTCHA antes de entrar.');
         }
         const { data: result, error } = await supabase.auth.signInWithPassword({
           email: $('#login-email').value.trim(),
           password: $('#login-password').value,
-          captchaToken: captcha.token || undefined
+          captchaToken: captchaToken || undefined
         });
         if (error) {
           if (captcha.reset) captcha.reset();
