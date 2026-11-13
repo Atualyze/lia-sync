@@ -116,7 +116,7 @@ export function createClient(url, key) {
           const next = await request(`${baseUrl}/auth/v1/token?grant_type=password`, {
             method: 'POST',
             headers: headers(key),
-            body: JSON.stringify({ email, password, ...(captchaToken ? { captcha_token: captchaToken } : {}) })
+            body: JSON.stringify({ email, password, ...(captchaToken ? { gotrue_meta_security: { captcha_token: captchaToken } } : {}) })
           });
           if (!next.access_token) throw errorFrom(502, next, 'O Supabase não retornou um token de sessão válido.');
           session = next;
