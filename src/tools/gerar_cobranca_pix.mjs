@@ -201,9 +201,9 @@ export const toolGerarCobrancaPix = {
     let qrCodeSent = false;
 
     if (shouldSend && isValidWhatsAppTarget && context?.whatsapp?.sendImage) {
-      const amountText = amount > 0 ? ` no valor de R$ ${amount.toFixed(2).replace('.', ',')}` : '';
-      const linkLine = baseUrl ? `\n\nLink de pagamento:\n${paymentUrl}` : '';
-      const caption = `Pix${amountText}${args.descricao ? ` — ${args.descricao}` : ''}${linkLine}\n\nCopia e Cola:\n${payload}`;
+      const amountText = amount > 0 ? ` — R$ ${amount.toFixed(2).replace('.', ',')}` : '';
+      const cleanDescCap = cleanPixDescription(args.descricao || '');
+      const caption = `💳 *QR Code Pix*${amountText}${cleanDescCap ? ` (${cleanDescCap})` : ''}`;
       try {
         await context.whatsapp.sendImage(rawTarget, {
           dataUrl,

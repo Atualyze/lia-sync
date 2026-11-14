@@ -406,11 +406,13 @@ export async function handleClientMessage({
       const isSuperAgent = botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalling === true;
       let toolReplyOverride = null;
       let reminderHandledByTool = false;
+      let pixHandledByTool = false;
       let webSearchResult = null;
       if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
         for (const tc of result.tool_calls) {
           if (tc?.name && isClientToolAllowed(tc.name)) {
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
+            if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
             try {
               const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                 actor: 'client',
@@ -427,6 +429,7 @@ export async function handleClientMessage({
               });
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerar_cobranca_pix') {
+                pixHandledByTool = true;
                 if (toolRes?.success) {
                   const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
                   toolReplyOverride = [

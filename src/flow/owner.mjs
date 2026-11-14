@@ -860,8 +860,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         if (toolCallsToRun.length > 0) {
+          let pixHandled = false;
           for (const tc of toolCallsToRun) {
             if (tc?.name) {
+              if (tc.name === 'gerar_cobranca_pix') {
+                if (pixHandled) continue;
+                pixHandled = true;
+              }
               try {
                 if (tc.name === 'enviar_mensagem_contato') {
                   tc.args = tc.args || {};
