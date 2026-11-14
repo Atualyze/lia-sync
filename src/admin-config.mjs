@@ -97,7 +97,7 @@ export const DEFAULT_BOT_CONFIG = {
     pricingRates: [],
     monthlyBudgets: []
   },
-  tools: { enabled: {} },
+  tools: { enabled: {}, settings: {} },
   webSearch: { enabled: true },
   automation: {
     enableMediaProcessing: true,

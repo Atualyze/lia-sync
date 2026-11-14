@@ -52,8 +52,10 @@ export const toolConsultarPlanilhaGoogle = {
 
   async execute(args = {}, context = {}) {
     const acao = String(args.acao || '').trim();
+    const toolSettings = context?.botConfig?.tools?.settings?.consultar_planilha_google || {};
     const spreadsheetId = String(
       args.spreadsheetId ||
+      toolSettings.defaultSpreadsheetId ||
       context?.botConfig?.integrations?.googleSheets?.defaultSpreadsheetId ||
       process.env.GOOGLE_SHEETS_DEFAULT_ID ||
       ''
@@ -84,7 +86,7 @@ export const toolConsultarPlanilhaGoogle = {
       };
     }
 
-    const range = String(args.range || 'A1:Z100').trim();
+    const range = String(args.range || toolSettings.defaultRange || 'A1:Z100').trim();
     const headers = {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json'

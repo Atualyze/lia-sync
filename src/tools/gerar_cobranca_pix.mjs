@@ -102,20 +102,21 @@ export const toolGerarCobrancaPix = {
 
   async execute(args = {}, context = {}) {
     const identity = resolveIdentity(context?.botConfig || {});
-    const configuredKey = context?.botConfig?.integrations?.pix?.key || process.env.PIX_KEY || '';
+    const toolSettings = context?.botConfig?.tools?.settings?.gerar_cobranca_pix || {};
+    const configuredKey = toolSettings.key || context?.botConfig?.integrations?.pix?.key || process.env.PIX_KEY || '';
     const pixKey = String((context?.actor !== 'client' && args.chavePix) ? args.chavePix : configuredKey).trim();
 
     if (!pixKey) {
       return {
         success: false,
         error: 'pix_key_not_configured',
-        message: 'Chave Pix não configurada. Defina PIX_KEY no ambiente para gerar cobranças.'
+        message: 'Chave Pix não configurada. Defina a Chave Pix no Catálogo de Ferramentas ou PIX_KEY no ambiente.'
       };
     }
 
     const amount = Number(args.valor || 0);
-    const merchantName = context?.botConfig?.integrations?.pix?.merchantName || identity.companyName || identity.botName || 'Lia Sync';
-    const merchantCity = context?.botConfig?.integrations?.pix?.merchantCity || process.env.PIX_MERCHANT_CITY || 'SAO PAULO';
+    const merchantName = toolSettings.merchantName || context?.botConfig?.integrations?.pix?.merchantName || identity.companyName || identity.botName || 'Lia Sync';
+    const merchantCity = toolSettings.merchantCity || context?.botConfig?.integrations?.pix?.merchantCity || process.env.PIX_MERCHANT_CITY || 'SAO PAULO';
     const txid = args.txid || `LIA${Date.now().toString().slice(-8)}`;
     const payload = buildPixPayload({
       pixKey,

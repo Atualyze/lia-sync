@@ -13,6 +13,24 @@ import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
 
+export const TOOL_SETTINGS_SCHEMA = {
+  gerar_cobranca_pix: [
+    { key: 'key', label: 'Chave Pix', type: 'text', placeholder: 'CPF/CNPJ, e-mail, telefone ou chave aleatória' },
+    { key: 'merchantName', label: 'Nome do Favorecido', type: 'text', placeholder: 'Ex.: Atualyze Clínica (até 25 chars)' },
+    { key: 'merchantCity', label: 'Cidade', type: 'text', placeholder: 'Ex.: SAO PAULO (até 15 chars)' }
+  ],
+  consultar_planilha_google: [
+    { key: 'defaultSpreadsheetId', label: 'ID da Planilha Padrão', type: 'text', placeholder: 'ID da URL do Google Sheets' },
+    { key: 'defaultRange', label: 'Intervalo Padrão', type: 'text', placeholder: 'Ex.: A1:Z100' }
+  ],
+  gerenciar_drive_google: [
+    { key: 'defaultFolderId', label: 'ID da Pasta Padrão', type: 'text', placeholder: 'ID da pasta no Google Drive' }
+  ],
+  gerenciar_agenda_google: [
+    { key: 'calendarId', label: 'ID da Agenda', type: 'text', placeholder: 'primary ou e-mail da agenda' }
+  ]
+};
+
 export const ALL_TOOLS = [
   toolTransferirSetor,
   toolAgendarRetorno,

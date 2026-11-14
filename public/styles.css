@@ -3371,3 +3371,58 @@ button.danger:hover:not(:disabled) {
   color: var(--text-tertiary);
   opacity: 0.72;
 }
+
+/* Expandable Tool Settings inside #tools-catalog */
+.tool-settings-details {
+  margin-top: 6px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.tool-settings-details summary {
+  cursor: pointer;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lia-mint);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tool-settings-details summary::after {
+  content: "▾";
+  font-size: 11px;
+  color: var(--text-secondary);
+  transition: transform 0.16s ease;
+}
+
+.tool-settings-details[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.tool-settings-body {
+  padding: 10px 11px 12px;
+  border-top: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.tool-setting-field input {
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 9px;
+}

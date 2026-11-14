@@ -1,7 +1,7 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { getCircuitBreakers } from '../ai.mjs';
-import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
+import { ALL_TOOLS, TOOL_SETTINGS_SCHEMA, isClientToolAllowed } from '../tools/index.mjs';
 import { isUuid, maskPhone } from '../operations.mjs';
 import { getBridgeConfigStatus } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
@@ -38,13 +38,16 @@ async function auditBestEffort(operationsStore, event) {
 
 function safeToolCatalog(configState = {}) {
   const enabled = configState?.tools?.enabled || {};
+  const allSettings = configState?.tools?.settings || {};
   const searchEnabled = configState?.webSearch?.enabled !== false;
   return {
     tools: ALL_TOOLS.map(tool => ({
       name: tool.name,
       description: String(tool.description || '').slice(0, 500),
       enabled: enabled[tool.name] !== false && (tool.name !== 'consultar_web' || searchEnabled),
-      clientAllowed: isClientToolAllowed(tool.name)
+      clientAllowed: isClientToolAllowed(tool.name),
+      settingsSchema: TOOL_SETTINGS_SCHEMA[tool.name] || [],
+      settings: allSettings[tool.name] && typeof allSettings[tool.name] === 'object' ? allSettings[tool.name] : {}
     })),
     webSearch: {
       enabled: searchEnabled,
@@ -157,8 +160,19 @@ export async function handleOperationsRoutes({ req, res, u, campaignStore, opera
     if (!toggles || typeof toggles !== 'object' || Array.isArray(toggles) || Object.entries(toggles).some(([name, enabled]) => !knownNames.has(name) || typeof enabled !== 'boolean') || (body.webSearchEnabled !== undefined && typeof body.webSearchEnabled !== 'boolean')) {
       return json(res, 400, { error: 'invalid_tool_settings' });
     }
+    const nextSettings = { ...(existing.tools?.settings || {}) };
+    if (body?.settings && typeof body.settings === 'object' && !Array.isArray(body.settings)) {
+      for (const [toolName, toolVals] of Object.entries(body.settings)) {
+        if (!knownNames.has(toolName) || !toolVals || typeof toolVals !== 'object' || Array.isArray(toolVals)) continue;
+        const cleanToolVals = {};
+        for (const [k, v] of Object.entries(toolVals)) {
+          cleanToolVals[k] = typeof v === 'string' ? v.trim().slice(0, 300) : v;
+        }
+        nextSettings[toolName] = { ...(nextSettings[toolName] || {}), ...cleanToolVals };
+      }
+    }
     const result = await adminConfig.updateDraft({
-      tools: { enabled: { ...(existing.tools?.enabled || {}), ...toggles } },
+      tools: { enabled: { ...(existing.tools?.enabled || {}), ...toggles }, settings: nextSettings },
       ...(body.webSearchEnabled === undefined ? {} : { webSearch: { enabled: body.webSearchEnabled } })
     }, `user:${actorId || 'admin'}`);
     if (!result.ok) return json(res, 400, result);

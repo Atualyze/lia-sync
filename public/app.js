@@ -2776,12 +2776,35 @@ async function renderTools() {
     list.innerHTML = catalog.tools.map(tool => {
       const active = activeTools.get(tool.name) !== false;
       const draftDiffers = tool.enabled !== active;
+      const schema = Array.isArray(tool.settingsSchema) ? tool.settingsSchema : [];
+      const currentSettings = tool.settings && typeof tool.settings === 'object' ? tool.settings : {};
+      const settingsHtml = schema.length ? `
+        <details class="tool-settings-details">
+          <summary>Configurações da ferramenta (${schema.length})</summary>
+          <div class="tool-settings-body">
+            ${schema.map(field => `
+              <label class="tool-setting-field">
+                <span>${esc(field.label || field.key)}</span>
+                <input
+                  type="${esc(field.type || 'text')}"
+                  data-tool-setting-tool="${esc(tool.name)}"
+                  data-tool-setting-key="${esc(field.key)}"
+                  value="${esc(currentSettings[field.key] ?? '')}"
+                  placeholder="${esc(field.placeholder || '')}"
+                  ${state.role === 'admin' ? '' : 'disabled'}
+                />
+              </label>
+            `).join('')}
+          </div>
+        </details>
+      ` : '';
       return `<article class="tool-card">
         <div class="tool-card-head">
           <strong><code>${esc(tool.name)}</code></strong>
           <input type="checkbox" class="tool-toggle" data-tool="${esc(tool.name)}" aria-label="Ativar ${esc(tool.name)}" ${tool.enabled ? 'checked' : ''} ${state.role === 'admin' ? '' : 'disabled'} />
         </div>
         <p>${esc(tool.description)}</p>
+        ${settingsHtml}
         <div class="tool-meta">${tool.clientAllowed ? 'Fluxo de clientes & Copiloto' : 'Exclusiva do Copiloto (Proprietário)'}${draftDiffers ? ` · <b style="color:var(--accent-amber)">rascunho difere do publicado (${active ? 'ligado' : 'desligado'})</b>` : ''}</div>
       </article>`;
     }).join('');
@@ -2791,7 +2814,15 @@ async function renderTools() {
 
 async function saveToolsDraft() {
   const enabled = Object.fromEntries([...document.querySelectorAll('.tool-toggle')].map(input => [input.dataset.tool, input.checked]));
-  const result = await api('/api/dashboard/tools', { method: 'PATCH', body: JSON.stringify({ enabled, webSearchEnabled: $('#tools-web-search').checked }) });
+  const settings = {};
+  document.querySelectorAll('[data-tool-setting-tool]').forEach(input => {
+    const t = input.dataset.toolSettingTool;
+    const k = input.dataset.toolSettingKey;
+    if (!t || !k) return;
+    if (!settings[t]) settings[t] = {};
+    settings[t][k] = input.value.trim();
+  });
+  const result = await api('/api/dashboard/tools', { method: 'PATCH', body: JSON.stringify({ enabled, settings, webSearchEnabled: $('#tools-web-search').checked }) });
   if (state.adminConfig) {
     state.adminConfig = await api('/api/admin/config').catch(() => state.adminConfig);
     updateSectionDiffBadges();

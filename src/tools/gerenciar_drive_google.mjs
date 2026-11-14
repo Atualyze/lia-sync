@@ -58,7 +58,8 @@ export const toolGerenciarDriveGoogle = {
     const authHeaders = { authorization: `Bearer ${token}` };
 
     if (acao === 'listar_arquivos' || acao === 'buscar_arquivo') {
-      const folderId = sanitizeQueryTerm(args.folderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '');
+      const toolSettings = context?.botConfig?.tools?.settings?.gerenciar_drive_google || {};
+      const folderId = sanitizeQueryTerm(args.folderId || toolSettings.defaultFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '');
       const search = sanitizeQueryTerm(args.busca || '');
       const clauses = ['trashed = false'];
       if (folderId) clauses.push(`'${folderId}' in parents`);
