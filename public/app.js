@@ -704,7 +704,9 @@ async function loadProviderModels({ refresh = false } = {}) {
         ? 'Este provedor não está configurado no servidor; nenhuma chave é solicitada ou exibida aqui.'
         : `Não foi possível consultar modelos (${code}). Verifique a chave e a conectividade do provedor no servidor.`;
     }
-    primary.replaceChildren(new Option('Catálogo indisponível', ''));
+    const savedModel = String(state.adminConfig?.draft?.ai?.activeModel || '').trim();
+    primary.replaceChildren(new Option(savedModel ? `${savedModel} (salvo no banco; catálogo indisponível)` : 'Catálogo indisponível', savedModel));
+    if (savedModel) primary.value = savedModel;
   }
 }
 
@@ -716,8 +718,8 @@ function renderModelOptions(models, primary) {
     const ids = new Set(allowed.map(model => model.id));
     select.replaceChildren(new Option(includePrimary ? 'Selecione modelo principal' : 'Nenhum', ''));
     for (const model of allowed) select.add(new Option(`${model.name} · ${model.id}`, model.id));
-    if (selected && !ids.has(selected) && selected !== selectedPrimary) select.add(new Option(`${selected} (não retornado pelo catálogo)`, selected));
-    select.value = selected && selected !== selectedPrimary ? selected : '';
+    if (selected && !ids.has(selected)) select.add(new Option(`${selected} (salvo no banco; catálogo ainda não retornou)`, selected));
+    select.value = selected || '';
   };
   addOptions(primary, selectedPrimary, true);
 }
