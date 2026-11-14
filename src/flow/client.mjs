@@ -19,7 +19,7 @@ export async function handleClientMessage({
       // CASO 2: CONTATO / CLIENTE NO WHATSAPP
       // ==========================================
       if (phone === OWNER_SELF_KEY || isOwnerSender(phone)) {
-        return filterReply(`Estou aqui, ${owner}! O sistema está operando normalmente. Em que posso te ajudar agora?`).text;
+        return filterReply(`Oi, ${owner}! Pode me dizer o que você precisa por aqui.`).text;
       }
 
       // Sincroniza sessão pontual do Supabase se disponível (suporte multi-réplica)
