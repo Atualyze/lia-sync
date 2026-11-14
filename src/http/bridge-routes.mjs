@@ -389,7 +389,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
       if (!kb) return json(res, 404, { ok: false, error: 'not_found' });
       return json(res, 200, { ok: true, knowledgeBase: kb });
     }
-    const bases = await listKnowledgeBases();
+    const bases = (await listKnowledgeBases()).filter(kb => !kb.copilotOnly);
     return json(res, 200, { ok: true, knowledgeBases: bases });
   }
   if (req.method === 'POST' && u.pathname === '/api/bridge/knowledge-bases') {

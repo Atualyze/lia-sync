@@ -22,7 +22,7 @@ export const toolConsultarBaseConhecimento = {
     if (context.actor === 'client') {
       const session = context.session || {};
       const assignedKb = session.supportModeEnabled && session.knowledgeBaseId
-        ? listKnowledgeBasesSync().find(kb => kb.id === session.knowledgeBaseId)
+        ? listKnowledgeBasesSync().find(kb => kb.id === session.knowledgeBaseId && !kb.copilotOnly)
         : null;
       if (assignedKb?.content) {
         return {
@@ -41,7 +41,7 @@ export const toolConsultarBaseConhecimento = {
         : { found: false, termo, mensagem: 'Nenhum item espec\u00edfico encontrado na base.' };
     }
 
-    const matchedKb = findMatchingKnowledgeBaseSync(termo);
+    const matchedKb = findMatchingKnowledgeBaseSync(termo, undefined, { includeCopilotOnly: true });
     if (matchedKb && matchedKb.content) {
       return {
         found: true,

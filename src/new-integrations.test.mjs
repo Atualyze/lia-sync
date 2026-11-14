@@ -13,6 +13,9 @@ import { extractPdfTextWithPoppler } from './ai/documents.mjs';
 import { createFlow } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
+import { buildSystemPrompt } from './knowledge.mjs';
+import { listKnowledgeBasesSync } from './knowledge-bases.mjs';
+import { toolConsultarBaseConhecimento } from './tools/consultar_base_conhecimento.mjs';
 
 test('ALL_TOOLS registra todas as novas integrações e permissões de cliente', () => {
   for (const name of [
@@ -714,4 +717,30 @@ test('IA-first multimodal + triagem híbrida + transferência contextualizada (w
   assert.match(notifications[0], /\*Setor:\* Financeiro/);
   assert.match(notifications[0], /\*Sentimento:\* frustrado/);
   assert.match(notifications[0], /\*Resumo do contexto:\* Cliente cobrando boleto há 2 dias/);
+});
+
+test('Base de autoconhecimento (motor + painel + limites) é exclusiva do Copiloto e bloqueada para clientes', async () => {
+  const allKbs = listKnowledgeBasesSync();
+  const selfKb = allKbs.find(kb => kb.id === 'lia-autoconhecimento-operacoes');
+  assert.ok(selfKb, 'lia-autoconhecimento-operacoes deve existir em data/knowledge-bases');
+  assert.equal(selfKb.copilotOnly, true);
+
+  const copilotPrompt = buildSystemPrompt({ isOwner: true, botConfig: { identity: { assistantName: 'Lia', ownerName: 'Tauan' } } });
+  assert.match(copilotPrompt, /MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES/i);
+
+  const clientPrompt = buildSystemPrompt({ isOwner: false, botConfig: { identity: { assistantName: 'Lia', ownerName: 'Tauan' } } });
+  assert.doesNotMatch(clientPrompt, /MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES/i);
+
+  const clientToolRes = await toolConsultarBaseConhecimento.execute(
+    { termo: 'autoconhecimento limites painel' },
+    { actor: 'client', session: { supportModeEnabled: true, knowledgeBaseId: 'lia-autoconhecimento-operacoes' } }
+  );
+  assert.equal(clientToolRes.found, false);
+
+  const ownerToolRes = await toolConsultarBaseConhecimento.execute(
+    { termo: 'autoconhecimento' },
+    { actor: 'owner', session: {} }
+  );
+  assert.equal(ownerToolRes.found, true);
+  assert.match(ownerToolRes.resposta, /LIMITES REAIS/i);
 });

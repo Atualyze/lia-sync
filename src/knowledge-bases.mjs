@@ -41,10 +41,13 @@ function extractMetaFromMarkdown(id, rawContent) {
     summary = summaryMatch[1].replace(/\*\*/g, '').trim().slice(0, 180);
   }
 
+  const copilotOnly = /<!--\s*scope:\s*copilot-only\s*-->/i.test(String(rawContent || ''));
+
   return {
     id,
     title,
     version: version || '1.0',
+    copilotOnly,
     summary: summary || 'Base de conhecimento operacional vinculável a contatos.'
   };
 }
@@ -162,7 +165,7 @@ export function getKnowledgeBaseContentSync(id, dir = DEFAULT_KB_DIR) {
   return null;
 }
 
-export function findMatchingKnowledgeBaseSync(queryText = '', dir = DEFAULT_KB_DIR) {
+export function findMatchingKnowledgeBaseSync(queryText = '', dir = DEFAULT_KB_DIR, { includeCopilotOnly = false } = {}) {
   const norm = String(queryText || '')
     .toLowerCase()
     .normalize('NFD')
@@ -171,6 +174,7 @@ export function findMatchingKnowledgeBaseSync(queryText = '', dir = DEFAULT_KB_D
 
   const all = listKnowledgeBasesSync(dir);
   for (const kb of all) {
+    if (kb.copilotOnly && !includeCopilotOnly) continue;
     const idTokens = kb.id
       .toLowerCase()
       .split(/[-_]+/)
