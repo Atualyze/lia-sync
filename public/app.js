@@ -2,6 +2,8 @@ const state = {
   sessions: [],
   sessionCounts: { total: 0, real: 0, simulation: 0, handoff: 0 },
   selected: null,
+  lastSelectedPhone: null,
+  lastRenderedChatSig: '',
   inboxFilter: 'all',
   chatSearchQuery: '',
   replyTo: null,
@@ -49,10 +51,10 @@ const ROLE_LABELS = {
 // APPLE NATIVE NOTIFICATION ENGINE (TOAST CENTER)
 // ============================================================================
 const TOAST_ICONS = {
-  success: `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>`,
-  error: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-  warn: `<svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  info: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`
+  success: `<svg width="16" height="16" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>`,
+  error: `<svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  warn: `<svg width="16" height="16" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info: `<svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`
 };
 
 function showToast({ title, message = '', type = 'info', duration = 4200 } = {}) {
@@ -77,7 +79,7 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
       ${cleanMessage ? `<div class="apple-toast-msg">${esc(cleanMessage)}</div>` : ''}
     </div>
     <button type="button" class="apple-toast-close" aria-label="Fechar notificação">
-      <svg class="svg-icon sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <div class="apple-toast-progress" style="animation-duration:${duration}ms"></div>
   `;
@@ -103,23 +105,370 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
 }
 
 // ============================================================================
-// APPLE FLOATING CONTEXT MENU ENGINE
+// APPLE FLOATING CONTEXT MENU & TECHNICAL GLOSSARY ENGINE
 // ============================================================================
+const TECH_GLOSSARY = {
+  PTT: {
+    term: 'PTT · Push-to-Talk (Nota de Voz)',
+    category: 'Voz & Áudio',
+    summary: 'Mensagem de voz gravada na hora no WhatsApp (como um walkie-talkie), exibida com ondas sonoras no celular do cliente em vez de um arquivo de áudio comum.',
+    view: 'admin',
+    accId: 'acc-voice'
+  },
+  TTS: {
+    term: 'TTS · Text-to-Speech (Síntese de Voz)',
+    category: 'Voz & IA',
+    summary: 'Tecnologia que converte automaticamente a resposta em texto da Lia em áudio falado natural (vozes Aoede, Kore, Fenrir, etc.).',
+    view: 'admin',
+    accId: 'acc-voice'
+  },
+  WAV: {
+    term: 'WAV · Formato de Áudio sem Compressão',
+    category: 'Voz & Áudio',
+    summary: 'Formato de áudio de alta fidelidade gerado pelo motor Gemini TTS (24kHz PCM) antes de ser entregue como nota de voz no WhatsApp.',
+    view: 'admin',
+    accId: 'acc-voice'
+  },
+  SLA: {
+    term: 'SLA · Service Level Agreement (Acordo de Nível de Serviço)',
+    category: 'Operação',
+    summary: 'Meta de tempo máximo para responder ao cliente ou assumir um atendimento humano antes que o contato esfrie.',
+    view: 'handoff'
+  },
+  Handoff: {
+    term: 'Handoff · Transbordo para Atendimento Humano',
+    category: 'Atendimento',
+    summary: 'Transferência segura da conversa da IA (Lia) para um atendente humano quando o cliente pede ajuda direta ou o caso exige decisão humana.',
+    view: 'handoff'
+  },
+  Transbordo: {
+    term: 'Transbordo · Fila de Atendimento Humano',
+    category: 'Atendimento',
+    summary: 'Passagem do atendimento automático da Lia para um operador humano, pausando as respostas automáticas da IA naquela conversa.',
+    view: 'handoff'
+  },
+  'Circuit Breaker': {
+    term: 'Circuit Breaker · Disjuntor de Proteção de IA',
+    category: 'Resiliência',
+    summary: 'Mecanismo automático que detecta falhas repetidas em um provedor de IA (ex: Gemini ou OpenRouter), coloca-o em quarentena temporária e redireciona o tráfego para o modelo reserva.',
+    view: 'metrics'
+  },
+  Disjuntor: {
+    term: 'Disjuntor · Circuit Breaker de Provedor',
+    category: 'Resiliência',
+    summary: 'Proteção que isola automaticamente um provedor de IA instável para evitar travamentos e aciona o modelo reserva (Fallback).',
+    view: 'metrics'
+  },
+  Fallback: {
+    term: 'Fallback · Modelo Reserva de Contingência',
+    category: 'Motor IA',
+    summary: 'Modelo de IA secundário acionado automaticamente em milissegundos caso o modelo principal atinja limite de cota, demore ou apresente erro.',
+    view: 'admin',
+    accId: 'acc-ai'
+  },
+  'Thinking Budget': {
+    term: 'Thinking Budget · Orçamento de Raciocínio Interno',
+    category: 'Motor IA',
+    summary: 'Quantidade máxima de tokens que o modelo Gemini 2.5/3.8 pode usar para "pensar passo a passo" antes de redigir a resposta final ao cliente.',
+    view: 'agent'
+  },
+  'Tool Calling': {
+    term: 'Tool Calling · Chamada Autônoma de Ferramentas',
+    category: 'Agente IA',
+    summary: 'Capacidade da Lia de executar funções reais do sistema durante a conversa — como consultar agenda no Google Calendar, buscar na web ou transferir para humano.',
+    view: 'tools'
+  },
+  'Super Agente': {
+    term: 'Super Agente · Modo Autônomo com Ferramentas',
+    category: 'Agente IA',
+    summary: 'Modo avançado em que a Lia não apenas conversa, mas também decide e executa ferramentas (agenda, busca web, CRM, diagnósticos) de forma autônoma.',
+    view: 'admin',
+    accId: 'acc-ai'
+  },
+  RBAC: {
+    term: 'RBAC · Role-Based Access Control (Controle de Acesso por Papel)',
+    category: 'Segurança',
+    summary: 'Sistema de permissões em três níveis: Viewer (somente leitura), Operator (atende conversas e campanhas) e Admin (configura motor, prompts e usuários).',
+    view: 'users'
+  },
+  'Opt-out': {
+    term: 'Opt-out · Lista de Supressão / Descadastramento',
+    category: 'Conformidade',
+    summary: 'Registro de contatos que pediram para não receber mensagens ou campanhas. O sistema bloqueia automaticamente qualquer disparo para números em opt-out.',
+    view: 'campaigns'
+  },
+  Liveness: {
+    term: 'Liveness · Sonda de Vida do Servidor',
+    category: 'Infraestrutura',
+    summary: 'Verificação instantânea (/health) que confirma se o processo Node.js da Lia está ativo e respondendo na memória.',
+    view: 'overview'
+  },
+  Readiness: {
+    term: 'Readiness · Sonda de Prontidão Operacional',
+    category: 'Infraestrutura',
+    summary: 'Verificação profunda (/ready) que testa se as dependências críticas (Supabase, Evolution API, configuração publicada) estão prontas para atender clientes.',
+    view: 'overview'
+  },
+  P95: {
+    term: 'Latência P95 · Percentil 95 de Tempo de Resposta',
+    category: 'Telemetria',
+    summary: 'Indica que 95% das respostas da IA foram mais rápidas que este valor (em milissegundos), eliminando distorções de picos isolados.',
+    view: 'metrics'
+  },
+  Idempotência: {
+    term: 'Idempotência · Proteção contra Duplicidade',
+    category: 'Segurança',
+    summary: 'Garantia técnica de que, se o WhatsApp ou a rede reenviar o mesmo webhook ou clique duas vezes, a Lia processará e responderá apenas uma única vez.',
+    view: 'integrations'
+  },
+  Ledger: {
+    term: 'Ledger · Livro-Razão Imutável de Eventos',
+    category: 'Auditoria',
+    summary: 'Registro histórico persistido no banco de dados com todas as chamadas de IA, webhooks recebidos, tokens consumidos e status de entrega.',
+    view: 'integrations'
+  },
+  ETag: {
+    term: 'ETag · Identificador de Versão para Cache Sincronizado',
+    category: 'Integrações',
+    summary: 'Assinatura criptográfica da revisão publicada que permite ao Chatwoot saber instantaneamente se a configuração da Lia mudou sem baixar dados repetidos.',
+    view: 'integrations'
+  },
+  'Ponte Chatwoot': {
+    term: 'Ponte Chatwoot Lia · Sincronização Bidirecional',
+    category: 'Integrações',
+    summary: 'Canal autenticado por HMAC que mantém horários comerciais, setores, status de handoff e configurações sincronizados entre o Chatwoot e a Lia.',
+    view: 'integrations'
+  },
+  Tokens: {
+    term: 'Tokens · Unidades de Processamento de Texto da IA',
+    category: 'Custos & IA',
+    summary: 'Fragmentos de palavras processados pelo modelo de IA (1.000 tokens equivalem a cerca de 750 palavras). Dividem-se em Prompt (entrada) e Completion (saída).',
+    view: 'metrics'
+  },
+  RLS: {
+    term: 'RLS · Row-Level Security (Segurança em Nível de Linha)',
+    category: 'Segurança',
+    summary: 'Política nativa do PostgreSQL/Supabase que restringe no próprio banco de dados quais linhas cada usuário autenticado pode ler ou alterar.',
+    view: 'users'
+  },
+  'Evolution API': {
+    term: 'Evolution API · Gateway de Conexão WhatsApp',
+    category: 'Integrações',
+    summary: 'Servidor responsável por manter a sessão do WhatsApp conectada, enviar mensagens/áudios e entregar eventos em tempo real via Webhook para a Lia.',
+    view: 'integrations'
+  },
+  Supabase: {
+    term: 'Supabase · Banco de Dados PostgreSQL & Autenticação',
+    category: 'Infraestrutura',
+    summary: 'Plataforma onde ficam salvos de forma persistente o histórico de conversas, configurações publicadas, perfis de acesso (RBAC), campanhas e telemetria.',
+    view: 'integrations'
+  },
+  OpenRouter: {
+    term: 'OpenRouter · Hub Multi-Provedor de Modelos de IA',
+    category: 'Motor IA',
+    summary: 'Gateway unificado que permite à Lia usar dezenas de modelos alternativos (Llama, Qwen, DeepSeek, Nemotron, Claude) como modelo principal ou reserva.',
+    view: 'admin',
+    accId: 'acc-ai'
+  },
+  FAQ: {
+    term: 'FAQ · Base de Perguntas Frequentes Prioritárias',
+    category: 'Conhecimento',
+    summary: 'Respostas oficiais cadastradas pela sua equipe que têm prioridade máxima no prompt da Lia quando o cliente menciona as palavras-chave correspondentes.',
+    view: 'admin',
+    accId: 'acc-faq'
+  },
+  CRM: {
+    term: 'CRM · Gestão de Relacionamento com o Cliente',
+    category: 'Atendimento',
+    summary: 'Dados comerciais extraídos automaticamente pela Lia durante a conversa, como interesse do cliente, estágio do funil e observações de atendimento.',
+    view: 'inbox'
+  }
+};
+
+function findTechTermEntry(rawText = '') {
+  const clean = String(rawText || '').trim();
+  if (!clean) return null;
+  if (TECH_GLOSSARY[clean]) return { key: clean, ...TECH_GLOSSARY[clean] };
+  const lower = clean.toLowerCase();
+  for (const [key, entry] of Object.entries(TECH_GLOSSARY)) {
+    if (key.toLowerCase() === lower || entry.term.toLowerCase().includes(lower)) {
+      return { key, ...entry };
+    }
+  }
+  return null;
+}
+
+function hideTechTooltip() {
+  const pop = $('#tech-tooltip-popover');
+  if (pop) {
+    pop.classList.add('hidden');
+    pop.innerHTML = '';
+  }
+}
+
+function showTechTooltip(targetEl, key) {
+  const pop = $('#tech-tooltip-popover');
+  const entry = TECH_GLOSSARY[key];
+  if (!pop || !entry || !targetEl) return;
+
+  pop.innerHTML = `
+    <div class="tech-tooltip-head">
+      <strong>${esc(entry.term)}</strong>
+      <span class="tech-tooltip-badge">${esc(entry.category)}</span>
+    </div>
+    <p>${esc(entry.summary)}</p>
+    <div class="tech-tooltip-foot">
+      <span>Clique ou use o botão direito para ações</span>
+      <span>Glossário Lia</span>
+    </div>
+  `;
+  pop.classList.remove('hidden');
+
+  const rect = targetEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let top = rect.bottom + 10;
+  if (top + popRect.height > window.innerHeight - 12) {
+    top = Math.max(12, rect.top - popRect.height - 10);
+  }
+  left = Math.max(12, Math.min(left, window.innerWidth - popRect.width - 12));
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+}
+
+function openTechTermContextMenu(key, x, y) {
+  const entry = TECH_GLOSSARY[key];
+  if (!entry) return;
+  hideTechTooltip();
+  const items = [];
+  if (entry.view) {
+    items.push({
+      label: entry.accId ? 'Abrir ajuste relacionado nas Configurações' : `Ir para painel: ${VIEW_TITLES[entry.view] || entry.view}`,
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
+      action: () => {
+        if (entry.accId) openAdminSection(entry.accId);
+        else showView(entry.view);
+      }
+    });
+  }
+  items.push(
+    {
+      label: 'Copiar explicação técnica',
+      shortcut: '⌘C',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+      action: () => {
+        const text = `${entry.term}: ${entry.summary}`;
+        navigator.clipboard?.writeText(text);
+        showToast({ title: 'Explicação Copiada', message: entry.term, type: 'success' });
+      }
+    },
+    {
+      label: 'Ouvir explicação em voz alta (TTS)',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+      action: () => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(`${entry.term}. ${entry.summary}`);
+          u.lang = 'pt-BR';
+          window.speechSynthesis.speak(u);
+          showToast({ title: 'Lendo Definição Técnica', message: entry.term, type: 'info' });
+        }
+      }
+    },
+    { divider: true },
+    {
+      label: 'Ver todos os termos no Glossário (⌘K)',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      action: () => $('#glossary-trigger-btn')?.click()
+    }
+  );
+
+  openAppleContextMenu({
+    x,
+    y,
+    header: `Termo Técnico · ${entry.category}`,
+    explain: {
+      title: entry.term,
+      text: entry.summary
+    },
+    items
+  });
+}
+
+const TECH_KEYS_SORTED = Object.keys(TECH_GLOSSARY).sort((a, b) => b.length - a.length);
+const TECH_REGEX = new RegExp(`\\b(${TECH_KEYS_SORTED.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g');
+
+function decorateTechnicalTerms(root = document.body) {
+  if (!root) return;
+  const selectors = [
+    '.kpi-label', '.kpi-sub', '.panel-head span', '.panel-head strong',
+    '.acc-title-group strong', '.acc-title-group span', '.field-hint',
+    '.ops-muted', '.section-tag', '.admin-lead', '.metrics-table th',
+    '.integration-card-head strong', '.integration-card p', '.tool-meta'
+  ];
+  const targets = root.querySelectorAll(selectors.join(','));
+  targets.forEach((el) => {
+    if (el.dataset.techDecorated === '1' || el.querySelector('.tech-term, input, select, textarea, button')) return;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    const textNodes = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.parentElement && !node.parentElement.closest('.tech-term, code, pre, script, style')) {
+        textNodes.push(node);
+      }
+    }
+    let modified = false;
+    textNodes.forEach((textNode) => {
+      const val = textNode.nodeValue || '';
+      if (!TECH_REGEX.test(val)) return;
+      TECH_REGEX.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+      let match;
+      while ((match = TECH_REGEX.exec(val)) !== null) {
+        const matchedWord = match[1];
+        if (!TECH_GLOSSARY[matchedWord]) continue;
+        if (match.index > lastIdx) {
+          frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
+        }
+        const span = document.createElement('span');
+        span.className = 'tech-term';
+        span.dataset.techKey = matchedWord;
+        span.tabIndex = 0;
+        span.setAttribute('role', 'button');
+        span.setAttribute('aria-label', `Explicação técnica para ${matchedWord}`);
+        span.textContent = matchedWord;
+        frag.appendChild(span);
+        lastIdx = match.index + matchedWord.length;
+        modified = true;
+      }
+      if (modified && lastIdx < val.length) {
+        frag.appendChild(document.createTextNode(val.slice(lastIdx)));
+      }
+      if (modified && frag.childNodes.length) {
+        textNode.parentNode?.replaceChild(frag, textNode);
+      }
+    });
+    el.dataset.techDecorated = '1';
+  });
+}
+
 function closeAppleContextMenu() {
   const menu = $('#apple-context-menu');
   if (menu) {
     menu.classList.add('hidden');
     menu.innerHTML = '';
   }
-  $('#chat-more-menu')?.classList.add('hidden');
+  $('#chat-more-menu')?.classList.remove('active');
 }
 
-function openAppleContextMenu({ x, y, header, items = [] }) {
+function openAppleContextMenu({ x, y, header, explain, items = [] }) {
   const menu = $('#apple-context-menu');
-  if (!menu || !items.length) return;
+  if (!menu || (!items.length && !explain)) return;
 
   menu.innerHTML = `
     ${header ? `<div class="ctx-menu-header">${esc(header)}</div>` : ''}
+    ${explain ? `<div class="ctx-menu-explain"><strong>${esc(explain.title || '')}</strong><p>${esc(explain.text || '')}</p></div>` : ''}
     ${items.map((item, idx) => {
       if (item.divider) return `<div class="ctx-menu-divider"></div>`;
       return `<button type="button" class="ctx-menu-item ${item.danger ? 'danger' : ''}" data-ctx-idx="${idx}">
@@ -149,14 +498,53 @@ function openAppleContextMenu({ x, y, header, items = [] }) {
   });
 }
 
+// Global listeners for .tech-term hover, click, and contextmenu
+document.addEventListener('mouseover', (e) => {
+  const termEl = e.target.closest('.tech-term[data-tech-key]');
+  if (termEl) {
+    showTechTooltip(termEl, termEl.dataset.techKey);
+  }
+});
+document.addEventListener('mouseout', (e) => {
+  const termEl = e.target.closest('.tech-term[data-tech-key]');
+  if (termEl && !termEl.contains(e.relatedTarget)) {
+    hideTechTooltip();
+  }
+});
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#apple-context-menu') && !e.target.closest('#chat-more-btn') && !e.target.closest('[data-msg-menu]')) {
+  const termEl = e.target.closest('.tech-term[data-tech-key]');
+  if (termEl) {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = termEl.getBoundingClientRect();
+    openTechTermContextMenu(termEl.dataset.techKey, rect.left, rect.bottom + 6);
+    return;
+  }
+  if (!e.target.closest('#apple-context-menu') && !e.target.closest('#chat-more-menu') && !e.target.closest('#chat-more-btn') && !e.target.closest('#composer-attach-btn') && !e.target.closest('[data-msg-menu]')) {
     closeAppleContextMenu();
+  }
+});
+document.addEventListener('contextmenu', (e) => {
+  const termEl = e.target.closest('.tech-term[data-tech-key]');
+  if (termEl) {
+    e.preventDefault();
+    e.stopPropagation();
+    openTechTermContextMenu(termEl.dataset.techKey, e.clientX, e.clientY);
+    return;
+  }
+  const selectedText = window.getSelection?.()?.toString()?.trim();
+  if (selectedText && selectedText.length <= 36) {
+    const found = findTechTermEntry(selectedText);
+    if (found) {
+      e.preventDefault();
+      openTechTermContextMenu(found.key, e.clientX, e.clientY);
+    }
   }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeAppleContextMenu();
+    hideTechTooltip();
     if (state.replyTo) clearReplyTo();
   }
 });
@@ -422,13 +810,13 @@ function selectedSession() {
 function detectConversationMediaBadge(preview = '') {
   const text = String(preview || '');
   if (/^\[Áudio|^\[PTT|áudio enviado/i.test(text)) {
-    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>`;
+    return `<svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>`;
   }
   if (/^\[Foto|^\[Imagem|foto enviada/i.test(text)) {
-    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+    return `<svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
   }
   if (/^\[Documento|\.pdf|documento anexado/i.test(text)) {
-    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+    return `<svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
   }
   return '';
 }
@@ -509,7 +897,7 @@ function playAudioPreview(button, textToSpeak = '') {
   if (card.classList.contains('playing')) {
     window.speechSynthesis?.cancel();
     card.classList.remove('playing');
-    button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
+    button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
     return;
   }
 
@@ -518,11 +906,11 @@ function playAudioPreview(button, textToSpeak = '') {
   });
 
   card.classList.add('playing');
-  button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`;
+  button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`;
 
   const finish = () => {
     card.classList.remove('playing');
-    button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
+    button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
   };
 
   if ('speechSynthesis' in window && textToSpeak) {
@@ -546,8 +934,8 @@ function setReplyTo(message, index) {
   const content = String(message.content || '').slice(0, 180);
   state.replyTo = { sender, content, index };
   const bar = $('#composer-reply-bar');
-  const senderEl = $('#composer-reply-sender');
-  const textEl = $('#composer-reply-text');
+  const senderEl = $('#reply-bar-sender') || $('#composer-reply-sender');
+  const textEl = $('#reply-bar-text') || $('#composer-reply-text');
   if (bar && senderEl && textEl) {
     senderEl.textContent = `Respondendo a ${sender}`;
     textEl.textContent = content;
@@ -682,12 +1070,12 @@ function renderList() {
         items: [
           {
             label: sess.human ? 'Reativar Lia (Automático)' : 'Assumir Atendimento Humano',
-            icon: `<svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
             action: () => setMode(sess.human ? 'bot' : 'human')
           },
           {
             label: 'Copiar Telefone / ID',
-            icon: `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
             action: () => {
               navigator.clipboard?.writeText(sess.phoneFormatted || sess.phone);
               showToast({ title: 'Telefone Copiado', message: sess.phoneFormatted || sess.phone, type: 'success' });
@@ -695,14 +1083,14 @@ function renderList() {
           },
           {
             label: 'Exportar Transcrição (.txt)',
-            icon: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
             action: () => exportConversationTranscript(sess)
           },
           { divider: true },
           {
             label: sess.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa',
             danger: true,
-            icon: `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
             action: () => clearSession()
           }
         ]
@@ -711,9 +1099,19 @@ function renderList() {
   });
 }
 
-function renderChat() {
+function updateChatScrollButton() {
+  const messagesEl = $('#messages');
+  const btn = $('#chat-scroll-bottom');
+  if (!messagesEl || !btn) return;
+  const distanceFromBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+  btn.classList.toggle('hidden', distanceFromBottom < 120);
+}
+
+function renderChat({ forceRender = false } = {}) {
   const session = selectedSession();
   if (!session) {
+    state.lastSelectedPhone = null;
+    state.lastRenderedChatSig = '';
     $('#chat-empty')?.classList.remove('hidden');
     $('#chat-active')?.classList.add('hidden');
     if ($('#detail-content')) $('#detail-content').innerHTML = '<div class="detail-placeholder">Nenhuma conversa selecionada.</div>';
@@ -727,6 +1125,11 @@ function renderChat() {
 
   $('#chat-avatar').textContent = initials(dName);
   $('#chat-name').textContent = dName;
+  const originTag = $('#chat-origin-tag');
+  if (originTag) {
+    originTag.textContent = session.origin === 'simulation' ? 'Simulador' : 'WhatsApp';
+    originTag.className = `pill mini ${session.origin === 'simulation' ? 'amber' : 'mint'}`;
+  }
   const phoneLink = $('#chat-phone-link');
   if (phoneLink) phoneLink.href = cleanNum ? `https://wa.me/${cleanNum}` : '#';
   $('#chat-phone').textContent = fPhone;
@@ -745,8 +1148,19 @@ function renderChat() {
     searchCountEl.textContent = searchQ ? `${filteredHistory.length}/${rawHistory.length}` : '';
   }
 
+  const lastMsg = rawHistory[rawHistory.length - 1];
+  const lastMsgStamp = lastMsg ? `${lastMsg.createdAt || ''}:${String(lastMsg.content || '').length}` : '0';
+  const chatSig = `${session.phone}::${rawHistory.length}::${lastMsgStamp}::${searchQ}::${session.human}`;
+  const switchedSession = state.lastSelectedPhone !== session.phone;
+  state.lastSelectedPhone = session.phone;
+
   const messagesEl = $('#messages');
-  if (messagesEl) {
+  if (messagesEl && (forceRender || switchedSession || state.lastRenderedChatSig !== chatSig)) {
+    const prevScrollTop = messagesEl.scrollTop;
+    const prevDistanceFromBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+    const shouldStickToBottom = switchedSession || prevDistanceFromBottom < 140;
+    state.lastRenderedChatSig = chatSig;
+
     messagesEl.innerHTML = filteredHistory.length
       ? filteredHistory
           .map((message) => {
@@ -776,7 +1190,7 @@ function renderChat() {
                 <div class="media-card media-audio-card">
                   <div class="media-audio-row">
                     <button type="button" class="audio-play-btn" data-play-audio="${esc(parsed.transcript)}" title="Ouvir prévia de voz">
-                      <svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+                      <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
                     </button>
                     <div class="audio-waveform">${renderWaveformBars(idx + 1)}</div>
                     <span class="audio-duration">${esc(parsed.duration)}</span>
@@ -791,7 +1205,7 @@ function renderChat() {
               bodyHtml = `
                 <div class="media-card">
                   <div class="media-image-preview">
-                    <svg class="svg-icon lg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    <svg class="svg-icon lg" width="20" height="20" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                     <span>${esc(parsed.label)}</span>
                   </div>
                   <div class="bubble-body">${formatWhatsAppMarkdown(parsed.caption)}</div>
@@ -802,7 +1216,7 @@ function renderChat() {
                 <div class="media-card">
                   <div class="media-doc-row">
                     <div class="media-doc-icon">
-                      <svg class="svg-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     </div>
                     <div class="media-doc-info">
                       <strong>${esc(parsed.fileName)}</strong>
@@ -813,23 +1227,29 @@ function renderChat() {
                 </div>
               `;
             } else {
-              bodyHtml = `<div class="bubble-body">${formatWhatsAppMarkdown(parsed.text)}</div>`;
+              const rawText = String(parsed.text || '');
+              const lineCount = rawText.split('\n').length;
+              const isLong = rawText.length > 440 || lineCount > 9;
+              bodyHtml = `
+                <div class="bubble-body ${isLong ? 'long-content' : ''}">${formatWhatsAppMarkdown(rawText)}</div>
+                ${isLong ? `<button type="button" class="admin-ghost-btn btn-xs" data-toggle-long="1" style="margin-top:6px;font-size:11px;padding:3px 8px;">Expandir texto completo ▾</button>` : ''}
+              `;
             }
 
             const readCheck = !isUser
-              ? `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>`
+              ? `<svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>`
               : '';
 
             return `<div class="bubble ${isUser ? 'in' : 'out'}" data-msg-index="${idx}">
               <div class="bubble-actions">
                 <button type="button" class="bubble-act-btn" data-msg-reply="${idx}" title="Responder mensagem">
-                  <svg class="svg-icon xs" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                  <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                 </button>
                 <button type="button" class="bubble-act-btn" data-msg-copy="${idx}" title="Copiar texto">
-                  <svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
                 <button type="button" class="bubble-act-btn" data-msg-menu="${idx}" title="Mais opções">
-                  <svg class="svg-icon xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+                  <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
                 </button>
               </div>
               ${quoteHtml}
@@ -840,7 +1260,24 @@ function renderChat() {
           .join('')
       : `<div class="detail-placeholder" style="margin:auto">${searchQ ? 'Nenhuma mensagem corresponde à busca neste chat.' : 'Envie uma mensagem ou use os atalhos inteligentes abaixo para iniciar.'}</div>`;
 
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (shouldStickToBottom) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else {
+      messagesEl.scrollTop = prevScrollTop;
+    }
+    updateChatScrollButton();
+
+    // Bind expand/collapse long content buttons
+    messagesEl.querySelectorAll('[data-toggle-long]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const bodyEl = btn.previousElementSibling;
+        if (!bodyEl) return;
+        const expanded = !bodyEl.classList.contains('long-content');
+        bodyEl.classList.toggle('long-content', expanded);
+        btn.textContent = expanded ? 'Expandir texto completo ▾' : 'Recolher texto ▴';
+      });
+    });
 
     // Bind audio play buttons
     messagesEl.querySelectorAll('[data-play-audio]').forEach((btn) => {
@@ -876,13 +1313,13 @@ function renderChat() {
           {
             label: 'Responder com Citação',
             shortcut: 'R',
-            icon: `<svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`,
             action: () => setReplyTo(msg, idx)
           },
           {
             label: 'Copiar Texto da Mensagem',
             shortcut: '⌘C',
-            icon: `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
             action: () => {
               navigator.clipboard?.writeText(msg.content || '');
               showToast({ title: 'Mensagem Copiada', message: String(msg.content || '').slice(0, 80), type: 'success' });
@@ -890,7 +1327,7 @@ function renderChat() {
           },
           {
             label: 'Ouvir em Voz Alta (TTS)',
-            icon: `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
             action: () => {
               if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
@@ -904,7 +1341,7 @@ function renderChat() {
           { divider: true },
           {
             label: 'Testar Frase no Roteador IA',
-            icon: `<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
             action: () => {
               const routerInput = $('#router-test-input');
               if (routerInput) routerInput.value = String(msg.content || '').slice(0, 220);
@@ -914,7 +1351,7 @@ function renderChat() {
           },
           {
             label: 'Reutilizar Texto no Campo de Envio',
-            icon: `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
             action: () => {
               const input = $('#message-input');
               if (input) {
@@ -1010,6 +1447,7 @@ function renderChat() {
   `;
   $('#toggle-mode')?.addEventListener('click', () => setMode(session.human ? 'bot' : 'human'));
   $('#clear-session')?.addEventListener('click', clearSession);
+  decorateTechnicalTerms($('#detail-content'));
 }
 
 // ============================================================================
@@ -1930,6 +2368,7 @@ async function renderOverview() {
          <div class="ops-row"><strong>Persistência Operacional</strong><span class="pill mini ${operations.configured ? 'mint' : 'amber'}">${operations.configured ? 'Supabase ativo' : 'não configurada'}</span></div>`
       : '<div class="ops-row">Detalhes operacionais de campanhas exigem papel operator.</div>';
   }
+  decorateTechnicalTerms($('#overview-view'));
 }
 
 async function renderTools() {
@@ -1959,6 +2398,7 @@ async function renderTools() {
         <div class="tool-meta">${tool.clientAllowed ? 'Fluxo de clientes & Copiloto' : 'Exclusiva do Copiloto (Proprietário)'}${draftDiffers ? ` · <b style="color:var(--accent-amber)">rascunho difere do publicado (${active ? 'ligado' : 'desligado'})</b>` : ''}</div>
       </article>`;
     }).join('');
+    decorateTechnicalTerms($('#tools-view'));
   } catch (error) { opsFeedback('tools-feedback', `Falha ao carregar catálogo: ${error.message}`, 'error'); }
 }
 
@@ -1988,6 +2428,7 @@ async function renderCampaigns() {
       return `<article class="ops-row"><div><strong>${esc(campaign.title)}</strong><div class="ops-muted">${esc(status)} · ${count} destinatários · ${Number(stats.sent || 0)} enviados · ${Number(stats.failed || 0)} falhas · ${Number(stats.suppressed || 0)} suprimidos</div><div class="ops-muted">Criada: ${esc(campaign.created_at || '')}</div></div><div class="ops-actions">${actions.join('')}</div></article>`;
     }).join('') || '<div class="detail-placeholder">Nenhuma campanha cadastrada.</div>';
     $('#suppression-list').innerHTML = (data.suppressions || []).map(item => `<article class="ops-row"><div><strong>${esc(item.phone)}</strong><div class="ops-muted">${esc(item.reason)} · ${esc(item.source)} · ${esc(item.suppressedAt || '')}</div></div><div class="ops-actions">${state.role === 'admin' ? `<button class="danger btn-sm" data-unsuppress="1">Remover</button>` : ''}</div></article>`).join('') || '<div class="detail-placeholder">Nenhuma supressão recente.</div>';
+    decorateTechnicalTerms($('#campaigns-view'));
   } catch (error) { opsFeedback('campaigns-feedback', `Falha ao carregar campanhas/supressões: ${error.message}`, 'error'); }
 }
 
@@ -1996,6 +2437,7 @@ async function renderUsers() {
     const [usersResult, auditResult] = await Promise.all([api('/api/dashboard/users'), api('/api/dashboard/audit')]);
     $('#users-table').innerHTML = usersResult.users.map(user => `<tr><td>${esc(user.fullName || 'Sem nome')}</td><td>${esc(user.email || '—')}</td><td><select class="user-action-select" data-user-role="${esc(user.id)}"><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>viewer</option><option value="operator" ${user.role === 'operator' ? 'selected' : ''}>operator</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option></select></td><td><input type="checkbox" data-user-active="${esc(user.id)}" ${user.active ? 'checked' : ''} aria-label="Perfil ativo" /></td><td>${esc(user.lastSignInAt || '—')}</td><td><button class="admin-ghost-btn btn-sm" data-user-save="${esc(user.id)}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum perfil encontrado.</td></tr>';
     $('#audit-list').innerHTML = auditResult.entries.map(entry => `<article class="ops-row"><div><strong>${esc(entry.action)}</strong><div class="ops-muted">${esc(entry.entityType || 'sistema')} · ator ${esc(entry.actorId || 'não identificado')} · ${esc(entry.createdAt || '')}</div><div class="ops-muted">${esc(JSON.stringify(entry.metadata || {}))}</div></div></article>`).join('') || '<div class="detail-placeholder">Nenhum evento de auditoria registrado.</div>';
+    decorateTechnicalTerms($('#users-view'));
   } catch (error) { opsFeedback('users-feedback', `Falha ao carregar usuários/auditoria: ${error.message}`, 'error'); }
 }
 
@@ -2021,6 +2463,7 @@ async function renderIntegrations() {
     const events = data.webhook.recentEvents || [];
     $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
     $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '—')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '—')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
+    decorateTechnicalTerms($('#integrations-view'));
   } catch (error) { opsFeedback('integrations-feedback', `Falha ao consultar integrações: ${error.message}`, 'error'); }
 }
 
@@ -2047,6 +2490,7 @@ function render() {
   if (state.view === 'integrations') { try { renderIntegrations(); } catch (e) { console.error('[renderIntegrations]', e); } }
   const lastSync = $('#last-sync');
   if (lastSync) lastSync.textContent = `sincronizado ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  setTimeout(() => decorateTechnicalTerms(document.body), 60);
 }
 
 async function refresh() {
@@ -2158,6 +2602,7 @@ function showView(view) {
   if (view === 'campaigns') renderCampaigns();
   if (view === 'users') renderUsers();
   if (view === 'integrations') renderIntegrations();
+  setTimeout(() => decorateTechnicalTerms(document.body), 90);
 }
 
 function setupCommandPalette() {
@@ -2183,22 +2628,36 @@ function setupCommandPalette() {
     { title: 'Configurações: Google Calendar', sub: 'Horários livres, duração de slots e agenda', role: 'admin', action: () => openAdminSection('acc-calendar') },
     { title: 'Configurações: Base de Conhecimento (FAQ)', sub: 'Perguntas e respostas prioritárias', role: 'admin', action: () => openAdminSection('acc-faq') },
     { title: 'Configurações: Histórico & Rollback', sub: 'Restaurar versões anteriores publicadas', role: 'admin', action: () => openAdminSection('acc-history') },
-    { title: 'Usuários & Auditoria', sub: 'Perfis RBAC e trilha de auditoria', role: 'admin', action: () => showView('users') }
+    { title: 'Usuários & Auditoria', sub: 'Perfis RBAC e trilha de auditoria', role: 'admin', action: () => showView('users') },
+    ...Object.entries(TECH_GLOSSARY).map(([key, entry]) => ({
+      title: `Glossário · ${entry.term}`,
+      sub: entry.summary,
+      badge: entry.category,
+      isGlossary: true,
+      action: () => {
+        showToast({ title: entry.term, message: entry.summary, type: 'info', duration: 6500 });
+        if (entry.accId) openAdminSection(entry.accId);
+        else if (entry.view) showView(entry.view);
+      }
+    }))
   ];
+
+  let glossaryOnlyMode = false;
 
   const renderCmds = () => {
     const q = input.value.trim().toLowerCase();
     const level = ROLE_LEVEL[state.role] ?? 0;
     const filtered = commands.filter(cmd => {
+      if (glossaryOnlyMode && !cmd.isGlossary) return false;
       if (cmd.role && level < (ROLE_LEVEL[cmd.role] ?? 2)) return false;
-      return !q || `${cmd.title} ${cmd.sub}`.toLowerCase().includes(q);
+      return !q || `${cmd.title} ${cmd.sub} ${cmd.badge || ''}`.toLowerCase().includes(q);
     });
     list.innerHTML = filtered.map((cmd, idx) => `
       <button type="button" class="cmd-item" data-cmd-idx="${idx}">
         <div><strong>${esc(cmd.title)}</strong><div class="ops-muted">${esc(cmd.sub)}</div></div>
-        <span class="pill mini pale">Ir ↵</span>
+        <span class="pill mini ${cmd.isGlossary ? 'mint' : 'pale'}">${esc(cmd.badge || 'Ir ↵')}</span>
       </button>
-    `).join('') || '<div class="detail-placeholder" style="padding:14px;">Nenhum comando encontrado.</div>';
+    `).join('') || '<div class="detail-placeholder" style="padding:14px;">Nenhum comando ou sigla encontrado.</div>';
 
     list.querySelectorAll('[data-cmd-idx]').forEach(btn => {
       btn.onclick = () => {
@@ -2209,14 +2668,19 @@ function setupCommandPalette() {
     });
   };
 
-  const openModal = () => {
+  const openModal = ({ glossary = false } = {}) => {
+    glossaryOnlyMode = Boolean(glossary);
     modal.classList.remove('hidden');
     input.value = '';
+    input.placeholder = glossaryOnlyMode
+      ? 'Buscar sigla ou termo técnico (ex: PTT, TTS, SLA, Circuit Breaker, RBAC, P95)…'
+      : 'Ir para seção, buscar configuração, sigla técnica ou executar ação…';
     renderCmds();
     input.focus();
   };
 
-  $('#cmd-palette-trigger')?.addEventListener('click', openModal);
+  $('#cmd-palette-trigger')?.addEventListener('click', () => openModal({ glossary: false }));
+  $('#glossary-trigger-btn')?.addEventListener('click', () => openModal({ glossary: true }));
   $('#cmd-palette-close')?.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
   input.addEventListener('input', renderCmds);
@@ -2224,7 +2688,7 @@ function setupCommandPalette() {
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      if (modal.classList.contains('hidden')) openModal();
+      if (modal.classList.contains('hidden')) openModal({ glossary: false });
       else modal.classList.add('hidden');
     } else if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
       modal.classList.add('hidden');
@@ -2302,22 +2766,32 @@ function startDashboard() {
     } else {
       state.chatSearchQuery = '';
       if ($('#chat-search-input')) $('#chat-search-input').value = '';
-      renderChat();
+      renderChat({ forceRender: true });
     }
   });
   $('#chat-search-close')?.addEventListener('click', () => {
     $('#chat-search-bar')?.classList.add('hidden');
     state.chatSearchQuery = '';
     if ($('#chat-search-input')) $('#chat-search-input').value = '';
-    renderChat();
+    renderChat({ forceRender: true });
   });
   $('#chat-search-input')?.addEventListener('input', (e) => {
     state.chatSearchQuery = e.target.value;
-    renderChat();
+    renderChat({ forceRender: true });
+  });
+
+  // Smart scroll listener & "Ir para o final" button
+  $('#messages')?.addEventListener('scroll', updateChatScrollButton, { passive: true });
+  $('#chat-scroll-bottom')?.addEventListener('click', () => {
+    const messagesEl = $('#messages');
+    if (messagesEl) {
+      messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+      setTimeout(updateChatScrollButton, 260);
+    }
   });
 
   // Chat Header More Options (⋮)
-  $('#chat-more-btn')?.addEventListener('click', (e) => {
+  const openChatHeaderMenu = (e) => {
     e.stopPropagation();
     const sess = selectedSession();
     if (!sess) return;
@@ -2330,31 +2804,68 @@ function startDashboard() {
         {
           label: 'Buscar nesta conversa',
           shortcut: '⌘F',
-          icon: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
           action: () => $('#chat-search-toggle')?.click()
         },
         {
           label: 'Exportar Transcrição (.txt)',
-          icon: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
           action: () => exportConversationTranscript(sess)
         },
         {
           label: sess.human ? 'Reativar Lia (Automático)' : 'Transferir para Humano',
-          icon: `<svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
           action: () => setMode(sess.human ? 'bot' : 'human')
         },
         { divider: true },
         {
           label: sess.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa',
           danger: true,
-          icon: `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
           action: () => clearSession()
+        }
+      ]
+    });
+  };
+  $('#chat-more-menu')?.addEventListener('click', openChatHeaderMenu);
+  $('#chat-more-btn')?.addEventListener('click', openChatHeaderMenu);
+
+  // Composer Attach (+) Context Menu
+  $('#composer-attach-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    openAppleContextMenu({
+      x: rect.left,
+      y: rect.top - 220,
+      header: 'Enviar Mídia / Ação Inteligente',
+      items: [
+        {
+          label: 'Simular Nota de Voz (Áudio PTT)',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>`,
+          action: () => document.querySelector('[data-sim-media="audio"]')?.click()
+        },
+        {
+          label: 'Simular Imagem (Visão Computacional)',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+          action: () => document.querySelector('[data-sim-media="image"]')?.click()
+        },
+        {
+          label: 'Simular Documento PDF Analisado',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+          action: () => document.querySelector('[data-sim-media="document"]')?.click()
+        },
+        { divider: true },
+        {
+          label: 'Exportar Transcrição da Conversa',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          action: () => exportConversationTranscript(selectedSession())
         }
       ]
     });
   });
 
   // Composer Reply Cancel
+  $('#reply-bar-cancel')?.addEventListener('click', clearReplyTo);
   $('#composer-reply-cancel')?.addEventListener('click', clearReplyTo);
 
   // Smart Bar: Media Simulation & Quick Reply Chips

@@ -13,6 +13,7 @@
 
   <!-- NATIVE APPLE CONTEXT MENU (FLOATING) -->
   <div id="apple-context-menu" class="apple-context-menu hidden" role="menu" aria-label="Menu de ações"></div>
+  <div id="tech-tooltip-popover" class="tech-tooltip-popover hidden" role="tooltip" aria-live="polite"></div>
 
   <!-- TELA DE LOGIN -->
   <section id="login-screen" class="login-screen hidden">
@@ -197,6 +198,11 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             <span class="desktop-only">Buscar…</span>
             <kbd class="desktop-only">⌘K</kbd>
+          </button>
+
+          <!-- GLOSSÁRIO DE SIGLAS & TERMOS TÉCNICOS -->
+          <button type="button" class="icon-btn" id="glossary-trigger-btn" title="Glossário de Siglas e Termos Técnicos (clique ou use botão direito em qualquer sigla)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
 
           <div class="segmented-control" role="group" aria-label="Modo de visualização">
@@ -432,6 +438,10 @@
 
               <!-- HISTÓRICO DE MENSAGENS MULTIMODAL -->
               <div id="messages" class="messages"></div>
+              <button type="button" id="chat-scroll-bottom" class="chat-scroll-bottom hidden" title="Ir para as mensagens mais recentes">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+                <span>Ir para o final</span>
+              </button>
 
               <!-- BARRA INTELIGENTE: MÍDIAS & RESPOSTAS RÁPIDAS -->
               <div class="chat-smart-bar" id="chat-smart-bar">
