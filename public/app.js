@@ -638,6 +638,8 @@ function renderAdmin({ force = false } = {}) {
     else if (input.dataset.config === 'identity.aliases') input.value = Array.isArray(value) ? value.join(', ') : (value ?? '');
   else input.value = value ?? '';
   });
+  const activeModelLabel = $('#admin-ai-active-model');
+  if (activeModelLabel) activeModelLabel.textContent = draft.ai?.activeModel || 'Nenhum modelo publicado';
   updateHumanDestinationVisibility();
   loadProviderModels();
   loadFallbackCatalogs();
@@ -722,6 +724,8 @@ function renderModelOptions(models, primary) {
     select.value = selected || '';
   };
   addOptions(primary, selectedPrimary, true);
+  const activeModelLabel = $('#admin-ai-active-model');
+  if (activeModelLabel && selectedPrimary) activeModelLabel.textContent = selectedPrimary;
 }
 
 const FALLBACK_PROVIDERS = [['gemini', 'Gemini'], ['openrouter', 'OpenRouter'], ['openai', 'OpenAI'], ['qwen', 'Qwen']];
@@ -1258,6 +1262,15 @@ function startDashboard() {
   $('#admin-ai-model')?.addEventListener('change', () => {
     renderModelOptions(state.modelCatalog, $('#admin-ai-model'));
     syncFallbackModelInputs();
+  });
+  $('#admin-ai-change-model')?.addEventListener('click', () => {
+    const select = $('#admin-ai-model');
+    if (!select) return;
+    select.classList.toggle('hidden');
+    if (!select.classList.contains('hidden')) {
+      loadProviderModels();
+      select.focus();
+    }
   });
   $('#admin-publish')?.addEventListener('click', async () => {
     const btn = $('#admin-publish');

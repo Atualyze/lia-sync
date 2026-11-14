@@ -272,8 +272,10 @@
                     <option value="qwen">Qwen (Alibaba)</option>
                   </select>
                 </label>
-                <label>Modelo Principal
-                  <select id="admin-ai-model" data-config="ai.activeModel"><option value="">Selecione um provedor e carregue os modelos</option></select>
+                <label>Modelo ativo
+                  <span id="admin-ai-active-model" class="field-hint" style="display:block;font-weight:600;color:var(--text,#e5e7eb)">Carregando modelo salvo…</span>
+                  <button id="admin-ai-change-model" type="button" class="admin-ghost-btn" style="margin-top:8px">Alterar modelo</button>
+                  <select id="admin-ai-model" data-config="ai.activeModel" class="hidden" aria-label="Selecionar novo modelo"><option value="">Selecione um provedor e carregue os modelos</option></select>
                 </label>
                 <label class="wide"><span style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-config="ai.openrouterFreeOnly" /> Usar somente modelos gratuitos no OpenRouter</span><small class="field-hint">Evita cobranças e bloqueia modelos pagos; usa <code>openrouter/free</code> quando necessário.</small></label>
                 <div class="wide">
