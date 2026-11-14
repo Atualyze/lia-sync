@@ -863,6 +863,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           let pixHandled = false;
           for (const tc of toolCallsToRun) {
             if (tc?.name) {
+              if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+                tc.name = 'checkout_infinitepay';
+                tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+              }
               if (tc.name === 'gerar_cobranca_pix') {
                 if (pixHandled) continue;
                 pixHandled = true;
@@ -956,7 +960,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   tc.args.message = buildFriendlyMessage(tc.args.recipient, tc.args.message, { asAudio: false, identity });
                 }
 
-                if (tc.name === 'gerar_cobranca_pix') {
+                if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+                tc.name = 'checkout_infinitepay';
+                tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+              }
+              if (tc.name === 'gerar_cobranca_pix') {
                   const hasNumericValue = Number(tc.args?.valor) > 0 || /(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i.test(cleanCommand);
                   const explicitFreeValue = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
                   if (!hasNumericValue && !explicitFreeValue) {
@@ -1190,8 +1198,8 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
-        const askedPixRecently = /\bpix\b/i.test(String(lastAssistantMsg || ''));
-        const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a\s*pix)\b/i.test(cleanCommand);
+        const askedPixRecently = /\b(?:pix|infinitepay|link\s+de\s+pagamento|cobran[cç]a|valor\s+e\s+a?\s*descri[cç][aã]o)\b/i.test(String(lastAssistantMsg || ''));
+        const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a(?:\s*pix)?|infinitepay|link\s+de\s+pagamento)\b/i.test(cleanCommand);
         const pixParsed = extractPixArgs(cleanCommand);
         const promisedPixInReply = Boolean(rawReply && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply));
         const pixEnabled = isToolEnabled('gerar_cobranca_pix', botConfig);
@@ -1276,11 +1284,15 @@ ${errMsg}`;
             const isGreeting = cleanCommand.length < 25 && new RegExp(`^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|${escapeText(assistant)})[\\s,!.]*$`, 'i').test(cleanCommand.trim());
             if (isGreeting) {
               rawReply = `Olá, ${owner}! Estou por aqui. Como posso te ajudar agora?`;
-            } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)) {
+            } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a|infinitepay)\b/i.test(cleanCommand)) {
               const pixConfigured = Boolean(botConfig?.tools?.settings?.gerar_cobranca_pix?.key || process.env.PIX_KEY);
-              rawReply = pixConfigured
-                ? `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`
-                : `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
+              if (ipEnabled) {
+                rawReply = `Para gerar o link de pagamento InfinitePay agora, ${owner}, me diga o *valor* (ex: *150*) e a *descrição*.`;
+              } else {
+                rawReply = pixConfigured
+                  ? `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`
+                  : `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
+              }
             } else if (/\b(?:cep|cnpj|feriado)\b/i.test(cleanCommand)) {
               rawReply = `Pode me passar o *CEP*, *CNPJ* ou a *data/ano* que você quer consultar, ${owner}?`;
             } else if (/\b(?:planilha|sheets|estoque|tabela)\b/i.test(cleanCommand)) {

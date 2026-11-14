@@ -293,7 +293,7 @@ export const toolCheckoutInfinitePay = {
       process.env.PUBLIC_BASE_URL ||
       process.env.DASHBOARD_ORIGIN ||
       ''
-    ).replace(/\/$/, '');
+    ).trim().replace(/\/webhook\/infinitepay\/?$/i, '').replace(/\/$/, '');
     const webhookUrl = baseUrl ? `${baseUrl}/webhook/infinitepay` : '';
     const redirectUrl = String(settings.redirectUrl || '').trim();
 

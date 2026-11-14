@@ -3,7 +3,7 @@ import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
-import { executeToolCall, isClientToolAllowed } from '../tools/index.mjs';
+import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto } from '../triage-router.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToTauanRequest } from './text.mjs';
@@ -411,6 +411,10 @@ export async function handleClientMessage({
       if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
         for (const tc of result.tool_calls) {
           if (tc?.name && isClientToolAllowed(tc.name)) {
+            if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+              tc.name = 'checkout_infinitepay';
+              tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+            }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
             try {
