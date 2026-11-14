@@ -115,7 +115,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "agendar_retorno_ou_followup": Agendamento de retornos e lembretes com clientes.
 • "consultar_contato_ou_lead" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
-• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp.
+• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRA: NUNCA diga "vou gerar o Pix" em "reply" sem emitir "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 0, "descricao": "..."}}] na mesma resposta!
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.

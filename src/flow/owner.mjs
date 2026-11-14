@@ -1105,6 +1105,38 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
+        if (rawReply && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix') && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply)) {
+          const amountMatch = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
+          const valor = amountMatch ? Number(amountMatch[1].replace(',', '.')) : 0;
+          const desc = cleanCommand
+            .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
+            .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b|gera\b|gerar\b)+/i, '')
+            .trim();
+          const autoPix = await executeToolCall('gerar_cobranca_pix', {
+            ...(valor > 0 ? { valor } : {}),
+            ...(desc ? { descricao: desc.slice(0, 80) } : {})
+          }, {
+            phone: OWNER_SELF_KEY,
+            clientName: `${owner} (Copiloto)`,
+            store,
+            reminderStore,
+            whatsapp,
+            ai,
+            botConfig,
+            session: sSelf
+          });
+          if (autoPix?.success) {
+            const valorFmt = autoPix.valor ? `R$ ${Number(autoPix.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+            const pixMsg = [
+              `💳 *Cobrança Pix gerada!*`,
+              `• *Valor:* ${valorFmt}`,
+              `• *Favorecido:* ${autoPix.favorecido || owner}`,
+              autoPix.paymentUrl ? `• *Link de pagamento:* ${autoPix.paymentUrl}` : '',
+              `• *Copia e Cola:*\n\`\`\`${autoPix.pixCopiaECola}\`\`\``
+            ].filter(Boolean).join('\n\n');
+            return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
+          }
+        }
         if (!rawReply) {
           const askedPixRecently = /\bpix\b/i.test(String(lastAssistantMsg || ''));
           if (!isAudioForSelf && (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand) || askedPixRecently)) {
