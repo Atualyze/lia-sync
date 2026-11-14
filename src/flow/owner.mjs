@@ -1106,6 +1106,43 @@ ${errMsg}`;
 
         let rawReply = result?.reply;
         if (!rawReply) {
+          const askedPixRecently = /\bpix\b/i.test(String(lastAssistantMsg || ''));
+          if (!isAudioForSelf && (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand) || askedPixRecently)) {
+            const amountMatch = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
+            const isFreeAmount = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
+            if (amountMatch || isFreeAmount) {
+              const valor = isFreeAmount ? 0 : Number(amountMatch[1].replace(',', '.'));
+              const desc = cleanCommand
+                .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
+                .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b)+/i, '')
+                .trim();
+              const pixExec = await executeToolCall('gerar_cobranca_pix', {
+                ...(valor > 0 ? { valor } : {}),
+                ...(desc ? { descricao: desc.slice(0, 80) } : {})
+              }, {
+                phone: OWNER_SELF_KEY,
+                clientName: `${owner} (Copiloto)`,
+                store,
+                reminderStore,
+                whatsapp,
+                ai,
+                botConfig,
+                session: sSelf
+              });
+              if (pixExec?.success) {
+                const valorFmt = pixExec.valor ? `R$ ${Number(pixExec.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+                const pixMsg = [
+                  `💳 *Cobrança Pix gerada!*`,
+                  `• *Valor:* ${valorFmt}`,
+                  `• *Favorecido:* ${pixExec.favorecido || owner}`,
+                  pixExec.paymentUrl ? `• *Link de pagamento:* ${pixExec.paymentUrl}` : '',
+                  `• *Copia e Cola:*\n\`\`\`${pixExec.pixCopiaECola}\`\`\``
+                ].filter(Boolean).join('\n\n');
+                return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
+              }
+              return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${pixExec?.message || pixExec?.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
+            }
+          }
           if (isAudioForSelf) {
             const simMatch = cleanCommand.match(/(?:perguntando|avisando|falando|dizendo|sobre)\s+(?:para\s+o|para\s+a|para|pro|pra)?\s*([a-zA-ZÀ-ÿ0-9+]+)?/i);
             const rawSimName = simMatch?.[1] || '';
