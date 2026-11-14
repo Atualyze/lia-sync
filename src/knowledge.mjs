@@ -219,7 +219,7 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
    • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.
-   • "gerar_cobranca_pix": {"valor": 150.0, "descricao": "..."} — gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp.
+   • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} — gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Use "valor": 0 quando o cliente pedir "só a chave Pix" ou "Pix sem valor fixo", e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
    • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} — gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
    • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} — consulta preços, estoque e catálogo no Google Sheets.
    • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} — busca e envia catálogos/contratos em PDF do Google Drive.

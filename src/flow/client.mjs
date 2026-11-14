@@ -42,7 +42,6 @@ export async function handleClientMessage({
       }
 
       let clean = sanitizeInput(text, maxInputChars);
-      const aiDeadline = Date.now() + 35000;
       const s = store.get(phone, origin);
       s.phone = phone;
 
@@ -338,6 +337,7 @@ export async function handleClientMessage({
       }
 
       // Atendimento inteligente: a assistente usa a IA com memória do contexto
+      const aiDeadline = Date.now() + 35000;
       const items = await faq();
       const systemPrompt = buildSystemPrompt({ session: s, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
       const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>`;
