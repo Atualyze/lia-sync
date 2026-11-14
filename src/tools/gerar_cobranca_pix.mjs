@@ -128,12 +128,28 @@ export const toolGerarCobrancaPix = {
     });
 
     const dataUrl = await QRCode.toDataURL(payload, { width: 512, margin: 2 });
+    const baseUrl = String(
+      toolSettings.publicBaseUrl ||
+      process.env.PUBLIC_BASE_URL ||
+      process.env.DASHBOARD_ORIGIN ||
+      ''
+    ).replace(/\/$/, '');
+    const linkParams = new URLSearchParams({
+      p: Buffer.from(payload, 'utf8').toString('base64url'),
+      ...(amount > 0 ? { v: amount.toFixed(2) } : {}),
+      n: merchantName,
+      ...(args.descricao ? { d: String(args.descricao).slice(0, 80) } : {}),
+      tx: txid
+    });
+    const paymentUrl = baseUrl ? `${baseUrl}/pix?${linkParams.toString()}` : `/pix?${linkParams.toString()}`;
+
     const shouldSend = args.enviarWhatsApp !== false;
     let qrCodeSent = false;
 
     if (shouldSend && context?.phone && context?.whatsapp?.sendImage) {
       const amountText = amount > 0 ? ` no valor de R$ ${amount.toFixed(2).replace('.', ',')}` : '';
-      const caption = `Pix${amountText}${args.descricao ? ` — ${args.descricao}` : ''}\n\nCopia e Cola:\n${payload}`;
+      const linkLine = baseUrl ? `\n\nLink de pagamento:\n${paymentUrl}` : '';
+      const caption = `Pix${amountText}${args.descricao ? ` — ${args.descricao}` : ''}${linkLine}\n\nCopia e Cola:\n${payload}`;
       await context.whatsapp.sendImage(context.phone, {
         dataUrl,
         mimetype: 'image/png',
@@ -145,6 +161,7 @@ export const toolGerarCobrancaPix = {
     return {
       success: true,
       pixCopiaECola: payload,
+      paymentUrl,
       valor: amount > 0 ? Number(amount.toFixed(2)) : null,
       txid,
       favorecido: merchantName,

@@ -17,7 +17,8 @@ export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
     { key: 'key', label: 'Chave Pix', type: 'text', placeholder: 'CPF/CNPJ, e-mail, telefone ou chave aleatória' },
     { key: 'merchantName', label: 'Nome do Favorecido', type: 'text', placeholder: 'Ex.: Atualyze Clínica (até 25 chars)' },
-    { key: 'merchantCity', label: 'Cidade', type: 'text', placeholder: 'Ex.: SAO PAULO (até 15 chars)' }
+    { key: 'merchantCity', label: 'Cidade', type: 'text', placeholder: 'Ex.: SAO PAULO (até 15 chars)' },
+    { key: 'publicBaseUrl', label: 'URL Pública (para link /pix)', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' }
   ],
   consultar_planilha_google: [
     { key: 'defaultSpreadsheetId', label: 'ID da Planilha Padrão', type: 'text', placeholder: 'ID da URL do Google Sheets' },

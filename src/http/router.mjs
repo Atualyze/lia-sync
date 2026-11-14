@@ -5,6 +5,7 @@ import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath } from
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
+import { renderPixPaymentPage } from './pix-page.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
@@ -41,6 +42,9 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (req.method === 'GET' && u.pathname === '/ready') {
       const readiness = await readinessCheck();
       return json(res, readiness.ok ? 200 : 503, readiness);
+    }
+    if (req.method === 'GET' && u.pathname === '/pix') {
+      return renderPixPaymentPage(res, u);
     }
     if (isChatwootApiPath(u.pathname)) {
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
