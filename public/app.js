@@ -2689,27 +2689,65 @@ function setupCommandPalette() {
   ];
 
   let glossaryOnlyMode = false;
+  let activeIndex = 0;
+  let currentFiltered = [];
+
+  const getCmdIcon = (cmd) => {
+    if (cmd.isGlossary) {
+      return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+    }
+    if (cmd.title.startsWith('Configurações')) {
+      return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+    }
+    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 19 21 12 17 5 21 12 2"/></svg>`;
+  };
+
+  const updateActiveHighlight = () => {
+    const items = list.querySelectorAll('.cmd-item');
+    items.forEach((btn, i) => {
+      const isActive = i === activeIndex;
+      btn.classList.toggle('active', isActive);
+      if (isActive) btn.scrollIntoView({ block: 'nearest' });
+    });
+  };
 
   const renderCmds = () => {
     const q = input.value.trim().toLowerCase();
     const level = ROLE_LEVEL[state.role] ?? 0;
-    const filtered = commands.filter(cmd => {
+    currentFiltered = commands.filter(cmd => {
       if (glossaryOnlyMode && !cmd.isGlossary) return false;
       if (cmd.role && level < (ROLE_LEVEL[cmd.role] ?? 2)) return false;
       return !q || `${cmd.title} ${cmd.sub} ${cmd.badge || ''}`.toLowerCase().includes(q);
     });
-    list.innerHTML = filtered.map((cmd, idx) => `
-      <button type="button" class="cmd-item" data-cmd-idx="${idx}">
-        <div><strong>${esc(cmd.title)}</strong><div class="ops-muted">${esc(cmd.sub)}</div></div>
-        <span class="pill mini ${cmd.isGlossary ? 'mint' : 'pale'}">${esc(cmd.badge || 'Ir ↵')}</span>
+    activeIndex = 0;
+    const countEl = $('#cmd-footer-count');
+    if (countEl) countEl.textContent = `${currentFiltered.length} item${currentFiltered.length === 1 ? '' : 's'}`;
+
+    if (!currentFiltered.length) {
+      list.innerHTML = `<div class="detail-placeholder" style="padding:22px 14px;text-align:center;">Nenhum comando ou termo encontrado para "${esc(q)}".</div>`;
+      return;
+    }
+
+    list.innerHTML = currentFiltered.map((cmd, idx) => `
+      <button type="button" class="cmd-item ${idx === 0 ? 'active' : ''}" data-cmd-idx="${idx}">
+        <div class="cmd-item-icon">${getCmdIcon(cmd)}</div>
+        <div class="cmd-item-body">
+          <div class="cmd-item-title">${esc(cmd.title)}</div>
+          <div class="cmd-item-sub">${esc(cmd.sub)}</div>
+        </div>
+        <span class="cmd-item-badge ${cmd.isGlossary ? 'badge-glossary' : 'badge-nav'}">${esc(cmd.badge || 'Ir ↵')}</span>
       </button>
-    `).join('') || '<div class="detail-placeholder" style="padding:14px;">Nenhum comando ou sigla encontrado.</div>';
+    `).join('');
 
     list.querySelectorAll('[data-cmd-idx]').forEach(btn => {
       btn.onclick = () => {
-        const target = filtered[Number(btn.dataset.cmdIdx)];
+        const target = currentFiltered[Number(btn.dataset.cmdIdx)];
         modal.classList.add('hidden');
         target?.action();
+      };
+      btn.onmouseenter = () => {
+        activeIndex = Number(btn.dataset.cmdIdx);
+        updateActiveHighlight();
       };
     });
   };
@@ -2730,6 +2768,25 @@ function setupCommandPalette() {
   $('#cmd-palette-close')?.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
   input.addEventListener('input', renderCmds);
+  input.addEventListener('keydown', (e) => {
+    if (!currentFiltered.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % currentFiltered.length;
+      updateActiveHighlight();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + currentFiltered.length) % currentFiltered.length;
+      updateActiveHighlight();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = currentFiltered[activeIndex];
+      if (target) {
+        modal.classList.add('hidden');
+        target.action();
+      }
+    }
+  });
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
