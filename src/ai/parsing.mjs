@@ -190,12 +190,19 @@ export function parseAIResponse(raw) {
             : {}
         }))
     : [];
+  const validSectors = new Set(['vendas', 'comercial', 'suporte', 'financeiro', 'responsavel']);
+  const rawSector = typeof o.sector === 'string' ? o.sector.trim().toLowerCase() : '';
+  const validSentiments = new Set(['positivo', 'neutro', 'confuso', 'frustrado', 'urgente']);
+  const rawSentiment = typeof o.sentiment === 'string' ? o.sentiment.trim().toLowerCase() : '';
   return {
     reply: typeof o.reply === 'string' ? o.reply : '',
     intent: intents.has(o.intent) ? o.intent : (isHandoff ? 'falar_com_responsavel' : 'outro'),
     red_flags: o.red_flags === true,
     handoff: isHandoff,
     handoff_reason: typeof o.handoff_reason === 'string' ? o.handoff_reason : null,
+    sector: validSectors.has(rawSector) ? (rawSector === 'comercial' ? 'vendas' : rawSector) : null,
+    sentiment: validSentiments.has(rawSentiment) ? rawSentiment : null,
+    context_summary: typeof o.context_summary === 'string' && o.context_summary.trim() ? o.context_summary.trim().slice(0, 280) : null,
     reminder: rem,
     tool_calls: cleanToolCalls,
     collected: c

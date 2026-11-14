@@ -630,3 +630,88 @@ test('Triagem e Atendimento: consultar_base_conhecimento sem correspondência n�
   ]);
   assert.equal(triage.category, null);
 });
+
+test('IA-first multimodal + triagem híbrida + transferência contextualizada (warm transfer)', async () => {
+  const store = new SessionStore(null);
+  const notifications = [];
+  const botConfig = {
+    identity: { assistantName: 'Lia', ownerName: 'Tauan', companyName: 'Atualyze', roleTitle: 'Sócio' },
+    business: {
+      sectors: [
+        { id: 'sec-fin', name: 'Financeiro', description: 'Boleto, Pix e cobrança' },
+        { id: 'sec-com', name: 'Comercial', description: 'Vendas e orçamento' }
+      ]
+    },
+    automation: { enableMediaProcessing: true }
+  };
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5585999990000',
+    getBotConfig: () => botConfig,
+    isOwnerSender: () => false,
+    whatsapp: {
+      getMediaBase64: async () => ({ base64: 'ZmFrZS1pbWc=', mimetype: 'image/jpeg' }),
+      sendText: async (_to, msg) => notifications.push(msg)
+    },
+    ai: {
+      analyzeDocument: async () => ({
+        docType: 'comprovante',
+        summary: 'Print da tela de erro ao tentar pagar o boleto de R$ 150,00.',
+        keyPoints: ['Valor R$ 150,00', 'Erro de leitura do código']
+      }),
+      askAI: async ({ userText }) => {
+        if (/Resumo visual:/i.test(userText)) {
+          return {
+            reply: 'Vi seu print aqui! Posso gerar um novo Pix ou reenviar o boleto agora mesmo.',
+            sector: 'financeiro',
+            sentiment: 'neutro',
+            context_summary: 'Cliente enviou print de erro ao pagar boleto de R$ 150,00.',
+            handoff: false,
+            tool_calls: []
+          };
+        }
+        return {
+          reply: 'Entendo sua chateação com a demora, vou passar seu caso com todo o resumo para o Tauan resolver agora.',
+          sector: 'financeiro',
+          sentiment: 'frustrado',
+          context_summary: 'Cliente cobrando boleto há 2 dias e frustrado com o atraso.',
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  // 1) Imagem analisada pela IA não força handoff nem devolve resposta pronta
+  const rImg = await flow.process({
+    phone: '5585988887777',
+    text: 'Olha o erro que deu',
+    mediaType: 'image',
+    rawItem: { id: 'msg-img-1' },
+    origin: 'client',
+    pushName: 'Carlos'
+  });
+  assert.match(rImg, /Vi seu print aqui/i);
+  const sess1 = store.get('5585988887777');
+  assert.equal(sess1.human, false);
+  assert.equal(notifications.length, 0);
+  assert.equal(sess1.sectorName, 'Financeiro');
+  assert.equal(sess1.contextSummary, 'Cliente enviou print de erro ao pagar boleto de R$ 150,00.');
+
+  // 2) Sentimento frustrado aciona warm transfer com Setor, Sentimento e Resumo do contexto
+  const rFrustrated = await flow.process({
+    phone: '5585988887777',
+    text: 'Já estou há 2 dias esperando isso e ninguém resolve!',
+    origin: 'client',
+    pushName: 'Carlos'
+  });
+  assert.match(rFrustrated, /Entendo sua chateação/i);
+  assert.equal(sess1.human, true);
+  assert.equal(sess1.sentiment, 'frustrado');
+  assert.equal(sess1.contextSummary, 'Cliente cobrando boleto há 2 dias e frustrado com o atraso.');
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0], /\*Setor:\* Financeiro/);
+  assert.match(notifications[0], /\*Sentimento:\* frustrado/);
+  assert.match(notifications[0], /\*Resumo do contexto:\* Cliente cobrando boleto há 2 dias/);
+});

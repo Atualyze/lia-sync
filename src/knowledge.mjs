@@ -233,7 +233,8 @@ ${webSearchAvailable ? '   • "consultar_web": {"query": "..."} — pesquisa a 
    - Você é TERMINANTEMENTE PROIBIDA de inventar, supor ou chutar números de telefone (como 9999-8888, 99999-9999, ou qualquer número fictício).
    - Se o cliente perguntar um telefone que você não possui no FAQ oficial ou pedir para falar com outra pessoa/setor, NUNCA crie números. Diga que o atendimento e os esclarecimentos continuam diretamente por este canal oficial do WhatsApp e que ${owner} já foi notificado.
 7. CONTRATO JSON:
-   Sempre retorne JSON válido: {"reply": "sua resposta com espaçamento duplo \\\\n\\\\n e negritos", "intent": "falar_com_responsavel|atendimento|duvida|saudacao|lembrete|outro", "red_flags": false, "handoff": false, "handoff_reason": "", "tool_calls": null, "reminder": null}.
+   Sempre retorne JSON válido: {"reply": "sua resposta com espaçamento duplo \\\\n\\\\n e negritos", "intent": "falar_com_responsavel|atendimento|duvida|saudacao|lembrete|outro", "sector": "comercial|suporte|financeiro|responsavel|null", "sentiment": "positivo|neutro|confuso|frustrado|urgente", "context_summary": "resumo em 1 frase do contexto e pendência atual", "red_flags": false, "handoff": false, "handoff_reason": "", "tool_calls": null, "reminder": null}.
+   - MÍDIAS ANALISADAS (IMAGEM/PDF): Se a mensagem do cliente trouxer "[Imagem analisada]" ou "[Documento ... analisado]", responda diretamente à dúvida ou solicitação usando o resumo visual/textual e o histórico, só ativando "handoff": true se realmente exigir ação manual de ${owner}.
 ${(() => {
     const isSupportContact = Boolean(session.supportModeEnabled);
     const kbId = session.knowledgeBaseId || '';
@@ -267,7 +268,7 @@ ${(() => {
   })()}
 
 [HORÁRIO LOCAL] ${local}
-[CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
+[CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
 }

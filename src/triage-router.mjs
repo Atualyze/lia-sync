@@ -48,17 +48,10 @@ function normalizeText(text = '') {
  * @param {{ responsible?: string, companyName?: string, aliases?: string[] }} identity - Identidade configurada.
  * @returns {{ sectorId: string|null, sectorName: string|null, category: string|null, confidence: number }}
  */
-export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
-  if (!text || typeof text !== 'string') {
-    return { sectorId: null, sectorName: null, category: null, confidence: 0 };
-  }
-
-  const norm = normalizeText(text);
+function buildSectorMap(sectors = [], identity = {}) {
   const ownerNames = [identity.responsible, identity.companyName, ...(Array.isArray(identity.aliases) ? identity.aliases : [])]
     .map(normalizeText)
     .filter(Boolean);
-
-  // Mapeia setores cadastrados para categorias padrão
   const sectorMap = {};
   for (const s of sectors) {
     if (!s || s.isActive === false) continue;
@@ -76,6 +69,25 @@ export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
       sectorMap.responsavel = s;
     }
   }
+  return { sectorMap, ownerNames };
+}
+
+export function resolverSetorPorCategoria(category, sectors = [], identity = {}) {
+  if (!category || !Array.isArray(sectors) || !sectors.length) return null;
+  const normCat = normalizeText(category);
+  const canonical = normCat === 'comercial' ? 'vendas' : normCat;
+  const { sectorMap } = buildSectorMap(sectors, identity);
+  const matched = sectorMap[canonical] || null;
+  return matched ? { sectorId: matched.id || null, sectorName: matched.name || null, category: canonical } : null;
+}
+
+export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
+  if (!text || typeof text !== 'string') {
+    return { sectorId: null, sectorName: null, category: null, confidence: 0 };
+  }
+
+  const norm = normalizeText(text);
+  const { sectorMap, ownerNames } = buildSectorMap(sectors, identity);
 
   // Pontuação por categoria
   const scores = { vendas: 0, suporte: 0, financeiro: 0, responsavel: 0 };

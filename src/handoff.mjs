@@ -14,11 +14,18 @@ export function summary(session, reason = 'solicitação de atendimento', urgenc
   const waLink = cleanDigits ? `https://wa.me/${cleanDigits}` : '—';
   const tagUrgency = urgency === 'emergencia' ? ' 🚨 *URGENTE*' : '';
 
+  const warmContext = [
+    session.sectorName ? `🏷️ *Setor:* ${session.sectorName}` : '',
+    session.sentiment && session.sentiment !== 'neutro' ? `🎭 *Sentimento:* ${session.sentiment}` : '',
+    session.contextSummary ? `🧠 *Resumo do contexto:* ${session.contextSummary}` : ''
+  ].filter(Boolean).join('\n');
+
   return `🔔 *Novo contato para você, ${owner}!*${tagUrgency}\n\n` +
     `👤 *Nome:* ${clientName}\n` +
     `📱 *WhatsApp:* ${waLink}\n` +
-    `🎯 *Motivo:* ${reason}\n\n` +
-    `💬 *Conversa até agora:*\n${last || '• Nenhuma mensagem anterior'}`;
+    `🎯 *Motivo:* ${reason}\n` +
+    (warmContext ? `${warmContext}\n` : '') +
+    `\n💬 *Conversa até agora:*\n${last || '• Nenhuma mensagem anterior'}`;
 }
 
 export async function triggerHandoff(session, {

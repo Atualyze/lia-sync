@@ -5,7 +5,7 @@ import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs'
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
-import { classificarSetorPorTexto } from '../triage-router.mjs';
+import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToTauanRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
@@ -89,6 +89,8 @@ export async function handleClientMessage({
         }
       }
 
+      let mediaAnalyzedForAI = false;
+
       // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
       if (mediaType === 'image' || mediaType === 'video') {
         const typeLabel = mediaType === 'image' ? 'foto' : 'vídeo';
@@ -111,7 +113,9 @@ export async function handleClientMessage({
         }
 
         const historyNote = imageAnalysis?.summary
-          ? `[${typeLabel} enviada${clean ? `: ${clean}` : ''}]\nResumo visual: ${imageAnalysis.summary}`
+          ? `[${typeLabel} enviada${clean ? `: ${clean}` : ''}]\nResumo visual: ${imageAnalysis.summary}` +
+            (Array.isArray(imageAnalysis.keyPoints) && imageAnalysis.keyPoints.length ? `\nPontos-chave: ${imageAnalysis.keyPoints.join('; ')}` : '') +
+            (imageAnalysis.actionNeeded ? `\nAção sugerida pela análise: ${imageAnalysis.actionNeeded}` : '')
           : `[${typeLabel} enviada]` + (clean ? `: ${clean}` : '');
         s.history.push({ role: 'user', content: historyNote, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         if (imageAnalysis?.summary) {
@@ -124,26 +128,32 @@ export async function handleClientMessage({
           return null;
         }
 
-        const clientName = s.clientName || pushName || 'Contato';
-        const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
-        const visionExtra = imageAnalysis?.summary
-          ? `\n📋 *Análise Visual (${String(imageAnalysis.docType || 'Imagem').toUpperCase()}):*\n${imageAnalysis.summary}`
-          : '';
-        const alertMsg = `📸 *Novo(a) ${typeLabel} recebido(a) de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n💬 *Legenda:* "${clean || '(Sem legenda)'}"${visionExtra}\n\n_A ${assistant} notificou o cliente e pausou o bot para você continuar._`;
+        // Imagem analisada com sucesso: deixa a IA responder diretamente com o contexto visual + histórico
+        if (mediaType === 'image' && imageAnalysis?.summary) {
+          clean = historyNote;
+          mediaAnalyzedForAI = true;
+        } else {
+          const clientName = s.clientName || pushName || 'Contato';
+          const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
+          const visionExtra = imageAnalysis?.summary
+            ? `\n📋 *Análise Visual (${String(imageAnalysis.docType || 'Imagem').toUpperCase()}):*\n${imageAnalysis.summary}`
+            : '';
+          const alertMsg = `📸 *Novo(a) ${typeLabel} recebido(a) de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n💬 *Legenda:* "${clean || '(Sem legenda)'}"${visionExtra}\n\n_A ${assistant} notificou o cliente e pausou o bot para você continuar._`;
 
-        await triggerHandoff(s, {
-          reason: `Envio de ${typeLabel} pelo cliente`,
-          urgency: 'normal',
-          now: now(),
-          notify: () => notify(alertMsg),
-          identity
-        });
+          await triggerHandoff(s, {
+            reason: `Envio de ${typeLabel} pelo cliente`,
+            urgency: 'normal',
+            now: now(),
+            notify: () => notify(alertMsg),
+            identity
+          });
 
-        const reply = `Recebi sua *${typeLabel}* por aqui! 📸\n\nJá dei um toque em *${owner}* para dar uma olhada e te responder com atenção assim que puder.`;
-        s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-        s.lastBotAt = new Date(now()).toISOString();
-        store.markDirty();
-        return reply;
+          const reply = `Recebi sua *${typeLabel}* por aqui! 📸\n\nJá dei um toque em *${owner}* para dar uma olhada e te responder com atenção assim que puder.`;
+          s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
+          s.lastBotAt = new Date(now()).toISOString();
+          store.markDirty();
+          return reply;
+        }
       }
 
       // 2.3 TRATAMENTO DE DOCUMENTOS (PDF, BRIEFINGS, CONTRATOS)
@@ -169,30 +179,15 @@ export async function handleClientMessage({
           return null;
         }
 
-        const clientName = s.clientName || pushName || 'Contato';
-        const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
-
         if (docAnalysis && docAnalysis.summary) {
           const docTypeFormatted = String(docAnalysis.docType || 'PDF').toUpperCase();
-          const keySummary = `[Documento ${docTypeFormatted} analisado]\nResumo: ${docAnalysis.summary}` +
-            (Array.isArray(docAnalysis.keyPoints) && docAnalysis.keyPoints.length ? `\nPontos-chave: ${docAnalysis.keyPoints.join('; ')}` : '');
+          const keySummary = `[Documento ${docTypeFormatted} analisado${clean ? ` | Legenda: ${clean}` : ''}]\nResumo: ${docAnalysis.summary}` +
+            (Array.isArray(docAnalysis.keyPoints) && docAnalysis.keyPoints.length ? `\nPontos-chave: ${docAnalysis.keyPoints.join('; ')}` : '') +
+            (docAnalysis.actionNeeded ? `\nAção sugerida pela análise: ${docAnalysis.actionNeeded}` : '');
           s.history.push({ role: 'user', content: keySummary, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
-
-          const alertMsg = `📄 *Novo Documento (${docTypeFormatted}) recebido de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n\n📋 *Resumo Executivo:*\n${docAnalysis.summary}\n\n📌 *Pontos Identificados:*\n${(docAnalysis.keyPoints || []).map(p => `• ${p}`).join('\n')}\n\n💡 *Ação Sugerida:* ${docAnalysis.actionNeeded || 'Revisar anexo'}`;
-
-          await triggerHandoff(s, {
-            reason: `Envio de documento (${docTypeFormatted}) analisado pela ${assistant}`,
-            urgency: 'normal',
-            now: now(),
-            notify: () => notify(alertMsg),
-            identity
-          });
-
-          const reply = `Recebi seu documento por aqui! 📄\n\n${docAnalysis.summary}\n\nJá organizei os pontos principais e notifiquei *${owner}* para dar uma olhada e te responder com atenção!`;
-          s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-          s.lastBotAt = new Date(now()).toISOString();
-          store.markDirty();
-          return reply;
+          s.lastAnalyzedDocument = { ...docAnalysis, analyzedAt: new Date(now()).toISOString() };
+          clean = keySummary;
+          mediaAnalyzedForAI = true;
         }
       }
 
@@ -208,7 +203,7 @@ export async function handleClientMessage({
       }
 
       if (!clean) { store.markDirty(); return null; }
-      if (mediaType !== 'audio') {
+      if (mediaType !== 'audio' && !mediaAnalyzedForAI) {
         s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
       }
 
@@ -347,6 +342,15 @@ export async function handleClientMessage({
       const systemPrompt = buildSystemPrompt({ session: s, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
       const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>`;
       const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
+      const prevUserTurns = (s.history || []).slice(0, -1).filter(m => m.role === 'user');
+      const lastPrevUser = prevUserTurns[prevUserTurns.length - 1];
+      const normCurrent = normalize(clean);
+      if (lastPrevUser && normCurrent.length >= 3 && normalize(lastPrevUser.content) === normCurrent) {
+        s.repeatCount = (s.repeatCount || 0) + 1;
+      } else {
+        s.repeatCount = 0;
+      }
+
       const result = await ai?.askAI?.({
         system: systemPrompt,
         history: s.history.slice(Math.max(0, -contextTurns), -1),
@@ -354,6 +358,25 @@ export async function handleClientMessage({
         botConfig,
         deadline: aiDeadline
       });
+
+      if (result?.sector && Array.isArray(triageSectors) && triageSectors.length > 0) {
+        const resolvedSector = resolverSetorPorCategoria(result.sector, triageSectors, identity);
+        if (resolvedSector?.sectorId) {
+          s.sectorId = resolvedSector.sectorId;
+          s.sectorName = resolvedSector.sectorName;
+          s.sectorCategory = resolvedSector.category;
+        }
+      }
+      if (result?.sentiment) s.sentiment = result.sentiment;
+      if (result?.context_summary) s.contextSummary = result.context_summary;
+      if (result && (result.sentiment === 'frustrado' || (s.repeatCount || 0) >= 2)) {
+        result.handoff = true;
+        result.handoff_reason = result.handoff_reason || (
+          result.sentiment === 'frustrado'
+            ? 'Sentimento de frustração detectado'
+            : 'Cliente repetiu a mesma solicitação'
+        );
+      }
 
       let raw = (result?.reply || '').trim();
       if (/^\s*\{|"reply"\s*:/.test(raw)) {
