@@ -1,7 +1,10 @@
 const state = {
   sessions: [],
+  sessionCounts: { total: 0, real: 0, simulation: 0, handoff: 0 },
   selected: null,
   inboxFilter: 'all',
+  chatSearchQuery: '',
+  replyTo: null,
   view: 'overview',
   mode: 'real',
   agent: null,
@@ -42,6 +45,125 @@ const ROLE_LABELS = {
   viewer: 'Visualizador'
 };
 
+// ============================================================================
+// APPLE NATIVE NOTIFICATION ENGINE (TOAST CENTER)
+// ============================================================================
+const TOAST_ICONS = {
+  success: `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>`,
+  error: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  warn: `<svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`
+};
+
+function showToast({ title, message = '', type = 'info', duration = 4200 } = {}) {
+  const container = $('#toast-container');
+  if (!container) return;
+  const normalizedType = type === 'warning' ? 'warn' : (TOAST_ICONS[type] ? type : 'info');
+  const defaultTitles = {
+    success: 'Operação Concluída',
+    error: 'Atenção · Falha Detectada',
+    warn: 'Aviso Operacional',
+    info: 'Notificação do Sistema'
+  };
+  const resolvedTitle = title || defaultTitles[normalizedType];
+  const cleanMessage = String(message || '').replace(/^[✓⚡⚠🤖👤\s]+/, '').trim();
+
+  const toast = document.createElement('div');
+  toast.className = `apple-toast toast-${normalizedType}`;
+  toast.innerHTML = `
+    <div class="apple-toast-icon">${TOAST_ICONS[normalizedType]}</div>
+    <div class="apple-toast-body">
+      <div class="apple-toast-title">${esc(resolvedTitle)}</div>
+      ${cleanMessage ? `<div class="apple-toast-msg">${esc(cleanMessage)}</div>` : ''}
+    </div>
+    <button type="button" class="apple-toast-close" aria-label="Fechar notificação">
+      <svg class="svg-icon sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="apple-toast-progress" style="animation-duration:${duration}ms"></div>
+  `;
+
+  const dismiss = () => {
+    if (toast.classList.contains('toast-leaving')) return;
+    toast.classList.add('toast-leaving');
+    setTimeout(() => toast.remove(), 240);
+  };
+
+  toast.querySelector('.apple-toast-close')?.addEventListener('click', dismiss);
+  container.appendChild(toast);
+
+  // Limit max simultaneous toasts to 4
+  const allToasts = container.querySelectorAll('.apple-toast:not(.toast-leaving)');
+  if (allToasts.length > 4) {
+    allToasts[0].remove();
+  }
+
+  if (duration > 0) {
+    setTimeout(dismiss, duration);
+  }
+}
+
+// ============================================================================
+// APPLE FLOATING CONTEXT MENU ENGINE
+// ============================================================================
+function closeAppleContextMenu() {
+  const menu = $('#apple-context-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+    menu.innerHTML = '';
+  }
+  $('#chat-more-menu')?.classList.add('hidden');
+}
+
+function openAppleContextMenu({ x, y, header, items = [] }) {
+  const menu = $('#apple-context-menu');
+  if (!menu || !items.length) return;
+
+  menu.innerHTML = `
+    ${header ? `<div class="ctx-menu-header">${esc(header)}</div>` : ''}
+    ${items.map((item, idx) => {
+      if (item.divider) return `<div class="ctx-menu-divider"></div>`;
+      return `<button type="button" class="ctx-menu-item ${item.danger ? 'danger' : ''}" data-ctx-idx="${idx}">
+        ${item.icon || ''}
+        <span>${esc(item.label)}</span>
+        ${item.shortcut ? `<kbd>${esc(item.shortcut)}</kbd>` : ''}
+      </button>`;
+    }).join('')}
+  `;
+
+  menu.classList.remove('hidden');
+
+  // Position safely inside viewport
+  const rect = menu.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - 12;
+  const maxY = window.innerHeight - rect.height - 12;
+  menu.style.left = `${Math.max(12, Math.min(x, maxX))}px`;
+  menu.style.top = `${Math.max(12, Math.min(y, maxY))}px`;
+
+  menu.querySelectorAll('[data-ctx-idx]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const target = items[Number(btn.dataset.ctxIdx)];
+      closeAppleContextMenu();
+      target?.action?.();
+    });
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#apple-context-menu') && !e.target.closest('#chat-more-btn') && !e.target.closest('[data-msg-menu]')) {
+    closeAppleContextMenu();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeAppleContextMenu();
+    if (state.replyTo) clearReplyTo();
+  }
+});
+
+// ============================================================================
+// AUTHENTICATION & CAPTCHA
+// ============================================================================
 function readableAuthError(error) {
   if (!error) return 'Não foi possível entrar.';
   const raw = typeof error === 'string' ? error : error.message || error.error_description || error.msg || error.error || '';
@@ -195,15 +317,20 @@ async function initAuth() {
         if (error) {
           if (captcha.reset) captcha.reset();
           captcha.token = '';
-          $('#login-error').textContent = readableAuthError(error);
+          const msg = readableAuthError(error);
+          $('#login-error').textContent = msg;
+          showToast({ title: 'Falha na Autenticação', message: msg, type: 'error' });
           return;
         }
         accessToken = result.session?.access_token || '';
         if (!accessToken) throw new Error('O Supabase não retornou um token de acesso.');
         hydrateSessionUser(result.session);
+        showToast({ title: 'Sessão Iniciada', message: `Bem-vindo ao Lia Sync Console, ${state.userName || 'operador'}.`, type: 'success' });
         showDashboard();
       } catch (error) {
-        $('#login-error').textContent = readableAuthError(error);
+        const msg = readableAuthError(error);
+        $('#login-error').textContent = msg;
+        showToast({ title: 'Erro no Login', message: msg, type: 'error' });
       } finally {
         if (submit) submit.disabled = false;
       }
@@ -263,7 +390,12 @@ async function api(path, options = {}) {
     const detail = await response.text();
     if (response.status === 403) throw new Error('Seu usuário autenticou, mas ainda não possui um perfil ativo/autorizado no Supabase. Ative o perfil em public.profiles.');
     if (response.status === 503) throw new Error('O serviço de autorização do Supabase está temporariamente indisponível.');
-    throw new Error(detail);
+    let parsedMsg = detail;
+    try {
+      const parsed = JSON.parse(detail);
+      parsedMsg = parsed.error || parsed.message || detail;
+    } catch {}
+    throw new Error(parsedMsg);
   }
   return response.json();
 }
@@ -284,6 +416,179 @@ function selectedSession() {
   return state.sessions.find((item) => item.phone === state.selected);
 }
 
+// ============================================================================
+// INTELLIGENT MULTIMODAL CHAT & CONVERSATION LIST
+// ============================================================================
+function detectConversationMediaBadge(preview = '') {
+  const text = String(preview || '');
+  if (/^\[Áudio|^\[PTT|áudio enviado/i.test(text)) {
+    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>`;
+  }
+  if (/^\[Foto|^\[Imagem|foto enviada/i.test(text)) {
+    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+  }
+  if (/^\[Documento|\.pdf|documento anexado/i.test(text)) {
+    return `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+  }
+  return '';
+}
+
+function formatWhatsAppMarkdown(rawText = '') {
+  let safe = esc(rawText);
+  // Code blocks / inline code
+  safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // Bold *text* or **text**
+  safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+  // Italic _text_
+  safe = safe.replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,!?])/g, '$1<em>$2</em>');
+  return safe;
+}
+
+function parseMultimodalMessage(message = {}) {
+  const raw = String(message.content || '');
+  const explicitType = message.mediaType || '';
+
+  // 1. Audio / PTT detection
+  const audioMatch = raw.match(/^\[(?:Áudio|PTT|Audio)(?: transcrito)?\]:\s*["“]?([\s\S]*?)["”]?$/i)
+    || raw.match(/^\[Áudio enviado(?:\s*·\s*(.*?))?\]\s*([\s\S]*)$/i);
+  if (explicitType === 'audio' || audioMatch) {
+    const transcript = audioMatch ? (audioMatch[2] || audioMatch[1] || raw) : raw.replace(/^\[Áudio.*?\]:?\s*/i, '');
+    return {
+      kind: 'audio',
+      transcript: transcript.replace(/^["“]|["”]$/g, '').trim() || 'Mensagem de voz (PTT)',
+      duration: '0:08'
+    };
+  }
+
+  // 2. Image / Vision detection
+  const imgMatch = raw.match(/^\[(?:Foto|Imagem)([^\]]*)\]:?\s*([\s\S]*)$/i)
+    || raw.match(/^\[(foto enviada[^\]]*)\]\s*([\s\S]*)$/i);
+  if (explicitType === 'image' || imgMatch) {
+    const label = imgMatch ? (imgMatch[1]?.trim() || 'Imagem analisada via Visão Computacional') : 'Imagem recebida';
+    const caption = imgMatch ? (imgMatch[2]?.trim() || raw) : raw;
+    return {
+      kind: 'image',
+      label: label.replace(/^[:\s-]+/, '') || 'Visão Computacional',
+      caption: caption || 'Análise visual processada pela Lia.'
+    };
+  }
+
+  // 3. Document / PDF detection
+  const docMatch = raw.match(/^\[Documento\s+([^\]]+?)\s+analisado\]:\s*([\s\S]*)$/i)
+    || raw.match(/^\[(?:Documento|PDF|Arquivo)([^\]]*)\]:?\s*([\s\S]*)$/i);
+  if (explicitType === 'document' || docMatch) {
+    const fileName = message.fileName || (docMatch && docMatch[1]?.trim()) || 'documento_anexo.pdf';
+    const summary = docMatch ? (docMatch[2]?.trim() || raw) : raw;
+    return {
+      kind: 'document',
+      fileName,
+      summary
+    };
+  }
+
+  return {
+    kind: 'text',
+    text: raw
+  };
+}
+
+function renderWaveformBars(seed = 1) {
+  const heights = [28, 52, 75, 42, 90, 64, 38, 82, 95, 50, 34, 72, 88, 60, 44, 78, 92, 55, 36, 68, 80, 48, 62, 35, 70, 54, 40, 30];
+  return heights
+    .map((h, i) => {
+      const mod = ((h + seed * 11 + i * 7) % 70) + 22;
+      return `<span style="height:${mod}%"></span>`;
+    })
+    .join('');
+}
+
+function playAudioPreview(button, textToSpeak = '') {
+  const card = button.closest('.media-audio-card');
+  if (!card) return;
+  if (card.classList.contains('playing')) {
+    window.speechSynthesis?.cancel();
+    card.classList.remove('playing');
+    button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
+    return;
+  }
+
+  document.querySelectorAll('.media-audio-card.playing').forEach((other) => {
+    other.classList.remove('playing');
+  });
+
+  card.classList.add('playing');
+  button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`;
+
+  const finish = () => {
+    card.classList.remove('playing');
+    button.innerHTML = `<svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
+  };
+
+  if ('speechSynthesis' in window && textToSpeak) {
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(textToSpeak.slice(0, 260));
+      utter.lang = 'pt-BR';
+      utter.rate = 1.05;
+      utter.onend = finish;
+      utter.onerror = finish;
+      window.speechSynthesis.speak(utter);
+      return;
+    } catch {}
+  }
+  setTimeout(finish, 3500);
+}
+
+function setReplyTo(message, index) {
+  if (!message) return;
+  const sender = message.role === 'user' ? (selectedSession()?.displayName || 'Contato') : 'Lia (Assistente)';
+  const content = String(message.content || '').slice(0, 180);
+  state.replyTo = { sender, content, index };
+  const bar = $('#composer-reply-bar');
+  const senderEl = $('#composer-reply-sender');
+  const textEl = $('#composer-reply-text');
+  if (bar && senderEl && textEl) {
+    senderEl.textContent = `Respondendo a ${sender}`;
+    textEl.textContent = content;
+    bar.classList.remove('hidden');
+  }
+  $('#message-input')?.focus();
+}
+
+function clearReplyTo() {
+  state.replyTo = null;
+  $('#composer-reply-bar')?.classList.add('hidden');
+}
+
+function exportConversationTranscript(session) {
+  if (!session) return;
+  const lines = [
+    `====================================================`,
+    `TRANSCRIÇÃO DE ATENDIMENTO · LIA SYNC CONSOLE`,
+    `Contato: ${session.displayName || session.name || 'Contato'} (${session.phoneFormatted || session.phone})`,
+    `Modo: ${session.human ? 'Atendimento Humano' : 'Lia Automática'}`,
+    `Exportado em: ${new Date().toLocaleString('pt-BR')}`,
+    `====================================================`,
+    ''
+  ];
+  for (const msg of session.history || []) {
+    const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString('pt-BR') : '';
+    const who = msg.role === 'user' ? 'CLIENTE' : 'LIA';
+    lines.push(`[${time}] ${who}:`);
+    lines.push(`${msg.content || ''}`);
+    lines.push('');
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `conversa-${String(session.phone || 'sessao').replace(/\D/g, '') || 'simulacao'}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast({ title: 'Transcrição Exportada', message: 'O arquivo .txt da conversa foi baixado.', type: 'success' });
+}
+
 function renderList() {
   const query = ($('#search')?.value || '').toLowerCase();
   const filterMode = state.inboxFilter || 'all';
@@ -292,39 +597,118 @@ function renderList() {
     if (filterMode === 'bot' && item.human) return false;
     return `${item.name || ''} ${item.displayName || ''} ${item.phone || ''} ${item.phoneFormatted || ''} ${item.preview || ''}`.toLowerCase().includes(query);
   });
-  $('#conversation-count').textContent = state.sessions.length;
-  $('#handoff-count').textContent = state.sessions.filter((item) => item.human).length;
-  $('#conversation-items').innerHTML = items.length
-    ? items
-        .map((item) => {
-          const titleName = esc(item.displayName || item.name || 'Contato');
-          const phoneLabel = esc(item.phoneFormatted || item.phone || '');
-          const timeLabel = esc(item.time || '');
-          const previewText = esc(item.preview || 'Sem mensagens ainda');
-          const isSelected = item.phone === state.selected ? 'selected' : '';
-          const statusLabel = item.human ? 'humano' : 'lia ativa';
-          const statusClass = item.human ? 'human' : 'bot';
 
-          return `<div class="conversation ${isSelected}" data-phone="${esc(item.phone)}">
-            <div class="contact-avatar">${esc(initials(titleName))}</div>
-            <div class="conversation-body">
-              <div class="conversation-top"><strong title="${titleName}">${titleName}</strong><time>${timeLabel}</time></div>
-              <div class="conversation-phone-tag" style="font-size:11px;opacity:0.75;margin-bottom:2px;font-family:var(--font-mono);">${phoneLabel}</div>
-              <p>${previewText}</p>
-              <span class="mode-mini ${statusClass}">${statusLabel}</span>
-            </div>
-          </div>`;
-        })
-        .join('')
-    : '<div class="detail-placeholder" style="padding:25px 18px">Nenhuma conversa encontrada para este filtro. Use “+” para iniciar uma simulação.</div>';
+  const convCountEl = $('#conversation-count');
+  if (convCountEl) convCountEl.textContent = state.sessions.length;
+  const handoffCountEl = $('#handoff-count');
+  if (handoffCountEl) handoffCountEl.textContent = state.sessionCounts?.handoff ?? state.sessions.filter((item) => item.human).length;
 
-  document.querySelectorAll('.conversation').forEach((el) =>
+  const container = $('#conversation-items');
+  if (!container) return;
+
+  if (!items.length) {
+    const counts = state.sessionCounts || {};
+    const otherReal = state.mode !== 'real' && counts.real > 0;
+    const otherSim = state.mode !== 'simulation' && counts.simulation > 0;
+    let switchHint = '';
+    if (otherReal) {
+      switchHint = `<button type="button" class="btn-primary btn-sm" data-switch-mode="real" style="margin-top:10px;">Ver ${counts.real} conversa(s) do WhatsApp Real</button>`;
+    } else if (otherSim) {
+      switchHint = `<button type="button" class="btn-primary btn-sm" data-switch-mode="simulation" style="margin-top:10px;">Ver ${counts.simulation} sessão(ões) no Simulador</button>`;
+    } else if (counts.total > 0 && state.mode !== 'all') {
+      switchHint = `<button type="button" class="btn-primary btn-sm" data-switch-mode="all" style="margin-top:10px;">Exibir Todas (${counts.total})</button>`;
+    }
+    container.innerHTML = `<div class="detail-placeholder" style="padding:28px 18px;text-align:center;">
+      <div>Nenhuma conversa encontrada para o filtro atual (<b>${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}</b>).</div>
+      <div style="margin-top:6px;font-size:11.5px;color:var(--text-tertiary);">Use o botão “+” acima para iniciar uma simulação ou alterne o modo.</div>
+      ${switchHint}
+    </div>`;
+    container.querySelectorAll('[data-switch-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetMode = btn.dataset.switchMode;
+        const select = $('#mode-selector');
+        if (select) {
+          select.value = targetMode;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    });
+    return;
+  }
+
+  container.innerHTML = items
+    .map((item) => {
+      const titleName = esc(item.displayName || item.name || 'Contato');
+      const phoneLabel = esc(item.phoneFormatted || item.phone || '');
+      const timeLabel = esc(item.time || '');
+      const previewText = esc(item.preview || 'Sem mensagens ainda');
+      const isSelected = item.phone === state.selected ? 'selected' : '';
+      const statusLabel = item.human ? 'humano' : 'lia ativa';
+      const statusClass = item.human ? 'human' : 'bot';
+      const mediaIcon = detectConversationMediaBadge(item.preview);
+      const originBadge = item.origin === 'simulation' ? '<span class="pill mini pale" style="font-size:9.5px;padding:1px 6px;">SIM</span>' : '';
+
+      return `<div class="conversation ${isSelected}" data-phone="${esc(item.phone)}">
+        <div class="contact-avatar">${esc(initials(titleName))}</div>
+        <div class="conversation-body">
+          <div class="conversation-top"><strong title="${titleName}">${titleName}</strong><time>${timeLabel}</time></div>
+          <div class="conversation-phone-tag">${phoneLabel} ${originBadge}</div>
+          <p>${mediaIcon}${previewText}</p>
+          <span class="mode-mini ${statusClass}">${statusLabel}</span>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  container.querySelectorAll('.conversation').forEach((el) => {
     el.addEventListener('click', () => {
       state.selected = el.dataset.phone;
+      clearReplyTo();
       $('#inbox-grid')?.classList.add('mobile-chat-open');
       render();
-    })
-  );
+    });
+
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const phone = el.dataset.phone;
+      const sess = state.sessions.find((s) => s.phone === phone);
+      if (!sess) return;
+      state.selected = phone;
+      render();
+      openAppleContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        header: sess.displayName || sess.phoneFormatted || sess.phone,
+        items: [
+          {
+            label: sess.human ? 'Reativar Lia (Automático)' : 'Assumir Atendimento Humano',
+            icon: `<svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
+            action: () => setMode(sess.human ? 'bot' : 'human')
+          },
+          {
+            label: 'Copiar Telefone / ID',
+            icon: `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+            action: () => {
+              navigator.clipboard?.writeText(sess.phoneFormatted || sess.phone);
+              showToast({ title: 'Telefone Copiado', message: sess.phoneFormatted || sess.phone, type: 'success' });
+            }
+          },
+          {
+            label: 'Exportar Transcrição (.txt)',
+            icon: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+            action: () => exportConversationTranscript(sess)
+          },
+          { divider: true },
+          {
+            label: sess.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa',
+            danger: true,
+            icon: `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+            action: () => clearSession()
+          }
+        ]
+      });
+    });
+  });
 }
 
 function renderChat() {
@@ -349,21 +733,243 @@ function renderChat() {
   const badge = $('#chat-mode');
   badge.textContent = session.human ? 'HUMANO' : 'LIA ATIVA';
   badge.className = `mode-badge ${session.human ? 'human' : 'bot'}`;
-  $('#messages').innerHTML =
-    (session.history || [])
-      .map((message) => {
-        const time = message.createdAt ? new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
-        return `<div class="bubble ${message.role === 'user' ? 'in' : 'out'}">${esc(message.content)}<small>${
-          message.role === 'user' ? 'contato' : 'lia'
-        }${time ? ` · ${time}` : ''}</small></div>`;
-      })
-      .join('') || '<div class="detail-placeholder" style="margin:auto">Envie uma mensagem para iniciar a interação.</div>';
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+
+  const rawHistory = session.history || [];
+  const searchQ = (state.chatSearchQuery || '').trim().toLowerCase();
+  const filteredHistory = rawHistory
+    .map((m, idx) => ({ ...m, _idx: idx }))
+    .filter((m) => !searchQ || String(m.content || '').toLowerCase().includes(searchQ));
+
+  const searchCountEl = $('#chat-search-count');
+  if (searchCountEl) {
+    searchCountEl.textContent = searchQ ? `${filteredHistory.length}/${rawHistory.length}` : '';
+  }
+
+  const messagesEl = $('#messages');
+  if (messagesEl) {
+    messagesEl.innerHTML = filteredHistory.length
+      ? filteredHistory
+          .map((message) => {
+            const idx = message._idx;
+            const isUser = message.role === 'user';
+            const time = message.createdAt
+              ? new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+              : '';
+            const parsed = parseMultimodalMessage(message);
+
+            // Quoted Reply block
+            let quoteHtml = '';
+            if (message.replyTo && (message.replyTo.content || message.replyTo.text)) {
+              const qSender = esc(message.replyTo.sender || 'Mensagem anterior');
+              const qText = esc(String(message.replyTo.content || message.replyTo.text).slice(0, 140));
+              const qIdx = message.replyTo.index ?? '';
+              quoteHtml = `<div class="bubble-quote" data-scroll-msg="${esc(qIdx)}">
+                <strong>${qSender}</strong>
+                <span>${qText}</span>
+              </div>`;
+            }
+
+            // Content block by media type
+            let bodyHtml = '';
+            if (parsed.kind === 'audio') {
+              bodyHtml = `
+                <div class="media-card media-audio-card">
+                  <div class="media-audio-row">
+                    <button type="button" class="audio-play-btn" data-play-audio="${esc(parsed.transcript)}" title="Ouvir prévia de voz">
+                      <svg class="svg-icon sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>
+                    </button>
+                    <div class="audio-waveform">${renderWaveformBars(idx + 1)}</div>
+                    <span class="audio-duration">${esc(parsed.duration)}</span>
+                  </div>
+                  <div class="audio-transcript">
+                    <strong>Transcrição de Voz · IA</strong>
+                    <div>${formatWhatsAppMarkdown(parsed.transcript)}</div>
+                  </div>
+                </div>
+              `;
+            } else if (parsed.kind === 'image') {
+              bodyHtml = `
+                <div class="media-card">
+                  <div class="media-image-preview">
+                    <svg class="svg-icon lg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    <span>${esc(parsed.label)}</span>
+                  </div>
+                  <div class="bubble-body">${formatWhatsAppMarkdown(parsed.caption)}</div>
+                </div>
+              `;
+            } else if (parsed.kind === 'document') {
+              bodyHtml = `
+                <div class="media-card">
+                  <div class="media-doc-row">
+                    <div class="media-doc-icon">
+                      <svg class="svg-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="media-doc-info">
+                      <strong>${esc(parsed.fileName)}</strong>
+                      <span>Documento Processado · Memória Ativa</span>
+                    </div>
+                  </div>
+                  <div class="bubble-body" style="margin-top:8px;">${formatWhatsAppMarkdown(parsed.summary)}</div>
+                </div>
+              `;
+            } else {
+              bodyHtml = `<div class="bubble-body">${formatWhatsAppMarkdown(parsed.text)}</div>`;
+            }
+
+            const readCheck = !isUser
+              ? `<svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>`
+              : '';
+
+            return `<div class="bubble ${isUser ? 'in' : 'out'}" data-msg-index="${idx}">
+              <div class="bubble-actions">
+                <button type="button" class="bubble-act-btn" data-msg-reply="${idx}" title="Responder mensagem">
+                  <svg class="svg-icon xs" viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                </button>
+                <button type="button" class="bubble-act-btn" data-msg-copy="${idx}" title="Copiar texto">
+                  <svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <button type="button" class="bubble-act-btn" data-msg-menu="${idx}" title="Mais opções">
+                  <svg class="svg-icon xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+                </button>
+              </div>
+              ${quoteHtml}
+              ${bodyHtml}
+              <small>${isUser ? esc(dName.split(' ')[0].toLowerCase()) : 'lia'}${time ? ` · ${time}` : ''} ${readCheck}</small>
+            </div>`;
+          })
+          .join('')
+      : `<div class="detail-placeholder" style="margin:auto">${searchQ ? 'Nenhuma mensagem corresponde à busca neste chat.' : 'Envie uma mensagem ou use os atalhos inteligentes abaixo para iniciar.'}</div>`;
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Bind audio play buttons
+    messagesEl.querySelectorAll('[data-play-audio]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playAudioPreview(btn, btn.dataset.playAudio);
+      });
+    });
+
+    // Bind scroll to quoted message
+    messagesEl.querySelectorAll('[data-scroll-msg]').forEach((quoteEl) => {
+      quoteEl.addEventListener('click', () => {
+        const targetIdx = quoteEl.dataset.scrollMsg;
+        if (targetIdx === '' || targetIdx == null) return;
+        const targetBubble = messagesEl.querySelector(`.bubble[data-msg-index="${targetIdx}"]`);
+        if (targetBubble) {
+          targetBubble.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetBubble.style.boxShadow = '0 0 0 2px var(--accent-blue)';
+          setTimeout(() => { targetBubble.style.boxShadow = ''; }, 1600);
+        }
+      });
+    });
+
+    // Bind bubble hover actions & context menu
+    const openBubbleMenu = (idx, x, y) => {
+      const msg = rawHistory[idx];
+      if (!msg) return;
+      openAppleContextMenu({
+        x,
+        y,
+        header: msg.role === 'user' ? 'Mensagem do Contato' : 'Resposta da Lia',
+        items: [
+          {
+            label: 'Responder com Citação',
+            shortcut: 'R',
+            icon: `<svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`,
+            action: () => setReplyTo(msg, idx)
+          },
+          {
+            label: 'Copiar Texto da Mensagem',
+            shortcut: '⌘C',
+            icon: `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+            action: () => {
+              navigator.clipboard?.writeText(msg.content || '');
+              showToast({ title: 'Mensagem Copiada', message: String(msg.content || '').slice(0, 80), type: 'success' });
+            }
+          },
+          {
+            label: 'Ouvir em Voz Alta (TTS)',
+            icon: `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+            action: () => {
+              if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(String(msg.content || '').slice(0, 300));
+                u.lang = 'pt-BR';
+                window.speechSynthesis.speak(u);
+                showToast({ title: 'Reproduzindo Voz', message: 'Síntese de áudio iniciada.', type: 'info' });
+              }
+            }
+          },
+          { divider: true },
+          {
+            label: 'Testar Frase no Roteador IA',
+            icon: `<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+            action: () => {
+              const routerInput = $('#router-test-input');
+              if (routerInput) routerInput.value = String(msg.content || '').slice(0, 220);
+              showView('agent');
+              setTimeout(() => runRouterTest(), 120);
+            }
+          },
+          {
+            label: 'Reutilizar Texto no Campo de Envio',
+            icon: `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+            action: () => {
+              const input = $('#message-input');
+              if (input) {
+                input.value = String(msg.content || '');
+                input.focus();
+              }
+            }
+          }
+        ]
+      });
+    };
+
+    messagesEl.querySelectorAll('[data-msg-reply]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.msgReply);
+        setReplyTo(rawHistory[idx], idx);
+      });
+    });
+
+    messagesEl.querySelectorAll('[data-msg-copy]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.msgCopy);
+        const text = rawHistory[idx]?.content || '';
+        navigator.clipboard?.writeText(text);
+        showToast({ title: 'Texto Copiado', message: text.slice(0, 75), type: 'success' });
+      });
+    });
+
+    messagesEl.querySelectorAll('[data-msg-menu]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.msgMenu);
+        const rect = btn.getBoundingClientRect();
+        openBubbleMenu(idx, rect.left, rect.bottom + 6);
+      });
+    });
+
+    messagesEl.querySelectorAll('.bubble[data-msg-index]').forEach((bubble) => {
+      bubble.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const idx = Number(bubble.dataset.msgIndex);
+        openBubbleMenu(idx, e.clientX, e.clientY);
+      });
+    });
+  }
+
+  const isRealSession = session.origin !== 'simulation' && state.mode === 'real';
   $('#message-input').disabled = false;
-  $('#composer button').disabled = false;
-  $('#message-input').placeholder = state.mode === 'real'
+  const submitBtn = $('#composer button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = false;
+  $('#message-input').placeholder = isRealSession
     ? (session.human ? 'Responder cliente via WhatsApp (modo humano ativo)…' : 'Responder cliente via WhatsApp (assume atendimento)…')
-    : 'Digite uma mensagem de teste para o Simulador Isolado…';
+    : 'Digite uma mensagem de teste ou use os chips acima…';
 
   const doc = session.lastAnalyzedDocument;
   const docHtml = doc
@@ -394,18 +1000,21 @@ function renderChat() {
       <div class="detail-row"><span>Modo atual</span><b>${session.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
       <div class="detail-row"><span>Origem</span><b>${session.origin === 'simulation' ? 'Simulador Isolado' : 'WhatsApp Real'}</b></div>
       <div class="detail-row"><span>Última atividade</span><b>${esc(session.time || 'agora')}</b></div>
-      <div class="detail-row"><span>Mensagens</span><b>${(session.history || []).length}</b></div>
+      <div class="detail-row"><span>Mensagens</span><b>${rawHistory.length}</b></div>
       ${session.handoffReason ? `<div class="detail-row"><span>Motivo Handoff</span><b>${esc(session.handoffReason)}</b></div>` : ''}
     </div>
     ${crmHtml}
     ${docHtml}
     <button class="detail-action primary" id="toggle-mode">${session.human ? 'Reativar Lia (Bot)' : 'Transferir para Humano'}</button>
-    <button class="detail-action" id="clear-session">${state.mode === 'real' ? 'Arquivar Conversa' : 'Limpar Sessão de Teste'}</button>
+    <button class="detail-action" id="clear-session">${session.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa'}</button>
   `;
   $('#toggle-mode')?.addEventListener('click', () => setMode(session.human ? 'bot' : 'human'));
   $('#clear-session')?.addEventListener('click', clearSession);
 }
 
+// ============================================================================
+// AGENT ARCHITECTURE & ROUTER
+// ============================================================================
 function agentTopic(topic) {
   for (const group of ['knowledge', 'capabilities', 'controls']) if (state.agent?.[group]?.[topic]) return state.agent[group][topic];
   return null;
@@ -557,6 +1166,9 @@ async function runRouterTest() {
   }
 }
 
+// ============================================================================
+// TELEMETRY & METRICS
+// ============================================================================
 async function renderMetrics() {
   try {
     const data = await api('/api/dashboard/metrics');
@@ -578,13 +1190,13 @@ async function renderMetrics() {
         latBadge.textContent = 'Sem dados';
         latBadge.className = 'pill mini pale';
       } else if (avg < 1200) {
-        latBadge.textContent = '⚡ Rápido';
+        latBadge.textContent = 'Rápido';
         latBadge.className = 'pill mini mint';
       } else if (avg < 3000) {
-        latBadge.textContent = '✓ Normal';
+        latBadge.textContent = 'Normal';
         latBadge.className = 'pill mini mint';
       } else {
-        latBadge.textContent = '⚠ Alto';
+        latBadge.textContent = 'Alto';
         latBadge.className = 'pill mini err';
       }
     }
@@ -803,14 +1415,18 @@ function renderHandoff() {
       btn.textContent = 'Reativando…';
       try {
         await api('/api/dashboard/mode', { method: 'POST', body: JSON.stringify({ phone, mode: 'bot' }) });
+        showToast({ title: 'Lia Reativada', message: `O atendimento automático foi retomado para ${phone}.`, type: 'success' });
         await refresh();
       } catch (e) {
-        window.alert(e.message || 'Erro ao reativar bot');
+        showToast({ title: 'Erro ao Reativar', message: e.message || 'Não foi possível reativar a Lia.', type: 'error' });
       }
     };
   });
 }
 
+// ============================================================================
+// ADMIN CONFIGURATION & COLLAPSIBLE ACCORDIONS
+// ============================================================================
 const adminGet = (object, path) => path.split('.').reduce((value, key) => value?.[key], object);
 const adminSet = (object, path, value) => {
   const keys = path.split('.');
@@ -821,11 +1437,17 @@ const adminSet = (object, path, value) => {
 
 function adminFeedback(message, type = 'success') {
   const el = $('#admin-feedback');
-  if (!el) return;
-  el.textContent = message;
-  el.className = `admin-feedback ${type}`;
-  clearTimeout(adminFeedback.timer);
-  adminFeedback.timer = setTimeout(() => el.classList.add('hidden'), 5000);
+  if (el) {
+    el.textContent = message;
+    el.className = `admin-feedback ${type}`;
+    clearTimeout(adminFeedback.timer);
+    adminFeedback.timer = setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+  showToast({
+    title: type === 'error' ? 'Erro na Configuração' : 'Configuração da Lia',
+    message,
+    type: type === 'error' ? 'error' : 'success'
+  });
 }
 
 function renderAdminFaq() {
@@ -837,7 +1459,9 @@ function renderAdminFaq() {
     <div class="admin-faq-key"><span class="faq-index">#${String(index + 1).padStart(2, '0')}</span><input type="text" data-faq-keys value="${esc((item.keys || []).join(', '))}" aria-label="Palavras-chave" placeholder="palavras-chave separadas por vírgula" /></div>
     <textarea data-faq-answer rows="2" aria-label="Resposta">${esc(item.answer || '')}</textarea>
     <label class="faq-enabled"><input type="checkbox" data-faq-enabled ${item.enabled !== false ? 'checked' : ''} /> ativo</label>
-    <button type="button" class="icon-btn faq-remove" data-faq-remove="${index}" aria-label="Remover item">✕</button>
+    <button type="button" class="icon-btn faq-remove" data-faq-remove="${index}" aria-label="Remover item">
+      <svg class="svg-icon xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>`).join('') || '<div class="detail-placeholder admin-empty">Nenhum item cadastrado. Adicione a primeira resposta da base.</div>';
 }
 
@@ -1035,7 +1659,11 @@ function renderFallbackRows() {
     const models = state.fallbackCatalogs[selected.provider] || [];
     const options = models.map(model => `<option value="${esc(model.id)}" ${model.id === selected.model ? 'selected' : ''}>${esc(model.name || model.id)} · ${esc(model.id)}</option>`).join('');
     const extra = selected.model && !models.some(model => model.id === selected.model) ? `<option value="${esc(selected.model)}" selected>${esc(selected.model)} (salvo)</option>` : '';
-    return `<label>Reserva ${index + 1}<select class="admin-fallback-provider" data-index="${index}">${FALLBACK_PROVIDERS.map(([id, name]) => `<option value="${id}" ${id === selected.provider ? 'selected' : ''}>${name}</option>`).join('')}</select><select class="admin-fallback-model" data-index="${index}"><option value="">Nenhum modelo</option>${options}${extra}</select></label>`;
+    return `<div class="fallback-row-card">
+      <span class="fallback-slot-title">Reserva #${index + 1}</span>
+      <select class="admin-fallback-provider" data-index="${index}">${FALLBACK_PROVIDERS.map(([id, name]) => `<option value="${id}" ${id === selected.provider ? 'selected' : ''}>${name}</option>`).join('')}</select>
+      <select class="admin-fallback-model" data-index="${index}"><option value="">Nenhum modelo selecionado</option>${options}${extra}</select>
+    </div>`;
   }).join('');
   container.querySelectorAll('.admin-fallback-provider').forEach(select => select.addEventListener('change', async event => {
     await loadFallbackCatalog(event.target.value, { refresh: true });
@@ -1172,7 +1800,7 @@ async function publishAdminChanges() {
     if (!result.ok) throw new Error((result.errors || []).join(' '));
     state.adminConfig = result.snapshot;
     renderAdmin({ force: true });
-    adminFeedback(`✓ Revisão v${result.snapshot.revision} publicada e ativa em tempo real!`, 'success');
+    adminFeedback(`Revisão v${result.snapshot.revision} publicada e ativa em tempo real!`, 'success');
     if (state.view === 'tools') await renderTools();
     if (state.view === 'overview') await renderOverview();
   } catch (error) {
@@ -1202,12 +1830,21 @@ function applyRoleVisibility() {
 
 function opsFeedback(id, message, type = 'success') {
   const element = $(`#${id}`);
-  if (!element) return;
-  element.textContent = message;
-  element.className = `admin-feedback ${type}`;
-  element.classList.remove('hidden');
+  if (element) {
+    element.textContent = message;
+    element.className = `admin-feedback ${type}`;
+    element.classList.remove('hidden');
+  }
+  showToast({
+    title: type === 'error' ? 'Falha na Operação' : 'Atualização do Sistema',
+    message,
+    type: type === 'error' ? 'error' : 'success'
+  });
 }
 
+// ============================================================================
+// OVERVIEW, TOOLS, CAMPAIGNS, USERS, INTEGRATIONS
+// ============================================================================
 async function renderOverview() {
   const healthEl = $('#overview-health');
   const costsEl = $('#overview-costs');
@@ -1239,7 +1876,6 @@ async function renderOverview() {
     ovBadge.className = `badge-mini ${isReady ? 'ok' : 'warn'}`;
   }
 
-  // Update Overview KPI Strip with real data
   const ev = integrations?.evolution;
   if ($('#ov-kpi-wa')) {
     $('#ov-kpi-wa').textContent = ev ? (ev.connected ? 'Conectado' : ev.status) : (health?.readiness?.ok ? 'Online' : 'Verificando');
@@ -1251,8 +1887,8 @@ async function renderOverview() {
   }
   if ($('#ov-kpi-sessions')) {
     const sys = metrics?.system || {};
-    $('#ov-kpi-sessions').textContent = `${Number(sys.totalSessions ?? state.sessions.length)}`;
-    $('#ov-kpi-sessions-sub').textContent = `${Number(sys.handoffWaiting ?? state.sessions.filter(s => s.human).length)} em atendimento humano`;
+    $('#ov-kpi-sessions').textContent = `${Number(sys.totalSessions ?? state.sessionCounts?.total ?? state.sessions.length)}`;
+    $('#ov-kpi-sessions-sub').textContent = `${Number(sys.handoffWaiting ?? state.sessionCounts?.handoff ?? state.sessions.filter(s => s.human).length)} em atendimento humano`;
   }
   if ($('#ov-kpi-bridge')) {
     const br = integrations?.chatwootBridge;
@@ -1320,7 +1956,7 @@ async function renderTools() {
           <input type="checkbox" class="tool-toggle" data-tool="${esc(tool.name)}" aria-label="Ativar ${esc(tool.name)}" ${tool.enabled ? 'checked' : ''} ${state.role === 'admin' ? '' : 'disabled'} />
         </div>
         <p>${esc(tool.description)}</p>
-        <div class="tool-meta">${tool.clientAllowed ? '✓ Fluxo de clientes & Copiloto' : '🔒 Exclusiva do Copiloto (Proprietário)'}${draftDiffers ? ` · <b style="color:var(--accent-amber)">rascunho difere do publicado (${active ? 'ligado' : 'desligado'})</b>` : ''}</div>
+        <div class="tool-meta">${tool.clientAllowed ? 'Fluxo de clientes & Copiloto' : 'Exclusiva do Copiloto (Proprietário)'}${draftDiffers ? ` · <b style="color:var(--accent-amber)">rascunho difere do publicado (${active ? 'ligado' : 'desligado'})</b>` : ''}</div>
       </article>`;
     }).join('');
   } catch (error) { opsFeedback('tools-feedback', `Falha ao carregar catálogo: ${error.message}`, 'error'); }
@@ -1415,10 +2051,19 @@ function render() {
 
 async function refresh() {
   const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
-  state.sessions = data.sessions;
+  state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  if (data.counts) state.sessionCounts = data.counts;
   const subtitle = $('#inbox-subtitle');
-  if (subtitle) subtitle.textContent = data.persistence === 'supabase' ? `${data.sessions.length} sessões · Supabase` : data.persistenceError ? 'fallback local — Supabase indisponível' : `${data.sessions.length} sessões ativas`;
-  if (!state.sessions.some((item) => item.phone === state.selected)) state.selected = state.sessions[0]?.phone || null;
+  if (subtitle) {
+    subtitle.textContent = data.persistence === 'supabase'
+      ? `${state.sessions.length} sessões (${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}) · Supabase`
+      : data.persistenceError
+      ? 'fallback local — Supabase indisponível'
+      : `${state.sessions.length} sessões ativas`;
+  }
+  if (!state.sessions.some((item) => item.phone === state.selected)) {
+    state.selected = state.sessions[0]?.phone || null;
+  }
   render();
 }
 
@@ -1434,9 +2079,13 @@ async function setMode(mode) {
   try {
     await api('/api/dashboard/mode', { method: 'POST', body: JSON.stringify({ phone: state.selected, mode }) });
     await refresh();
-    adminFeedback(mode === 'bot' ? '🤖 Lia reativada com sucesso!' : '👤 Modo humano ativado para a conversa.', 'success');
+    showToast({
+      title: mode === 'bot' ? 'Lia Reativada' : 'Atendimento Humano',
+      message: mode === 'bot' ? 'A Lia voltou a responder esta conversa automaticamente.' : 'Conversa transferida para atendimento humano.',
+      type: 'success'
+    });
   } catch (err) {
-    adminFeedback(`Erro ao alternar modo: ${err.message}`, 'error');
+    showToast({ title: 'Falha ao Alternar Modo', message: err.message, type: 'error' });
   } finally {
     if (toggleBtn) toggleBtn.disabled = false;
     if (topBtn) topBtn.disabled = false;
@@ -1445,21 +2094,27 @@ async function setMode(mode) {
 
 async function clearSession() {
   if (!state.selected) return;
+  const sess = selectedSession();
   try {
-    const real = state.mode === 'real';
+    const real = sess ? sess.origin !== 'simulation' : state.mode === 'real';
     if (real && !window.confirm('Arquivar esta conversa real?')) return;
     await api('/api/dashboard/clear', {
       method: 'POST',
       body: JSON.stringify({
         phone: state.selected,
-        mode: state.mode,
+        mode: real ? 'real' : 'simulation',
         confirm: !real || true,
         reason: real ? 'Arquivamento solicitado no dashboard' : 'Limpeza de simulação'
       })
     });
+    showToast({
+      title: real ? 'Conversa Arquivada' : 'Simulação Reiniciada',
+      message: real ? 'A sessão foi arquivada com sucesso.' : 'O histórico de teste foi limpo.',
+      type: 'info'
+    });
     await refresh();
   } catch (error) {
-    window.alert(error.message || 'Não foi possível concluir a operação.');
+    showToast({ title: 'Erro ao Arquivar', message: error.message || 'Não foi possível concluir a operação.', type: 'error' });
   }
 }
 
@@ -1483,11 +2138,18 @@ function showView(view) {
   document.querySelectorAll('.nav-item, .mob-nav-btn').forEach((item) => item.classList.toggle('active', item.dataset.view === view));
   $('#page-title').textContent = VIEW_TITLES[view] || 'Console Lia Sync';
 
-  // Close mobile sidebar if open
   $('#app-sidebar')?.classList.remove('mobile-open');
   $('#sidebar-backdrop')?.classList.add('hidden');
 
-  if (view === 'handoff') renderHandoff();
+  if (view === 'inbox') {
+    renderList();
+    renderChat();
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
+  }
+  if (view === 'handoff') {
+    renderHandoff();
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
+  }
   if (view === 'agent') renderAgent();
   if (view === 'metrics') renderMetrics();
   if (view === 'admin') renderAdminData();
@@ -1581,6 +2243,33 @@ function openAdminSection(accId) {
   }, 80);
 }
 
+async function sendChatMessage({ text, mediaType = 'text', fileName = '' } = {}) {
+  const cleanText = String(text || '').trim();
+  if (!cleanText || !state.selected) return;
+  const sess = selectedSession();
+  const isSim = sess ? sess.origin === 'simulation' : state.mode === 'simulation';
+  const endpoint = isSim ? '/api/dashboard/simulate' : '/api/dashboard/send';
+  const replyPayload = state.replyTo ? { ...state.replyTo } : null;
+  clearReplyTo();
+
+  try {
+    await api(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: state.selected,
+        text: cleanText,
+        replyTo: replyPayload,
+        mediaType,
+        fileName
+      })
+    });
+    await refresh();
+    if (state.view === 'metrics') renderMetrics();
+  } catch (err) {
+    showToast({ title: 'Falha ao Enviar Mensagem', message: err.message || 'Erro de comunicação', type: 'error' });
+  }
+}
+
 function startDashboard() {
   showView('overview');
   setupCommandPalette();
@@ -1589,7 +2278,7 @@ function startDashboard() {
   $('#mode-selector').addEventListener('change', () => {
     state.mode = $('#mode-selector').value;
     state.selected = null;
-    $('#new-sim').disabled = state.mode === 'real';
+    clearReplyTo();
     refresh();
   });
   $('#logout').addEventListener('click', () => supabase?.auth.signOut());
@@ -1600,6 +2289,108 @@ function startDashboard() {
       state.inboxFilter = tab.dataset.inboxFilter || 'all';
       document.querySelectorAll('.inbox-tab').forEach(t => t.classList.toggle('active', t === tab));
       renderList();
+    });
+  });
+
+  // In-chat search bar controls
+  $('#chat-search-toggle')?.addEventListener('click', () => {
+    const bar = $('#chat-search-bar');
+    if (!bar) return;
+    bar.classList.toggle('hidden');
+    if (!bar.classList.contains('hidden')) {
+      $('#chat-search-input')?.focus();
+    } else {
+      state.chatSearchQuery = '';
+      if ($('#chat-search-input')) $('#chat-search-input').value = '';
+      renderChat();
+    }
+  });
+  $('#chat-search-close')?.addEventListener('click', () => {
+    $('#chat-search-bar')?.classList.add('hidden');
+    state.chatSearchQuery = '';
+    if ($('#chat-search-input')) $('#chat-search-input').value = '';
+    renderChat();
+  });
+  $('#chat-search-input')?.addEventListener('input', (e) => {
+    state.chatSearchQuery = e.target.value;
+    renderChat();
+  });
+
+  // Chat Header More Options (⋮)
+  $('#chat-more-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const sess = selectedSession();
+    if (!sess) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    openAppleContextMenu({
+      x: rect.right - 220,
+      y: rect.bottom + 8,
+      header: 'Ações da Conversa',
+      items: [
+        {
+          label: 'Buscar nesta conversa',
+          shortcut: '⌘F',
+          icon: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+          action: () => $('#chat-search-toggle')?.click()
+        },
+        {
+          label: 'Exportar Transcrição (.txt)',
+          icon: `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          action: () => exportConversationTranscript(sess)
+        },
+        {
+          label: sess.human ? 'Reativar Lia (Automático)' : 'Transferir para Humano',
+          icon: `<svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
+          action: () => setMode(sess.human ? 'bot' : 'human')
+        },
+        { divider: true },
+        {
+          label: sess.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa',
+          danger: true,
+          icon: `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+          action: () => clearSession()
+        }
+      ]
+    });
+  });
+
+  // Composer Reply Cancel
+  $('#composer-reply-cancel')?.addEventListener('click', clearReplyTo);
+
+  // Smart Bar: Media Simulation & Quick Reply Chips
+  document.querySelectorAll('[data-sim-media]').forEach((chip) => {
+    chip.addEventListener('click', async () => {
+      if (!state.selected) {
+        showToast({ title: 'Selecione uma Conversa', message: 'Abra uma conversa ou inicie uma simulação primeiro.', type: 'warn' });
+        return;
+      }
+      const kind = chip.dataset.simMedia;
+      if (kind === 'audio') {
+        await sendChatMessage({
+          text: '[Áudio]: "Olá Lia, pode me explicar como funcionam os horários de agendamento e valores?"',
+          mediaType: 'audio'
+        });
+      } else if (kind === 'image') {
+        await sendChatMessage({
+          text: '[Foto enviada: comprovante_pagamento.jpg] Segue a imagem do documento solicitado para análise.',
+          mediaType: 'image'
+        });
+      } else if (kind === 'document') {
+        await sendChatMessage({
+          text: '[Documento contrato_prestacao.pdf analisado]: Solicito revisão das cláusulas de prazo e agendamento.',
+          mediaType: 'document',
+          fileName: 'contrato_prestacao.pdf'
+        });
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-quick-reply]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const input = $('#message-input');
+      if (!input) return;
+      input.value = chip.dataset.quickReply || '';
+      input.focus();
     });
   });
 
@@ -1626,14 +2417,7 @@ function startDashboard() {
     const text = input.value.trim();
     if (!text || !state.selected) return;
     input.value = '';
-    const endpoint = state.mode === 'real' ? '/api/dashboard/send' : '/api/dashboard/simulate';
-    try {
-      await api(endpoint, { method: 'POST', body: JSON.stringify({ phone: state.selected, text }) });
-    } catch (err) {
-      window.alert(err.message || 'Falha ao enviar mensagem');
-    }
-    await refresh();
-    if (state.view === 'metrics') renderMetrics();
+    await sendChatMessage({ text });
   });
   $('#search')?.addEventListener('input', renderList);
 
@@ -1643,6 +2427,7 @@ function startDashboard() {
       await refresh();
       if (state.view === 'overview') await renderOverview();
       if (state.view === 'integrations') await renderIntegrations();
+      showToast({ title: 'Dados Sincronizados', message: 'Sessões e indicadores atualizados em tempo real.', type: 'info', duration: 2400 });
     } finally {
       if (btn) setTimeout(() => btn.classList.remove('spinning'), 600);
     }
@@ -1676,12 +2461,13 @@ function startDashboard() {
     try {
       await saveToolsDraft();
       await publishAdminChanges();
-      opsFeedback('tools-feedback', `✓ Ferramentas e busca web publicadas e ativas no motor!`, 'success');
+      opsFeedback('tools-feedback', `Ferramentas e busca web publicadas e ativas no motor!`, 'success');
       await renderTools();
     } catch (error) { opsFeedback('tools-feedback', `Não foi possível publicar: ${error.message}`, 'error'); }
   });
   $('#tools-enable-all')?.addEventListener('click', () => {
     document.querySelectorAll('.tool-toggle').forEach(el => { if (!el.disabled) el.checked = true; });
+    showToast({ title: 'Ferramentas Selecionadas', message: 'Todas as ferramentas foram marcadas. Salve ou publique para aplicar.', type: 'info' });
   });
 
   // Campaigns & Suppressions
@@ -1752,8 +2538,9 @@ function startDashboard() {
     finally { button.disabled = false; }
   });
 
-  // Metrics Tariffs & Default Loader
-  $('#metrics-fill-defaults')?.addEventListener('click', () => {
+  // Metrics Tariffs & Default Loader (CSP-safe stopPropagation inside <summary>)
+  $('#metrics-fill-defaults')?.addEventListener('click', (e) => {
+    e.stopPropagation();
     const defaultRates = [
       { provider: 'gemini', model: 'gemini-3.8-flash', inputUsdPerMillion: 0.10, outputUsdPerMillion: 0.40 },
       { provider: 'gemini', model: 'gemini-2.5-flash', inputUsdPerMillion: 0.15, outputUsdPerMillion: 0.60 },
@@ -1767,10 +2554,13 @@ function startDashboard() {
     if ($('#metrics-monthly-budgets') && !$('#metrics-monthly-budgets').value.trim()) {
       $('#metrics-monthly-budgets').value = JSON.stringify(defaultBudgets, null, 2);
     }
+    const acc = $('#metrics-tariffs-accordion');
+    if (acc) acc.open = true;
     opsFeedback('metrics-rates-feedback', 'Tarifas sugeridas preenchidas. Clique em "Salvar no Rascunho" e depois publique.', 'success');
   });
 
-  $('#metrics-rates-save')?.addEventListener('click', async () => {
+  $('#metrics-rates-save')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
     try {
       const pricingRates = JSON.parse($('#metrics-pricing-rates').value || '[]');
       const monthlyBudgets = JSON.parse($('#metrics-monthly-budgets').value || '[]');
@@ -1820,7 +2610,7 @@ function startDashboard() {
   });
   $('#agent-drawer-close')?.addEventListener('click', () => $('#agent-detail-drawer')?.classList.add('hidden'));
 
-  // Collapsible Settings Accordion Toolbar (Search, Quick Chips, Expand/Collapse All)
+  // Collapsible Settings Accordion Toolbar
   $('#admin-expand-all')?.addEventListener('click', () => {
     document.querySelectorAll('#admin-accordion-stack .config-accordion').forEach(acc => { acc.open = true; });
   });
@@ -1909,7 +2699,7 @@ function startDashboard() {
       if (!result.ok) throw new Error((result.errors || []).join(' '));
       state.adminConfig = result.snapshot;
       renderAdmin({ force: true });
-      adminFeedback(`✓ Rollback concluído! Versão restaurada e publicada como v${result.snapshot.revision}.`, 'success');
+      adminFeedback(`Rollback concluído! Versão restaurada e publicada como v${result.snapshot.revision}.`, 'success');
     } catch (error) {
       adminFeedback(`Falha no rollback: ${error.message}`, 'error');
     } finally {
@@ -1917,7 +2707,8 @@ function startDashboard() {
     }
   });
 
-  $('#admin-add-faq')?.addEventListener('click', () => {
+  $('#admin-add-faq')?.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (!state.adminConfig) return;
     adminReadForm();
     state.adminConfig.draft.knowledge.faq.push({ keys: ['nova pergunta'], answer: 'Escreva aqui a resposta aprovada pela equipe.', enabled: true });
@@ -1925,6 +2716,7 @@ function startDashboard() {
     if (faqAcc) faqAcc.open = true;
     renderAdmin({ force: true });
     queueAdminSave();
+    showToast({ title: 'Pergunta FAQ Adicionada', message: 'Preencha as palavras-chave e a resposta padrão.', type: 'info' });
   });
   $('#admin-faq-list')?.addEventListener('input', queueAdminSave);
   $('#admin-faq-list')?.addEventListener('change', queueAdminSave);
@@ -1956,10 +2748,12 @@ function startDashboard() {
       });
       resultBox.className = 'admin-preview-result success';
       resultBox.innerHTML = `<div class="preview-result-head"><strong>Resposta simulada da IA (Tel: ${esc(testPhone)})</strong><span>rascunho base v${esc(result.revision)}</span></div><p style="white-space:pre-wrap;margin:6px 0;">${esc(result.answer || 'O fluxo não gerou resposta para esta mensagem.')}</p><small class="ops-muted">Esta execução ocorreu em memória temporária e não enviou mensagens reais.</small>`;
+      showToast({ title: 'Preview Executado', message: 'Resposta gerada em sessão isolada.', type: 'success', duration: 2800 });
     } catch (error) {
       resultBox.classList.remove('hidden');
       resultBox.className = 'admin-preview-result error';
       resultBox.textContent = error.message || 'Não foi possível executar o preview.';
+      showToast({ title: 'Falha no Preview', message: error.message, type: 'error' });
     } finally {
       button.disabled = false;
       button.textContent = 'Simular Resposta';
@@ -1975,7 +2769,7 @@ function startDashboard() {
     modal.innerHTML = `
       <div class="sim-modal-card">
         <h3>Nova Simulação Isolada</h3>
-        <p class="ops-muted" style="margin-bottom:14px;">Inicie uma sessão de teste para validar prompts, ferramentas e triagem sem acionar o WhatsApp real.</p>
+        <p class="ops-muted" style="margin-bottom:14px;">Inicie uma sessão de teste para validar prompts, ferramentas e multimídia sem acionar o WhatsApp real.</p>
         <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Identificador Numérico da Sessão</label>
         <input id="modal-sim-phone" type="text" value="${defaultPhone}" inputmode="numeric" />
         <div class="sim-modal-actions">
@@ -1999,14 +2793,19 @@ function startDashboard() {
       state.mode = 'simulation';
       $('#mode-selector').value = 'simulation';
       $('#mode-selector').dispatchEvent(new Event('change', { bubbles: true }));
-      await api('/api/dashboard/simulate', {
-        method: 'POST',
-        body: JSON.stringify({ phone, text: 'Olá, gostaria de conhecer o atendimento.' })
-      });
-      state.selected = `sim:${phone.replace(/^sim:/, '')}`;
-      $('#inbox-grid')?.classList.add('mobile-chat-open');
-      await refresh();
-      adminFeedback('Nova simulação iniciada com sucesso!', 'success');
+      showView('inbox');
+      try {
+        await api('/api/dashboard/simulate', {
+          method: 'POST',
+          body: JSON.stringify({ phone, text: 'Olá, gostaria de conhecer o atendimento.' })
+        });
+        state.selected = `sim:${phone.replace(/^sim:/, '')}`;
+        $('#inbox-grid')?.classList.add('mobile-chat-open');
+        await refresh();
+        showToast({ title: 'Simulação Iniciada', message: `Sessão isolada ${phone} pronta para testes.`, type: 'success' });
+      } catch (err) {
+        showToast({ title: 'Erro na Simulação', message: err.message, type: 'error' });
+      }
     };
   };
 
@@ -2024,30 +2823,33 @@ function startDashboard() {
       body.model = selectVal;
     }
     btn.disabled = true;
-    btn.textContent = '⏳ Testando latência…';
+    btn.textContent = 'Testando latência…';
     banner.classList.add('hidden');
     try {
       const res = await api('/api/dashboard/ping-ai', { method: 'POST', body: JSON.stringify(body) });
       banner.classList.remove('hidden');
       if (res.ok) {
         banner.className = 'ping-banner success';
-        banner.innerHTML = `⚡ <strong>Conexão bem-sucedida!</strong> Provedor: <b>${esc(res.provider)}</b> | Modelo: <b>${esc(
+        banner.innerHTML = `<strong>Conexão bem-sucedida!</strong> Provedor: <b>${esc(res.provider)}</b> | Modelo: <b>${esc(
           res.model
         )}</b> | Latência real: <b>${res.latencyMs} ms</b> | Tokens: <b>${res.tokens?.totalTokens || 0}</b>`;
+        showToast({ title: 'Ping IA Bem-Sucedido', message: `${res.provider.toUpperCase()} (${res.model}) respondeu em ${res.latencyMs} ms.`, type: 'success' });
       } else {
         banner.className = 'ping-banner error';
-        banner.innerHTML = `⚠ <strong>Falha no teste:</strong> Provedor <b>${esc(res.provider)}</b> (${esc(
+        banner.innerHTML = `<strong>Falha no teste:</strong> Provedor <b>${esc(res.provider)}</b> (${esc(
           res.model || selectVal || 'modelo padrão'
         )}) retornou erro: ${esc(res.error || 'sem resposta')}`;
+        showToast({ title: 'Falha no Ping IA', message: res.error || 'Sem resposta do provedor', type: 'error' });
       }
       await renderMetrics();
     } catch (e) {
       banner.classList.remove('hidden');
       banner.className = 'ping-banner error';
-      banner.innerHTML = `⚠ Erro ao testar conectividade: ${esc(e.message)}`;
+      banner.innerHTML = `Erro ao testar conectividade: ${esc(e.message)}`;
+      showToast({ title: 'Erro de Conectividade', message: e.message, type: 'error' });
     } finally {
       btn.disabled = false;
-      btn.textContent = '⚡ Testar Latência (Ping)';
+      btn.textContent = 'Testar Latência (Ping)';
     }
   };
 
@@ -2058,6 +2860,7 @@ function startDashboard() {
   $('#btn-reset-metrics')?.addEventListener('click', async () => {
     if (!window.confirm('Deseja zerar as métricas de latência e consumo em memória desta instância?')) return;
     await api('/api/dashboard/metrics/reset', { method: 'POST' });
+    showToast({ title: 'Métricas em Memória Zeradas', message: 'Contadores locais foram reiniciados.', type: 'info' });
     await renderMetrics();
   });
 
@@ -2101,6 +2904,7 @@ function startDashboard() {
         state.refreshTimer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 5000);
       } catch (error) {
         $('#conversation-items').innerHTML = `<div class="detail-placeholder" style="padding:18px">Não foi possível carregar o dashboard.<br>${esc(error.message)}</div>`;
+        showToast({ title: 'Erro ao Carregar Conversas', message: error.message, type: 'error' });
       }
     } else {
       state.sessions = [];

@@ -71,7 +71,19 @@ function rowToSession(row, messages = []) {
   const key = row.external_key;
   const resolvedName = row.contact_name || c.display_name || c.push_name || '';
   const cleanMessages = dedupeMessages(
-    messages.map(m => ({ role: m.role, content: m.content, createdAt: m.created_at || null, ...(m.external_id ? { id: m.external_id } : {}) }))
+    messages.map(m => {
+      const mMeta = (m.metadata && typeof m.metadata === 'object') ? m.metadata : {};
+      return {
+        role: m.role,
+        content: m.content,
+        createdAt: m.created_at || null,
+        ...(m.external_id ? { id: m.external_id } : {}),
+        ...(mMeta.replyTo ? { replyTo: mMeta.replyTo } : {}),
+        ...(mMeta.mediaType ? { mediaType: mMeta.mediaType } : {}),
+        ...(mMeta.fileName ? { fileName: mMeta.fileName } : {}),
+        ...(mMeta.fromCopilot ? { fromCopilot: true } : {})
+      };
+    })
   );
   return {
     phone: c.phone || key.replace(/^sim:/, ''),
@@ -194,6 +206,8 @@ export class SupabaseSessionStore extends SessionStore {
     this.persistence = 'fallback';
     this.remoteError = null;
     this.refreshing = null;
+    this.lastRefreshAt = 0;
+    this.initialSyncDone = false;
     this.lastRetentionSweepAt = 0;
   }
 
@@ -224,7 +238,7 @@ export class SupabaseSessionStore extends SessionStore {
     return localRemoved;
   }
 
-  async load() {
+  async load({ isRefresh = false } = {}) {
     const inMemory = { ...(this.sessions || {}) };
     await super.load();
     for (const [k, memSession] of Object.entries(inMemory)) {
@@ -299,6 +313,9 @@ export class SupabaseSessionStore extends SessionStore {
             rSession.clientName = lSession.clientName;
             rSession.contactName = lSession.contactName || lSession.clientName;
           }
+          if (lSession.lastAnalyzedDocument && (!rSession.lastAnalyzedDocument || lTime >= rTime)) {
+            rSession.lastAnalyzedDocument = lSession.lastAnalyzedDocument;
+          }
           rSession.pendingAudioConfirmation = lSession.pendingAudioConfirmation || null;
           rSession.pendingRecipient = lSession.pendingRecipient || null;
           rSession.pendingAsAudio = Boolean(lSession.pendingAsAudio);
@@ -313,7 +330,10 @@ export class SupabaseSessionStore extends SessionStore {
       const hasLocalOnly = Object.keys(local).some(key => !remote[key]);
       this.persistence = 'supabase';
       this.remoteError = null;
-      if (hasLocalOnly) await this.flush();
+      if (hasLocalOnly && !isRefresh && !this.initialSyncDone) {
+        this.initialSyncDone = true;
+        await this.flush();
+      }
     } catch (error) {
       this.remoteError = error.message;
       this.logger.warn?.(`[supabase] leitura indisponível; usando arquivos locais: ${error.message}`);
@@ -324,7 +344,13 @@ export class SupabaseSessionStore extends SessionStore {
 
   async refresh() {
     if (!this.client?.enabled || this.refreshing) return this.refreshing;
-    this.refreshing = this.load().finally(() => { this.refreshing = null; });
+    if (this.lastRefreshAt && this.now() - this.lastRefreshAt < 4000 && Object.keys(this.sessions || {}).length > 0) {
+      return this.sessions;
+    }
+    this.refreshing = this.load({ isRefresh: true }).finally(() => {
+      this.lastRefreshAt = this.now();
+      this.refreshing = null;
+    });
     return this.refreshing;
   }
 
@@ -418,6 +444,8 @@ export class SupabaseSessionStore extends SessionStore {
     const remote = (async () => {
       try {
         for (const [key, session] of Object.entries(this.sessions)) {
+          const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}`;
+          if (session._conversationId && session._flushedSig === sig) continue;
           const externalId = key.replace(/^sim:/, '');
           const resolvedName = session.clientName || session.contactName || session.pushName || null;
           const contacts = await this.client.upsert('contacts', [{
@@ -453,10 +481,17 @@ export class SupabaseSessionStore extends SessionStore {
               from_me: message.role === 'assistant',
               delivery_status: message.role === 'assistant' ? 'sent' : 'received',
               created_at: message.createdAt,
-              metadata: { runtime: 'node' }
+              metadata: {
+                runtime: 'node',
+                ...(message.replyTo ? { replyTo: message.replyTo } : {}),
+                ...(message.mediaType ? { mediaType: message.mediaType } : {}),
+                ...(message.fileName ? { fileName: message.fileName } : {}),
+                ...(message.fromCopilot ? { fromCopilot: true } : {})
+              }
             });
           }
           if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id');
+          session._flushedSig = sig;
         }
         this.persistence = 'supabase';
         this.remoteError = null;
@@ -537,7 +572,10 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
     const remote = (async () => {
       try {
         await this.client.upsert('bot_config_state', [{ id: true, revision: this.revision, active_config: this.active, draft_config: this.draft }], 'id');
-        const rows = this.history.filter(item => item.snapshot).map(item => ({ revision: item.revision, action: item.action === 'draft_updated' ? 'draft_updated' : item.action === 'rollback' ? 'rollback' : 'published', source_revision: item.sourceRevision || null, snapshot: item.snapshot }));
+        const rawRows = this.history.filter(item => item.snapshot).map(item => ({ revision: item.revision, action: item.action === 'draft_updated' ? 'draft_updated' : item.action === 'rollback' ? 'rollback' : 'published', source_revision: item.sourceRevision || null, snapshot: item.snapshot }));
+        const deduped = new Map();
+        for (const r of rawRows) deduped.set(`${r.revision}:${r.action}`, r);
+        const rows = [...deduped.values()];
         if (rows.length) await this.client.upsert('bot_config_revisions', rows, 'revision,action');
         this.persistence = 'supabase'; this.remoteError = null;
       } catch (error) { this.persistence = 'fallback'; this.remoteError = error.message; this.logger.warn?.(`[supabase] configuração não gravada; fallback local preservado: ${error.message}`); }

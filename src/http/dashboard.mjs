@@ -13,12 +13,28 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/state') {
     await store.refresh?.();
     const mode = u.searchParams.get('mode') || 'all';
-    const sessions = Object.entries(store.sessions)
-      .filter(([key]) => mode === 'all' || (mode === 'simulation' ? key.startsWith('sim:') : !key.startsWith('sim:')))
+    const allEntries = Object.entries(store.sessions || {});
+    let realCount = 0;
+    let simCount = 0;
+    let handoffCount = 0;
+    for (const [k, s] of allEntries) {
+      const isSim = k.startsWith('sim:') || s?.origin === 'simulation';
+      if (isSim) simCount++;
+      else realCount++;
+      if (s?.human) handoffCount++;
+    }
+
+    const sessions = allEntries
+      .filter(([key, s]) => {
+        const isSim = key.startsWith('sim:') || s?.origin === 'simulation';
+        if (mode === 'all') return true;
+        return mode === 'simulation' ? isSim : !isSim;
+      })
       .map(([key, s]) => {
         const rawPhone = s.phone || key.replace(/^sim:/, '');
-        const phoneFormatted = formatPhoneNumber(rawPhone);
-        const clientName = (s.clientName || s.contactName || s.pushName || '').trim();
+        const isCopilotSelf = rawPhone === 'tauan_self' || key === 'tauan_self';
+        const phoneFormatted = isCopilotSelf ? 'Canal Interno Copiloto' : formatPhoneNumber(rawPhone);
+        const clientName = (s.clientName || s.contactName || s.pushName || (isCopilotSelf ? 'Copiloto Interno (Gestor)' : '')).trim();
         const displayName = clientName || phoneFormatted;
 
         const history = Array.isArray(s.history) ? s.history : [];
@@ -37,7 +53,8 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
 
         return {
           ...s,
-          phone: rawPhone,
+          phone: key.startsWith('sim:') ? key : rawPhone,
+          rawPhone,
           phoneFormatted,
           name: displayName,
           displayName,
@@ -58,6 +75,12 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
       mode,
       persistence: store.persistence || 'fallback',
       persistenceError: store.remoteError || null,
+      counts: {
+        total: allEntries.length,
+        real: realCount,
+        simulation: simCount,
+        handoff: handoffCount
+      },
       sessions
     });
   }
@@ -65,7 +88,34 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!validPhone(body.phone) || !body.text) return json(res, 400, { error: 'phone_and_text_required' });
-    return json(res, 200, { answer: await store.enqueue(body.phone, () => f.process({ phone: body.phone, text: body.text, origin: 'simulation' })) });
+    const safeReplyTo = body.replyTo && typeof body.replyTo === 'object'
+      ? {
+          sender: String(body.replyTo.sender || 'Mensagem').slice(0, 60),
+          content: String(body.replyTo.content || '').slice(0, 280),
+          index: Number.isFinite(Number(body.replyTo.index)) ? Number(body.replyTo.index) : null
+        }
+      : null;
+    const safeMediaType = ['audio', 'image', 'document', 'text'].includes(body.mediaType) ? body.mediaType : null;
+    const answer = await store.enqueue(body.phone, async () => {
+      const reply = await f.process({
+        phone: body.phone,
+        text: body.text,
+        origin: 'simulation',
+        mediaType: safeMediaType && safeMediaType !== 'text' ? safeMediaType : null
+      });
+      const simSession = store.get(body.phone, 'simulation');
+      if (simSession && Array.isArray(simSession.history) && (safeReplyTo || safeMediaType)) {
+        const lastUserIdx = [...simSession.history].map((m, idx) => m.role === 'user' ? idx : -1).filter(idx => idx >= 0).pop();
+        if (lastUserIdx !== undefined && simSession.history[lastUserIdx]) {
+          if (safeReplyTo) simSession.history[lastUserIdx].replyTo = safeReplyTo;
+          if (safeMediaType && safeMediaType !== 'text') simSession.history[lastUserIdx].mediaType = safeMediaType;
+          if (body.fileName) simSession.history[lastUserIdx].fileName = String(body.fileName).slice(0, 120);
+          store.markDirty();
+        }
+      }
+      return reply;
+    });
+    return json(res, 200, { answer });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/send') {
     let body;
@@ -75,6 +125,13 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     }
     const phone = String(body.phone).trim();
     const text = body.text.trim();
+    const safeReplyTo = body.replyTo && typeof body.replyTo === 'object'
+      ? {
+          sender: String(body.replyTo.sender || 'Contato').slice(0, 60),
+          content: String(body.replyTo.content || '').slice(0, 280),
+          index: Number.isFinite(Number(body.replyTo.index)) ? Number(body.replyTo.index) : null
+        }
+      : null;
     const session = store.get(phone);
     session.human = true;
     session.humanSource = 'dashboard';
@@ -85,15 +142,19 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     session.history.push({
       role: 'assistant',
       content: text,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(safeReplyTo ? { replyTo: safeReplyTo } : {})
     });
     session.lastBotAt = new Date().toISOString();
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     let sent = false;
     let sendError = null;
+    const outboundText = safeReplyTo
+      ? `> _"${safeReplyTo.content.replace(/\s+/g, ' ').slice(0, 100)}"_\n\n${text}`
+      : text;
     try {
-      await sendText(phone, text);
+      await sendText(phone, outboundText);
       sent = true;
     } catch (err) {
       sendError = err.message;
