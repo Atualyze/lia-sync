@@ -1,68 +1,35 @@
-# Dashboard Lia Sync
+# Console Operacional Lia Sync (`public/`)
 
-Versão do backend: **2.4.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Versão do motor e interface: **2.4.0**. A arquitetura completa do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
-Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pelo mesmo processo, usa endpoints autenticados e não expõe credenciais no navegador.
+Acesse em `/dashboard` (ex.: `https://liasync.atualyze.com.br/dashboard`). O console opera como um **Web App reativo 100% integrado**, servido pelo próprio processo da Lia Sync com autenticação Supabase JWT + Turnstile e controle de acesso por papéis (`admin`, `operator`, `viewer`).
 
-## Operação
+---
 
-- **Conversas:** sessões de simulação e conversas reais, com alternância bot/humano.
-- **Administração:** contexto, identidade, mensagens-base, comportamento e itens da base de conhecimento.
-- **Saúde & Operação:** readiness, dependências, latência, tokens, custos estimados, erros e circuit breakers.
-- **Provedores e modelos:** consulta do catálogo disponível nas APIs configuradas, seleção do modelo principal e de até três modelos de fallback.
-- **Orçamento:** limites mensais por provedor/modelo e visualização do consumo, falhas e uso conhecido/desconhecido.
-- **Campanhas e supressões:** campanhas, fila, opt-out e auditoria, com telefones mascarados.
-- **Integrações:** estado do ambiente, integrações e configurações operacionais.
-- **Transferências:** sessões aguardando atendimento humano.
+## ✨ Recursos do Console App v2.4.0
 
-As chamadas para catálogo são feitas pelo backend usando as credenciais configuradas no servidor. Chaves de provedores não são enviadas ao browser. Custos são estimativas quando não há uma tarifa confiável por modelo; uso desconhecido não deve ser interpretado como custo zero.
-
-## Rascunho e publicação
-
-A área Administração salva alterações como rascunho. O runtime usa somente a versão publicada. Use **Publicar alterações** para ativar o contexto e **Descartar rascunho** para voltar à última versão publicada.
-
-Em **Identidade**, configure nome da assistente, responsável, empresa, apelidos e tom. O responsável e o telefone humano usados pelo Copiloto e pelo handoff são lidos da configuração publicada; não há pessoa fixa no código operacional.
-
-Na configuração de IA, selecione um provedor e modelo principal e configure até três modelos de fallback. O backend busca os modelos pela API do provedor quando a credencial correspondente está disponível. Limites mensais podem ser associados a um provedor e/ou modelo; chamadas sem tarifa necessária, histórico inválido ou reserva distribuída não confirmada falham de forma segura.
-
-## Preview isolado
-
-O bloco **Preview antes de publicar** permite testar uma mensagem com o rascunho atual. A execução usa uma sessão temporária e não:
-
-- envia mensagem pela Evolution API;
-- modifica conversas reais;
-- grava sessão operacional;
-- notifica a equipe ou cria handoff real.
-
-Também é possível chamar diretamente:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/admin/config/preview \
-  -H 'Content-Type: application/json' \
-  -d '{"phone":"5586999962542","text":"Oi, quero conhecer os planos."}'
-```
-
-## Teste local sem Supabase
-
-Somente para desenvolvimento local:
-
-```bash
-ALLOW_INSECURE_WEBHOOK=true \
-HOST=127.0.0.1 \
-EVOLUTION_INSTANCE=lia-sync \
-npm start
-```
-
-Esse modo só permite o webhook sem token em desenvolvimento local, vinculado ao loopback. A autenticação do painel continua obrigatória; configure o Supabase para entrar em `http://127.0.0.1:3000/dashboard`.
-
-Para acessar remotamente com segurança, mantenha a porta 3000 vinculada a `127.0.0.1` e use um túnel SSH:
-
-```bash
-ssh -i SUA_CHAVE.key -L 3000:127.0.0.1:3000 ubuntu@IP_DA_VM
-```
-
-Em produção, mantenha a autenticação do Supabase, `WEBHOOK_TOKEN` e as credenciais dos provedores fora do repositório e do frontend.
-
-## Follow-up e mídia
-
-Follow-ups usam claim distribuída no Supabase antes do envio, evitando que réplicas concorrentes enviem a mesma mensagem. Se a claim não puder ser confirmada, o follow-up não é enviado. O envio de áudio não é repetido automaticamente quando a Evolution deixa o resultado ambíguo; essa regra privilegia evitar duplicidade.
+1. **Zero Dados Fixos / 100% Tempo Real:**
+   - O cartão lateral de conexão reflete o estado real da instância **Evolution API** (status, nome da instância, latência em ms e janela de expediente ativa).
+   - O rodapé da barra lateral exibe o nome, e-mail e papel (`Administrador`, `Operador` ou `Visualizador`) do usuário autenticado no Supabase.
+   - As sondas de `web_search` e `calendar` em `/api/dashboard/health-summary` verificam as credenciais e flags reais publicadas.
+2. **Configurações com Menus Recolhíveis (Accordions) & Controle Total:**
+   - **11 seções recolhíveis (`<details class="config-accordion">`)** com filtro de busca instantânea (`#admin-search-filter`), chips de salto rápido, botões `Expandir tudo` / `Recolher tudo` e indicadores visuais por seção (`Sincronizado` vs `Modificado no rascunho`).
+   - Controle integral de todos os parâmetros do runtime:
+     - **Identidade, Persona & System Prompt (`ai.systemInstruction`)**
+     - **Motor de IA, Roteador de Capacidades (`ai.autoRouting`), Tokens (`ai.maxOutputTokens`) & 3 Modelos Reserva**
+     - **Motor de Voz Gemini TTS WAV (`voice.voiceName`, `voice.tone`, `voice.speed`, `voice.autoVoiceOnAudio`, `voice.requestTimeoutMs`)**
+     - **Operações, Automação Multimodal, Follow-up & Alertas Humanos**
+     - **Janela de Atendimento & Expediente Comercial**
+     - **Integração Google Calendar (`workdayStart`, `workdayEnd`, `slotDurationMinutes`, `defaultEventDurationMinutes`)**
+     - **Segurança, Guardrails (`safety.protected`, `emergencyMessage`, `blockedMessage`, `fallbackMessage`)**
+     - **Mensagens-Base & Roteiros**
+     - **Base de Conhecimento (FAQ Dinâmico)**
+     - **Histórico de Revisões & Rollback em 1 clique (`/api/admin/config/rollback`)**
+3. **Barra Global Reativa de Rascunho & Command Palette (`Ctrl+K`):**
+   - Sempre que houver alterações não publicadas no rascunho, uma pílula reativa aparece no topo permitindo publicar de qualquer aba.
+   - Atalho global `Ctrl+K` (ou botão `Ir para…`) abre a paleta de comandos para saltar imediatamente para qualquer tela ou seção de configuração.
+4. **Capacidades & Simulador ao Vivo do Roteador (`#agent-view`):**
+   - Exibe a matriz real `MODEL_CAPABILITIES` (`src/model-router.mjs`) e permite digitar qualquer frase/comando para inspecionar em tempo real quais capacidades (`fast_chat`, `tools`, `web_search`, `document_context`, `deep_reasoning`) e qual modelo + `thinkingBudget` o motor seleciona.
+5. **Inbox em 3 Colunas & Layout 100% Responsivo (Desktop, Tablet & Mobile):**
+   - **Desktop:** Lista de conversas com abas (`Todas`, `Lia IA`, `Humano`) + Chat ao vivo + Painel lateral de Contexto & Memória (exibindo dados extraídos de CRM e o último documento/PDF analisado na sessão).
+   - **Mobile (`<= 768px`):** Navegação Master-Detail nas conversas, menu lateral deslizante com backdrop e barra de navegação inferior estilo app nativo (`mobile-bottom-nav`).

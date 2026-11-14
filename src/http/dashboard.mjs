@@ -5,6 +5,8 @@ import { sendText } from '../whatsapp.mjs';
 import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS } from '../ai.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
+import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
+import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f }) {
@@ -149,10 +151,42 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     const readiness = await readinessCheck();
     const metrics = getAIMetrics();
     const checks = [...(readiness.checks || [])];
-    for (const name of ['web_search', 'calendar']) {
-      if (!checks.some(item => item.name === name)) checks.push({ name, status: 'not_configured', reason: 'health probe não configurado' });
+    const activeCfg = adminConfig?.active || {};
+    const webEnabled = activeCfg.webSearch?.enabled !== false;
+    const webConfigured = Boolean(config.geminiKey);
+    if (!checks.some(item => item.name === 'web_search')) {
+      checks.push({
+        name: 'web_search',
+        status: !webEnabled ? 'disabled' : (webConfigured ? 'ready' : 'not_configured'),
+        reason: !webEnabled ? 'desativado na configuração publicada' : (webConfigured ? 'Google Search Grounding ativo' : 'GEMINI_API_KEY ausente')
+      });
     }
-    return json(res, 200, { ok: true, liveness: { status: 'alive', uptimeSeconds: Math.round(process.uptime()) }, readiness: { status: readiness.status, ok: readiness.ok, checks }, system: { provider: runtimeAI().provider, model: runtimeAI().model, circuitBreakers: metrics.circuitBreakers || getCircuitBreakers() } });
+    const calEnabled = activeCfg.integrations?.googleCalendar?.enabled !== false;
+    const calConfigured = Boolean(
+      process.env.GOOGLE_CALENDAR_ACCESS_TOKEN ||
+      (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) ||
+      (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) ||
+      process.env.GOOGLE_CALENDAR_API_KEY
+    );
+    if (!checks.some(item => item.name === 'calendar')) {
+      checks.push({
+        name: 'calendar',
+        status: !calEnabled ? 'disabled' : (calConfigured ? 'ready' : 'not_configured'),
+        reason: !calEnabled ? 'desativado na configuração publicada' : (calConfigured ? 'credenciais Google Calendar ativas' : 'credenciais OAuth2/Service Account não configuradas')
+      });
+    }
+    return json(res, 200, {
+      ok: true,
+      liveness: { status: 'alive', uptimeSeconds: Math.round(process.uptime()) },
+      readiness: { status: readiness.status, ok: readiness.ok, checks },
+      system: {
+        provider: runtimeAI().provider,
+        model: runtimeAI().model,
+        instance: config.evolutionInstance || null,
+        revision: adminConfig?.revision || 0,
+        circuitBreakers: metrics.circuitBreakers || getCircuitBreakers()
+      }
+    });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/models') {
     const provider = u.searchParams.get('provider');
@@ -163,7 +197,53 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     }
     return json(res, 200, { activeProvider: runtimeAI().provider, openrouterModels: OPENROUTER_FREE_MODELS, configuredModel: runtimeAI().model, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers() });
   }
-  if (req.method === 'GET' && u.pathname === '/api/dashboard/agent-structure') return json(res, 200, AI_AGENT_STRUCTURE);
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/agent-structure') {
+    const activeCfg = adminConfig?.active || {};
+    const enabledToolsMap = activeCfg.tools?.enabled || {};
+    const webEnabled = activeCfg.webSearch?.enabled !== false;
+    const testText = u.searchParams.get('testText');
+    const hasDocument = u.searchParams.get('hasDocument') === 'true';
+    const hasTools = u.searchParams.get('hasTools') !== 'false';
+    const routePreview = typeof testText === 'string' && testText.trim()
+      ? {
+          requiredCapabilities: detectarCapacidadesExigidas(testText, { hasTools, hasDocumentContext: hasDocument }),
+          decision: decidirModeloPorContexto({
+            text: testText,
+            historyLength: Number(u.searchParams.get('historyLength')) || 2,
+            isOwner: u.searchParams.get('actor') === 'owner',
+            hasTools,
+            hasDocumentContext: hasDocument,
+            preferredModel: activeCfg.ai?.activeModel || runtimeAI().model
+          })
+        }
+      : null;
+    return json(res, 200, {
+      ...AI_AGENT_STRUCTURE,
+      modelCapabilities: MODEL_CAPABILITIES,
+      runtime: {
+        activeProvider: activeCfg.ai?.activeProvider || runtimeAI().provider,
+        activeModel: activeCfg.ai?.activeModel || runtimeAI().model,
+        fallbackModels: activeCfg.ai?.fallbackModels || runtimeAI().fallbackModels || [],
+        agentMode: activeCfg.ai?.agentMode || 'super_agente',
+        autoRouting: activeCfg.ai?.autoRouting !== false,
+        enableToolCalling: activeCfg.ai?.enableToolCalling !== false,
+        contextTurns: activeCfg.ai?.contextTurns || 24,
+        maxStoredHistory: activeCfg.ai?.maxStoredHistory || 100,
+        maxOutputTokens: activeCfg.ai?.maxOutputTokens || 2048,
+        revision: adminConfig?.revision || 0
+      },
+      voice: activeCfg.voice || {},
+      googleCalendar: activeCfg.integrations?.googleCalendar || {},
+      toolsSummary: ALL_TOOLS.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        enabled: enabledToolsMap[tool.name] !== false && (tool.name !== 'consultar_web' || webEnabled),
+        clientAllowed: isClientToolAllowed(tool.name)
+      })),
+      faqCount: Array.isArray(activeCfg.knowledge?.faq) ? activeCfg.knowledge.faq.filter(item => item.enabled !== false).length : 0,
+      routePreview
+    });
+  }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/metrics') {
     let metrics;
     try {
