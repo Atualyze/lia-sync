@@ -75,7 +75,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const reminderStore = new ReminderStore(path.join(path.dirname(config.dataFile), 'reminders.json'), { client: supabaseRuntime.client });
   await reminderStore.load();
   // Projeção de runtime dos setores do Chatwoot: nunca entra em rascunho/revisão do painel.
-  const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'));
+  const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'), { client: supabaseRuntime.client });
   await sectorProjection.load();
 
   const getTelemetry = async () => {

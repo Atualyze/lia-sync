@@ -1507,3 +1507,30 @@ document.addEventListener('visibilitychange', () => {
     }, 5000);
   }
 });
+
+// macOS/iPadOS collapsible sidebar controller
+(() => {
+  const sidebar = document.querySelector('.sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  if (!sidebar || !toggleBtn) return;
+
+  const STORAGE_KEY = 'lia_sidebar_collapsed';
+  const applyState = (collapsed) => {
+    sidebar.classList.toggle('collapsed', collapsed);
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  };
+
+  if (window.innerWidth > 768 && localStorage.getItem(STORAGE_KEY) === '1') {
+    applyState(true);
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      sidebar.classList.toggle('mobile-open');
+      return;
+    }
+    const next = !sidebar.classList.contains('collapsed');
+    applyState(next);
+    localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
+  });
+})();

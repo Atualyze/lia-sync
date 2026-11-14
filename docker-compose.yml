@@ -1,6 +1,8 @@
 services:
   bot:
-    build: .
+    image: ${LIA_BOT_IMAGE:-ghcr.io/atualyze/lia-sync}:${LIA_BOT_TAG:-latest}
+    build:
+      context: .
     container_name: lia-bot
     restart: unless-stopped
     env_file: .env

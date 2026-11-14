@@ -53,10 +53,12 @@ export function normalizeSectors(sectors) {
 }
 
 export class SectorProjection {
-  constructor(file = path.resolve('./data/sectors-projection.json'), { now = () => Date.now(), logger = console } = {}) {
+  constructor(file = path.resolve('./data/sectors-projection.json'), { now = () => Date.now(), logger = console, client = null, storageAdapter = null } = {}) {
     this.file = file;
     this.now = now;
     this.logger = logger;
+    this.client = client;
+    this.storageAdapter = storageAdapter;
     this.sectors = [];
     this.updatedAt = null;
     this.writing = null;
@@ -74,7 +76,43 @@ export class SectorProjection {
       this.sectors = [];
       this.updatedAt = null;
     }
+
+    // Carrega projeção remota se disponível (multi-réplicas)
+    if (this.client?.enabled || this.storageAdapter) {
+      await this.syncRemote().catch(err => {
+        this.logger.warn?.(`[sectors] sincronização remota inicial falhou; usando projeção local: ${err.message}`);
+      });
+    }
+
     return this;
+  }
+
+  async syncRemote() {
+    if (this.storageAdapter) {
+      const remote = await this.storageAdapter.get('sectors_projection', 'current');
+      if (remote && Array.isArray(remote.sectors)) {
+        const remoteTime = new Date(remote.updatedAt || 0).getTime();
+        const localTime = new Date(this.updatedAt || 0).getTime();
+        if (remoteTime >= localTime || !this.sectors.length) {
+          this.sectors = normalizeSectors(remote.sectors);
+          this.updatedAt = remote.updatedAt || new Date(this.now()).toISOString();
+        }
+      }
+      return;
+    }
+
+    if (this.client?.enabled) {
+      const rows = await this.client.select('bot_config_state', 'select=id,draft_config,updated_at&limit=1');
+      const remote = rows?.[0]?.draft_config?.runtime_sectors_projection;
+      if (remote && Array.isArray(remote.sectors)) {
+        const remoteTime = new Date(remote.updatedAt || 0).getTime();
+        const localTime = new Date(this.updatedAt || 0).getTime();
+        if (remoteTime >= localTime || !this.sectors.length) {
+          this.sectors = normalizeSectors(remote.sectors);
+          this.updatedAt = remote.updatedAt || new Date(this.now()).toISOString();
+        }
+      }
+    }
   }
 
   /** Lista usada pelo motor. Sempre um array; nunca nulo. */
@@ -116,6 +154,26 @@ export class SectorProjection {
       const tmp = `${this.file}.tmp`;
       await fs.writeFile(tmp, JSON.stringify({ sectors: this.sectors, updatedAt: this.updatedAt }, null, 2));
       await fs.rename(tmp, this.file);
+
+      if (this.storageAdapter) {
+        await this.storageAdapter.set('sectors_projection', 'current', { sectors: this.sectors, updatedAt: this.updatedAt }).catch(err => {
+          this.logger.warn?.(`[sectors] falha ao persistir no storage adapter: ${err.message}`);
+        });
+      } else if (this.client?.enabled) {
+        try {
+          const rows = await this.client.select('bot_config_state', 'select=id,draft_config&limit=1');
+          const draftConfig = (rows?.[0]?.draft_config && typeof rows[0].draft_config === 'object')
+            ? { ...rows[0].draft_config, runtime_sectors_projection: { sectors: this.sectors, updatedAt: this.updatedAt } }
+            : { runtime_sectors_projection: { sectors: this.sectors, updatedAt: this.updatedAt } };
+          await this.client.request('bot_config_state', {
+            method: 'PATCH',
+            query: 'id=eq.true',
+            body: { draft_config: draftConfig, updated_at: new Date(this.now()).toISOString() }
+          });
+        } catch (err) {
+          this.logger.warn?.(`[sectors] falha ao replicar projeção para o Supabase: ${err.message}`);
+        }
+      }
     };
     this.writing = (this.writing || Promise.resolve()).catch(() => {}).then(write).finally(() => { this.writing = null; });
     return this.writing;

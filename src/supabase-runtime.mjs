@@ -328,6 +328,45 @@ export class SupabaseSessionStore extends SessionStore {
     return this.refreshing;
   }
 
+  async syncSession(phone, origin = 'real') {
+    const s = this.get(phone, origin);
+    if (!this.client?.enabled) return s;
+    const norm = normalizePhone(phone);
+    const isSim = origin === 'simulation' || norm.startsWith('sim:');
+    const cleanPhone = norm.replace(/^sim:/, '');
+    const key = isSim ? `sim:${cleanPhone}` : cleanPhone;
+
+    try {
+      const rows = await this.client.select('conversations', `select=*,contacts(display_name,push_name,phone)&external_key=eq.${encodeURIComponent(key)}&limit=1`);
+      const row = rows?.[0];
+      if (!row) return s;
+
+      const remoteTime = new Date(row.updated_at || 0).getTime();
+      const localTime = new Date(s.lastUserAt || s.lastBotAt || s.updatedAt || 0).getTime();
+
+      // Se a réplica remota tiver dados mais recentes, recarrega histórico e estado
+      if (remoteTime > localTime || !s.history?.length) {
+        const messages = await this.client.select(
+          'conversation_messages',
+          `select=conversation_id,external_id,role,content,created_at&conversation_id=eq.${row.id}&order=created_at.desc&limit=60`
+        ).catch(() => []);
+        const cleanMessages = Array.isArray(messages) ? [...messages].reverse() : [];
+        const remoteSession = rowToSession(row, cleanMessages);
+
+        // Preserva flags voláteis locais se houver
+        remoteSession.pendingAudioConfirmation = s.pendingAudioConfirmation || null;
+        remoteSession.pendingRecipient = s.pendingRecipient || null;
+        remoteSession.pendingAsAudio = Boolean(s.pendingAsAudio);
+
+        this.sessions[key] = remoteSession;
+        return remoteSession;
+      }
+    } catch (err) {
+      this.logger.warn?.(`[supabase] falha ao sincronizar sessão pontual de ${key}: ${err.message}`);
+    }
+    return s;
+  }
+
   async claimFollowUp(externalKey, claimedAt, leaseSeconds = 900) {
     if (!this.client?.enabled) throw new Error('Supabase necessário para claim distribuída');
     const token = await this.client.rpc('claim_follow_up', {

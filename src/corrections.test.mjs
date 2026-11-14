@@ -181,7 +181,7 @@ test('tutorName aceita nomes reais e isHumanRequest encaminha para atendente', a
   assert.equal(isHumanRequest('meu boleto venceu'), false);
 });
 
-test('endpoint /health reporta versao atualizada e circuit breakers reais', async () => {
+test('endpoint /health retorna status minimo sem expor versao ou providers', async () => {
   const { createApp } = await import('./server.mjs');
   const http = await import('node:http');
   const store = new SessionStore(path.join(os.tmpdir(), `api-health-${Date.now()}.json`));
@@ -193,13 +193,7 @@ test('endpoint /health reporta versao atualizada e circuit breakers reais', asyn
   const res = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(res.status, 200);
   const data = await res.json();
-  assert.equal(data.ok, true);
-  const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.equal(data.version, packageJson.version);
-  assert.ok(data.providers);
-  assert.ok(data.providers.gemini);
-  assert.ok(data.providers.openrouter);
-  assert.equal(typeof data.uptime, 'number');
+  assert.deepEqual(data, { ok: true });
 
   server.closeAllConnections?.(); await new Promise(resolve => server.close(resolve));
 });

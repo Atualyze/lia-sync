@@ -8,8 +8,6 @@ import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
-import { getCircuitBreakers } from '../ai.mjs';
-import packageJson from '../../package.json' with { type: 'json' };
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -39,7 +37,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       res.writeHead(204, { 'access-control-allow-origin': config.dashboardOrigin, 'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,authorization', vary: 'Origin' });
       return res.end();
     }
-    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true, version: packageJson.version, uptime: Math.round(process.uptime()), providers: getCircuitBreakers() });
+    if (req.method === 'GET' && u.pathname === '/health') return json(res, 200, { ok: true });
     if (req.method === 'GET' && u.pathname === '/ready') {
       const readiness = await readinessCheck();
       return json(res, readiness.ok ? 200 : 503, readiness);

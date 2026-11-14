@@ -14,7 +14,9 @@
     "build": "node scripts/check-syntax.mjs",
     "lint": "node scripts/check-syntax.mjs",
     "test": "node --test",
-    "test:contract": "node scripts/contract-check.mjs"
+    "test:coverage": "node --test --experimental-test-coverage",
+    "test:contract": "node scripts/contract-check.mjs",
+    "backup:data": "node scripts/backup-data.mjs"
   },
   "dependencies": {
     "@pdfme/generator": "^6.2.8",

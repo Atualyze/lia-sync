@@ -22,6 +22,11 @@ export async function handleClientMessage({
         return filterReply(`Estou aqui, ${owner}! O sistema está operando normalmente. Em que posso te ajudar agora?`).text;
       }
 
+      // Sincroniza sessão pontual do Supabase se disponível (suporte multi-réplica)
+      if (typeof store.syncSession === 'function') {
+        await store.syncSession(phone, origin).catch(() => {});
+      }
+
       // Se o Bot foi desativado globalmente pelo comando "bot off", força modo humano para todos os clientes
       if (botConfig?.behavior?.globalBotDisabled) {
         const sGlobal = store.get(phone, origin);
