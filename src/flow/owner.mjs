@@ -1053,6 +1053,57 @@ ${errMsg}`;
           }
         }
 
+        const pixResult = toolOutputs.find(t => t.tool === 'gerar_cobranca_pix');
+        if (pixResult?.result) {
+          const r = pixResult.result;
+          if (!r.success) {
+            return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${r.message || r.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
+          }
+          const valorFmt = r.valor ? `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+          const pixMsg = [
+            `💳 *Cobrança Pix gerada!*`,
+            `• *Valor:* ${valorFmt}`,
+            `• *Favorecido:* ${r.favorecido || owner}`,
+            r.paymentUrl ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
+            `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
+            r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
+          ].filter(Boolean).join('\n\n');
+          return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
+        }
+
+        const brResult = toolOutputs.find(t => t.tool === 'consultar_dados_brasil');
+        if (brResult?.result) {
+          const r = brResult.result;
+          if (!r.success) {
+            return recordSelfTurn(filterReply(`⚠️ ${r.message || 'Não foi possível concluir a consulta pública.'}`, { isCopilot: true }).text);
+          }
+          if (r.cep && r.cidade) {
+            const msg = `📍 *CEP ${r.cep}:*\n\n• *Endereço:* ${r.logradouro || '—'}\n• *Bairro:* ${r.bairro || '—'}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
+            return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+          }
+          if (r.cnpj) {
+            const msg = `🏢 *CNPJ ${r.cnpj}:*\n\n• *Razão Social:* ${r.razaoSocial}\n• *Fantasia:* ${r.nomeFantasia || '—'}\n• *Situação:* ${r.situacaoCadastral}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
+            return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+          }
+        }
+
+        const sheetsResult = toolOutputs.find(t => t.tool === 'consultar_planilha_google');
+        if (sheetsResult?.result && !result?.reply) {
+          const r = sheetsResult.result;
+          if (!r.success) return recordSelfTurn(filterReply(`⚠️ *Google Sheets:* ${r.message || r.error}`, { isCopilot: true }).text);
+          const preview = (r.rows || []).slice(0, 8).map(row => `• ${Object.entries(row).map(([k, v]) => `*${k}:* ${v}`).join(' | ')}`).join('\n');
+          return recordSelfTurn(filterReply(`📊 *Dados da Planilha (${r.range || 'Google Sheets'}):*\n\n${preview || 'Nenhuma linha encontrada.'}`, { isCopilot: true }).text);
+        }
+
+        const driveResult = toolOutputs.find(t => t.tool === 'gerenciar_drive_google');
+        if (driveResult?.result && !result?.reply) {
+          const r = driveResult.result;
+          if (!r.success) return recordSelfTurn(filterReply(`⚠️ *Google Drive:* ${r.message || r.error}`, { isCopilot: true }).text);
+          if (r.sentViaWhatsApp) return recordSelfTurn(filterReply(`📁 *Arquivo enviado no WhatsApp:* ${r.fileName}`, { isCopilot: true }).text);
+          const filesList = (r.files || []).slice(0, 8).map(f => `• *${f.name}* (\`${f.id}\`)`).join('\n');
+          return recordSelfTurn(filterReply(`📁 *Arquivos no Google Drive:*\n\n${filesList || 'Nenhum arquivo encontrado.'}`, { isCopilot: true }).text);
+        }
+
         let rawReply = result?.reply;
         if (!rawReply) {
           if (isAudioForSelf) {
@@ -1064,9 +1115,20 @@ ${errMsg}`;
           } else {
             const isGreeting = cleanCommand.length < 25 && new RegExp(`^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|${escapeText(assistant)})[\\s,!.]*$`, 'i').test(cleanCommand.trim());
             if (isGreeting) {
-              rawReply = `Olá, ${owner}! Estou aqui totalmente à disposição. Como posso te ajudar agora?`;
+              rawReply = `Olá, ${owner}! Estou por aqui. Como posso te ajudar agora?`;
+            } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)) {
+              const pixConfigured = Boolean(botConfig?.tools?.settings?.gerar_cobranca_pix?.key || process.env.PIX_KEY);
+              rawReply = pixConfigured
+                ? `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`
+                : `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
+            } else if (/\b(?:cep|cnpj|feriado)\b/i.test(cleanCommand)) {
+              rawReply = `Pode me passar o *CEP*, *CNPJ* ou a *data/ano* que você quer consultar, ${owner}?`;
+            } else if (/\b(?:planilha|sheets|estoque|tabela)\b/i.test(cleanCommand)) {
+              rawReply = `O que você quer consultar ou buscar na planilha do Google Sheets, ${owner}?`;
+            } else if (/\b(?:drive|cat[aá]logo|contrato|arquivo)\b/i.test(cleanCommand)) {
+              rawReply = `Qual arquivo ou catálogo do Google Drive você quer que eu busque ou envie, ${owner}?`;
             } else {
-              rawReply = `Estou aqui, ${owner}! O sistema está operando normalmente. Em que posso te ajudar agora?`;
+              rawReply = `${owner}, entendi sua mensagem sobre *"${cleanCommand.slice(0, 60)}"*, mas fiquei sem retorno do modelo de IA neste instante. Pode reformular ou detalhar o que precisa que eu execute?`;
             }
           }
         }
@@ -1114,7 +1176,9 @@ ${errMsg}`;
               return recordSelfTurn(filterReply(rawReply, { isCopilot: true }).text);
             }
           }
-          rawReply = `${owner}, estou pronta para ajudar! Se desejar enviar um recado para algum contato, basta me dizer: "Enviar para [Nome]: [Mensagem]". 🚀`;
+          rawReply = /\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)
+            ? `${owner}, me informe o *valor* e uma *descrição curta* para eu gerar o Pix agora.`
+            : `${owner}, me diga exatamente o que você gostaria que eu fizesse a seguir para continuarmos.`;
         }
 
         if (isAudioForSelf) {
