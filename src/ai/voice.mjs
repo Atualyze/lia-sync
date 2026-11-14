@@ -247,37 +247,40 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutM
   const groqText = await transcribeWithGroqWhisper(cleanB64, cleanMime, timeoutMs);
   if (groqText) return groqText;
 
-  // 2. Fallback automático para Gemini multimodal
-  if (!config.geminiKey) return null;
-  for (const model of TRANSCRIBE_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': config.geminiKey
-        },
-        signal: AbortSignal.timeout(Math.max(5000, Number(timeoutMs) || 45000)),
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inlineData: { mimeType: cleanMime, data: cleanB64 } },
-              { text: 'Transcreva este áudio em português com fidelidade total. Retorne apenas o texto transcrito, sem introduções ou explicações.' }
-            ]
-          }]
-        })
-      });
-      if (!res.ok) {
-        if (res.status === 404 || res.status === 400 || res.status >= 500) continue;
-        console.error('[ai] transcribeAudio status:', res.status);
-        return null;
+  // 2. Fallback automático para Gemini multimodal (usa chave gratuita primeiro, depois paga)
+  const geminiKeys = [...new Set([config.geminiFreeKey, config.geminiKey].filter(Boolean))];
+  if (!geminiKeys.length) return null;
+  for (const apiKey of geminiKeys) {
+    for (const model of TRANSCRIBE_MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          signal: AbortSignal.timeout(Math.max(5000, Number(timeoutMs) || 45000)),
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inlineData: { mimeType: cleanMime, data: cleanB64 } },
+                { text: 'Transcreva este áudio em português com fidelidade total. Retorne apenas o texto transcrito, sem introduções ou explicações.' }
+              ]
+            }]
+          })
+        });
+        if (!res.ok) {
+          if (res.status === 404 || res.status === 400 || res.status === 429 || res.status >= 500) continue;
+          console.error('[ai] transcribeAudio status:', res.status);
+          break;
+        }
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text && text.trim()) return text.trim();
+      } catch (e) {
+        console.error(`[ai] transcribeAudio erro (${model}):`, e.message);
       }
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && text.trim()) return text.trim();
-    } catch (e) {
-      console.error(`[ai] transcribeAudio erro (${model}):`, e.message);
     }
   }
   return null;

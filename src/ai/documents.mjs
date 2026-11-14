@@ -45,7 +45,8 @@ export async function analyzeDocument({ base64, mimetype = 'application/pdf', ca
     extractedPdfText = await extractPdfTextWithPoppler(cleanB64);
   }
 
-  if (!config.geminiKey) {
+  const geminiKeys = [...new Set([config.geminiFreeKey, config.geminiKey].filter(Boolean))];
+  if (!geminiKeys.length) {
     if (extractedPdfText.length >= 20) {
       return {
         summary: extractedPdfText.slice(0, 420),
@@ -79,15 +80,16 @@ Retorne um JSON estrito no seguinte formato:
 }
 ${caption ? `Contexto/Pedido enviado junto ao arquivo: "${caption}"` : ''}`;
 
-  for (const model of DOCUMENT_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': config.geminiKey
-        },
+  for (const apiKey of geminiKeys) {
+    for (const model of DOCUMENT_MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
         signal: AbortSignal.timeout(config.aiTimeoutMs || 30000),
         body: JSON.stringify({
           contents: [{
@@ -104,11 +106,11 @@ ${caption ? `Contexto/Pedido enviado junto ao arquivo: "${caption}"` : ''}`;
           }
         })
       });
-      if (!res.ok) {
-        if (res.status === 404 || res.status === 400 || res.status >= 500) continue;
-        console.error('[ai] analyzeDocument status:', res.status);
-        return null;
-      }
+        if (!res.ok) {
+          if (res.status === 404 || res.status === 400 || res.status === 429 || res.status >= 500) continue;
+          console.error('[ai] analyzeDocument status:', res.status);
+          break;
+        }
       const data = await res.json();
       const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!raw) continue;
@@ -122,8 +124,9 @@ ${caption ? `Contexto/Pedido enviado junto ao arquivo: "${caption}"` : ''}`;
           return { summary: cleaned, docType: 'documento_geral', keyPoints: [], actionNeeded: 'Revisar anexo' };
         }
       }
-    } catch (e) {
-      console.error(`[ai] analyzeDocument erro (${model}):`, e.message);
+      } catch (e) {
+        console.error(`[ai] analyzeDocument erro (${model}):`, e.message);
+      }
     }
   }
   return null;
