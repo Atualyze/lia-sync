@@ -8,6 +8,7 @@ import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
 import { InfinitePayOrderStore, toolCheckoutInfinitePay } from './tools/checkout_infinitepay.mjs';
 import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
+import { classificarSetorPorTexto } from './triage-router.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
 import { createFlow } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
@@ -566,4 +567,66 @@ test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que 
     origin: 'owner'
   });
   assert.match(resIpOnly, /InfinitePay.*exige um valor fixo/i);
+});
+
+test('Triagem e Atendimento: consultar_base_conhecimento sem correspondência não força handoff e "Me responda com áudio" ativa voz', async () => {
+  const store = new SessionStore();
+  const sentAudio = [];
+  const notifications = [];
+  const botConfig = {
+    identity: { assistantName: 'Lia', ownerName: 'Tauan' },
+    ai: { agentMode: 'super_agente', enableToolCalling: true },
+    voice: { enabled: true },
+    tools: { enabled: { consultar_base_conhecimento: true } }
+  };
+
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    isOwnerSender: () => false,
+    notify: async msg => notifications.push(msg),
+    whatsapp: {
+      sendWhatsAppAudio: async (phone, b64) => sentAudio.push({ phone, b64 })
+    },
+    ai: {
+      askAI: async ({ userText }) => {
+        if (/como vc pode/i.test(userText)) {
+          return {
+            reply: 'Posso te ajudar com dúvidas rápidas, pagamentos e agendamentos!',
+            tool_calls: [{ name: 'consultar_base_conhecimento', args: { termo: 'ajuda' } }]
+          };
+        }
+        return {
+          reply: 'Claro! Vou te explicar certinho por aqui.',
+          tool_calls: []
+        };
+      },
+      synthesizeVoice: async () => ({ base64: 'ZmFrZS1hdWRpbw==' })
+    }
+  });
+
+  const r1 = await flow.process({
+    phone: '5588993324920',
+    text: 'Como vc pode me ajudar?',
+    origin: 'client',
+    pushName: 'Raimunda'
+  });
+  assert.match(r1, /Posso te ajudar/i);
+  assert.equal(store.get('5588993324920')?.human, false);
+  assert.equal(notifications.length, 0);
+
+  await flow.process({
+    phone: '5588993324920',
+    text: 'Me responda com áudio',
+    origin: 'client',
+    pushName: 'Raimunda'
+  });
+  assert.equal(store.get('5588993324920')?.audioPreference, 'audio');
+  assert.equal(sentAudio.length, 1);
+
+  const triage = classificarSetorPorTexto('Preciso de uma informação', [
+    { id: '1', name: 'Financeiro', description: 'Boleto e Pix' },
+    { id: '2', name: 'Comercial', description: 'Vendas' }
+  ]);
+  assert.equal(triage.category, null);
 });

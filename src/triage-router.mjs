@@ -83,9 +83,13 @@ export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
   for (const [cat, keywords] of Object.entries(SECTOR_KEYWORDS)) {
     for (const kw of keywords) {
       const kwNorm = normalizeText(kw);
-      if (norm.includes(kwNorm)) {
+      const isPhrase = kwNorm.includes(' ');
+      const matched = isPhrase
+        ? norm.includes(kwNorm)
+        : new RegExp(`(?:^|\\b)${kwNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|$)`, 'i').test(norm);
+      if (matched) {
         // Frases exatas ganham peso maior
-        scores[cat] += kwNorm.includes(' ') ? 3 : 1;
+        scores[cat] += isPhrase ? 3 : 1;
       }
     }
   }

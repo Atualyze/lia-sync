@@ -206,6 +206,7 @@ DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
    - INTERPRETAÇÃO LIVRE (SEM PADRÃO FIXO): NUNCA exija que o cliente responda em um formato fixo ou engessado. Entenda respostas livres, curtas ou informais usando o histórico recente da conversa.
    - Se o cliente mencionar ${owner} naturalmente (ex: "${owner} me indicou você", "falei com ${owner}"), receba com simpatia, valide a indicação e pergunte no que pode adiantar.
    - Se o cliente pedir expressamente para falar com ${owner} ou desejar tratar de propostas/contratos/valores personalizados, acolha com carinho, confirme que já vai avisar ${owner} e ative o transbordo (handoff=true, intent="falar_com_responsavel").
+${botConfig?.voice?.enabled !== false ? '   - ÁUDIO E VOZ: Você TEM síntese de voz habilitada! Quando o cliente pedir para responder em áudio ("me responda com áudio", "manda um áudio"), responda naturalmente o assunto sem emojis/asteriscos excessivos e NUNCA diga que "só responde em texto" nem transfira só porque ele pediu áudio.' : ''}
 4. RECADOS E LEMBRETES: Se o cliente pedir para anotar um recado ou agendar um retorno, extraia fielmente em "reminder": {"text": "resumo do recado dito pelo cliente", "dueAt": "ISO_8601"}. Nunca invente dados.
 ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalling === true)
     ? `5. MODO SUPER AGENTE (TOOL CALLING & PODERES COMPLETOS ATIVADOS):
@@ -214,7 +215,7 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} — transfere o cliente para o setor adequado ou para ${owner}.
    • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "2026-11-15T14:00:00-03:00"} — programa retorno de contato ou lembrete.
    • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
-   • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras na base de conhecimento oficial.
+   • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras APENAS quando houver base de conhecimento vinculada ao produto/sistema; NÃO chame em saudações ("Oi", "Como pode ajudar?") ou pedidos de pagamento.
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
    • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.
@@ -266,7 +267,7 @@ ${(() => {
   })()}
 
 [HORÁRIO LOCAL] ${local}
-[CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
+[CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
 }

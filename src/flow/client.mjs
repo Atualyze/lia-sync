@@ -282,9 +282,9 @@ export async function handleClientMessage({
 
       // 2.5 DETECÇÃO DE PREFERÊNCIA DE FORMATO (ÁUDIO vs TEXTO) PELO CLIENTE
       const normUser = normalize(clean);
-      if (/(?:prefiro|quero|responde|responder|manda|mandar|fala|falar)\s+(?:por\s+|em\s+|com\s+)?(?:texto|escrito|escrever)\b/i.test(normUser)) {
+      if (/(?:prefiro|quero|responde|responda|responder|envia|envie|manda|mandar|mande|fala|falar|fale)\s+(?:por\s+|em\s+|com\s+)?(?:um\s+)?(?:texto|escrito|escrever)\b/i.test(normUser)) {
         s.audioPreference = 'text';
-      } else if (/(?:prefiro|quero|responde|responder|manda|mandar|fala|falar)\s+(?:por\s+|em\s+|com\s+)?(?:audio|voz)\b/i.test(normUser)) {
+      } else if (/(?:prefiro|quero|responde|responda|responder|envia|envie|manda|mandar|mande|fala|falar|fale)\s+(?:por\s+|em\s+|com\s+)?(?:um\s+)?(?:audio|voz)\b/i.test(normUser)) {
         s.audioPreference = 'audio';
       }
 
@@ -502,9 +502,11 @@ export async function handleClientMessage({
                     result.handoff_reason = answerResult.handoff_reason || 'knowledge_base_answer_handoff';
                   }
                 } else {
-                  toolReplyOverride = 'N\u00e3o consegui concluir essa a\u00e7\u00e3o com seguran\u00e7a. Vou encaminhar para a equipe.';
-                  result.handoff = true;
-                  result.handoff_reason = 'knowledge_base_not_found';
+                  // Base de conhecimento sem correspondência: mantém a resposta natural da IA
+                  // sem forçar transbordo automático em saudações ou dúvidas gerais.
+                  if (!String(finalReply || '').trim()) {
+                    toolReplyOverride = `Não encontrei um detalhe específico sobre isso por aqui, mas posso te ajudar! Você pode me explicar um pouquinho melhor o que precisa?`;
+                  }
                 }
               }
               if (toolRes?.handoffRequested) {
@@ -607,7 +609,6 @@ export async function handleClientMessage({
           urgency: 'normal',
           now: now(),
           notify,
-          forceNotify: true,
           identity
         });
       }
