@@ -1128,7 +1128,7 @@ ${errMsg}`;
             } else if (/\b(?:drive|cat[aá]logo|contrato|arquivo)\b/i.test(cleanCommand)) {
               rawReply = `Qual arquivo ou catálogo do Google Drive você quer que eu busque ou envie, ${owner}?`;
             } else {
-              rawReply = `${owner}, entendi sua mensagem sobre *"${cleanCommand.slice(0, 60)}"*, mas fiquei sem retorno do modelo de IA neste instante. Pode reformular ou detalhar o que precisa que eu execute?`;
+              rawReply = `${owner}, não ficou claro o que você precisa com essa mensagem. Pode me dar um pouco mais de contexto do que gostaria que eu fizesse?`;
             }
           }
         }
@@ -1178,7 +1178,7 @@ ${errMsg}`;
           }
           rawReply = /\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)
             ? `${owner}, me informe o *valor* e uma *descrição curta* para eu gerar o Pix agora.`
-            : `${owner}, me diga exatamente o que você gostaria que eu fizesse a seguir para continuarmos.`;
+            : `${owner}, ainda não entendi bem o que você precisa aqui. Pode me explicar o contexto ou qual ação quer que eu execute?`;
         }
 
         if (isAudioForSelf) {
