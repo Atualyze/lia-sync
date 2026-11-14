@@ -6,6 +6,7 @@ import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRu
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { renderPixPaymentPage } from './pix-page.mjs';
+import { handleInfinitePayWebhookRoute } from './infinitepay-webhook.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
@@ -46,6 +47,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (req.method === 'GET' && u.pathname === '/pix') {
       return renderPixPaymentPage(res, u);
     }
+    const infinitePayResult = await handleInfinitePayWebhookRoute({ req, res, u, store, getHumanPhone });
+    if (infinitePayResult !== NOT_HANDLED) return infinitePayResult;
     if (isChatwootApiPath(u.pathname)) {
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
       if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);

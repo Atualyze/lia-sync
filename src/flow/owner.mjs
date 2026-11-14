@@ -1102,6 +1102,36 @@ ${errMsg}`;
           return recordSelfTurn(filterReply(formatPixCopilotReply(r), { isCopilot: true }).text);
         }
 
+        const ipResult = toolOutputs.find(t => t.tool === 'checkout_infinitepay');
+        if (ipResult?.result) {
+          const r = ipResult.result;
+          if (!r.success) {
+            const msg = r.error === 'infinitepay_not_configured'
+              ? `${owner}, configure sua *InfiniteTag (handle)* em *Ferramentas & Busca Web → checkout_infinitepay → Configurações da ferramenta* e publique para eu gerar links com confirmação automática.`
+              : r.error === 'invalid_amount'
+                ? `${owner}, qual o *valor* e a *descrição* para gerar o link InfinitePay?`
+                : `⚠️ *InfinitePay:* ${r.message || r.error}`;
+            return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+          }
+          if (r.action === 'verificar_pagamento') {
+            const valorFmt = r.amount ? `R$ ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')}` : '—';
+            const msg = r.paid
+              ? `✅ *Pagamento InfinitePay confirmado!*\n• *Pedido:* \`${r.orderNsu}\`\n• *Valor:* ${valorFmt}\n• *Forma:* ${r.captureMethod === 'credit_card' ? 'Cartão de Crédito' : 'Pix'}${r.receiptUrl ? `\n• *Comprovante:* ${r.receiptUrl}` : ''}`
+              : `⏳ *Pagamento ainda pendente* para o pedido \`${r.orderNsu}\`. Assim que for aprovado, o webhook confirma automaticamente por aqui.`;
+            return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+          }
+          const valorFmt = `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}`;
+          const msg = [
+            `💳 *Link de Pagamento InfinitePay gerado!*`,
+            `• *Valor:* ${valorFmt}`,
+            r.descricao ? `• *Descrição:* ${r.descricao}` : '',
+            `• *Pedido:* \`${r.orderNsu}\``,
+            `• *Link:* ${r.checkoutUrl}`,
+            r.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
+          ].filter(Boolean).join('\n\n');
+          return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+        }
+
         const brResult = toolOutputs.find(t => t.tool === 'consultar_dados_brasil');
         if (brResult?.result) {
           const r = brResult.result;

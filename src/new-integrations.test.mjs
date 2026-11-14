@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { buildPixPayload, normalizePixKey, toolGerarCobrancaPix } from './tools/gerar_cobranca_pix.mjs';
 import { toolConsultarDadosBrasil } from './tools/consultar_dados_brasil.mjs';
 import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
+import { InfinitePayOrderStore, toolCheckoutInfinitePay } from './tools/checkout_infinitepay.mjs';
+import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
 import { createFlow } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
@@ -396,4 +399,112 @@ test('Copiloto Pix: "Preciso gerar um Pix" sem valor pergunta o valor mesmo se a
   });
   assert.match(res, /valor/i);
   assert.doesNotMatch(res, /Cobrança Pix gerada!/i);
+});
+
+test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu e confirma pagamento via webhook + payment_check', async (t) => {
+  const orderFile = `data/test-ip-orders-${Date.now()}.json`;
+  t.after(() => { try { fs.rmSync(orderFile, { force: true }); } catch {} });
+  const orderStore = new InfinitePayOrderStore(orderFile);
+  const sentMessages = [];
+  const fetchCalls = [];
+
+  const mockFetch = async (url, init) => {
+    const body = JSON.parse(init?.body || '{}');
+    fetchCalls.push({ url: String(url), body });
+    if (String(url).endsWith('/links')) {
+      return new Response(JSON.stringify({ url: 'https://checkout.infinitepay.io/tauanpires/abc123', slug: 'abc123' }), { status: 200 });
+    }
+    if (String(url).endsWith('/payment_check')) {
+      return new Response(JSON.stringify({
+        success: true,
+        paid: true,
+        amount: 1000,
+        paid_amount: 1000,
+        installments: 1,
+        capture_method: 'pix'
+      }), { status: 200 });
+    }
+    return new Response('{}', { status: 404 });
+  };
+
+  const botConfig = {
+    tools: {
+      enabled: { checkout_infinitepay: true },
+      settings: {
+        checkout_infinitepay: {
+          handle: '$tauanpires',
+          publicBaseUrl: 'https://liasync.atualyze.com.br'
+        }
+      }
+    }
+  };
+
+  const created = await toolCheckoutInfinitePay.execute(
+    { valor: 10, descricao: 'Almoço Executivo' },
+    {
+      actor: 'client',
+      phone: '5585999991111',
+      clientName: 'Maria',
+      botConfig,
+      infinitePayOrders: orderStore,
+      fetchImpl: mockFetch
+    }
+  );
+  assert.equal(created.success, true);
+  assert.equal(created.handle, 'tauanpires');
+  assert.equal(created.checkoutUrl, 'https://checkout.infinitepay.io/tauanpires/abc123');
+  assert.equal(fetchCalls[0].body.items[0].price, 1000);
+  assert.equal(fetchCalls[0].body.webhook_url, 'https://liasync.atualyze.com.br/webhook/infinitepay');
+
+  // Webhook com order_nsu desconhecido é rejeitado
+  const bad = await processInfinitePayWebhook({
+    payload: { order_nsu: 'nao-existe' },
+    orderStore
+  });
+  assert.equal(bad.status, 400);
+
+  // Webhook válido responde 200 e confirma cliente + responsável após payment_check
+  const ok = await processInfinitePayWebhook({
+    payload: {
+      order_nsu: created.orderNsu,
+      transaction_nsu: 'tx-999',
+      invoice_slug: 'abc123',
+      amount: 1000,
+      paid_amount: 1000,
+      capture_method: 'pix',
+      receipt_url: 'https://comprovante.infinitepay.io/tx-999'
+    },
+    orderStore,
+    getHumanPhone: () => '5588998340085',
+    sendText: async (phone, text) => sentMessages.push({ phone, text }),
+    checkPayment: async args => {
+      const r = await mockFetch('https://api.checkout.infinitepay.io/payment_check', { body: JSON.stringify(args) });
+      return r.json();
+    }
+  });
+  assert.equal(ok.status, 200);
+  await ok.backgroundTask;
+
+  assert.equal(sentMessages.length, 2);
+  assert.equal(sentMessages[0].phone, '5585999991111');
+  assert.match(sentMessages[0].text, /Pagamento confirmado!/i);
+  assert.equal(sentMessages[1].phone, '5588998340085');
+  assert.match(sentMessages[1].text, /Maria/);
+
+  // Reentrega idempotente não envia mensagens duplicadas
+  const dup = await processInfinitePayWebhook({
+    payload: { order_nsu: created.orderNsu },
+    orderStore
+  });
+  assert.equal(dup.status, 200);
+  assert.equal(dup.body.alreadyProcessed, true);
+  assert.equal(sentMessages.length, 2);
+
+  // Consulta manual verificar_pagamento retorna paid: true
+  const checked = await toolCheckoutInfinitePay.execute(
+    { acao: 'verificar_pagamento', orderNsu: created.orderNsu },
+    { botConfig, infinitePayOrders: orderStore, fetchImpl: mockFetch }
+  );
+  assert.equal(checked.success, true);
+  assert.equal(checked.paid, true);
 });

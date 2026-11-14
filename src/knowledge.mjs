@@ -118,6 +118,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRAS OBRIGATÓRIAS:
   1) Se o responsável pedir Pix SEM informar valor (ex: "Pix", "Preciso gerar um Pix"), NÃO chame a ferramenta ainda e NÃO use a frase do pedido como descrição! Pergunte em "reply" qual o valor e a descrição (ou se deseja valor livre).
   2) Assim que houver valor (ou pedido explícito de "valor livre"/"sem valor", inclusive no turno seguinte como "10, sobre pagamento de almoço"), EMITA "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "pagamento de almoço"}}] na mesma resposta! NUNCA apenas diga "já está anotado" ou "vou gerar o Pix" com "tool_calls": [].
+• "checkout_infinitepay": Gera link de pagamento oficial InfinitePay (Pix e Cartão) com confirmação automática por webhook e consulta status de pagamento ("acao": "criar_link" | "verificar_pagamento"). Use quando pedir link InfinitePay, pagamento por cartão/checkout ou confirmação/status de pagamento!
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.
@@ -218,6 +219,7 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
    • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.
    • "gerar_cobranca_pix": {"valor": 150.0, "descricao": "..."} — gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp.
+   • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} — gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
    • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} — consulta preços, estoque e catálogo no Google Sheets.
    • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} — busca e envia catálogos/contratos em PDF do Google Drive.
    • "consultar_dados_brasil": {"acao": "consultar_cep|consultar_cnpj|consultar_feriados", "cep": "...", "cnpj": "..."} — consulta endereço por CEP, CNPJ ou feriados nacionais.

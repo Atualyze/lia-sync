@@ -12,6 +12,7 @@ import { toolConsultarPlanilhaGoogle } from './consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
+import { toolCheckoutInfinitePay } from './checkout_infinitepay.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
@@ -20,6 +21,12 @@ export const TOOL_SETTINGS_SCHEMA = {
     { key: 'merchantName', label: 'Nome do Favorecido', type: 'text', placeholder: 'Ex.: Atualyze Clínica (até 25 chars)' },
     { key: 'merchantCity', label: 'Cidade', type: 'text', placeholder: 'Ex.: SAO PAULO (até 15 chars)' },
     { key: 'publicBaseUrl', label: 'URL Pública (para link /pix)', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' }
+  ],
+  checkout_infinitepay: [
+    { key: 'handle', label: 'InfiniteTag (Handle)', type: 'text', placeholder: 'Ex.: tauanpires (sem $)' },
+    { key: 'apiKey', label: 'API Key (opcional)', type: 'password', placeholder: 'Chave para opções avançadas do Checkout' },
+    { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://liasync.atualyze.com.br' },
+    { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' }
   ],
   consultar_planilha_google: [
     { key: 'defaultSpreadsheetId', label: 'ID da Planilha Padrão', type: 'text', placeholder: 'ID da URL do Google Sheets' },
@@ -47,7 +54,8 @@ export const ALL_TOOLS = [
   toolConsultarPlanilhaGoogle,
   toolGerenciarDriveGoogle,
   toolConsultarDadosBrasil,
-  toolGerarCobrancaPix
+  toolGerarCobrancaPix,
+  toolCheckoutInfinitePay
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -74,7 +82,8 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'consultar_planilha_google',
   'gerenciar_drive_google',
   'consultar_dados_brasil',
-  'gerar_cobranca_pix'
+  'gerar_cobranca_pix',
+  'checkout_infinitepay'
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 

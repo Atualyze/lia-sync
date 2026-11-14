@@ -445,6 +445,27 @@ export async function handleClientMessage({
                     : `Qual o *valor* e a *descrição* do Pix que você precisa gerar?`;
                 }
               }
+              if (tc.name === 'checkout_infinitepay') {
+                if (toolRes?.success && toolRes.action === 'verificar_pagamento') {
+                  const valorFmt = toolRes.amount ? `R$ ${(Number(toolRes.amount) / 100).toFixed(2).replace('.', ',')}` : '';
+                  toolReplyOverride = toolRes.paid
+                    ? `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido \`${toolRes.orderNsu}\`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`
+                    : `⏳ O pagamento do pedido \`${toolRes.orderNsu}\` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`;
+                } else if (toolRes?.success) {
+                  const valorFmt = `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}`;
+                  toolReplyOverride = [
+                    `💳 *Aqui está seu link de pagamento (Pix ou Cartão):*`,
+                    `• *Valor:* ${valorFmt}`,
+                    toolRes.descricao ? `• *Descrição:* ${toolRes.descricao}` : '',
+                    `• *Link:* ${toolRes.checkoutUrl}`,
+                    `_Assim que o pagamento for aprovado, eu confirmo automaticamente por aqui!_`
+                  ].filter(Boolean).join('\n\n');
+                } else {
+                  toolReplyOverride = toolRes?.error === 'invalid_amount'
+                    ? `Qual o *valor* e a *descrição* para eu gerar o link de pagamento?`
+                    : `Não consegui gerar o link de pagamento agora. Vou pedir para a equipe te enviar por aqui!`;
+                }
+              }
               if (tc.name === 'agendar_retorno_ou_followup') {
                 toolReplyOverride = toolRes?.success
                   ? toolRes.message
