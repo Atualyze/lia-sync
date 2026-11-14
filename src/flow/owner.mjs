@@ -2,7 +2,7 @@ import { filterReply, normalize, isGreeting } from '../safety.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
-import { executeToolCall } from '../tools/index.mjs';
+import { executeToolCall, isToolEnabled } from '../tools/index.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
 import {
@@ -1170,13 +1170,46 @@ ${errMsg}`;
         const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a\s*pix)\b/i.test(cleanCommand);
         const pixParsed = extractPixArgs(cleanCommand);
         const promisedPixInReply = Boolean(rawReply && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply));
-        const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix')
+        const pixEnabled = isToolEnabled('gerar_cobranca_pix', botConfig);
+        const ipEnabled = isToolEnabled('checkout_infinitepay', botConfig)
+          && Boolean(botConfig?.tools?.settings?.checkout_infinitepay?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.checkout_infinitepay?.apiKey || process.env.INFINITEPAY_API_KEY);
+        const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && !isAudioForSelf
           && (
             promisedPixInReply
             || ((hasPixKeyword || askedPixRecently) && pixParsed.hasAmountOrFree)
           );
-        if (shouldAutoExecutePix) {
+        if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
+          const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+          const autoIp = await executeToolCall('checkout_infinitepay', {
+            acao: 'criar_link',
+            valor: pixParsed.valor,
+            ...(pixParsed.desc ? { descricao: pixParsed.desc.slice(0, 80) } : {})
+          }, {
+            phone: OWNER_SELF_KEY,
+            targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
+            clientName: `${owner} (Copiloto)`,
+            store,
+            reminderStore,
+            whatsapp,
+            ai,
+            botConfig,
+            session: sSelf
+          });
+          if (autoIp?.success) {
+            const valorFmt = `R$ ${Number(autoIp.valor).toFixed(2).replace('.', ',')}`;
+            const msg = [
+              `💳 *Link de Pagamento InfinitePay gerado!*`,
+              `• *Valor:* ${valorFmt}`,
+              autoIp.descricao ? `• *Descrição:* ${autoIp.descricao}` : '',
+              `• *Pedido:* \`${autoIp.orderNsu}\``,
+              `• *Link:* ${autoIp.checkoutUrl}`,
+              autoIp.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
+            ].filter(Boolean).join('\n\n');
+            return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
+          }
+        }
+        if (shouldAutoExecutePix && pixEnabled) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
           const autoPix = await executeToolCall('gerar_cobranca_pix', {
             ...(pixParsed.valor > 0 ? { valor: pixParsed.valor } : {}),
