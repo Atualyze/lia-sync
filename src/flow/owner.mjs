@@ -951,6 +951,14 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   tc.args.message = buildFriendlyMessage(tc.args.recipient, tc.args.message, { asAudio: false, identity });
                 }
 
+                if (tc.name === 'gerar_cobranca_pix') {
+                  const hasNumericValue = Number(tc.args?.valor) > 0 || /(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i.test(cleanCommand);
+                  const explicitFreeValue = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
+                  if (!hasNumericValue && !explicitFreeValue) {
+                    const askVal = `${owner}, qual o *valor* e a *descrição* do Pix que você quer gerar? _(Se quiser sem valor fixo, me diga *valor livre*)_`;
+                    return recordSelfTurn(filterReply(askVal, { isCopilot: true }).text);
+                  }
+                }
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
                 const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                   phone: OWNER_SELF_KEY,

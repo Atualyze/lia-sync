@@ -115,7 +115,9 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "agendar_retorno_ou_followup": Agendamento de retornos e lembretes com clientes.
 • "consultar_contato_ou_lead" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
-• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRA OBRIGATÓRIA: sempre que o responsável pedir Pix (ou responder com valor/descrição após você perguntar sobre Pix, ex: "10, sobre pagamento de almoço", "gera pix de 50", "pix valor livre"), EMITA "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "pagamento de almoço"}}] na mesma resposta! NUNCA apenas diga "já está anotado" ou "vou gerar o Pix" com "tool_calls": [].
+• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRAS OBRIGATÓRIAS:
+  1) Se o responsável pedir Pix SEM informar valor (ex: "Pix", "Preciso gerar um Pix"), NÃO chame a ferramenta ainda e NÃO use a frase do pedido como descrição! Pergunte em "reply" qual o valor e a descrição (ou se deseja valor livre).
+  2) Assim que houver valor (ou pedido explícito de "valor livre"/"sem valor", inclusive no turno seguinte como "10, sobre pagamento de almoço"), EMITA "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "pagamento de almoço"}}] na mesma resposta! NUNCA apenas diga "já está anotado" ou "vou gerar o Pix" com "tool_calls": [].
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.

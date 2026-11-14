@@ -28,21 +28,72 @@ function crc16Ccitt(payload) {
   return crc.toString(16).toUpperCase().padStart(4, '0');
 }
 
+function isValidCpf(digits) {
+  if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(digits[i]) * (10 - i);
+  let d1 = (sum * 10) % 11;
+  if (d1 === 10) d1 = 0;
+  if (d1 !== Number(digits[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(digits[i]) * (11 - i);
+  let d2 = (sum * 10) % 11;
+  if (d2 === 10) d2 = 0;
+  return d2 === Number(digits[10]);
+}
+
+export function normalizePixKey(rawKey, keyType = 'auto') {
+  const raw = String(rawKey || '').trim();
+  if (!raw) return '';
+  if (raw.includes('@')) return raw.toLowerCase();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return raw.toLowerCase();
+
+  const type = String(keyType || 'auto').trim().toLowerCase();
+  const digits = raw.replace(/\D/g, '');
+  if (type === 'telefone' || type === 'phone' || type === 'celular') {
+    if (!digits) return raw;
+    return digits.startsWith('55') && digits.length >= 12 ? `+${digits}` : `+55${digits}`;
+  }
+  if (type === 'cpf' || type === 'cnpj') return digits || raw;
+  if (type === 'email' || type === 'aleatoria') return raw;
+
+  if (raw.startsWith('+') && digits.length >= 10) return `+${digits}`;
+  if (/[()]/.test(raw) && (digits.length === 10 || digits.length === 11)) return `+55${digits}`;
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) return `+${digits}`;
+  if (digits.length === 11 && !isValidCpf(digits) && /^[1-9]{2}9\d{8}$/.test(digits)) {
+    return `+55${digits}`;
+  }
+  if (digits.length === 10 && /^[1-9]{2}[2-8]\d{7}$/.test(digits)) {
+    return `+55${digits}`;
+  }
+  return raw;
+}
+
+function cleanPixDescription(description) {
+  const raw = sanitizeAscii(description, 40);
+  if (!raw) return '';
+  if (/^(?:preciso|quero|pode|gostaria\s+de|me)?\s*(?:gerar|criar|fazer|enviar|mandar)?\s*(?:um|uma)?\s*(?:cobranca\s*)?pix$/i.test(raw)) {
+    return '';
+  }
+  return raw;
+}
+
 export function buildPixPayload({
   pixKey,
+  keyType = 'auto',
   amount = 0,
   merchantName = 'Lia Sync',
   merchantCity = 'SAO PAULO',
   txid = '***',
   description = ''
 } = {}) {
-  const cleanKey = String(pixKey || '').trim();
+  const cleanKey = normalizePixKey(pixKey, keyType);
   if (!cleanKey) throw new Error('Chave Pix não informada.');
 
   const cleanName = sanitizeAscii(merchantName, 25) || 'Lia Sync';
   const cleanCity = sanitizeAscii(merchantCity, 15) || 'SAO PAULO';
   const cleanTxid = String(txid || '***').replace(/[^A-Za-z0-9]/g, '').slice(0, 25) || '***';
-  const cleanDesc = sanitizeAscii(description, 40);
+  const cleanDesc = cleanPixDescription(description);
 
   const merchantAccount =
     tlv('00', 'br.gov.bcb.pix') +
@@ -120,6 +171,7 @@ export const toolGerarCobrancaPix = {
     const txid = args.txid || `LIA${Date.now().toString().slice(-8)}`;
     const payload = buildPixPayload({
       pixKey,
+      keyType: toolSettings.keyType || 'auto',
       amount,
       merchantName,
       merchantCity,

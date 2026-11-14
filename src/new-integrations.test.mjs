@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPixPayload, toolGerarCobrancaPix } from './tools/gerar_cobranca_pix.mjs';
+import { buildPixPayload, normalizePixKey, toolGerarCobrancaPix } from './tools/gerar_cobranca_pix.mjs';
 import { toolConsultarDadosBrasil } from './tools/consultar_dados_brasil.mjs';
 import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
@@ -357,4 +357,43 @@ test('Cliente Pix: executa gerar_cobranca_pix, envia imagem no WhatsApp do clien
   assert.match(res, /000201/);
   assert.equal(sentImages.length, 1);
   assert.equal(sentImages[0].phone, '5585999991111');
+});
+
+test('Pix BR Code: normaliza celular de 11 dígitos com +55 sem confundir com CPF e remove frase de pedido da descrição', () => {
+  assert.equal(normalizePixKey('88998340085'), '+5588998340085');
+  assert.equal(normalizePixKey('88998340085', 'telefone'), '+5588998340085');
+  const payload = buildPixPayload({
+    pixKey: '88998340085',
+    amount: 10,
+    merchantName: 'Tauan Pires',
+    merchantCity: 'Sobral',
+    description: 'Preciso gerar um Pix'
+  });
+  assert.equal(payload.includes('+5588998340085'), true);
+  assert.equal(payload.includes('Preciso gerar um Pix'), false);
+  assert.equal(payload.includes('540510.00'), true);
+});
+
+test('Copiloto Pix: "Preciso gerar um Pix" sem valor pergunta o valor mesmo se a IA tentar chamar tool com valor 0', async () => {
+  const store = new SessionStore();
+  const botConfig = createPixBotConfig('88998340085');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => ({
+        reply: '',
+        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 0, descricao: 'Preciso gerar um Pix' } }]
+      })
+    }
+  });
+
+  const res = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'Preciso gerar um Pix',
+    origin: 'owner'
+  });
+  assert.match(res, /valor/i);
+  assert.doesNotMatch(res, /Cobrança Pix gerada!/i);
 });
