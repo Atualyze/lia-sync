@@ -147,7 +147,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   const followUpMin = Number(value.behavior?.leadFollowUpMinHours);
   const followUpMax = Number(value.behavior?.leadFollowUpMaxHours);
   if (!Number.isFinite(followUpMin) || followUpMin < 1 || followUpMin > 720 || !Number.isFinite(followUpMax) || followUpMax <= followUpMin || followUpMax > 720) errors.push('A janela do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
-  const providers = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
+  const providers = new Set(['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare']);
   const provider = value.ai?.activeProvider || '';
   if (requirePublishedAI && (!provider || !providers.has(provider))) errors.push('Publique um provedor de IA válido no dashboard.');
   if (requirePublishedAI && !value.ai?.activeModel?.trim()) errors.push('Publique um modelo de IA no dashboard.');

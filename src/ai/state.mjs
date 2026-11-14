@@ -2,4 +2,4 @@
 
 export const failures = new Map();
 export const opened = new Map();
-export const PROVIDERS = ['gemini', 'openrouter', 'qwen', 'openai'];
+export const PROVIDERS = ['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare'];

@@ -39,14 +39,16 @@ export const available = provider =>
   provider === 'gemini' ? config.geminiKey :
   provider === 'openrouter' ? config.openrouterKey :
   provider === 'qwen' ? config.qwenKey :
+  provider === 'cloudflare' ? (config.cloudflareAccountId && config.cloudflareApiToken) :
   config.openaiKey;
 
-const PROVIDER_PREFIX = /^(gemini|openrouter|qwen|openai):(.*)$/i;
+const PROVIDER_PREFIX = /^(gemini|openrouter|qwen|openai|cloudflare):(.*)$/i;
 
 export function parseFallbackModel(value) {
   const raw = String(value || '').trim();
   const explicit = raw.match(PROVIDER_PREFIX);
   if (explicit) return { provider: explicit[1].toLowerCase(), model: explicit[2].trim() };
+  if (/^@cf\//i.test(raw)) return { provider: 'cloudflare', model: raw };
   if (/^gemini[-\w.]/i.test(raw)) return { provider: 'gemini', model: raw };
   if (/^(?:gpt-|o[1-9](?:-|$)|chatgpt-)/i.test(raw)) return { provider: 'openai', model: raw };
   if (/^qwen[-/]/i.test(raw)) return { provider: 'qwen', model: raw };
@@ -62,7 +64,7 @@ export function fallbackModelsForProvider(aiConfig, provider) {
 }
 
 export function getCircuitBreakers() {
-  const all = ['gemini', 'openrouter', 'qwen', 'openai'];
+  const all = ['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare'];
   const res = {};
   const now = Date.now();
   for (const p of all) {
@@ -218,5 +220,6 @@ export function providerDefaultModel(provider, aiConfig, fixedModel) {
   const configuredFallback = fallbackModelsForProvider(aiConfig, provider)[0];
   if (configuredFallback) return configuredFallback;
   if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
+  if (provider === 'cloudflare') return '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
   return '';
 }

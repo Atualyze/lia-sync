@@ -31,7 +31,7 @@ export const MODEL_CAPABILITIES = Object.freeze({
     supportsTools: true,
     supportsWebSearch: true,
     supportsVision: true,
-    defaultThinkingBudget: 0
+    defaultThinkingBudget: 1024
   },
   'gemini-2.5-flash': {
     resolvedModel: 'gemini-2.5-flash',
@@ -39,15 +39,15 @@ export const MODEL_CAPABILITIES = Object.freeze({
     supportsTools: true,
     supportsWebSearch: true,
     supportsVision: true,
-    defaultThinkingBudget: 0
+    defaultThinkingBudget: 1024
   },
   'gemini-pro-latest': {
-    resolvedModel: 'gemini-pro-latest',
+    resolvedModel: 'gemini-2.5-pro',
     tier: 'pro',
     supportsTools: true,
     supportsWebSearch: true,
     supportsVision: true,
-    defaultThinkingBudget: 1024
+    defaultThinkingBudget: 2048
   },
   'gemini-2.5-pro': {
     resolvedModel: 'gemini-2.5-pro',
@@ -55,11 +55,11 @@ export const MODEL_CAPABILITIES = Object.freeze({
     supportsTools: true,
     supportsWebSearch: true,
     supportsVision: true,
-    defaultThinkingBudget: 1024
+    defaultThinkingBudget: 2048
   }
 });
 
-const TOOL_INTENT_REGEX = /\b(?:agend\w*|marcar|marque|remarcar|compromisso|reuni[aã]o|hor[aá]rios?\s+livres?|minha\s+agenda|google\s+agenda|lembr\w*|follow-?up|retorno|transfer\w*|financeiro|comercial|suporte|setor|humano|atendente|lead|crm|ficha|cadastr\w*|est[aá]gio|envi(?:e|ar)|mand(?:e|ar)|dispar\w*|grav(?:e|ar)\s+(?:um\s+)?[aá]udio|ger(?:e|ar)\s+(?:um\s+)?pdf|or[cç]amento|recibo|proposta|declara[cç][aã]o|boleto|segunda\s+via|comprar|plano|contrat\w*|cancel\w*|urgente|emerg\w*|reclam\w*)\b/i;
+const TOOL_INTENT_REGEX = /\b(?:agend\w*|marcar|marque|remarcar|compromisso|reuni[aã]o|hor[aá]rios?\s+livres?|minha\s+agenda|google\s+agenda|lembr\w*|follow-?up|retorno|transfer\w*|financeiro|comercial|suporte|setor|humano|atendente|lead|crm|ficha|cadastr\w*|est[aá]gio|envi(?:e|ar)|mand(?:e|ar)|dispar\w*|grav(?:e|ar)\s+(?:um\s+)?[aá]udio|(?:em|por)\s+[aá]udio|ger(?:e|ar)\s+(?:um\s+)?pdf|or[cç]amento|recibo|proposta|declara[cç][aã]o|boleto|segunda\s+via|pix|pagar|pagamento|checkout|infinitepay|comprovante|planilha|drive|cat[aá]logo|cep|cnpj|status|fila|sa[uú]de|comprar|plano|contrat\w*|cancel\w*|urgente|emerg\w*|reclam\w*)\b/i;
 
 const WEB_SEARCH_INTENT_REGEX = /\b(?:pesquis\w*|busc(?:a|ar)\s+na\s+web|consult(?:a|ar)\s+(?:na\s+)?web|na\s+internet|google|cota[cç][aã]o|d[oó]lar|euro|bitcoin|btc|selic|ipca|infla[cç][aã]o|ibovespa|not[ií]cias?\s+de|previs[aã]o\s+do\s+tempo|clima\s+hoje|feriado|cnpj\s+de|endere[cç]o\s+de|quem\s+(?:é|foi|ganhou)|resultado\s+do\s+jogo)\b/i;
 
@@ -169,10 +169,10 @@ export function decidirModeloPorContexto({
     if (isDeepReasoning) {
       return {
         model: 'gemini-pro-latest',
-        resolvedModel: 'gemini-pro-latest',
+        resolvedModel: 'gemini-2.5-pro',
         tier: 'pro',
         capabilities,
-        thinkingBudget: 1024,
+        thinkingBudget: 2048,
         reason: 'Copiloto: Análise profunda e raciocínio estratégico'
       };
     }
@@ -182,8 +182,8 @@ export function decidirModeloPorContexto({
       resolvedModel: MODEL_CAPABILITIES[flashModel]?.resolvedModel || 'gemini-2.5-flash',
       tier: 'flash',
       capabilities,
-      thinkingBudget: 0,
-      reason: 'Copiloto: Interação operacional dinâmica e ferramentas'
+      thinkingBudget: 1024,
+      reason: 'Copiloto: Interação operacional com raciocínio prévio e ferramentas'
     };
   }
 
@@ -212,20 +212,20 @@ export function decidirModeloPorContexto({
       resolvedModel: 'gemini-2.5-flash',
       tier: 'flash',
       capabilities,
-      thinkingBudget: capabilities.includes('deep_reasoning') ? 512 : 0,
-      reason: 'Super Agente: Execução de ferramentas, busca web e persistência no CRM'
+      thinkingBudget: capabilities.includes('deep_reasoning') ? 1536 : 1024,
+      reason: 'Super Agente: Raciocínio prévio antes de agir, ferramentas e CRM'
     };
   }
 
-  // 4. Padrão equilibrado
+  // 4. Padrão equilibrado (com raciocínio prévio antes de responder)
   const defaultModel = configuredModel || 'gemini-3.8-flash';
   return {
     model: defaultModel,
     resolvedModel: MODEL_CAPABILITIES[defaultModel]?.resolvedModel || 'gemini-2.5-flash',
     tier: 'flash',
     capabilities,
-    thinkingBudget: 0,
-    reason: 'Atendimento Conversacional Padrão'
+    thinkingBudget: 512,
+    reason: 'Atendimento Conversacional Padrão com Thinking'
   };
 }
 

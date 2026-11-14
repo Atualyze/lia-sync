@@ -26,6 +26,8 @@ export const config = Object.freeze({
   qwenKey: process.env.QWEN_API_KEY || '',
   qwenBaseUrl: (process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
   openaiKey: process.env.OPENAI_API_KEY || '',
+  cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
+  cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || '',
   dataFile: path.resolve(process.env.DATA_FILE || './data/sessions.json'),
   maxHistory: num('MAX_HISTORY_MESSAGES', 12),
   maxInputChars: num('MAX_INPUT_CHARS', 2000),

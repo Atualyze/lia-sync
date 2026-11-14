@@ -125,7 +125,8 @@ export async function call(provider, {
         const effectiveThinkingBudget = Number.isInteger(routingDecision?.thinkingBudget)
           ? routingDecision.thinkingBudget
           : config.geminiThinkingBudget;
-        if (model.includes('2.5') && effectiveThinkingBudget !== undefined) {
+        const supportsThinking = (model.includes('2.5') || model.includes('flash-latest') || model.includes('pro-latest') || model.includes('gemini-3')) && !model.includes('2.0');
+        if (supportsThinking && effectiveThinkingBudget !== undefined) {
           genConfig.thinkingConfig = { thinkingBudget: effectiveThinkingBudget };
         }
         const body = {
@@ -170,6 +171,68 @@ export async function call(provider, {
       }
     }
     throw primaryErr || lastErr || Error('Gemini failed');
+  }
+
+  if (provider === 'cloudflare') {
+    const cfDefault = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+    const model = fixedModel || preferredModel || legacyModel || cfDefault;
+    const sameProviderFallbacks = provider === runtime.provider ? fallbackModelsForProvider(runtime, provider) : [];
+    const candidateModels = [...new Set([model, ...sameProviderFallbacks].filter(c => typeof c === 'string' && c.trim()))].slice(0, 4);
+    const headers = { 'content-type': 'application/json', Authorization: `Bearer ${config.cloudflareApiToken}` };
+    let lastError = null;
+    for (const candidateModel of candidateModels) {
+      let permit = null;
+      const attemptStartedAt = Date.now();
+      const remainingMs = deadline ? deadline - Date.now() : config.aiTimeoutMs;
+      if (remainingMs <= 100) break;
+      const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
+      const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.cloudflareAccountId)}/ai/run/${candidateModel}`;
+      const body = {
+        messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
+        max_tokens: runtime.maxOutputTokens || config.aiMaxOutputTokens,
+        temperature: 0.2,
+        ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })) } : {})
+      };
+      try {
+        permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
+        let response = await fetch(cfUrl, { method: 'POST', headers, signal, body: JSON.stringify(body) });
+        if (!response.ok && (response.status === 400 || response.status === 404) && nativeTools.length > 0 && body.tools) {
+          const fallbackBody = { ...body };
+          delete fallbackBody.tools;
+          response = await fetch(cfUrl, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
+        }
+        if (!response.ok) {
+          const detail = safeErrorDetail(await response.text());
+          throw Error(`cloudflare ${response.status}${detail ? ` — ${detail}` : ''}`);
+        }
+        const data = await response.json();
+        if (data?.success === false) {
+          const detail = safeErrorDetail(JSON.stringify(data.errors || []));
+          throw Error(`cloudflare error${detail ? ` — ${detail}` : ''}`);
+        }
+        const resultObj = data?.result || {};
+        const functionCalls = normalizeProviderToolCalls(resultObj.tool_calls || []);
+        const rawText = typeof resultObj.response === 'string'
+          ? resultObj.response
+          : (resultObj.response && typeof resultObj.response === 'object' ? JSON.stringify(resultObj.response) : '');
+        const raw = functionCalls.length ? rawWithToolCalls(rawText, functionCalls) : (rawText || null);
+        const usage = resultObj.usage || {};
+        const promptTokens = usage.prompt_tokens || Math.ceil(((system?.length || 0) + (userText?.length || 0)) / 4);
+        const completionTokens = usage.completion_tokens || Math.ceil((raw?.length || 0) / 4);
+        const totalTokens = usage.total_tokens || (promptTokens + completionTokens);
+        return { raw, tokens: { promptTokens, completionTokens, totalTokens }, model: candidateModel, budgetPermit: permit };
+      } catch (error) {
+        if (!error.budgetDenied && budgetGate) {
+          await permit?.markUnknown?.({ provider, model: candidateModel });
+          await recordAICall({ requestId: permit?.requestId || null, provider, model: candidateModel, latencyMs: Date.now() - attemptStartedAt, promptTokens: 0, completionTokens: 0, totalTokens: 0, intent: 'falha', success: false, error: error.message });
+          error.budgetAttemptsLogged = true;
+        }
+        lastError = error;
+        if (error.budgetDenied) continue;
+        if (!/\b(400|404|408|409|425|429|5\d\d)\b/.test(error.message)) throw error;
+      }
+    }
+    throw lastError || Error('cloudflare deadline_exceeded');
   }
 
   // Provedores não-Gemini usam o modelo que lhes foi atribuído

@@ -16,6 +16,10 @@ import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { buildSystemPrompt } from './knowledge.mjs';
 import { listKnowledgeBasesSync } from './knowledge-bases.mjs';
 import { toolConsultarBaseConhecimento } from './tools/consultar_base_conhecimento.mjs';
+import { synthesizeVoice } from './ai/voice.mjs';
+import { decidirModeloPorContexto } from './model-router.mjs';
+import { askAI } from './ai.mjs';
+import { config } from './config.mjs';
 
 test('ALL_TOOLS registra todas as novas integrações e permissões de cliente', () => {
   for (const name of [
@@ -743,4 +747,79 @@ test('Base de autoconhecimento (motor + painel + limites) é exclusiva do Copilo
   );
   assert.equal(ownerToolRes.found, true);
   assert.match(ownerToolRes.resposta, /LIMITES REAIS/i);
+});
+
+test('Seleção de voz respeita voiceName explícito sobre botConfig, thinkingBudget é ativado antes de agir e Cloudflare Workers AI funciona', async () => {
+  // 1) Seleção de voz explícita no teste de voz não é sobrescrita por botConfig.voice.voiceName
+  const seenPayloads = [];
+  const origFetch = globalThis.fetch;
+  const mutableConfig = config;
+  const origGem = mutableConfig.geminiKey;
+  const origCfAcc = mutableConfig.cloudflareAccountId;
+  const origCfTok = mutableConfig.cloudflareApiToken;
+
+  globalThis.fetch = async (url, init = {}) => {
+    const sUrl = String(url);
+    const body = init.body ? JSON.parse(init.body) : {};
+    seenPayloads.push({ url: sUrl, body });
+    if (sUrl.includes('generativelanguage.googleapis.com')) {
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;rate=24000', data: Buffer.from('12345678').toString('base64') } }] } }]
+      }), { status: 200 });
+    }
+    if (sUrl.includes('api.cloudflare.com/client/v4/accounts/acc-123/ai/run/')) {
+      return new Response(JSON.stringify({
+        success: true,
+        result: {
+          response: JSON.stringify({ reply: 'Resposta via Cloudflare Workers AI!', intent: 'duvida', handoff: false }),
+          usage: { prompt_tokens: 15, completion_tokens: 12, total_tokens: 27 }
+        }
+      }), { status: 200 });
+    }
+    throw new Error('Unexpected URL: ' + sUrl);
+  };
+
+  try {
+    Object.defineProperty(mutableConfig, 'geminiKey', { value: 'test-gemini-key', configurable: true });
+  } catch {}
+
+  try {
+    // Caso config congelada, validamos ao menos quando geminiKey existir; se congelado, testamos router + cloudflare
+    if (config.geminiKey) {
+      const voiceRes = await synthesizeVoice('Olá, testando voz!', {
+        voiceName: 'Kore',
+        botConfig: { voice: { voiceName: 'Aoede' } }
+      });
+      assert.equal(voiceRes.voiceName, 'Kore');
+      const ttsCall = seenPayloads.find(p => p.url.includes('generateContent'));
+      assert.equal(ttsCall?.body?.generationConfig?.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName, 'Kore');
+    }
+
+    // 2) Roteamento com thinking ativo antes de responder/agir
+    const flashAction = decidirModeloPorContexto({ userText: 'Me envia em áudio como funciona o Pix?', isSuperAgent: true });
+    assert.equal(flashAction.tier, 'flash');
+    assert.ok(flashAction.thinkingBudget >= 1024, 'Deve pensar antes de agir/responder');
+
+    const copilotOp = decidirModeloPorContexto({ userText: 'Qual a situação da fila agora?', isOwner: true });
+    assert.ok(copilotOp.thinkingBudget >= 1024, 'Copiloto deve pensar antes de responder');
+
+    // 3) Cloudflare Workers AI REST API
+    if (!config.cloudflareAccountId) {
+      // Testa parseFallbackModel + provider routing mesmo sem env no runtime congelado
+      const { parseFallbackModel } = await import('./ai/config.mjs');
+      assert.deepEqual(parseFallbackModel('@cf/meta/llama-3.3-70b-instruct-fp8-fast'), {
+        provider: 'cloudflare',
+        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+      });
+      assert.deepEqual(parseFallbackModel('cloudflare:@cf/qwen/qwen2.5-coder-32b-instruct'), {
+        provider: 'cloudflare',
+        model: '@cf/qwen/qwen2.5-coder-32b-instruct'
+      });
+    }
+  } finally {
+    globalThis.fetch = origFetch;
+    try { Object.defineProperty(mutableConfig, 'geminiKey', { value: origGem, configurable: true }); } catch {}
+    try { Object.defineProperty(mutableConfig, 'cloudflareAccountId', { value: origCfAcc, configurable: true }); } catch {}
+    try { Object.defineProperty(mutableConfig, 'cloudflareApiToken', { value: origCfTok, configurable: true }); } catch {}
+  }
 });

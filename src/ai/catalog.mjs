@@ -1,6 +1,6 @@
 import { config } from '../config.mjs';
 
-const ALLOWED_PROVIDERS = new Set(['gemini', 'openrouter', 'openai', 'qwen']);
+const ALLOWED_PROVIDERS = new Set(['gemini', 'openrouter', 'openai', 'qwen', 'cloudflare']);
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();
 
@@ -23,6 +23,11 @@ function providerConfig(provider) {
   if (provider === 'qwen') return {
     key: config.qwenKey,
     url: `${config.qwenBaseUrl}/models`,
+    auth: key => ({ Authorization: `Bearer ${key}` })
+  };
+  if (provider === 'cloudflare') return {
+    key: config.cloudflareAccountId && config.cloudflareApiToken ? config.cloudflareApiToken : '',
+    url: `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.cloudflareAccountId || '')}/ai/models/search?task=Text+Generation`,
     auth: key => ({ Authorization: `Bearer ${key}` })
   };
   return {
@@ -69,12 +74,12 @@ export async function listProviderModels(provider, { forceRefresh = false, timeo
       let data;
       try { data = await response.json(); }
       catch { return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' }; }
-      const pageRows = name === 'gemini' ? data.models : data.data;
+      const pageRows = name === 'gemini' ? data.models : (name === 'cloudflare' ? data.result : data.data);
       if (!Array.isArray(pageRows)) return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' };
       rows.push(...pageRows);
       const nextToken = data.nextPageToken || data.next_page_token;
       const hasMore = data.has_more === true && pageRows.length > 0;
-      cursor = nextToken || (hasMore && name !== 'gemini' ? String(pageRows.at(-1)?.id || '') : '');
+      cursor = nextToken || (hasMore && name !== 'gemini' && name !== 'cloudflare' ? String(pageRows.at(-1)?.id || '') : '');
       if (!cursor) break;
       if (page === 9 || rows.length >= 5000) truncated = true;
     }

@@ -286,9 +286,10 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutM
   return null;
 }
 
-export async function synthesizeVoice(text, { voiceName = 'Aoede', botConfig = {} } = {}) {
+export async function synthesizeVoice(text, { voiceName = '', botConfig = {} } = {}) {
   if (!text) return null;
-  const selectedVoice = botConfig?.voice?.voiceName || voiceName || 'Aoede';
+  const explicitVoice = typeof voiceName === 'string' ? voiceName.trim() : '';
+  const selectedVoice = explicitVoice || botConfig?.voice?.voiceName || 'Aoede';
   const speed = Number(botConfig?.voice?.speed) || 1.0;
   const maxChars = Math.max(120, Math.min(2000, Number(botConfig?.voice?.maxTextChars) || 750));
   const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
