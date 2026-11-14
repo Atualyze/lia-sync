@@ -1087,7 +1087,7 @@ ${errMsg}`;
             .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
             .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b|gera\b|gerar\b|cobran[cç]a\b|valor\b|livre\b)+/i, '')
             .trim();
-          return { hasAmountOrFree: Boolean(amountMatch || isFreeAmount), valor, desc };
+          return { hasAmountOrFree: Boolean(amountMatch || isFreeAmount), isFreeAmount, valor, desc };
         };
 
         const pixResult = toolOutputs.find(t => t.tool === 'gerar_cobranca_pix');
@@ -1106,6 +1106,30 @@ ${errMsg}`;
         if (ipResult?.result) {
           const r = ipResult.result;
           if (!r.success) {
+            const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
+            if (r.error === 'invalid_amount' && askedFree) {
+              if (isToolEnabled('gerar_cobranca_pix', botConfig)) {
+                const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+                const freePix = await executeToolCall('gerar_cobranca_pix', { valor: 0 }, {
+                  phone: OWNER_SELF_KEY,
+                  targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
+                  clientName: `${owner} (Copiloto)`,
+                  store,
+                  reminderStore,
+                  whatsapp,
+                  ai,
+                  botConfig,
+                  session: sSelf
+                });
+                if (freePix?.success) {
+                  return recordSelfTurn(filterReply(formatPixCopilotReply(freePix), { isCopilot: true }).text);
+                }
+              }
+              return recordSelfTurn(filterReply(
+                `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerar_cobranca_pix* no painel para Pix com valor livre.`,
+                { isCopilot: true }
+              ).text);
+            }
             const msg = r.error === 'infinitepay_not_configured'
               ? `${owner}, configure sua *InfiniteTag (handle)* em *Ferramentas & Busca Web → checkout_infinitepay → Configurações da ferramenta* e publique para eu gerar links com confirmação automática.`
               : r.error === 'invalid_amount'
@@ -1208,6 +1232,12 @@ ${errMsg}`;
             ].filter(Boolean).join('\n\n');
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
           }
+        }
+        if (shouldAutoExecutePix && ipEnabled && pixParsed.isFreeAmount && !pixEnabled) {
+          return recordSelfTurn(filterReply(
+            `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerar_cobranca_pix* no painel para Pix com valor livre.`,
+            { isCopilot: true }
+          ).text);
         }
         if (shouldAutoExecutePix && pixEnabled) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');

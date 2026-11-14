@@ -461,8 +461,11 @@ export async function handleClientMessage({
                     `_Assim que o pagamento for aprovado, eu confirmo automaticamente por aqui!_`
                   ].filter(Boolean).join('\n\n');
                 } else {
+                  const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
                   toolReplyOverride = toolRes?.error === 'invalid_amount'
-                    ? `Qual o *valor* e a *descrição* para eu gerar o link de pagamento?`
+                    ? (askedFree
+                      ? `Esse link de pagamento exige um valor fixo (não aceita valor livre). Qual o *valor* que você gostaria de pagar?`
+                      : `Qual o *valor* e a *descrição* para eu gerar o link de pagamento?`)
                     : `Não consegui gerar o link de pagamento agora. Vou pedir para a equipe te enviar por aqui!`;
                 }
               }

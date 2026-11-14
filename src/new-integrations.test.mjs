@@ -508,3 +508,62 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(checked.success, true);
   assert.equal(checked.paid, true);
 });
+
+test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que InfinitePay exige valor fixo se gerar_cobranca_pix estiver desativado', async () => {
+  const store1 = new SessionStore();
+  const cfgBoth = {
+    identity: { assistantName: 'Lia', ownerName: 'Tauan' },
+    ai: { agentMode: 'super_agente', enableToolCalling: true },
+    tools: {
+      enabled: { gerar_cobranca_pix: true, checkout_infinitepay: true },
+      settings: {
+        gerar_cobranca_pix: { key: '88998340085', merchantName: 'Tauan Pires', merchantCity: 'Sobral' },
+        checkout_infinitepay: { handle: 'tauanpires' }
+      }
+    }
+  };
+  const flowBoth = createFlow({
+    store: store1,
+    getBotConfig: () => cfgBoth,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => ({
+        reply: '',
+        tool_calls: [{ name: 'checkout_infinitepay', args: { acao: 'criar_link', valor: 0 } }]
+      })
+    }
+  });
+  const resBoth = await flowBoth.process({
+    phone: OWNER_SELF_KEY,
+    text: 'gera um pix valor livre',
+    origin: 'owner'
+  });
+  assert.match(resBoth, /Cobrança Pix gerada!/i);
+  assert.match(resBoth, /Valor livre/i);
+
+  const store2 = new SessionStore();
+  const cfgIpOnly = {
+    ...cfgBoth,
+    tools: {
+      ...cfgBoth.tools,
+      enabled: { gerar_cobranca_pix: false, checkout_infinitepay: true }
+    }
+  };
+  const flowIpOnly = createFlow({
+    store: store2,
+    getBotConfig: () => cfgIpOnly,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => ({
+        reply: '',
+        tool_calls: [{ name: 'checkout_infinitepay', args: { acao: 'criar_link', valor: 0 } }]
+      })
+    }
+  });
+  const resIpOnly = await flowIpOnly.process({
+    phone: OWNER_SELF_KEY,
+    text: 'gera um pix valor livre',
+    origin: 'owner'
+  });
+  assert.match(resIpOnly, /InfinitePay.*exige um valor fixo/i);
+});
