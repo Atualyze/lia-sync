@@ -1057,7 +1057,10 @@ ${errMsg}`;
         if (pixResult?.result) {
           const r = pixResult.result;
           if (!r.success) {
-            return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${r.message || r.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
+            const askPixMsg = r.error === 'pix_key_not_configured'
+              ? `${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`
+              : `${owner}, me confirma o *valor* e a *descrição* (ou a *Chave Pix*) para eu gerar a cobrança certinha?`;
+            return recordSelfTurn(filterReply(askPixMsg, { isCopilot: true }).text);
           }
           const valorFmt = r.valor ? `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
           const pixMsg = [
