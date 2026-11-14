@@ -1045,3 +1045,160 @@ pre {
     display: flex;
   }
 }
+
+/* ==========================================================================
+   macOS Sonoma / Sequoia Floating Sidebar, Segmented Control & View Layout
+   ========================================================================== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Floating Frosted Sidebar */
+.sidebar {
+  margin: 12px 0 12px 12px;
+  height: calc(100vh - 24px);
+  top: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.nav-group-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  padding: 12px 10px 4px;
+}
+
+.sidebar.collapsed .nav-group-label {
+  display: none;
+}
+
+/* Apple Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+.segment-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-apple),
+              color var(--duration-fast) var(--ease-apple),
+              box-shadow var(--duration-fast) var(--ease-apple),
+              transform var(--duration-fast) var(--ease-apple);
+}
+
+.segment-btn:hover:not(.active) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segment-btn.active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.segment-btn:active {
+  transform: scale(0.97);
+}
+
+/* Active View & Grid Helpers */
+.view.active-view {
+  display: block;
+  animation: viewEnter var(--duration-base) var(--ease-apple) both;
+}
+
+.ops-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ops-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ops-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.health-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.inbox-grid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  min-height: 640px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-primary-btn,
+.action-btn-ping {
+  background: var(--accent-primary);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  padding: 9px 16px;
+}
+
+.admin-primary-btn:hover:not(:disabled),
+.action-btn-ping:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+}
+
+@media (max-width: 1024px) {
+  .inbox-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    margin: 0;
+    border-radius: 0;
+    height: auto;
+    top: 0;
+  }
+}

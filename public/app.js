@@ -1534,3 +1534,29 @@ document.addEventListener('visibilitychange', () => {
     localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
   });
 })();
+
+// Apple Segmented Control sync with #mode-selector
+(() => {
+  const select = document.getElementById('mode-selector');
+  const buttons = document.querySelectorAll('.segmented-control .segment-btn');
+  if (!select || !buttons.length) return;
+
+  const syncButtons = () => {
+    buttons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === select.value);
+    });
+  };
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (select.value !== btn.dataset.mode) {
+        select.value = btn.dataset.mode;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      syncButtons();
+    });
+  });
+
+  select.addEventListener('change', syncButtons);
+  syncButtons();
+})();
