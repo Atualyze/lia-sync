@@ -421,6 +421,7 @@ async function renderMetrics() {
     if (elProv) elProv.textContent = (system?.activeProvider || 'Gemini').toUpperCase();
     const elModel = $('#metric-active-model') || $('#kpi-model');
     if (elModel) elModel.textContent = system?.activeModel || '—';
+    renderActiveModelLabel();
 
     // 5. Badge de status no menu lateral
     const anyQuarantine = Object.values(circuitBreakers || {}).some((c) => c.status === 'aberto');
@@ -638,8 +639,7 @@ function renderAdmin({ force = false } = {}) {
     else if (input.dataset.config === 'identity.aliases') input.value = Array.isArray(value) ? value.join(', ') : (value ?? '');
   else input.value = value ?? '';
   });
-  const activeModelLabel = $('#admin-ai-active-model');
-  if (activeModelLabel) activeModelLabel.textContent = draft.ai?.activeModel || 'Nenhum modelo publicado';
+  renderActiveModelLabel();
   updateHumanDestinationVisibility();
   loadProviderModels();
   loadFallbackCatalogs();
@@ -649,6 +649,17 @@ function renderAdmin({ force = false } = {}) {
   $('#admin-version-badge').textContent = `rascunho · v${revision}`;
   $('#admin-draft-badge').classList.toggle('hidden', JSON.stringify(state.adminConfig.active) === JSON.stringify(draft));
   renderAdminFaq();
+}
+
+function renderActiveModelLabel() {
+  const label = $('#admin-ai-active-model');
+  if (!label) return;
+  const runtime = state.metrics?.system;
+  const draft = state.adminConfig?.draft?.ai;
+  const active = state.adminConfig?.active?.ai;
+  const model = runtime?.activeModel || draft?.activeModel || active?.activeModel || 'gemini-3.8-flash';
+  const provider = runtime?.activeProvider || draft?.activeProvider || active?.activeProvider || 'gemini';
+  label.textContent = `${provider} · ${model}`;
 }
 
 // A regra do expediente vive no servidor; a tela apenas reflete a prévia publicada.
