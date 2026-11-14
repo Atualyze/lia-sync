@@ -18,7 +18,7 @@ function requiredRole(pathname, method) {
   if (pathname === '/api/dashboard/suppressions' && method === 'DELETE') return 'admin';
   if (pathname === '/api/dashboard/tools' && method !== 'GET') return 'admin';
   if (pathname === '/api/dashboard/metrics/reset') return 'admin';
-  if (['/api/dashboard/state', '/api/dashboard/send', '/api/dashboard/simulate', '/api/dashboard/mode', '/api/dashboard/clear', '/api/dashboard/operations'].includes(pathname)) return 'operator';
+  if (['/api/dashboard/state', '/api/dashboard/send', '/api/dashboard/simulate', '/api/dashboard/mode', '/api/dashboard/clear', '/api/dashboard/operations', '/api/dashboard/tts'].includes(pathname)) return 'operator';
   if (pathname.startsWith('/api/dashboard/campaigns') || pathname.startsWith('/api/dashboard/suppressions')) return 'operator';
   if (pathname === '/api/dashboard/ping-ai') return 'operator';
   return 'viewer';

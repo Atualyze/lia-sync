@@ -161,7 +161,20 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!Number.isFinite(operationMin) || operationMin < 1 || operationMin > 719 || !Number.isFinite(operationMax) || operationMax <= operationMin || operationMax > 720) errors.push('A janela operacional do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
   if (!Number.isInteger(value.automation?.maxDailyFollowUps) || value.automation.maxDailyFollowUps < 0 || value.automation.maxDailyFollowUps > 10000) errors.push('O limite diário de follow-ups deve ser um inteiro entre 0 e 10000.');
   if (typeof value.automation?.followUpTemplate !== 'string' || value.automation.followUpTemplate.length > 2000) errors.push('O texto do follow-up deve ter até 2000 caracteres.');
-  const supportedVoices = new Set(['Aoede', 'Kore', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir']);
+  const supportedVoices = new Set([
+    'Aoede',
+    'Kore',
+    'Leda',
+    'Zephyr',
+    'Puck',
+    'Charon',
+    'Fenrir',
+    'pt-BR-FranciscaNeural',
+    'pt-BR-ThalitaNeural',
+    'pt-BR-AntonioNeural',
+    'piper-pt-BR-faber',
+    'piper-pt-BR-edresson'
+  ]);
   if (!supportedVoices.has(value.voice?.voiceName)) errors.push('Selecione uma voz suportada.');
   if (typeof value.voice?.tone !== 'string' || value.voice.tone.length > 500) errors.push('O tom da voz deve ter até 500 caracteres.');
   if (typeof value.voice?.autoVoiceOnAudio !== 'boolean') errors.push('A resposta automática em áudio deve ser verdadeiro/falso.');

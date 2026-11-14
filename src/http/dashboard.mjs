@@ -2,7 +2,7 @@ import { json, readBody, formatPhoneNumber, formatActivityTime, NOT_HANDLED } fr
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
 import { sendText } from '../whatsapp.mjs';
-import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS } from '../ai.mjs';
+import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus } from '../ai.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
@@ -344,6 +344,25 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     const body = await readBody(req).catch(() => ({}));
     const active = runtimeAI(); const pingRes = await pingAI(body?.provider || active.provider, body?.model || active.model, { budgetGate: aiBudgetGate, aiConfig: adminConfig?.active?.ai || {} });
     return json(res, 200, pingRes);
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/voice-status') {
+    return json(res, 200, { ok: true, status: getVoiceRuntimeStatus() });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/tts') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const text = typeof body?.text === 'string' ? body.text.trim() : '';
+    if (!text) return json(res, 400, { error: 'text_required' });
+    const voiceName = typeof body?.voiceName === 'string' ? body.voiceName.trim() : (adminConfig?.active?.voice?.voiceName || 'Aoede');
+    const result = await synthesizeVoice(text, { voiceName, botConfig: adminConfig?.active });
+    if (!result || !result.base64) return json(res, 503, { ok: false, error: 'tts_synthesis_failed' });
+    return json(res, 200, {
+      ok: true,
+      audioBase64: result.base64,
+      mimeType: result.mimeType || 'audio/wav',
+      voiceName: result.voiceName || voiceName,
+      engine: result.engine || 'unknown'
+    });
   }
   return NOT_HANDLED;
 }

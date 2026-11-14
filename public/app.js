@@ -891,10 +891,71 @@ function renderWaveformBars(seed = 1) {
     .join('');
 }
 
+let activeAudioInstance = null;
+
+async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError } = {}) {
+  if (activeAudioInstance) {
+    try {
+      activeAudioInstance.pause();
+      activeAudioInstance.currentTime = 0;
+    } catch {}
+    activeAudioInstance = null;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+  const clean = String(text || '').replace(/[*_#`~]/g, '').slice(0, 320).trim();
+  if (!clean) {
+    onError?.(new Error('Texto vazio'));
+    return;
+  }
+
+  try {
+    const res = await api('/api/dashboard/tts', {
+      method: 'POST',
+      body: { text: clean, voiceName: voiceName || state.draft?.voice?.voiceName }
+    });
+    if (res?.ok && res.audioBase64) {
+      const src = `data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`;
+      const audio = new Audio(src);
+      activeAudioInstance = audio;
+      audio.onplay = () => onStart?.(res);
+      audio.onended = () => {
+        activeAudioInstance = null;
+        onEnd?.();
+      };
+      audio.onerror = (e) => {
+        activeAudioInstance = null;
+        onError?.(e);
+      };
+      await audio.play();
+      return res;
+    }
+    throw new Error(res?.error || 'tts_failed');
+  } catch (err) {
+    console.warn('[tts] Fallback para síntese de fala local:', err.message);
+    if ('speechSynthesis' in window) {
+      const utter = new SpeechSynthesisUtterance(clean);
+      utter.lang = 'pt-BR';
+      utter.rate = 1.05;
+      utter.onstart = () => onStart?.({ engine: 'browser-speech-fallback' });
+      utter.onend = () => onEnd?.();
+      utter.onerror = () => onEnd?.();
+      window.speechSynthesis.speak(utter);
+    } else {
+      onError?.(err);
+      onEnd?.();
+    }
+  }
+}
+
 function playAudioPreview(button, textToSpeak = '') {
   const card = button.closest('.media-audio-card');
   if (!card) return;
   if (card.classList.contains('playing')) {
+    if (activeAudioInstance) {
+      activeAudioInstance.pause();
+      activeAudioInstance = null;
+    }
     window.speechSynthesis?.cancel();
     card.classList.remove('playing');
     button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
@@ -905,27 +966,19 @@ function playAudioPreview(button, textToSpeak = '') {
     other.classList.remove('playing');
   });
 
-  card.classList.add('playing');
-  button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`;
-
   const finish = () => {
     card.classList.remove('playing');
     button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/></svg>`;
   };
 
-  if ('speechSynthesis' in window && textToSpeak) {
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(textToSpeak.slice(0, 260));
-      utter.lang = 'pt-BR';
-      utter.rate = 1.05;
-      utter.onend = finish;
-      utter.onerror = finish;
-      window.speechSynthesis.speak(utter);
-      return;
-    } catch {}
-  }
-  setTimeout(finish, 3500);
+  playNeuralAudio(textToSpeak || 'Áudio recebido no WhatsApp', {
+    onStart: (info) => {
+      card.classList.add('playing');
+      button.innerHTML = `<svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`;
+    },
+    onEnd: finish,
+    onError: finish
+  });
 }
 
 function setReplyTo(message, index) {
@@ -1326,16 +1379,18 @@ function renderChat({ forceRender = false } = {}) {
             }
           },
           {
-            label: 'Ouvir em Voz Alta (TTS)',
+            label: 'Ouvir em Voz Alta (Voz Neural)',
             icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
             action: () => {
-              if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const u = new SpeechSynthesisUtterance(String(msg.content || '').slice(0, 300));
-                u.lang = 'pt-BR';
-                window.speechSynthesis.speak(u);
-                showToast({ title: 'Reproduzindo Voz', message: 'Síntese de áudio iniciada.', type: 'info' });
-              }
+              showToast({ title: 'Sintetizando Áudio', message: 'Gerando voz neural no servidor...', type: 'info' });
+              playNeuralAudio(msg.content, {
+                onStart: (info) => {
+                  showToast({ title: 'Reproduzindo Voz Neural', message: `Motor: ${info?.engine || 'neural'}`, type: 'success' });
+                },
+                onError: (err) => {
+                  showToast({ title: 'Falha na Síntese', message: err?.message || 'Erro ao sintetizar áudio', type: 'error' });
+                }
+              });
             }
           },
           { divider: true },
@@ -3398,6 +3453,35 @@ function startDashboard() {
   document.querySelectorAll('.nav-item, .mob-nav-btn').forEach((item) =>
     item.addEventListener('click', () => showView(item.dataset.view))
   );
+
+  // Audition de Voz Neural no painel de configurações
+  $('#btn-test-voice')?.addEventListener('click', async () => {
+    const btn = $('#btn-test-voice');
+    const select = $('#admin-voice-select');
+    const chosenVoice = select?.value || state.draft?.voice?.voiceName || 'pt-BR-FranciscaNeural';
+    const statusText = $('#voice-engine-status-text');
+    if (btn) btn.disabled = true;
+    if (statusText) statusText.textContent = `Sintetizando amostra com a voz ${chosenVoice}...`;
+
+    showToast({ title: 'Audition Neural', message: `Testando voz ${chosenVoice}...`, type: 'info' });
+
+    await playNeuralAudio('Olá! Eu sou a Lia, assistente virtual da Atualyze. Como posso ajudar você hoje?', {
+      voiceName: chosenVoice,
+      onStart: (info) => {
+        if (statusText) statusText.textContent = `Reproduzindo com motor ${info?.engine || 'neural'} (${chosenVoice}).`;
+        showToast({ title: 'Voz Neural em Execução', message: `Motor ativo: ${info?.engine || 'neural'}`, type: 'success' });
+      },
+      onEnd: () => {
+        if (btn) btn.disabled = false;
+        if (statusText) statusText.textContent = 'Ouvir áudio gerado pelo motor neural do servidor com a voz selecionada.';
+      },
+      onError: (err) => {
+        if (btn) btn.disabled = false;
+        if (statusText) statusText.textContent = 'Falha ao sintetizar áudio no servidor.';
+        showToast({ title: 'Erro de Síntese', message: err?.message || 'Falha ao sintetizar', type: 'error' });
+      }
+    });
+  });
 
   api('/api/dashboard/session').then(async session => {
     state.role = ROLE_LEVEL[session.role] === undefined ? 'viewer' : session.role;

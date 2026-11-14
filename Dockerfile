@@ -1,10 +1,11 @@
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgomp1 libstdc++6 && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R node:node /app/data
 USER node
 ENV NODE_ENV=production TZ=America/Fortaleza
 EXPOSE 3000

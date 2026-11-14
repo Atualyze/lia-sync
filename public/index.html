@@ -739,8 +739,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                   </span>
                   <div>
-                    <strong>3. Motor de Voz & Síntese Nativa (Gemini TTS WAV)</strong>
-                    <span>Timbre vocal, resposta automática em áudio PTT, cadência e timeout</span>
+                    <strong>3. Motor de Voz Neural & Síntese Offline / Nuvem</strong>
+                    <span>Vozes brasileiras humanas consistentes, suporte offline Piper ONNX na VPS e teste imediato</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -751,19 +751,44 @@
               <div class="config-accordion-body">
                 <div class="admin-form-grid">
                   <label>Voz Oficial da Lia
-                    <select data-config="voice.voiceName">
-                      <option value="Aoede">Aoede (Feminina · Expressiva e Acolhedora)</option>
-                      <option value="Kore">Kore (Feminina · Corporativa e Clara)</option>
-                      <option value="Leda">Leda (Feminina · Serena e Assertiva)</option>
-                      <option value="Zephyr">Zephyr (Feminina · Jovem e Dinâmica)</option>
-                      <option value="Puck">Puck (Masculina · Amigável e Fluida)</option>
-                      <option value="Charon">Charon (Masculina · Firme e Solene)</option>
-                      <option value="Fenrir">Fenrir (Masculina · Energética e Direta)</option>
+                    <select data-config="voice.voiceName" id="admin-voice-select">
+                      <optgroup label="Vozes Humanas Neurais Brasileiras">
+                        <option value="pt-BR-FranciscaNeural">Francisca (Feminina · Natural, Expressiva e Humana pt-BR)</option>
+                        <option value="pt-BR-ThalitaNeural">Thalita (Feminina · Suave, Acolhedora e Articulada pt-BR)</option>
+                        <option value="pt-BR-AntonioNeural">Antônio (Masculina · Claro e Profissional pt-BR)</option>
+                      </optgroup>
+                      <optgroup label="Vozes Neurais Offline (Piper ONNX na VPS)">
+                        <option value="piper-pt-BR-faber">Piper Faber (Neural 100% Offline na VPS · pt-BR)</option>
+                        <option value="piper-pt-BR-edresson">Piper Edresson (Neural Ultraleve Offline · pt-BR)</option>
+                      </optgroup>
+                      <optgroup label="Vozes Gemini TTS Multilíngues">
+                        <option value="Aoede">Aoede (Gemini · Expressiva e Acolhedora)</option>
+                        <option value="Kore">Kore (Gemini · Corporativa e Clara)</option>
+                        <option value="Leda">Leda (Gemini · Serena e Assertiva)</option>
+                        <option value="Zephyr">Zephyr (Gemini · Jovem e Dinâmica)</option>
+                        <option value="Puck">Puck (Gemini · Amigável e Fluida)</option>
+                        <option value="Charon">Charon (Gemini · Firme e Solene)</option>
+                        <option value="Fenrir">Fenrir (Gemini · Energética e Direta)</option>
+                      </optgroup>
                     </select>
                   </label>
                   <label>Diretriz Acústica / Tom da Voz
                     <input type="text" data-config="voice.tone" maxlength="500" placeholder="Acolhedor, dinâmico e profissional" />
                   </label>
+
+                  <div class="wide voice-test-box">
+                    <div class="voice-test-copy">
+                      <strong>Audition da Voz Neural (Teste Imediato)</strong>
+                      <span id="voice-engine-status-text">Ouvir áudio gerado pelo motor neural do servidor com a voz selecionada.</span>
+                    </div>
+                    <div class="voice-test-actions">
+                      <button id="btn-test-voice" type="button" class="btn btn-sm action-btn-ping">
+                        <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <span>Ouvir Voz da Lia Agora</span>
+                      </button>
+                    </div>
+                  </div>
+
                   <label class="toggle-field wide">
                     <input data-config="voice.autoVoiceOnAudio" type="checkbox" />
                     <span>Responder automaticamente com nota de voz quando o cliente enviar áudio</span>
