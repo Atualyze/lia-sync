@@ -29,12 +29,98 @@ const state = {
   modelCatalogProvider: null,
   modelCatalog: [],
   fallbackCatalogs: {},
+  overviewSamples: [],
+  overviewPollTimer: null,
+  soundEnabled: localStorage.getItem('lia_click_sound') !== '0',
   initialized: false
 };
 
 const $ = (selector) => document.querySelector(selector);
 const esc = (value = '') =>
   String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+
+// ============================================================================
+// NATIVE CLICK SOUND SYNTHESIZER, TOP PROGRESS BAR, SKELETONS & SPINNERS
+// ============================================================================
+let _audioCtx = null;
+function playNativeClick() {
+  if (!state.soundEnabled) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!_audioCtx) _audioCtx = new AudioCtx();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+    const now = _audioCtx.currentTime;
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(680, now);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.022);
+    gain.gain.setValueAtTime(0.055, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+    osc.connect(gain);
+    gain.connect(_audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.026);
+  } catch { /* ignore audio context restrictions */ }
+}
+
+function syncSoundToggleBtn() {
+  const btn = $('#sound-toggle-btn');
+  if (!btn) return;
+  btn.classList.toggle('is-muted', !state.soundEnabled);
+  btn.title = state.soundEnabled ? 'Som de clique ativo (clique para silenciar)' : 'Som de clique silenciado (clique para ativar)';
+}
+
+function toggleClickSound() {
+  state.soundEnabled = !state.soundEnabled;
+  localStorage.setItem('lia_click_sound', state.soundEnabled ? '1' : '0');
+  syncSoundToggleBtn();
+  if (state.soundEnabled) playNativeClick();
+}
+
+document.addEventListener('pointerdown', (e) => {
+  const target = e.target?.closest?.('button, .nav-item, .mob-nav-btn, .segment-btn, .inbox-tab, .conv, .quick-chip, summary, .cmd-item');
+  if (target && !target.disabled) playNativeClick();
+}, { passive: true });
+
+let _progressDepth = 0;
+function setTopProgress(active) {
+  const bar = $('#global-top-progress');
+  if (!bar) return;
+  if (active) {
+    _progressDepth++;
+    bar.classList.add('active');
+  } else {
+    _progressDepth = Math.max(0, _progressDepth - 1);
+    if (_progressDepth === 0) bar.classList.remove('active');
+  }
+}
+
+function renderSkeletonCards(count = 3) {
+  return Array.from({ length: count }, () => `
+    <div class="skeleton-card">
+      <div class="skeleton-line short"></div>
+      <div class="skeleton-line mid"></div>
+      <div class="skeleton-line"></div>
+    </div>
+  `).join('');
+}
+
+function setButtonLoading(btn, loading, loadingLabel = '') {
+  if (!btn) return;
+  if (loading) {
+    if (!btn.dataset.origHtml) btn.dataset.origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${loadingLabel ? `<span>${esc(loadingLabel)}</span>` : ''}`;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.origHtml) {
+      btn.innerHTML = btn.dataset.origHtml;
+      delete btn.dataset.origHtml;
+    }
+  }
+}
 
 const API_BASE = '';
 let supabase;
@@ -187,14 +273,8 @@ const TECH_GLOSSARY = {
   RBAC: {
     term: 'RBAC · Role-Based Access Control (Controle de Acesso por Papel)',
     category: 'Segurança',
-    summary: 'Sistema de permissões em três níveis: Viewer (somente leitura), Operator (atende conversas e campanhas) e Admin (configura motor, prompts e usuários).',
+    summary: 'Sistema de permissões em três níveis: Viewer (somente leitura), Operator (atende conversas) e Admin (configura motor, prompts e usuários).',
     view: 'users'
-  },
-  'Opt-out': {
-    term: 'Opt-out · Lista de Supressão / Descadastramento',
-    category: 'Conformidade',
-    summary: 'Registro de contatos que pediram para não receber mensagens ou campanhas. O sistema bloqueia automaticamente qualquer disparo para números em opt-out.',
-    view: 'campaigns'
   },
   Liveness: {
     term: 'Liveness · Sonda de Vida do Servidor',
@@ -2448,7 +2528,7 @@ function applyRoleVisibility() {
   document.querySelectorAll('[data-role]').forEach(el => el.classList.toggle('hidden', level < (ROLE_LEVEL[el.dataset.role] ?? 2)));
   const operationalControls = ['#mode-selector', '#refresh', '#new-sim', '#overview-open-simulation'];
   operationalControls.forEach(selector => $(selector)?.classList.toggle('hidden', level < ROLE_LEVEL.operator));
-  if (level < ROLE_LEVEL.operator && ['inbox', 'handoff', 'campaigns', 'admin'].includes(state.view)) showView('overview');
+  if (level < ROLE_LEVEL.operator && ['inbox', 'handoff', 'admin'].includes(state.view)) showView('overview');
   updateSidebarUserProfile();
 }
 
@@ -2469,92 +2549,213 @@ function opsFeedback(id, message, type = 'success') {
 // ============================================================================
 // OVERVIEW, TOOLS, CAMPAIGNS, USERS, INTEGRATIONS
 // ============================================================================
-async function renderOverview() {
+function renderOverviewCharts(metrics, health) {
+  const latEl = $('#overview-chart-latency');
+  const modEl = $('#overview-chart-models');
+  const latBadge = $('#chart-latency-badge');
+  const succBadge = $('#chart-success-badge');
+  const latSub = $('#chart-latency-subtitle');
+  const modSub = $('#chart-models-subtitle');
+  if (!latEl || !modEl) return;
+
+  const avgLat = Number(metrics?.overview?.avgLatencyMs || 0);
+  const totalReq = Number(metrics?.overview?.totalRequests || 0);
+  const successRate = Number(metrics?.overview?.successRate ?? 100);
+  const nowLabel = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  state.overviewSamples.push({ ts: nowLabel, latencyMs: avgLat, requests: totalReq });
+  if (state.overviewSamples.length > 16) state.overviewSamples.shift();
+
+  if (latBadge) latBadge.textContent = `${avgLat} ms`;
+  if (succBadge) {
+    succBadge.textContent = `${successRate}% sucesso`;
+    succBadge.className = `pill mini ${successRate >= 95 ? 'mint' : successRate >= 80 ? 'amber' : 'err'}`;
+  }
+  if (latSub) latSub.textContent = `${state.overviewSamples.length} amostra(s) em sessão · última às ${nowLabel}`;
+
+  const samples = state.overviewSamples;
+  const maxLat = Math.max(100, ...samples.map((s) => s.latencyMs));
+  const w = 420;
+  const h = 110;
+  const padX = 12;
+  const padY = 12;
+  const plotW = w - padX * 2;
+  const plotH = h - padY * 2;
+
+  const pts = samples.map((s, idx) => {
+    const x = samples.length === 1 ? padX + plotW / 2 : padX + (idx / (samples.length - 1)) * plotW;
+    const y = padY + plotH - (Math.min(s.latencyMs, maxLat) / maxLat) * plotH;
+    return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), ...s };
+  });
+
+  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const areaPath = pts.length > 1
+    ? `${linePath} L${pts[pts.length - 1].x},${h - padY} L${pts[0].x},${h - padY} Z`
+    : '';
+  const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.2" fill="#86DEBA" stroke="#131313" stroke-width="1.4"><title>${esc(p.ts)}: ${p.latencyMs} ms (${p.requests} req)</title></circle>`).join('');
+
+  latEl.innerHTML = `
+    <div class="chart-svg-wrap">
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Gráfico de latência em tempo real">
+        <line x1="${padX}" y1="${padY}" x2="${w - padX}" y2="${padY}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" />
+        <line x1="${padX}" y1="${h / 2}" x2="${w - padX}" y2="${h / 2}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" />
+        <line x1="${padX}" y1="${h - padY}" x2="${w - padX}" y2="${h - padY}" stroke="#2A2B2F" stroke-width="1" />
+        ${areaPath ? `<path d="${areaPath}" fill="#20495B" fill-opacity="0.38" />` : ''}
+        ${linePath ? `<path d="${linePath}" fill="none" stroke="#48AA7E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+        ${circles}
+      </svg>
+    </div>
+    <div class="chart-legend-row">
+      <span>Pico observado: <strong>${Math.max(0, ...samples.map((s) => s.latencyMs))} ms</strong></span>
+      <span>Chamadas acumuladas: <strong>${totalReq}</strong></span>
+      <span>Uptime: <strong>${health?.liveness?.uptimeSeconds != null ? `${Math.floor(health.liveness.uptimeSeconds / 60)} min` : 'ativo'}</strong></span>
+    </div>
+  `;
+
+  const byModelRaw = metrics?.byModel || metrics?.models || {};
+  const entries = Array.isArray(byModelRaw)
+    ? byModelRaw.map((m) => [m.model || m.name || 'modelo', Number(m.requests || m.count || 0)])
+    : Object.entries(byModelRaw).map(([k, v]) => [k, typeof v === 'object' ? Number(v.requests || v.count || 0) : Number(v || 0)]);
+
+  entries.sort((a, b) => b[1] - a[1]);
+  const top = entries.slice(0, 5);
+  const maxCount = Math.max(1, ...top.map(([, c]) => c));
+
+  if (modSub) modSub.textContent = top.length ? `${top.length} modelo(s) ativos no ledger` : 'Aguardando chamadas de IA no período';
+
+  if (!top.length) {
+    const activeProvider = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '—'}`;
+    modEl.innerHTML = `
+      <div class="model-bar-list">
+        <div class="model-bar-row">
+          <div class="model-bar-meta"><strong>${esc(activeProvider)}</strong><span>${totalReq} chamada(s)</span></div>
+          <div class="model-bar-track"><div class="model-bar-fill" style="width:${totalReq > 0 ? 100 : 12}%"></div></div>
+        </div>
+        <div class="ops-muted">Taxa de sucesso global: ${successRate}% · fonte ${metrics?.source === 'supabase' ? 'Supabase' : 'Memória'}</div>
+      </div>
+    `;
+    return;
+  }
+
+  modEl.innerHTML = `<div class="model-bar-list">${top.map(([name, count], idx) => {
+    const pct = Math.max(6, Math.round((count / maxCount) * 100));
+    return `
+      <div class="model-bar-row">
+        <div class="model-bar-meta"><strong>${esc(name)}</strong><span>${count} req</span></div>
+        <div class="model-bar-track"><div class="model-bar-fill ${idx > 0 ? 'secondary' : ''}" style="width:${pct}%"></div></div>
+      </div>
+    `;
+  }).join('')}</div>`;
+}
+
+function startOverviewPolling() {
+  if (state.overviewPollTimer) clearInterval(state.overviewPollTimer);
+  state.overviewPollTimer = setInterval(() => {
+    if (!document.hidden && state.initialized && state.view === 'overview') {
+      renderOverview({ silent: true }).catch(() => {});
+    }
+  }, 10000);
+}
+
+async function renderOverview(opts = {}) {
   const healthEl = $('#overview-health');
   const costsEl = $('#overview-costs');
   const modelsEl = $('#overview-models');
   const operationsEl = $('#overview-operations');
   if (!healthEl) return;
-  healthEl.innerHTML = '<div class="ops-row">Consultando estado do serviço…</div>';
-  const tasks = [
-    api('/api/dashboard/health-summary'),
-    api('/api/dashboard/metrics'),
-    state.role === 'viewer' ? Promise.resolve(null) : api('/api/dashboard/operations'),
-    api('/api/dashboard/integrations').catch(() => null)
-  ];
-  const [healthResult, metricsResult, operationsResult, integResult] = await Promise.allSettled(tasks);
-  const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
-  const metrics = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
-  const operations = operationsResult.status === 'fulfilled' ? operationsResult.value : null;
-  const integrations = integResult.status === 'fulfilled' ? integResult.value : null;
+  if (!opts.silent) {
+    setTopProgress(true);
+    if (!state.health) {
+      healthEl.innerHTML = renderSkeletonCards(3);
+      if (costsEl) costsEl.innerHTML = renderSkeletonCards(2);
+      if (modelsEl) modelsEl.innerHTML = renderSkeletonCards(2);
+      if (operationsEl) operationsEl.innerHTML = renderSkeletonCards(2);
+    }
+  }
+  try {
+    const tasks = [
+      api('/api/dashboard/health-summary'),
+      api('/api/dashboard/metrics'),
+      api('/api/dashboard/integrations').catch(() => null)
+    ];
+    const [healthResult, metricsResult, integResult] = await Promise.allSettled(tasks);
+    const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+    const metrics = metricsResult.status === 'fulfilled' ? metricsResult.value : null;
+    const integrations = integResult.status === 'fulfilled' ? integResult.value : null;
 
-  state.health = health;
-  state.metrics = metrics;
-  if (integrations) state.integrations = integrations;
-  updateSidebarConnection({ integrations, health });
+    state.health = health;
+    state.metrics = metrics;
+    if (integrations) state.integrations = integrations;
+    updateSidebarConnection({ integrations, health });
 
-  const ovBadge = $('#overview-status-badge');
-  if (ovBadge) {
-    const isReady = health?.readiness?.ok !== false && health?.liveness?.status === 'alive';
-    ovBadge.textContent = isReady ? 'ok' : 'atenção';
-    ovBadge.className = `badge-mini ${isReady ? 'ok' : 'warn'}`;
-  }
+    const ovBadge = $('#overview-status-badge');
+    if (ovBadge) {
+      const isReady = health?.readiness?.ok !== false && health?.liveness?.status === 'alive';
+      ovBadge.textContent = isReady ? 'ok' : 'atenção';
+      ovBadge.className = `badge-mini ${isReady ? 'ok' : 'warn'}`;
+    }
 
-  const ev = integrations?.evolution;
-  if ($('#ov-kpi-wa')) {
-    $('#ov-kpi-wa').textContent = ev ? (ev.connected ? 'Conectado' : ev.status) : (health?.readiness?.ok ? 'Online' : 'Verificando');
-    $('#ov-kpi-wa-sub').textContent = ev ? `Instância ${ev.instance || '—'} · ${ev.latencyMs ?? '—'} ms` : `Instância ${health?.system?.instance || '—'}`;
-  }
-  if ($('#ov-kpi-ai')) {
-    $('#ov-kpi-ai').textContent = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '—'}`;
-    $('#ov-kpi-ai-sub').textContent = `Revisão publicada v${health?.system?.revision ?? state.adminConfig?.revision ?? 0}`;
-  }
-  if ($('#ov-kpi-sessions')) {
-    const sys = metrics?.system || {};
-    $('#ov-kpi-sessions').textContent = `${Number(sys.totalSessions ?? state.sessionCounts?.total ?? state.sessions.length)}`;
-    $('#ov-kpi-sessions-sub').textContent = `${Number(sys.handoffWaiting ?? state.sessionCounts?.handoff ?? state.sessions.filter(s => s.human).length)} em atendimento humano`;
-  }
-  if ($('#ov-kpi-bridge')) {
-    const br = integrations?.chatwootBridge;
-    const sec = integrations?.sectorsProjection;
-    $('#ov-kpi-bridge').textContent = br?.status === 'ok' || br?.lastReadAt ? `Sincronizada (v${br.revision ?? 0})` : (br?.status || 'Aguardando leitura');
-    $('#ov-kpi-bridge-sub').textContent = `${Number(sec?.count || 0)} setor(es) projetados pelo Chatwoot`;
-  }
+    const ev = integrations?.evolution;
+    if ($('#ov-kpi-wa')) {
+      $('#ov-kpi-wa').textContent = ev ? (ev.connected ? 'Conectado' : ev.status) : (health?.readiness?.ok ? 'Online' : 'Verificando');
+      $('#ov-kpi-wa-sub').textContent = ev ? `Instância ${ev.instance || '—'} · ${ev.latencyMs ?? '—'} ms` : `Instância ${health?.system?.instance || '—'}`;
+    }
+    if ($('#ov-kpi-ai')) {
+      $('#ov-kpi-ai').textContent = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '—'}`;
+      $('#ov-kpi-ai-sub').textContent = `Revisão publicada v${health?.system?.revision ?? state.adminConfig?.revision ?? 0}`;
+    }
+    if ($('#ov-kpi-sessions')) {
+      const sys = metrics?.system || {};
+      $('#ov-kpi-sessions').textContent = `${Number(sys.totalSessions ?? state.sessionCounts?.total ?? state.sessions.length)}`;
+      $('#ov-kpi-sessions-sub').textContent = `${Number(sys.handoffWaiting ?? state.sessionCounts?.handoff ?? state.sessions.filter(s => s.human).length)} em atendimento humano`;
+    }
+    if ($('#ov-kpi-bridge')) {
+      const br = integrations?.chatwootBridge;
+      const sec = integrations?.sectorsProjection;
+      $('#ov-kpi-bridge').textContent = br?.status === 'ok' || br?.lastReadAt ? `Sincronizada (v${br.revision ?? 0})` : (br?.status || 'Aguardando leitura');
+      $('#ov-kpi-bridge-sub').textContent = `${Number(sec?.count || 0)} setor(es) projetados pelo Chatwoot`;
+    }
 
-  healthEl.innerHTML = health?.readiness?.checks?.length
-    ? health.readiness.checks.map(item => `
+    healthEl.innerHTML = health?.readiness?.checks?.length
+      ? health.readiness.checks.map(item => `
+          <div class="ops-row">
+            <div>
+              <strong>${esc(item.name || 'dependência')}</strong>
+              ${item.reason ? `<div class="ops-muted">${esc(item.reason)}</div>` : ''}
+            </div>
+            <span class="status-text ${item.status === 'ok' || item.status === 'ready' ? 'ok' : item.status === 'not_configured' || item.status === 'disabled' ? 'warn' : 'err'}">${esc(item.status || 'desconhecido')}</span>
+          </div>`).join('')
+      : `<div class="ops-row"><strong>Lia Sync</strong><span class="status-text ${health?.liveness?.status === 'alive' ? 'ok' : 'err'}">${health?.liveness?.status === 'alive' ? 'viva' : 'sem resposta'}</span></div>`;
+
+    const cost = metrics?.estimatedCost;
+    if (costsEl) {
+      costsEl.innerHTML = `
+        <div class="ops-row"><strong>Custo estimado no mês (UTC)</strong><span>${cost?.complete ? `US$ ${Number(cost.totalUsd || 0).toFixed(4)}` : cost?.knownUsd > 0 ? `≥ US$ ${Number(cost.knownUsd).toFixed(4)}` : 'não calculado'}</span></div>
+        <div class="ops-row"><strong>Telemetria & Chamadas</strong><span>${metrics?.source === 'supabase' ? 'persistente (Supabase)' : 'memória local'} · ${Number(metrics?.overview?.totalRequests || 0)} chamadas</span></div>
+        <div class="ops-row"><strong>Latência média / Taxa de sucesso</strong><span>${Number(metrics?.overview?.avgLatencyMs || 0)} ms · ${Number(metrics?.overview?.successRate ?? 100)}%</span></div>
+      `;
+    }
+    if (modelsEl) {
+      modelsEl.innerHTML = Object.entries(metrics?.circuitBreakers || {}).map(([provider, item]) => `
         <div class="ops-row">
-          <div>
-            <strong>${esc(item.name || 'dependência')}</strong>
-            ${item.reason ? `<div class="ops-muted">${esc(item.reason)}</div>` : ''}
-          </div>
-          <span class="status-text ${item.status === 'ok' || item.status === 'ready' ? 'ok' : item.status === 'not_configured' || item.status === 'disabled' ? 'warn' : 'err'}">${esc(item.status || 'desconhecido')}</span>
-        </div>`).join('')
-    : `<div class="ops-row"><strong>Lia Sync</strong><span class="status-text ${health?.liveness?.status === 'alive' ? 'ok' : 'err'}">${health?.liveness?.status === 'alive' ? 'viva' : 'sem resposta'}</span></div>`;
-
-  const cost = metrics?.estimatedCost;
-  if (costsEl) {
-    costsEl.innerHTML = `
-      <div class="ops-row"><strong>Custo estimado no mês (UTC)</strong><span>${cost?.complete ? `US$ ${Number(cost.totalUsd || 0).toFixed(4)}` : cost?.knownUsd > 0 ? `≥ US$ ${Number(cost.knownUsd).toFixed(4)}` : 'não calculado'}</span></div>
-      <div class="ops-row"><strong>Telemetria & Chamadas</strong><span>${metrics?.source === 'supabase' ? 'persistente (Supabase)' : 'memória local'} · ${Number(metrics?.overview?.totalRequests || 0)} chamadas</span></div>
-      <div class="ops-row"><strong>Latência média / Taxa de sucesso</strong><span>${Number(metrics?.overview?.avgLatencyMs || 0)} ms · ${Number(metrics?.overview?.successRate ?? 100)}%</span></div>
-    `;
+          <strong>${esc(provider.toUpperCase())}</strong>
+          <span class="pill mini ${!item.configured ? 'pale' : item.status === 'aberto' ? 'err' : 'mint'}">${esc(item.status || 'desconhecido')} · ${item.configured ? `${Number(item.failures || 0)} falhas` : 'não configurado'}</span>
+        </div>`).join('') || '<div class="ops-row">Nenhum provedor reportado.</div>';
+    }
+    if (operationsEl) {
+      const sys = metrics?.system || {};
+      operationsEl.innerHTML = `
+        <div class="ops-row"><strong>Sessões Ativas / Simulação</strong><span>${Number(sys.totalSessions ?? state.sessionCounts?.total ?? 0)} totais · ${Number(state.sessionCounts?.simulation ?? 0)} sim</span></div>
+        <div class="ops-row"><strong>Transbordos Humanos</strong><span>${Number(sys.handoffWaiting ?? state.sessionCounts?.handoff ?? 0)} aguardando</span></div>
+        <div class="ops-row"><strong>Persistência de Estado</strong><span class="pill mini ${metrics?.source === 'supabase' ? 'mint' : 'amber'}">${metrics?.source === 'supabase' ? 'Supabase ativo' : 'memória local'}</span></div>
+      `;
+    }
+    renderOverviewCharts(metrics, health);
+    startOverviewPolling();
+    decorateTechnicalTerms($('#overview-view'));
+  } finally {
+    if (!opts.silent) setTopProgress(false);
   }
-  if (modelsEl) {
-    modelsEl.innerHTML = Object.entries(metrics?.circuitBreakers || {}).map(([provider, item]) => `
-      <div class="ops-row">
-        <strong>${esc(provider.toUpperCase())}</strong>
-        <span class="pill mini ${!item.configured ? 'pale' : item.status === 'aberto' ? 'err' : 'mint'}">${esc(item.status || 'desconhecido')} · ${item.configured ? `${Number(item.failures || 0)} falhas` : 'não configurado'}</span>
-      </div>`).join('') || '<div class="ops-row">Nenhum provedor reportado.</div>';
-  }
-  if (operationsEl) {
-    operationsEl.innerHTML = operations
-      ? `<div class="ops-row"><strong>Campanhas registradas</strong><span>${operations.campaigns?.length || 0}</span></div>
-         <div class="ops-row"><strong>Supressões (Opt-out)</strong><span>${operations.suppressions?.length || 0} recentes</span></div>
-         <div class="ops-row"><strong>Persistência Operacional</strong><span class="pill mini ${operations.configured ? 'mint' : 'amber'}">${operations.configured ? 'Supabase ativo' : 'não configurada'}</span></div>`
-      : '<div class="ops-row">Detalhes operacionais de campanhas exigem papel operator.</div>';
-  }
-  decorateTechnicalTerms($('#overview-view'));
 }
 
 async function renderTools() {
@@ -2596,26 +2797,6 @@ async function saveToolsDraft() {
     updateSectionDiffBadges();
   }
   return result;
-}
-
-async function renderCampaigns() {
-  try {
-    const data = await api('/api/dashboard/operations');
-    state.operations = data;
-    $('#campaign-summary').textContent = `${data.campaigns?.length || 0} campanhas · persistência ${data.configured ? 'Supabase' : 'indisponível'}`;
-    $('#campaign-list').innerHTML = (data.campaigns || []).map(campaign => {
-      const stats = campaign.recipientStats || {};
-      const count = Number(campaign.total_recipients || 0);
-      const status = String(campaign.status || '').toLowerCase();
-      const actions = [];
-      if (state.role === 'admin' && ['pending', 'paused'].includes(status)) actions.push(`<button class="btn-primary btn-sm" data-campaign-action="execute" data-campaign-id="${esc(campaign.id)}">Confirmar Envio</button>`);
-      if (['pending', 'running'].includes(status)) actions.push(`<button class="btn-sm" data-campaign-action="pause" data-campaign-id="${esc(campaign.id)}">Pausar</button>`);
-      if (!['cancelled', 'completed'].includes(status)) actions.push(`<button class="danger btn-sm" data-campaign-action="cancel" data-campaign-id="${esc(campaign.id)}">Cancelar</button>`);
-      return `<article class="ops-row"><div><strong>${esc(campaign.title)}</strong><div class="ops-muted">${esc(status)} · ${count} destinatários · ${Number(stats.sent || 0)} enviados · ${Number(stats.failed || 0)} falhas · ${Number(stats.suppressed || 0)} suprimidos</div><div class="ops-muted">Criada: ${esc(campaign.created_at || '')}</div></div><div class="ops-actions">${actions.join('')}</div></article>`;
-    }).join('') || '<div class="detail-placeholder">Nenhuma campanha cadastrada.</div>';
-    $('#suppression-list').innerHTML = (data.suppressions || []).map(item => `<article class="ops-row"><div><strong>${esc(item.phone)}</strong><div class="ops-muted">${esc(item.reason)} · ${esc(item.source)} · ${esc(item.suppressedAt || '')}</div></div><div class="ops-actions">${state.role === 'admin' ? `<button class="danger btn-sm" data-unsuppress="1">Remover</button>` : ''}</div></article>`).join('') || '<div class="detail-placeholder">Nenhuma supressão recente.</div>';
-    decorateTechnicalTerms($('#campaigns-view'));
-  } catch (error) { opsFeedback('campaigns-feedback', `Falha ao carregar campanhas/supressões: ${error.message}`, 'error'); }
 }
 
 async function renderUsers() {
@@ -2671,7 +2852,6 @@ function render() {
   if (state.view === 'metrics') { try { renderMetrics(); } catch (e) { console.error('[renderMetrics]', e); } }
   if (state.view === 'overview') { try { renderOverview(); } catch (e) { console.error('[renderOverview]', e); } }
   if (state.view === 'tools') { try { renderTools(); } catch (e) { console.error('[renderTools]', e); } }
-  if (state.view === 'campaigns') { try { renderCampaigns(); } catch (e) { console.error('[renderCampaigns]', e); } }
   if (state.view === 'users') { try { renderUsers(); } catch (e) { console.error('[renderUsers]', e); } }
   if (state.view === 'integrations') { try { renderIntegrations(); } catch (e) { console.error('[renderIntegrations]', e); } }
   const lastSync = $('#last-sync');
@@ -2680,21 +2860,26 @@ function render() {
 }
 
 async function refresh() {
-  const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
-  state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
-  if (data.counts) state.sessionCounts = data.counts;
-  const subtitle = $('#inbox-subtitle');
-  if (subtitle) {
-    subtitle.textContent = data.persistence === 'supabase'
-      ? `${state.sessions.length} sessões (${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}) · Supabase`
-      : data.persistenceError
-      ? 'fallback local — Supabase indisponível'
-      : `${state.sessions.length} sessões ativas`;
+  setTopProgress(true);
+  try {
+    const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
+    state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    if (data.counts) state.sessionCounts = data.counts;
+    const subtitle = $('#inbox-subtitle');
+    if (subtitle) {
+      subtitle.textContent = data.persistence === 'supabase'
+        ? `${state.sessions.length} sessões (${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}) · Supabase`
+        : data.persistenceError
+        ? 'fallback local — Supabase indisponível'
+        : `${state.sessions.length} sessões ativas`;
+    }
+    if (!state.sessions.some((item) => item.phone === state.selected)) {
+      state.selected = state.sessions[0]?.phone || null;
+    }
+    render();
+  } finally {
+    setTopProgress(false);
   }
-  if (!state.sessions.some((item) => item.phone === state.selected)) {
-    state.selected = state.sessions[0]?.phone || null;
-  }
-  render();
 }
 
 async function setMode(mode) {
@@ -2752,7 +2937,6 @@ const VIEW_TITLES = {
   overview: 'Saúde & Operação',
   inbox: 'Conversas em Tempo Real',
   handoff: 'Fila de Transbordos Humanos',
-  campaigns: 'Campanhas & Opt-out',
   admin: 'Configurações Gerais da Lia',
   tools: 'Ferramentas & Busca Web',
   agent: 'Capacidades & Roteador IA',
@@ -2785,7 +2969,6 @@ function showView(view) {
   if (view === 'admin') renderAdminData();
   if (view === 'overview') renderOverview();
   if (view === 'tools') renderTools();
-  if (view === 'campaigns') renderCampaigns();
   if (view === 'users') renderUsers();
   if (view === 'integrations') renderIntegrations();
   setTimeout(() => decorateTechnicalTerms(document.body), 90);
@@ -2802,7 +2985,6 @@ function setupCommandPalette() {
     { title: 'Monitoramento & Custos', sub: 'Telemetria, latência e circuit breakers', action: () => showView('metrics') },
     { title: 'Conversas (Inbox)', sub: 'Atendimento em tempo real e simulador', role: 'operator', action: () => showView('inbox') },
     { title: 'Fila de Transbordos', sub: 'Atendimentos aguardando humano', role: 'operator', action: () => showView('handoff') },
-    { title: 'Campanhas & Opt-out', sub: 'Disparos confirmados e lista de supressão', role: 'operator', action: () => showView('campaigns') },
     { title: 'Ferramentas & Consulta Web', sub: 'Catálogo de Tool Calling e Google Search', action: () => showView('tools') },
     { title: 'Capacidades & Roteador IA', sub: 'Matriz de modelos e simulador de rota', action: () => showView('agent') },
     { title: 'Integrações & Webhooks', sub: 'Evolution API, Supabase e Ponte Chatwoot', action: () => showView('integrations') },
@@ -2988,7 +3170,26 @@ function startDashboard() {
     clearReplyTo();
     refresh();
   });
-  $('#logout').addEventListener('click', () => supabase?.auth.signOut());
+  syncSoundToggleBtn();
+  $('#sound-toggle-btn')?.addEventListener('click', toggleClickSound);
+  $('#logout')?.addEventListener('click', async () => {
+    const btn = $('#logout');
+    setButtonLoading(btn, true, 'Saindo…');
+    try {
+      await supabase?.auth?.signOut?.().catch(() => {});
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+      }
+    } catch { /* ignore storage errors */ }
+    accessToken = '';
+    state.initialized = false;
+    state.sessions = [];
+    if (state.refreshTimer) { clearInterval(state.refreshTimer); state.refreshTimer = null; }
+    if (state.overviewPollTimer) { clearInterval(state.overviewPollTimer); state.overviewPollTimer = null; }
+    setButtonLoading(btn, false);
+    showLogin();
+    showToast({ title: 'Sessão Encerrada', message: 'Você saiu da conta com segurança.', type: 'info' });
+  });
 
   // Inbox filter tabs
   document.querySelectorAll('.inbox-tab[data-inbox-filter]').forEach(tab => {
@@ -3222,57 +3423,6 @@ function startDashboard() {
   $('#tools-enable-all')?.addEventListener('click', () => {
     document.querySelectorAll('.tool-toggle').forEach(el => { if (!el.disabled) el.checked = true; });
     showToast({ title: 'Ferramentas Selecionadas', message: 'Todas as ferramentas foram marcadas. Salve ou publique para aplicar.', type: 'info' });
-  });
-
-  // Campaigns & Suppressions
-  $('#campaigns-refresh')?.addEventListener('click', renderCampaigns);
-  $('#campaign-create')?.addEventListener('click', async () => {
-    const recipients = $('#campaign-recipients').value.split(/\r?\n/).map(line => {
-      const [phone, ...name] = line.split(',');
-      return { phone: phone.trim(), name: name.join(',').trim() || 'Cliente' };
-    }).filter(item => item.phone);
-    try {
-      const result = await api('/api/dashboard/campaigns', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ title: $('#campaign-title').value.trim(), message: $('#campaign-message').value.trim(), minDelay: Number($('#campaign-min-delay').value), maxDelay: Number($('#campaign-max-delay').value), recipients }) });
-      $('#campaign-title').value = '';
-      $('#campaign-message').value = '';
-      $('#campaign-recipients').value = '';
-      opsFeedback('campaigns-feedback', `Campanha ${result.campaign?.id || ''} criada em rascunho. Nenhuma mensagem foi enviada.`, 'success');
-      await renderCampaigns();
-    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível criar campanha: ${error.message}`, 'error'); }
-  });
-  $('#campaign-list')?.addEventListener('click', async event => {
-    const button = event.target.closest('[data-campaign-action]');
-    if (!button) return;
-    const action = button.dataset.campaignAction;
-    const campaign = state.operations?.campaigns?.find(item => item.id === button.dataset.campaignId);
-    if (!campaign) return;
-    if (action === 'execute' && !window.confirm(`Confirmar envio real da campanha “${campaign.title}” para até ${campaign.total_recipients} destinatários? A ação enviará mensagens via WhatsApp.`)) return;
-    if (action === 'cancel' && !window.confirm(`Cancelar a campanha “${campaign.title}”?`)) return;
-    button.disabled = true;
-    try {
-      await api(`/api/dashboard/campaigns/${encodeURIComponent(campaign.id)}/${action}`, { method: 'POST', body: JSON.stringify(action === 'execute' ? { confirm: true } : {}) });
-      opsFeedback('campaigns-feedback', action === 'execute' ? 'Execução solicitada. O worker processa até o limite por execução.' : `Campanha ${action === 'pause' ? 'pausada' : 'cancelada'}.`, 'success');
-      await renderCampaigns();
-    } catch (error) { opsFeedback('campaigns-feedback', `Operação não concluída: ${error.message}`, 'error'); }
-  });
-  $('#suppression-add')?.addEventListener('click', async () => {
-    try {
-      await api('/api/dashboard/suppressions', { method: 'POST', body: JSON.stringify({ phone: $('#suppression-phone').value.trim(), reason: $('#suppression-reason').value }) });
-      $('#suppression-phone').value = '';
-      opsFeedback('campaigns-feedback', 'Supressão registrada. O envio para esse telefone será bloqueado.', 'success');
-      await renderCampaigns();
-    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível registrar opt-out: ${error.message}`, 'error'); }
-  });
-  $('#suppression-list')?.addEventListener('click', async event => {
-    if (!event.target.closest('[data-unsuppress]')) return;
-    const phone = window.prompt('Por privacidade, informe o telefone completo que deseja remover da supressão:');
-    if (!phone) return;
-    if (!window.confirm('Remover o opt-out deste telefone? Isso permitirá novos envios sujeitos às demais regras.')) return;
-    try {
-      await api('/api/dashboard/suppressions', { method: 'DELETE', body: JSON.stringify({ phone, confirm: true }) });
-      opsFeedback('campaigns-feedback', 'Supressão removida após confirmação.', 'success');
-      await renderCampaigns();
-    } catch (error) { opsFeedback('campaigns-feedback', `Não foi possível remover: ${error.message}`, 'error'); }
   });
 
   $('#integrations-refresh')?.addEventListener('click', renderIntegrations);

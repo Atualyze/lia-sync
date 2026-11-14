@@ -151,10 +151,6 @@
               <span class="nav-label">Transbordos</span>
               <b id="handoff-count">0</b>
             </button>
-            <button class="nav-item" data-view="campaigns" data-role="operator" title="Campanhas & Opt-out">
-              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-              <span class="nav-label">Campanhas</span>
-            </button>
           </div>
         </details>
 
@@ -202,6 +198,7 @@
 
     <!-- ÁREA PRINCIPAL DO APP -->
     <section class="content">
+      <div id="global-top-progress" class="global-top-progress" aria-hidden="true"></div>
       <header class="topbar">
         <div class="topbar-left">
           <button class="icon-btn sidebar-toggle" id="sidebar-toggle" title="Alternar menu lateral" aria-label="Alternar barra lateral">
@@ -246,6 +243,9 @@
             <option value="all">Todas as Sessões</option>
           </select>
           <span class="last-sync desktop-only" id="last-sync">sincronizando…</span>
+          <button type="button" class="icon-btn" id="sound-toggle-btn" title="Ativar/desativar som de clique" aria-label="Som de clique">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+          </button>
           <button class="icon-btn" id="refresh" title="Sincronizar dados agora">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           </button>
@@ -259,7 +259,13 @@
         <div class="ops-container">
           <div class="ops-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Central de Operações · Lia Sync v2.4</div>
+              <div class="section-tag">
+                Central de Operações · Lia Sync v2.4
+                <span id="overview-live-pill" class="live-pill" title="Atualização automática em tempo real a cada 10s">
+                  <span class="live-pulse-dot"></span>
+                  <span>Tempo real · 10s</span>
+                </span>
+              </div>
               <h2>Saúde, Prontidão & Governança Operacional</h2>
               <p>Estado real das integrações, consumo mensal, disjuntores de IA e filas de atendimento.</p>
             </div>
@@ -321,6 +327,31 @@
 
           <div id="overview-health" class="health-grid"></div>
 
+          <!-- GRÁFICOS EM TEMPO REAL (DADOS REAIS DO RUNTIME) -->
+          <div class="ops-grid overview-charts-grid" id="overview-charts-grid">
+            <section class="panel ops-section overview-chart-card">
+              <div class="panel-head">
+                <div>
+                  <strong>Latência &amp; Cadência de Chamadas (Tempo Real)</strong>
+                  <span id="chart-latency-subtitle">Leitura contínua de /api/dashboard/metrics</span>
+                </div>
+                <span class="pill mini" id="chart-latency-badge">— ms</span>
+              </div>
+              <div id="overview-chart-latency" class="overview-chart-body"></div>
+            </section>
+
+            <section class="panel ops-section overview-chart-card">
+              <div class="panel-head">
+                <div>
+                  <strong>Distribuição por Modelo &amp; Taxa de Sucesso</strong>
+                  <span id="chart-models-subtitle">Chamadas reais registradas no período</span>
+                </div>
+                <span class="pill mini ok" id="chart-success-badge">—%</span>
+              </div>
+              <div id="overview-chart-models" class="overview-chart-body"></div>
+            </section>
+          </div>
+
           <div class="ops-grid">
             <section class="panel ops-section">
               <div class="panel-head">
@@ -352,8 +383,8 @@
             <section class="panel ops-section">
               <div class="panel-head">
                 <div>
-                  <strong>Campanhas, Supressões & Persistência</strong>
-                  <span>Operação auditada sem disparos involuntários</span>
+                  <strong>Persistência, Sessões & Saúde do Runtime</strong>
+                  <span>Operação auditada e estado real de armazenamento</span>
                 </div>
               </div>
               <div id="overview-operations" class="ops-list"></div>
@@ -1485,86 +1516,7 @@
       </section>
 
       <!-- ====================================================================
-           VIEW 7: CAMPANHAS & OPT-OUT (CAMPAIGNS)
-           ==================================================================== -->
-      <section id="campaigns-view" class="view">
-        <div class="ops-container">
-          <div class="admin-hero panel">
-            <div class="hero-copy">
-              <div class="section-tag">Disparo Auditado & LGPD</div>
-              <h2>Campanhas & Lista de Supressão (Opt-out)</h2>
-              <p>Campanhas são salvas como rascunho no Supabase e só disparam mediante confirmação explícita de administrador, respeitando o opt-out.</p>
-            </div>
-            <button class="action-btn-ping" id="campaigns-refresh">Atualizar Dados</button>
-          </div>
-          <div id="campaigns-feedback" class="admin-feedback hidden" role="status"></div>
-
-          <div class="ops-grid">
-            <section class="panel ops-section">
-              <div class="panel-head">
-                <div>
-                  <strong>Criar Nova Campanha (Modo Seguro)</strong>
-                  <span>Um destinatário por linha: <code>telefone,nome</code></span>
-                </div>
-              </div>
-              <div class="admin-form-grid">
-                <label class="wide">Título da Campanha
-                  <input id="campaign-title" type="text" maxlength="200" placeholder="Ex.: Comunicado de Agenda de Novembro" />
-                </label>
-                <label class="wide">Mensagem (suporta <code>{nome}</code>)
-                  <textarea id="campaign-message" rows="3" maxlength="4000" placeholder="Olá {nome}, tudo bem?"></textarea>
-                </label>
-                <label>Delay Mínimo (s)
-                  <input id="campaign-min-delay" type="number" min="3" value="6" />
-                </label>
-                <label>Delay Máximo (s)
-                  <input id="campaign-max-delay" type="number" min="3" value="15" />
-                </label>
-                <label class="wide">Lista de Destinatários
-                  <textarea id="campaign-recipients" rows="4" placeholder="5511999999999,Ana&#10;5511888888888,João"></textarea>
-                </label>
-              </div>
-              <button class="admin-primary-btn" id="campaign-create" style="margin-top:12px;">Criar Campanha (Não Envia Automaticamente)</button>
-            </section>
-
-            <section class="panel ops-section">
-              <div class="panel-head">
-                <div>
-                  <strong>Lista de Supressão / Opt-out</strong>
-                  <span>Contatos bloqueados para campanhas e disparos ativos</span>
-                </div>
-              </div>
-              <div class="suppression-form">
-                <label>Telefone (DDI+DDD+Número)
-                  <input id="suppression-phone" type="text" inputmode="numeric" placeholder="5511999999999" />
-                </label>
-                <label>Motivo
-                  <select id="suppression-reason">
-                    <option>Solicitação de opt-out</option>
-                    <option>Pedido via atendimento</option>
-                    <option>Solicitação administrativa</option>
-                  </select>
-                </label>
-                <button class="admin-primary-btn" id="suppression-add">Bloquear Número</button>
-              </div>
-              <div id="suppression-list" class="ops-list" style="margin-top:14px;"></div>
-            </section>
-          </div>
-
-          <section class="panel ops-section">
-            <div class="panel-head">
-              <div>
-                <strong>Campanhas Registradas</strong>
-                <span id="campaign-summary">Carregando…</span>
-              </div>
-            </div>
-            <div id="campaign-list" class="ops-list"></div>
-          </section>
-        </div>
-      </section>
-
-      <!-- ====================================================================
-           VIEW 8: INTEGRAÇÕES, PONTE & WEBHOOKS (INTEGRATIONS)
+           VIEW 7: INTEGRAÇÕES, PONTE & WEBHOOKS (INTEGRATIONS)
            ==================================================================== -->
       <section id="integrations-view" class="view">
         <div class="ops-container">
