@@ -58,3 +58,32 @@ test('model-router: respeita modelo fixo quando autoRoutingEnabled é falso ou O
   });
   assert.equal(r2.model, 'google/gemma-4-31b:free');
 });
+
+test('model-router: mensagens curtas que exigem busca web, agenda, lembretes ou documentos NUNCA caem no lite', () => {
+  const webShort = decidirModeloPorContexto({
+    userText: 'qual a cotação do dólar hoje?'
+  });
+  assert.equal(webShort.tier, 'flash');
+  assert.equal(webShort.model, 'gemini-3.8-flash');
+  assert.ok(webShort.capabilities.includes('web_search'));
+
+  const reminderShort = decidirModeloPorContexto({
+    userText: 'me lembra amanhã às 10h'
+  });
+  assert.equal(reminderShort.tier, 'flash');
+  assert.ok(reminderShort.capabilities.includes('tools'));
+
+  const calendarShort = decidirModeloPorContexto({
+    userText: 'tem horário livre hoje?'
+  });
+  assert.equal(calendarShort.tier, 'flash');
+  assert.ok(calendarShort.capabilities.includes('tools'));
+
+  const docContextShort = decidirModeloPorContexto({
+    userText: 'qual é o valor total?',
+    system: 'Você é a Lia.\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\n{"summary":"Recibo R$ 500"}\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]'
+  });
+  assert.equal(docContextShort.tier, 'flash');
+  assert.ok(docContextShort.capabilities.includes('document_context'));
+});
+

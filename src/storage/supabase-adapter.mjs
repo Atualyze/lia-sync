@@ -31,10 +31,8 @@ export class SupabaseStorageAdapter extends StorageAdapter {
       }
 
       if (collection === 'sectors_projection') {
-        // Armazenado como projeção de runtime
-        const rows = await this.client.select('bot_config_state', 'select=id,draft_config&limit=1');
-        const state = rows?.[0]?.draft_config?.runtime_sectors_projection;
-        return state || null;
+        const rows = await this.client.select('runtime_projections', 'select=payload&key=eq.sectors_projection&limit=1');
+        return rows?.[0]?.payload || null;
       }
 
       // Consulta padrão por external_key ou id
@@ -65,17 +63,11 @@ export class SupabaseStorageAdapter extends StorageAdapter {
 
     try {
       if (collection === 'sectors_projection') {
-        // Atualiza a projeção de runtime no registro central de estado
-        const current = await this.client.select('bot_config_state', 'select=id,draft_config&limit=1');
-        const draftConfig = (current?.[0]?.draft_config && typeof current[0].draft_config === 'object')
-          ? { ...current[0].draft_config, runtime_sectors_projection: value }
-          : { runtime_sectors_projection: value };
-
-        await this.client.request('bot_config_state', {
-          method: 'PATCH',
-          query: 'id=eq.true',
-          body: { draft_config: draftConfig, updated_at: new Date().toISOString() }
-        });
+        await this.client.upsert('runtime_projections', [{
+          key: 'sectors_projection',
+          payload: value,
+          updated_at: new Date().toISOString()
+        }], 'key');
         if (fallbackPromise) await fallbackPromise;
         return value;
       }

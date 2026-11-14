@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **2.3.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **2.4.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Este diretório contém o schema do banco do Lia Sync, independente do Supabase do CRM original. O runtime usa o Supabase como fonte primária quando configurado e mantém armazenamento local como fallback compatível.
 
@@ -17,7 +17,8 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 7. `migrations/20261113152048_follow_up_atomic_claim.sql` — claim/complete/release de follow-up distribuído
 8. `migrations/20261113153840_atomic_ai_budgets.sql` — tabela de reservas e RPCs de orçamento de IA
 9. `migrations/20261113154223_ai_budget_effective_model.sql` — modelo efetivo e preservação de uso desconhecido
-10. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+10. `migrations/20261114072000_runtime_projections.sql` — tabela `runtime_projections` dedicada para projeções operacionais (ex.: `sectors_projection`)
+11. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 

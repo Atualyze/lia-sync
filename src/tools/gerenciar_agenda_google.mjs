@@ -1,58 +1,295 @@
+import crypto from 'node:crypto';
+
 const MOCK_SLOTS = ['09:00', '10:30', '14:00', '15:30', '17:00'];
-const GOOGLE_API = 'https://www.googleapis.com/calendar/v3/calendars';
+const GOOGLE_CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+let cachedOAuthToken = { token: '', expiresAt: 0 };
+
 const mockEnabled = () => process.env.GOOGLE_CALENDAR_MOCK === 'true' && ['development', 'test'].includes(process.env.NODE_ENV || 'development');
+
 const integration = (botConfig = {}) => {
   const configured = botConfig?.integrations?.googleCalendar || {};
   return {
     enabled: configured.enabled !== false,
     timezone: configured.timezone || 'America/Sao_Paulo',
+    workdayStart: configured.workdayStart || '09:00',
+    workdayEnd: configured.workdayEnd || '18:00',
+    slotDurationMinutes: Number(configured.slotDurationMinutes) || 60,
     defaultEventDurationMinutes: Number(configured.defaultEventDurationMinutes) || 30,
     accessToken: process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || '',
     apiKey: process.env.GOOGLE_CALENDAR_API_KEY || '',
+    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
+    refreshToken: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN || '',
+    serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
+    serviceAccountPrivateKey: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
     calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary'
   };
 };
+
+async function resolveAccessToken(settings) {
+  if (settings.accessToken) return settings.accessToken;
+  if (cachedOAuthToken.token && cachedOAuthToken.expiresAt > Date.now() + 60000) {
+    return cachedOAuthToken.token;
+  }
+  if (settings.clientId && settings.clientSecret && settings.refreshToken) {
+    const res = await fetch(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: settings.clientId,
+        client_secret: settings.clientSecret,
+        refresh_token: settings.refreshToken,
+        grant_type: 'refresh_token'
+      }).toString()
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.access_token) {
+        cachedOAuthToken = {
+          token: data.access_token,
+          expiresAt: Date.now() + (Number(data.expires_in) || 3500) * 1000
+        };
+        return data.access_token;
+      }
+    }
+  }
+  if (settings.serviceAccountEmail && settings.serviceAccountPrivateKey) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+    const claim = Buffer.from(JSON.stringify({
+      iss: settings.serviceAccountEmail,
+      scope: 'https://www.googleapis.com/auth/calendar',
+      aud: GOOGLE_TOKEN_URL,
+      exp: nowSec + 3600,
+      iat: nowSec
+    })).toString('base64url');
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(`${header}.${claim}`);
+    const signature = signer.sign(settings.serviceAccountPrivateKey, 'base64url');
+    const assertion = `${header}.${claim}.${signature}`;
+    const res = await fetch(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion
+      }).toString()
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.access_token) {
+        cachedOAuthToken = {
+          token: data.access_token,
+          expiresAt: Date.now() + (Number(data.expires_in) || 3500) * 1000
+        };
+        return data.access_token;
+      }
+    }
+  }
+  return '';
+}
+
 const unavailable = () => ({ success: false, error: 'google_calendar_unavailable', message: 'Integração real com Google Calendar não está configurada.' });
-const dateValue = date => { const value = date ? new Date(date) : new Date(); return Number.isNaN(value.getTime()) ? null : value; };
-async function googleRequest(path, options = {}, botConfig = {}) {
-  const { accessToken, apiKey, calendarId } = integration(botConfig);
-  const query = apiKey && !accessToken ? `?key=${encodeURIComponent(apiKey)}` : '';
-  const response = await fetch(`${GOOGLE_API}/${encodeURIComponent(calendarId)}${path}${query}`, { ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}), ...(options.headers || {}) } });
+
+export function parseCalendarDate(rawDate, timezone = 'America/Sao_Paulo') {
+  const s = String(rawDate || '').trim().toLowerCase();
+  const now = new Date();
+  if (!s || /^(?:hoje|today|agora|atual)$/i.test(s)) return now;
+  if (/^(?:amanh[aã]|tomorrow)$/i.test(s)) return new Date(now.getTime() + 86400000);
+  if (/^depois\s+de\s+amanh[aã]$/i.test(s)) return new Date(now.getTime() + 2 * 86400000);
+
+  const isoDateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateOnly) {
+    const d = new Date(`${isoDateOnly[1]}-${isoDateOnly[2]}-${isoDateOnly[3]}T12:00:00.000Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const brDate = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (brDate) {
+    const day = brDate[1].padStart(2, '0');
+    const month = brDate[2].padStart(2, '0');
+    const rawYear = brDate[3] ? (brDate[3].length === 2 ? `20${brDate[3]}` : brDate[3]) : String(now.getFullYear());
+    const d = new Date(`${rawYear}-${month}-${day}T12:00:00.000Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const parsed = new Date(rawDate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getIsoDateInZone(dateObj, timezone = 'America/Sao_Paulo') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(dateObj);
+  const y = parts.find(p => p.type === 'year')?.value || '2026';
+  const m = parts.find(p => p.type === 'month')?.value || '01';
+  const d = parts.find(p => p.type === 'day')?.value || '01';
+  return `${y}-${m}-${d}`;
+}
+
+function normalizeTimeStr(rawTime) {
+  const s = String(rawTime || '').trim();
+  const m = s.match(/(\d{1,2})(?::(\d{2})|h(\d{2})?)?/i);
+  if (!m) return '14:00';
+  const hh = String(Math.min(23, Math.max(0, Number(m[1])))).padStart(2, '0');
+  const mm = String(Math.min(59, Math.max(0, Number(m[2] || m[3] || 0)))).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function toZonedIsoTimestamp(isoDate, timeHHMM, timezone = 'America/Sao_Paulo') {
+  const probe = new Date(`${isoDate}T${timeHHMM}:00Z`);
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'longOffset'
+    });
+    const tzPart = fmt.formatToParts(probe).find(p => p.type === 'timeZoneName')?.value || '';
+    const offsetMatch = tzPart.match(/GMT([+-]\d{2}:\d{2})/);
+    const offset = offsetMatch ? offsetMatch[1] : '-03:00';
+    return new Date(`${isoDate}T${timeHHMM}:00${offset}`).toISOString();
+  } catch {
+    return new Date(`${isoDate}T${timeHHMM}:00-03:00`).toISOString();
+  }
+}
+
+async function googleRequest(endpointPath, options = {}, settings = {}) {
+  const token = await resolveAccessToken(settings);
+  const { apiKey, calendarId } = settings;
+  const isTopLevelFreeBusy = endpointPath === '/freeBusy';
+  const basePath = isTopLevelFreeBusy
+    ? `${GOOGLE_CALENDAR_BASE}/freeBusy`
+    : `${GOOGLE_CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}${endpointPath}`;
+  const sep = basePath.includes('?') ? '&' : '?';
+  const query = apiKey && !token ? `${sep}key=${encodeURIComponent(apiKey)}` : '';
+  const response = await fetch(`${basePath}${query}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    }
+  });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) { const error = new Error('google_calendar_request_failed'); error.status = response.status; throw error; }
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || 'google_calendar_request_failed');
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
+
 export const toolGerenciarAgendaGoogle = {
   name: 'gerenciar_agenda_google',
-  description: 'Gerencia a agenda do Google Calendar: consulta horários livres, cria reuniões/atendimentos ou remarca compromissos.',
-  parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'] }, date: { type: 'STRING' }, startTime: { type: 'STRING' }, summary: { type: 'STRING' }, attendeeEmail: { type: 'STRING' }, attendeePhone: { type: 'STRING' } }, required: ['action'] },
-  async execute({ action, date, startTime, summary, attendeeEmail, attendeePhone }, context = {}) {
-    if (!['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'].includes(action)) return { success: false, error: 'invalid_action', message: 'Ação de agenda inválida.' };
+  description: 'Gerencia a agenda do Google Calendar: consulta horários livres, cria reuniões/atendimentos, lista eventos ou cancela compromissos.',
+  parameters: {
+    type: 'OBJECT',
+    properties: {
+      action: { type: 'STRING', enum: ['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'] },
+      date: { type: 'STRING' },
+      startTime: { type: 'STRING' },
+      time: { type: 'STRING' },
+      summary: { type: 'STRING' },
+      attendeeEmail: { type: 'STRING' },
+      attendeePhone: { type: 'STRING' }
+    },
+    required: ['action']
+  },
+  async execute({ action, date, startTime, time: altTime, start: altStart, summary, attendeeEmail, attendeePhone }, context = {}) {
+    if (!['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'].includes(action)) {
+      return { success: false, error: 'invalid_action', message: 'Ação de agenda inválida.' };
+    }
     const settings = integration(context.botConfig);
-    if (!settings.enabled) return { success: false, error: 'google_calendar_disabled', message: 'A integração com o Google Calendar está desativada no painel.' };
-    const targetDate = dateValue(date);
+    if (!settings.enabled) {
+      return { success: false, error: 'google_calendar_disabled', message: 'A integração com o Google Calendar está desativada no painel.' };
+    }
+    const targetDate = parseCalendarDate(date || altStart, settings.timezone);
     if (!targetDate) return { success: false, error: 'invalid_date', message: 'Data inválida para a agenda.' };
     const dateFormatted = targetDate.toLocaleDateString('pt-BR', { timeZone: settings.timezone });
+    const isoDate = getIsoDateInZone(targetDate, settings.timezone);
+    const chosenTime = normalizeTimeStr(startTime || altTime || (altStart && String(altStart).includes('T') ? String(altStart).split('T')[1] : '') || '14:00');
+
     if (mockEnabled()) {
       if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
-      if (action === 'criar_evento') return { success: true, mocked: true, event: { title: summary || `Atendimento com ${context.clientName || 'Cliente'}`, date: dateFormatted, time: startTime || '14:00', status: 'confirmed' }, message: `Compromisso simulado com sucesso para ${dateFormatted} às ${startTime || '14:00'}.` };
+      if (action === 'criar_evento') return { success: true, mocked: true, event: { title: summary || `Atendimento com ${context.clientName || 'Cliente'}`, date: dateFormatted, time: chosenTime, status: 'confirmed' }, message: `Compromisso simulado com sucesso para ${dateFormatted} às ${chosenTime}.` };
     }
-    const { accessToken, apiKey, calendarId } = settings;
-    if (!accessToken && !apiKey) return unavailable();
+
+    const hasCredentials = Boolean(
+      settings.accessToken ||
+      settings.apiKey ||
+      (settings.clientId && settings.clientSecret && settings.refreshToken) ||
+      (settings.serviceAccountEmail && settings.serviceAccountPrivateKey)
+    );
+    if (!hasCredentials) return unavailable();
+
     try {
       if (action === 'consultar_livres') {
-        const body = await googleRequest('/freeBusy', { method: 'POST', body: JSON.stringify({ timeMin: targetDate.toISOString(), timeMax: new Date(targetDate.getTime() + 86400000).toISOString(), items: [{ id: calendarId }] }) }, context.botConfig);
-        const busy = body.calendars?.[calendarId]?.busy || [];
-        return { success: true, date: dateFormatted, availableSlots: MOCK_SLOTS.filter(slot => !busy.some(item => String(item.start).includes(`T${slot}:`))), message: `Disponibilidade consultada para ${dateFormatted}.` };
+        const dayStartIso = toZonedIsoTimestamp(isoDate, '00:00', settings.timezone);
+        const dayEndIso = toZonedIsoTimestamp(isoDate, '23:59', settings.timezone);
+        const body = await googleRequest('/freeBusy', {
+          method: 'POST',
+          body: JSON.stringify({
+            timeMin: dayStartIso,
+            timeMax: dayEndIso,
+            timeZone: settings.timezone,
+            items: [{ id: settings.calendarId }]
+          })
+        }, settings);
+        const busy = body.calendars?.[settings.calendarId]?.busy || [];
+        const availableSlots = MOCK_SLOTS.filter(slot => {
+          const slotStartMs = new Date(toZonedIsoTimestamp(isoDate, slot, settings.timezone)).getTime();
+          const slotEndMs = slotStartMs + settings.defaultEventDurationMinutes * 60000;
+          return !busy.some(item => {
+            const bStart = new Date(item.start).getTime();
+            const bEnd = new Date(item.end).getTime();
+            if (Number.isNaN(bStart) || Number.isNaN(bEnd)) {
+              return String(item.start).includes(`T${slot}:`);
+            }
+            return slotStartMs < bEnd && slotEndMs > bStart;
+          });
+        });
+        return {
+          success: true,
+          date: dateFormatted,
+          availableSlots,
+          message: availableSlots.length
+            ? `Para ${dateFormatted}, os horários livres são: ${availableSlots.join(', ')}.`
+            : `Não há horários livres disponíveis em ${dateFormatted}.`
+        };
       }
       if (action === 'criar_evento') {
-        if (!accessToken) return { success: false, error: 'google_calendar_write_unavailable', message: 'Token OAuth é necessário para criar eventos no Google Calendar.' };
-        const time = startTime || '14:00'; const start = new Date(`${String(date || '').slice(0, 10)}T${time}:00`).toISOString(); const end = new Date(new Date(start).getTime() + settings.defaultEventDurationMinutes * 60000).toISOString();
-        const event = await googleRequest('/events', { method: 'POST', body: JSON.stringify({ summary: summary || `Atendimento com ${context.clientName || 'Cliente'}`, start: { dateTime: start }, end: { dateTime: end }, attendees: attendeeEmail ? [{ email: attendeeEmail }] : undefined, description: attendeePhone ? `Telefone: ${attendeePhone}` : undefined }) }, context.botConfig);
-        return { success: true, event: { id: event.id, title: event.summary, date: dateFormatted, time, status: event.status || 'confirmed' }, message: `Compromisso agendado com sucesso para ${dateFormatted} às ${time}.` };
+        const token = await resolveAccessToken(settings);
+        if (!token) return { success: false, error: 'google_calendar_write_unavailable', message: 'Token OAuth ou Service Account é necessário para criar eventos no Google Calendar.' };
+        const start = toZonedIsoTimestamp(isoDate, chosenTime, settings.timezone);
+        const end = new Date(new Date(start).getTime() + settings.defaultEventDurationMinutes * 60000).toISOString();
+        const event = await googleRequest('/events', {
+          method: 'POST',
+          body: JSON.stringify({
+            summary: summary || `Atendimento com ${context.clientName || 'Cliente'}`,
+            start: { dateTime: start, timeZone: settings.timezone },
+            end: { dateTime: end, timeZone: settings.timezone },
+            attendees: attendeeEmail ? [{ email: attendeeEmail }] : undefined,
+            description: attendeePhone ? `Telefone: ${attendeePhone}` : undefined
+          })
+        }, settings);
+        return {
+          success: true,
+          event: { id: event.id, title: event.summary, date: dateFormatted, time: chosenTime, status: event.status || 'confirmed' },
+          message: `Compromisso agendado com sucesso para ${dateFormatted} às ${chosenTime}.`
+        };
       }
-      if (action === 'listar_eventos') { const body = await googleRequest(`/events?timeMin=${encodeURIComponent(targetDate.toISOString())}`, {}, context.botConfig); return { success: true, date: dateFormatted, events: body.items || [] }; }
+      if (action === 'listar_eventos') {
+        const dayStartIso = toZonedIsoTimestamp(isoDate, '00:00', settings.timezone);
+        const body = await googleRequest(`/events?timeMin=${encodeURIComponent(dayStartIso)}&singleEvents=true&orderBy=startTime`, {}, settings);
+        return { success: true, date: dateFormatted, events: body.items || [] };
+      }
       return { success: false, error: 'unsupported_action', message: 'Cancelamento requer o identificador do evento.' };
-    } catch (error) { return { success: false, error: 'google_calendar_error', message: 'Não foi possível consultar o Google Calendar.', status: error.status }; }
+    } catch (error) {
+      return { success: false, error: 'google_calendar_error', message: 'Não foi possível consultar o Google Calendar.', status: error.status };
+    }
   }
 };

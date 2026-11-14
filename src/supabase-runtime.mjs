@@ -329,23 +329,35 @@ export class SupabaseSessionStore extends SessionStore {
   }
 
   async syncSession(phone, origin = 'real') {
-    const s = this.get(phone, origin);
-    if (!this.client?.enabled) return s;
     const norm = normalizePhone(phone);
     const isSim = origin === 'simulation' || norm.startsWith('sim:');
     const cleanPhone = norm.replace(/^sim:/, '');
     const key = isSim ? `sim:${cleanPhone}` : cleanPhone;
+    const existed = Boolean(this.sessions[key]);
+    const s = this.get(phone, origin);
+    if (!this.client?.enabled) return s;
+
+    // Preserva estado local em memória quando há gravação pendente ou em andamento
+    if (existed && (this.saveTimer || this.saving)) return s;
 
     try {
       const rows = await this.client.select('conversations', `select=*,contacts(display_name,push_name,phone)&external_key=eq.${encodeURIComponent(key)}&limit=1`);
       const row = rows?.[0];
       if (!row) return s;
 
-      const remoteTime = new Date(row.updated_at || 0).getTime();
-      const localTime = new Date(s.lastUserAt || s.lastBotAt || s.updatedAt || 0).getTime();
+      const remoteTime = new Date(row.updated_at || 0).getTime() || 0;
+      const localTime = existed
+        ? Math.max(
+            new Date(s.updatedAt || 0).getTime() || 0,
+            new Date(s.lastUserAt || 0).getTime() || 0,
+            new Date(s.lastBotAt || 0).getTime() || 0,
+            new Date(s.handoffAt || 0).getTime() || 0,
+            new Date(s.takeoverAt || 0).getTime() || 0
+          )
+        : 0;
 
-      // Se a réplica remota tiver dados mais recentes, recarrega histórico e estado
-      if (remoteTime > localTime || !s.history?.length) {
+      // Só substitui a sessão local se ela ainda não existia em memória ou se o remoto for estritamente mais recente
+      if (!existed || remoteTime > localTime) {
         const messages = await this.client.select(
           'conversation_messages',
           `select=conversation_id,external_id,role,content,created_at&conversation_id=eq.${row.id}&order=created_at.desc&limit=60`

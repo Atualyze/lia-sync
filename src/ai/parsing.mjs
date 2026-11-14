@@ -14,7 +14,36 @@ export const responseSchema = {
         type: 'OBJECT',
         properties: {
           name: { type: 'STRING' },
-          args: { type: 'OBJECT' }
+          args: {
+            type: 'OBJECT',
+            properties: {
+              recipient: { type: 'STRING', nullable: true },
+              message: { type: 'STRING', nullable: true },
+              asAudio: { type: 'BOOLEAN', nullable: true },
+              query: { type: 'STRING', nullable: true },
+              action: { type: 'STRING', nullable: true },
+              date: { type: 'STRING', nullable: true },
+              startTime: { type: 'STRING', nullable: true },
+              time: { type: 'STRING', nullable: true },
+              summary: { type: 'STRING', nullable: true },
+              target: { type: 'STRING', nullable: true },
+              tipo: { type: 'STRING', nullable: true },
+              titulo: { type: 'STRING', nullable: true },
+              destinatario: { type: 'STRING', nullable: true },
+              conteudo: { type: 'STRING', nullable: true },
+              valor: { type: 'STRING', nullable: true },
+              setor: { type: 'STRING', nullable: true },
+              motivo: { type: 'STRING', nullable: true },
+              phone: { type: 'STRING', nullable: true },
+              reason: { type: 'STRING', nullable: true },
+              when: { type: 'STRING', nullable: true },
+              name: { type: 'STRING', nullable: true },
+              termo: { type: 'STRING', nullable: true },
+              interesse: { type: 'STRING', nullable: true },
+              observacoes: { type: 'STRING', nullable: true },
+              estagio: { type: 'STRING', nullable: true }
+            }
+          }
         },
         required: ['name']
       }
@@ -147,10 +176,20 @@ export function parseAIResponse(raw) {
     }
     return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
   }
-  const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'falar_com_tauan', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'outro']);
+  const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'falar_com_tauan', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
   const isHandoff = o.handoff === true || o.intent === 'falar_com_responsavel' || o.intent === 'falar_com_tauan' || o.intent === 'humano';
   const rem = o.reminder && typeof o.reminder === 'object' && o.reminder.text ? o.reminder : null;
+  const cleanToolCalls = Array.isArray(o.tool_calls)
+    ? o.tool_calls
+        .filter(t => t && t.name)
+        .map(t => ({
+          name: String(t.name).trim(),
+          args: t.args && typeof t.args === 'object'
+            ? Object.fromEntries(Object.entries(t.args).filter(([, v]) => v !== null && v !== undefined))
+            : {}
+        }))
+    : [];
   return {
     reply: typeof o.reply === 'string' ? o.reply : '',
     intent: intents.has(o.intent) ? o.intent : (isHandoff ? 'falar_com_responsavel' : 'outro'),
@@ -158,7 +197,7 @@ export function parseAIResponse(raw) {
     handoff: isHandoff,
     handoff_reason: typeof o.handoff_reason === 'string' ? o.handoff_reason : null,
     reminder: rem,
-    tool_calls: Array.isArray(o.tool_calls) ? o.tool_calls.filter(t => t && t.name) : [],
+    tool_calls: cleanToolCalls,
     collected: c
   };
 }

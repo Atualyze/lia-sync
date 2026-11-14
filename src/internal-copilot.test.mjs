@@ -158,6 +158,33 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
   assert.match(repAlguem, /Glória Vasconcelos/);
 });
 
+test('Conversa interna: frases comuns com "aguardando", "quem" ou "lista" não abrem a fila por engano', async () => {
+  const store = createMockStore();
+  const sClient = store.get('5511999998888');
+  sClient.human = true;
+  sClient.clientName = 'Glória Vasconcelos';
+  sClient.history = [{ role: 'user', content: 'Oi' }];
+
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async () => {
+        aiCalls += 1;
+        return { reply: 'Certo, continuo por aqui se precisar!' };
+      }
+    }
+  });
+
+  for (const phrase of ['Ok, aguardando', 'estou aguardando o documento', 'lista de preços', 'quem fez isso?']) {
+    const rep = await flow.process({ phone: '5588921694598', text: phrase });
+    assert.equal(/Contatos aguardando sua resposta/.test(rep), false, `não deveria abrir fila para "${phrase}"`);
+  }
+  assert.equal(aiCalls, 4);
+});
+
 test('Conversa interna: respostas de IA passam por filterReply', async () => {
   const store = createMockStore();
   const flow = createFlow({
@@ -836,4 +863,93 @@ test('Fluxo completo: cancelamento de áudio, troca para texto e proteção cont
   assert.doesNotMatch(p4, /nvie um texto/i);
   assert.doesNotMatch(p4, /Destinatário: ptbr/i);
 });
+
+test('pcm16ToWavBase64 empacota áudio PCM L16 cru do Gemini TTS em cabeçalho RIFF/WAV válido', async () => {
+  const { pcm16ToWavBase64 } = await import('./ai/voice.mjs');
+  const rawPcm = Buffer.alloc(480, 0x12).toString('base64');
+  const wavB64 = pcm16ToWavBase64(rawPcm, 24000);
+  const wavBuf = Buffer.from(wavB64, 'base64');
+
+  assert.equal(wavBuf.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(wavBuf.subarray(8, 12).toString('ascii'), 'WAVE');
+  assert.equal(wavBuf.readUInt32LE(24), 24000);
+  assert.equal(wavBuf.length, 44 + 480);
+});
+
+test('Copiloto analisa documento PDF/imagem e preserva contexto do documento em turnos seguintes', async () => {
+  const store = createMockStore();
+  let capturedSystem = '';
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    ai: {
+      analyzeDocument: async ({ mimetype }) => ({
+        summary: `Planilha financeira (${mimetype}) com faturamento total de R$ 14.500,00.`,
+        docType: 'planilha',
+        keyPoints: ['Receita: R$ 14.500,00', 'Cliente: Empresa Alpha'],
+        actionNeeded: 'Conferir lançamento contábil'
+      }),
+      askAI: async ({ system }) => {
+        capturedSystem = system;
+        return {
+          reply: 'O valor total do documento Pasta1.pdf é R$ 14.500,00 para a Empresa Alpha.',
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  // Turno 1: Envio do arquivo Pasta1.pdf pelo painel
+  const r1 = await flow.process({
+    phone: 'tauan_self',
+    text: 'Arquivo enviado: Pasta1.pdf',
+    attachments: [{
+      fileName: 'Pasta1.pdf',
+      mimeType: 'application/pdf',
+      url: `data:application/pdf;base64,${Buffer.from('%PDF-1.4 fake').toString('base64')}`
+    }]
+  });
+  assert.match(r1, /Análise do Documento \(PLANILHA\) Concluída/i);
+  assert.match(r1, /R\$ 14\.500,00/);
+
+  // Turno 2: Pergunta de acompanhamento sobre o documento sem reenviar o anexo
+  const r2 = await flow.process({
+    phone: 'tauan_self',
+    text: 'Qual é o valor total e o cliente desse documento?'
+  });
+  assert.match(capturedSystem, /ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO/);
+  assert.match(capturedSystem, /Pasta1\.pdf/);
+  assert.match(r2, /R\$ 14\.500,00/);
+});
+
+test('enviar_mensagem_contato resolve contato via SupabaseRestClient.select(contacts)', async () => {
+  const { executeToolCall } = await import('./tools/index.mjs');
+  const store = createMockStore();
+  store.client = {
+    select: async (table) => {
+      assert.equal(table, 'contacts');
+      return [{ phone: '5588999112233', display_name: 'Carlos Mendes', push_name: 'Carlos' }];
+    }
+  };
+
+  let sentTo = null;
+  const res = await executeToolCall(
+    'enviar_mensagem_contato',
+    { recipient: 'Carlos Mendes', message: 'Oi Carlos, tudo bem?', asAudio: false },
+    {
+      store,
+      whatsapp: {
+        sendWhatsAppText: async (phone, msg) => {
+          sentTo = { phone, msg };
+          return { ok: true };
+        }
+      }
+    }
+  );
+
+  assert.equal(res.success, true);
+  assert.equal(sentTo?.phone, '5588999112233');
+});
+
 

@@ -102,15 +102,19 @@ export class SectorProjection {
     }
 
     if (this.client?.enabled) {
-      const rows = await this.client.select('bot_config_state', 'select=id,draft_config,updated_at&limit=1');
-      const remote = rows?.[0]?.draft_config?.runtime_sectors_projection;
-      if (remote && Array.isArray(remote.sectors)) {
-        const remoteTime = new Date(remote.updatedAt || 0).getTime();
-        const localTime = new Date(this.updatedAt || 0).getTime();
-        if (remoteTime >= localTime || !this.sectors.length) {
-          this.sectors = normalizeSectors(remote.sectors);
-          this.updatedAt = remote.updatedAt || new Date(this.now()).toISOString();
+      try {
+        const rows = await this.client.select('runtime_projections', 'select=payload,updated_at&key=eq.sectors_projection&limit=1');
+        const remote = rows?.[0]?.payload;
+        if (remote && Array.isArray(remote.sectors)) {
+          const remoteTime = new Date(remote.updatedAt || rows?.[0]?.updated_at || 0).getTime();
+          const localTime = new Date(this.updatedAt || 0).getTime();
+          if (remoteTime >= localTime || !this.sectors.length) {
+            this.sectors = normalizeSectors(remote.sectors);
+            this.updatedAt = remote.updatedAt || new Date(this.now()).toISOString();
+          }
         }
+      } catch (err) {
+        this.logger.warn?.(`[sectors] leitura remota indisponível; usando projeção local: ${err.message}`);
       }
     }
   }
@@ -161,15 +165,11 @@ export class SectorProjection {
         });
       } else if (this.client?.enabled) {
         try {
-          const rows = await this.client.select('bot_config_state', 'select=id,draft_config&limit=1');
-          const draftConfig = (rows?.[0]?.draft_config && typeof rows[0].draft_config === 'object')
-            ? { ...rows[0].draft_config, runtime_sectors_projection: { sectors: this.sectors, updatedAt: this.updatedAt } }
-            : { runtime_sectors_projection: { sectors: this.sectors, updatedAt: this.updatedAt } };
-          await this.client.request('bot_config_state', {
-            method: 'PATCH',
-            query: 'id=eq.true',
-            body: { draft_config: draftConfig, updated_at: new Date(this.now()).toISOString() }
-          });
+          await this.client.upsert('runtime_projections', [{
+            key: 'sectors_projection',
+            payload: { sectors: this.sectors, updatedAt: this.updatedAt },
+            updated_at: new Date(this.now()).toISOString()
+          }], 'key');
         } catch (err) {
           this.logger.warn?.(`[sectors] falha ao replicar projeção para o Supabase: ${err.message}`);
         }

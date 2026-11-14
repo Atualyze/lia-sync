@@ -63,23 +63,40 @@ export async function call(provider, {
   budgetGate,
   budgetContext = {},
   enableSearch,
-  toolDeclarations = []
+  toolDeclarations = [],
+  routingDecision = null
 }) {
   if (!available(provider) || opened.get(provider) > Date.now()) return null;
   const runtime = resolveAIConfig({ ai: aiConfig });
   const nativeTools = Array.isArray(toolDeclarations) ? toolDeclarations : [];
+  const toolCatalogPrompt = nativeTools.length
+    ? `\n\n[CATÁLOGO DE FERRAMENTAS ATIVAS (PREENCHA "tool_calls" NO JSON QUANDO NECESSÁRIO)]\n` +
+      nativeTools.map(t => {
+        const props = t.parameters?.properties ? Object.keys(t.parameters.properties).join(', ') : '';
+        return `• "${t.name}": ${t.description || ''} (args: {${props}})`;
+      }).join('\n')
+    : '';
+  const effectiveSystem = toolCatalogPrompt && !String(system || '').includes('[CATÁLOGO DE FERRAMENTAS ATIVAS')
+    ? `${system || ''}${toolCatalogPrompt}`
+    : (system || '');
 
   if (provider === 'gemini') {
-    // Modelo fixo: tenta só ele, sem cadeia
+    // Modelo fixo: tenta ele e, apenas se for alias legado inexistente (404), permite equivalente 2.5
     // Modelo preferido: tenta o roteado e depois a cadeia padrão
+    const LEGACY_GEMINI_EQUIVALENT = {
+      'gemini-3.8-flash': 'gemini-2.5-flash',
+      'gemini-3.5-flash-lite': 'gemini-2.5-flash-lite'
+    };
     const candidateModels = (fixedModel
-      ? [fixedModel]
+      ? [fixedModel, LEGACY_GEMINI_EQUIVALENT[fixedModel]].filter(Boolean)
       : [
           preferredModel || legacyModel,
+          LEGACY_GEMINI_EQUIVALENT[preferredModel || legacyModel],
           (runtime.model && runtime.model.startsWith('gemini-') && runtime.model !== 'gemini-1.5-flash') ? runtime.model : null,
+          LEGACY_GEMINI_EQUIVALENT[runtime.model],
           ...(runtime.fallbackModels.length
             ? runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')).slice(0, 3)
-            : ['gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest'])
+            : ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest'])
         ]
     )
       .filter(Boolean)
@@ -88,8 +105,6 @@ export async function call(provider, {
 
     let primaryErr = null;
     let lastErr = null;
-    const webSearchEnabled = aiConfig?.webSearch?.enabled !== false;
-    const needsSearch = webSearchEnabled && Boolean(enableSearch || shouldEnableGoogleSearch(userText));
 
     for (const model of candidateModels) {
       let permit = null;
@@ -107,20 +122,19 @@ export async function call(provider, {
           responseMimeType: 'application/json',
           responseSchema
         };
-        if (model.includes('2.5') && config.geminiThinkingBudget !== undefined) {
-          genConfig.thinkingConfig = { thinkingBudget: config.geminiThinkingBudget };
+        const effectiveThinkingBudget = Number.isInteger(routingDecision?.thinkingBudget)
+          ? routingDecision.thinkingBudget
+          : config.geminiThinkingBudget;
+        if (model.includes('2.5') && effectiveThinkingBudget !== undefined) {
+          genConfig.thinkingConfig = { thinkingBudget: effectiveThinkingBudget };
         }
         const body = {
-          systemInstruction: { parts: [{ text: system }] },
+          systemInstruction: { parts: [{ text: effectiveSystem }] },
           contents: [...normalizeHistory(history), { role: 'user', content: userText }].map(m => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
           })),
-          generationConfig: genConfig,
-          ...((needsSearch || nativeTools.length) ? { tools: [
-            ...(needsSearch ? [{ google_search: {} }] : []),
-            ...(nativeTools.length ? getGeminiToolDeclarations(nativeTools) : [])
-          ] } : {})
+          generationConfig: genConfig
         };
         const response = await fetch(url, {
           method: 'POST',
@@ -150,8 +164,9 @@ export async function call(provider, {
         if (!primaryErr) primaryErr = err;
         lastErr = err;
         if (err.budgetDenied) continue;
-        // Só cai para o próximo modelo em erros transitórios ou modelo inválido/descontinuado, e nunca no modo fixo
-        if (fixedModel || !/\b(400|404|429|5\d\d)\b/.test(err.message)) break;
+        // No modo fixo, só cai para o equivalente 2.5 se o alias retornar 404
+        if (fixedModel && !/\b404\b/.test(err.message)) break;
+        if (!/\b(400|404|429|5\d\d)\b/.test(err.message)) break;
       }
     }
     throw primaryErr || lastErr || Error('Gemini failed');
@@ -179,11 +194,18 @@ export async function call(provider, {
     if (remainingMs <= 100) break;
     const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
     const body = provider === 'openrouter'
-      ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
-      : { model: candidateModel, temperature: 0.2, max_tokens: config.aiMaxOutputTokens, messages: [{ role: 'system', content: system }, ...normalizeHistory(history), { role: 'user', content: userText }], response_format: { type: 'json_object' }, ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {}) };
+      ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system: effectiveSystem, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
+      : { model: candidateModel, temperature: 0.2, max_tokens: config.aiMaxOutputTokens, messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }], response_format: { type: 'json_object' }, ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {}) };
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
-      const response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
+      let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
+      // Se um modelo gratuito/customizado no OpenRouter ou Qwen recusar 'tools' nativo com 400/404, re-tenta sem 'tools' usando o catálogo no system prompt
+      if (!response.ok && (response.status === 400 || response.status === 404) && nativeTools.length > 0 && body.tools) {
+        const fallbackBody = { ...body };
+        delete fallbackBody.tools;
+        delete fallbackBody.tool_choice;
+        response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
+      }
       if (!response.ok) {
         const detail = safeErrorDetail(await response.text());
         throw Error(`${provider} ${response.status}${detail ? ` — ${detail}` : ''}`);
@@ -205,7 +227,7 @@ export async function call(provider, {
       }
       lastError = error;
       if (error.budgetDenied) continue;
-      if (provider === 'openrouter' || !/\b(400|404|408|409|425|429|5\d\d)\b/.test(error.message)) throw error;
+      if (!/\b(400|404|408|409|425|429|5\d\d)\b/.test(error.message)) throw error;
     }
   }
   throw lastError || Error(`${provider} deadline_exceeded`);
@@ -218,10 +240,11 @@ export async function askAI(args) {
     return null;
   }
 
-  // Roteamento Dinâmico de Complexidade (MoA / Mixture of Agents)
+  // Roteamento Dinâmico de Complexidade e Capacidades (MoA / Mixture of Agents)
   const isAutoRouting = args?.botConfig?.ai?.autoRouting !== false;
   const decision = decidirModeloPorContexto({
     userText: args?.userText,
+    system: args?.system,
     history: args?.history,
     isOwner: args?.isOwner === true || args?.isTauan === true,
     isSuperAgent: args?.botConfig?.ai?.agentMode === 'super_agente' || args?.botConfig?.ai?.enableToolCalling === true,
@@ -234,9 +257,14 @@ export async function askAI(args) {
   const preferredModel = decision.tier === 'custom' ? null : decision.model;
 
   const deadline = Number.isFinite(args?.deadline) ? args.deadline : Date.now() + 35000;
-  const toolMode = args?.botConfig?.ai?.agentMode === 'super_agente' || args?.botConfig?.ai?.enableToolCalling === true;
   const actor = args?.isOwner === true || args?.isTauan === true ? 'owner' : 'client';
-  const toolDeclarations = toolMode ? getEnabledTools(args?.botConfig, { actor }) : [];
+  const isSynthesisTurn = /\[UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)_JSON\]/.test(String(args?.system || ''));
+  const explicitDisableTools = args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
+  const toolMode = !isSynthesisTurn && (actor === 'owner' || !explicitDisableTools);
+  const webOnlyFallback = !isSynthesisTurn && !toolMode && args?.botConfig?.webSearch?.enabled !== false && shouldEnableGoogleSearch(args?.userText);
+  const toolDeclarations = toolMode
+    ? getEnabledTools(args?.botConfig, { actor })
+    : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
   for (const provider of providers(args?.botConfig)) {
     const start = Date.now();
     // Cada provedor recebe o modelo que lhe pertence. Nunca o do Gemini.
@@ -248,6 +276,7 @@ export async function askAI(args) {
         ...args,
         deadline,
         toolDeclarations,
+        routingDecision: decision,
         aiConfig,
         budgetGate: args?.budgetGate,
         budgetContext: {

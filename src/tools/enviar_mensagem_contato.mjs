@@ -91,17 +91,29 @@ export const toolEnviarMensagemContato = {
       }
     }
 
-    // Se ainda não encontrou e temos Supabase no client do store
-    if (!targetPhone && store?.client?.from) {
+    // Se ainda não encontrou e temos Supabase no client do store (REST client próprio ou SDK)
+    if (!targetPhone && store?.client) {
       try {
-        const { data } = await store.client
-          .from('contacts')
-          .select('phone, name, display_name, push_name')
-          .ilike('name', '%' + rawRec + '%')
-          .limit(1);
-        if (data && data[0]?.phone) {
-          targetPhone = String(data[0].phone).replace(/\D/g, '');
-          targetName = data[0].name || data[0].display_name || targetPhone;
+        if (typeof store.client.select === 'function' && store.client.enabled !== false) {
+          const safePattern = encodeURIComponent(`*${rawRec.replace(/[*%,()]/g, '')}*`);
+          const rows = await store.client.select(
+            'contacts',
+            `select=phone,display_name,push_name&or=(display_name.ilike.${safePattern},push_name.ilike.${safePattern})&limit=1`
+          );
+          if (Array.isArray(rows) && rows[0]?.phone) {
+            targetPhone = String(rows[0].phone).replace(/\D/g, '');
+            targetName = rows[0].display_name || rows[0].push_name || targetPhone;
+          }
+        } else if (typeof store.client.from === 'function') {
+          const { data } = await store.client
+            .from('contacts')
+            .select('phone, name, display_name, push_name')
+            .ilike('name', '%' + rawRec + '%')
+            .limit(1);
+          if (data && data[0]?.phone) {
+            targetPhone = String(data[0].phone).replace(/\D/g, '');
+            targetName = data[0].name || data[0].display_name || targetPhone;
+          }
         }
       } catch (err) {
         // ignora
@@ -137,12 +149,12 @@ export const toolEnviarMensagemContato = {
             return { success: false, deliveryUnknown: e?.deliveryUnknown === true, error: e?.deliveryUnknown ? 'O resultado da entrega de áudio é incerto; não foi feito retry nem fallback para texto.' : 'A Evolution recusou a entrega do áudio; o texto não foi enviado automaticamente.' };
           }
         } else {
-          const sendFn = context.whatsapp?.sendText || sendText;
+          const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
           await sendFn(targetPhone, cleanMsg);
           isVoice = false;
         }
       } else {
-        const sendFn = context.whatsapp?.sendText || sendText;
+        const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
         await sendFn(targetPhone, cleanMsg);
       }
 

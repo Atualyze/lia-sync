@@ -89,10 +89,34 @@ export async function handleClientMessage({
         }
       }
 
-      // 2.2 TRATAMENTO DE FOTO / VÍDEO
+      // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
       if (mediaType === 'image' || mediaType === 'video') {
         const typeLabel = mediaType === 'image' ? 'foto' : 'vídeo';
-        s.history.push({ role: 'user', content: `[${typeLabel} enviada]` + (clean ? `: ${clean}` : ''), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+        let imageAnalysis = null;
+        if (mediaType === 'image' && botConfig?.automation?.enableMediaProcessing !== false && rawItem && whatsapp?.getMediaBase64 && ai?.analyzeDocument) {
+          try {
+            const media = await whatsapp.getMediaBase64(rawItem);
+            if (media?.base64) {
+              imageAnalysis = await ai.analyzeDocument({
+                base64: media.base64,
+                mimetype: media.mimetype || 'image/jpeg',
+                caption: clean,
+                identity,
+                botConfig
+              });
+            }
+          } catch (e) {
+            console.error('[flow] Erro na análise de imagem do cliente:', e.message);
+          }
+        }
+
+        const historyNote = imageAnalysis?.summary
+          ? `[${typeLabel} enviada${clean ? `: ${clean}` : ''}]\nResumo visual: ${imageAnalysis.summary}`
+          : `[${typeLabel} enviada]` + (clean ? `: ${clean}` : '');
+        s.history.push({ role: 'user', content: historyNote, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+        if (imageAnalysis?.summary) {
+          s.lastAnalyzedDocument = { ...imageAnalysis, analyzedAt: new Date(now()).toISOString() };
+        }
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
         if (s.human) {
@@ -102,7 +126,10 @@ export async function handleClientMessage({
 
         const clientName = s.clientName || pushName || 'Contato';
         const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
-        const alertMsg = `📸 *Novo(a) ${typeLabel} recebido(a) de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n💬 *Legenda:* "${clean || '(Sem legenda)'}"\n\n_A ${assistant} notificou o cliente e pausou o bot para você continuar._`;
+        const visionExtra = imageAnalysis?.summary
+          ? `\n📋 *Análise Visual (${String(imageAnalysis.docType || 'Imagem').toUpperCase()}):*\n${imageAnalysis.summary}`
+          : '';
+        const alertMsg = `📸 *Novo(a) ${typeLabel} recebido(a) de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n💬 *Legenda:* "${clean || '(Sem legenda)'}"${visionExtra}\n\n_A ${assistant} notificou o cliente e pausou o bot para você continuar._`;
 
         await triggerHandoff(s, {
           reason: `Envio de ${typeLabel} pelo cliente`,

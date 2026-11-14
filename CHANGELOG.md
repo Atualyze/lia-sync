@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.0 — roteamento por capacidades, tool calling estruturado, voz WAV e visão multimodal
+
+- **Roteamento orientado a capacidades (`src/model-router.mjs`):** adicionados `MODEL_CAPABILITIES` e `detectarCapacidadesExigidas` (`fast_chat`, `tools`, `web_search`, `document_context`, `deep_reasoning`), impedindo que comandos curtos com ferramentas ou busca web caiam no tier `lite` e ajustando `thinkingBudget` dinamicamente (`0` para `lite`/`flash`, `1024` para `pro`).
+- **Tool calling estruturado e fallback multi-modelo (`src/ai/call.mjs`, `src/ai/parsing.mjs`):** propriedades completas em `responseSchema.properties.tool_calls.items.properties.args`, compatibilidade com Gemini `v1beta` Structured Outputs, correção do loop de `fallbackModels` no OpenRouter e downgrade gracioso quando um modelo `:free` não suporta `tools` nativo.
+- **Leitura multimodal de PDFs e fotos com memória na sessão (`src/ai/documents.mjs`, `src/flow/owner.mjs`, `src/flow/client.mjs`, `src/http/bridge-routes.mjs`):** payload da ponte ampliado para 15 MB, fallback para `gemini-2.5-flash`, persistência de `lastAnalyzedDocument` na sessão e visão multimodal ativa para imagens enviadas por clientes.
+- **Voz TTS com cabeçalho RIFF/WAV (`src/ai/voice.mjs`):** `pcm16ToWavBase64` encapsula o áudio PCM `audio/L16` (24 kHz) do Gemini TTS em container WAV válido; removido `speakingRate` inválido do `voiceConfig` no `v1beta`.
+- **Google Calendar e Pesquisa Web (`src/tools/gerenciar_agenda_google.mjs`, `src/ai/search.mjs`):** suporte a OAuth2 Refresh Token e Service Account JWT, endpoint `/freeBusy` corrigido, parser de datas (`hoje`, `amanhã`, `DD/MM/YYYY`, `YYYY-MM-DD`) em `America/Sao_Paulo` e busca web via `gemini-2.5-flash`.
+- **Projeções e sessões (`supabase/migrations/20261114072000_runtime_projections.sql`, `src/supabase-runtime.mjs`):** `SectorProjection` isolado em `public.runtime_projections` e proteção de sessões locais sujas/limpas em `syncSession`.
+- **Validação:** 218 testes automatizados, 26 contratos de arquitetura e build de 108 módulos aprovados.
+
 ## 2.3.2 — runtime configurável e execução confiável
 
 - Tool calling e modo Super Agente passam a ter defaults operacionais e continuam derivados pelo painel.

@@ -22,16 +22,30 @@ export const ALL_TOOLS = [
   toolConsultarWeb
 ];
 
+const TOOL_NAME_ALIASES = {
+  agendar_retorno: 'agendar_retorno_ou_followup',
+  consultar_contato: 'consultar_contato_ou_lead',
+  pesquisar_web: 'consultar_web',
+  google_agenda: 'gerenciar_agenda_google',
+  gerar_pdf: 'gerar_documento_pdf',
+  enviar_mensagem: 'enviar_mensagem_contato'
+};
+
+export function resolveToolName(toolName) {
+  return TOOL_NAME_ALIASES[toolName] || toolName;
+}
+
 const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'agendar_retorno_ou_followup',
   'consultar_base_conhecimento',
   'consultar_web'
 ]);
-export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(toolName);
+export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 
 export function isToolEnabled(toolName, botConfig = {}) {
-  if (toolName === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
-  return botConfig?.tools?.enabled?.[toolName] !== false;
+  const canonical = resolveToolName(toolName);
+  if (canonical === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
+  return botConfig?.tools?.enabled?.[canonical] !== false && botConfig?.tools?.enabled?.[toolName] !== false;
 }
 
 export function getEnabledTools(botConfig = {}, { actor = 'owner' } = {}) {
@@ -93,13 +107,14 @@ function validateToolArguments(tool, args) {
  * Executa uma ferramenta pelo nome com os argumentos passados
  */
 export async function executeToolCall(toolName, args = {}, context = {}) {
-  if (!isToolEnabled(toolName, context.botConfig || {})) {
-    return { error: `A ferramenta "${toolName}" está desativada na configuração publicada.` };
+  const canonicalName = resolveToolName(toolName);
+  if (!isToolEnabled(canonicalName, context.botConfig || {})) {
+    return { error: `A ferramenta "${canonicalName}" está desativada na configuração publicada.` };
   }
-  if (context.actor === 'client' && !CLIENT_ALLOWED_TOOL_NAMES.has(toolName)) {
+  if (context.actor === 'client' && !CLIENT_ALLOWED_TOOL_NAMES.has(canonicalName)) {
     return { error: 'Ferramenta indisponível neste fluxo.' };
   }
-  const tool = ALL_TOOLS.find(t => t.name === toolName);
+  const tool = ALL_TOOLS.find(t => t.name === canonicalName);
   if (!tool) {
     return { error: 'Ferramenta "' + toolName + '" não encontrada.' };
   }
@@ -108,6 +123,6 @@ export async function executeToolCall(toolName, args = {}, context = {}) {
   try {
     return await tool.execute(args, context);
   } catch (err) {
-    return { error: 'Falha ao executar ' + toolName + ': ' + err.message };
+    return { error: 'Falha ao executar ' + canonicalName + ': ' + err.message };
   }
 }

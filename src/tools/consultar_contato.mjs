@@ -29,8 +29,26 @@ export const toolConsultarContato = {
       const cleanPhone = phone ? String(phone).replace(/\D/g, '') : '';
       let contact = null;
 
-      // Consulta no Supabase
-      if (supabase && cleanPhone) {
+      // Consulta no Supabase (suporta REST client próprio store.client.select ou SDK .from)
+      const restClient = context.store?.client;
+      if (restClient && typeof restClient.select === 'function' && restClient.enabled !== false && (cleanPhone || name)) {
+        try {
+          const filter = cleanPhone
+            ? `or=(phone.eq.${encodeURIComponent(cleanPhone)},phone.ilike.*${encodeURIComponent(cleanPhone.slice(-8))}*)`
+            : `or=(display_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*,push_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*)`;
+          const rows = await restClient.select('contacts', `select=id,phone,display_name,push_name,metadata,created_at&${filter}&limit=1`);
+          if (Array.isArray(rows) && rows[0]) {
+            const r = rows[0];
+            contact = {
+              name: r.display_name || r.push_name || 'Cliente',
+              phone: r.phone,
+              customer_type: r.metadata?.dealStage || r.metadata?.customer_type || 'lead',
+              labels: r.metadata?.labels || [],
+              notes: r.metadata?.contactNotes || r.metadata?.notes || ''
+            };
+          }
+        } catch {}
+      } else if (supabase && cleanPhone && typeof supabase.from === 'function') {
         const { data, error } = await supabase
           .from('contacts')
           .select('id, name, phone, customer_type, notes, labels, created_at')

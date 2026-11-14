@@ -1,6 +1,6 @@
 # Dashboard Lia Sync
 
-Versão do backend: **2.3.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Versão do backend: **2.4.0**. A divisão de responsabilidades do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Acesse em `/dashboard` enquanto o bot estiver rodando. O dashboard é servido pelo mesmo processo, usa endpoints autenticados e não expõe credenciais no navegador.
 

@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.3.1** (pacote, lockfile, metadata e documentação sincronizados).
+**Versão atual: 2.4.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.4.0 — Roteamento por Capacidades, Tool Calling Estruturado, Voz WAV e Visão Multimodal
+
+- **Roteador de modelos orientado a capacidades (`src/model-router.mjs`):** detecta explicitamente `fast_chat`, `tools`, `web_search`, `document_context` e `deep_reasoning`, ajustando `thinkingBudget` dinamicamente e impedindo que comandos curtos com ferramentas ou busca web caiam no tier `lite`. Consulte [`docs/release-2.4.0.md`](docs/release-2.4.0.md).
+- **Tool Calling estruturado de passo único (`src/ai/call.mjs` e `src/ai/parsing.mjs`):** schema `tool_calls[].args` integralmente tipado e compatível com Gemini `v1beta` Structured Outputs, mais fallback multi-modelo e degradação graciosa de `tools` no OpenRouter/Qwen.
+- **Leitura multimodal de PDFs e fotos com memória na sessão:** limite da ponte ampliado para 15 MB, análise via `gemini-2.5-flash` para anexos do painel e do WhatsApp e preservação de `lastAnalyzedDocument` para perguntas de acompanhamento.
+- **Voz TTS com cabeçalho RIFF/WAV (`src/ai/voice.mjs`):** empacotamento automático de `audio/L16` PCM 24 kHz em container WAV válido para reprodução no WhatsApp/Evolution API e no painel.
+- **Google Calendar OAuth2/Service Account e `/freeBusy`:** renovação automática de token em memória, endpoint `/freeBusy` corrigido e parser de datas (`hoje`, `amanhã`, `DD/MM/YYYY`, `YYYY-MM-DD`) ancorado em `America/Sao_Paulo`.
+- **Projeção de setores isolada no banco:** nova migration `20261114072000_runtime_projections.sql` separa `sectors_projection` de `bot_config_state`.
 
 ## Novidades da Versão 2.3.1 — expediente central e setores no seu dono natural
 
@@ -173,6 +182,7 @@ supabase/migrations/20261113000000_operations_observability.sql
 supabase/migrations/20261113152048_follow_up_atomic_claim.sql
 supabase/migrations/20261113153840_atomic_ai_budgets.sql
 supabase/migrations/20261113154223_ai_budget_effective_model.sql
+supabase/migrations/20261114072000_runtime_projections.sql
 supabase/seed.sql  # opcional, somente desenvolvimento/teste
 ```
 

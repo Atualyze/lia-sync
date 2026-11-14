@@ -156,9 +156,11 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     let body;
-    try { body = await readBody(req); } catch { return json(res, 400, { ok: false, error: 'invalid_json' }); }
+    try { body = await readBody(req, 15 * 1024 * 1024); } catch (err) { return json(res, err?.statusCode === 413 ? 413 : 400, { ok: false, error: err?.statusCode === 413 ? 'payload_too_large' : 'invalid_json' }); }
     const rawPhone = String(body.phone || body.senderIdentifier || '').trim();
-    const text = String(body.text || body.content || '').trim();
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const rawText = String(body.text || body.content || '').trim();
+    const text = rawText || (attachments.length > 0 ? `Analise o anexo enviado (${attachments[0]?.name || attachments[0]?.type || 'arquivo'})` : '');
     const pushName = String(body.pushName || body.senderName || '').trim();
     const origin = body.origin === 'simulation' ? 'simulation' : 'real';
     if (!rawPhone || !text) return json(res, 400, { ok: false, error: 'phone_and_text_required' });

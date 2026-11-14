@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { SessionStore, normalizePhone, mask } from './sessions.mjs';
+import { SupabaseSessionStore } from './supabase-runtime.mjs';
 
 test('normalizePhone e mask formatam numeros brasileiros corretamente', () => {
   assert.equal(normalizePhone('+55 (11) 99999-8888'), '5511999998888');
@@ -53,4 +54,55 @@ test('SessionStore.purge() remove sessoes expiradas sem legalHold', () => {
   assert.equal(removed, 1);
   assert.equal(store.sessions['5511999998888'], undefined);
   assert.ok(store.sessions['5511999997777']);
+});
+
+test('SupabaseSessionStore.syncSession preserva alterações locais pendentes, takeover recente e limpeza local', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-sync-session-'));
+  const file = path.join(dir, 'sessions.json');
+  const nowMs = Date.parse('2026-11-14T10:10:00.000Z');
+  const fakeClient = {
+    enabled: true,
+    async select(table) {
+      if (table === 'conversations') {
+        return [{
+          id: 'conv-1',
+          external_key: '5511999998888',
+          origin: 'real',
+          mode: 'bot',
+          updated_at: '2026-11-14T10:05:00.000Z',
+          contacts: { display_name: 'Ana', push_name: 'Ana', phone: '5511999998888' }
+        }];
+      }
+      if (table === 'conversation_messages') {
+        return [{ conversation_id: 'conv-1', external_id: 'm1', role: 'user', content: 'oi antigo', created_at: '2026-11-14T10:04:00.000Z' }];
+      }
+      return [];
+    }
+  };
+
+  const store = new SupabaseSessionStore(file, { client: fakeClient, now: () => nowMs });
+
+  // 1. Sessão inexistente em memória carrega do remoto
+  const loaded = await store.syncSession('5511999998888');
+  assert.equal(loaded.human, false);
+  assert.equal(loaded.history.length, 1);
+
+  // 2. Takeover local com updatedAt mais recente que row.updated_at não é sobrescrito pelo remoto
+  loaded.human = true;
+  loaded.humanSource = 'takeover';
+  loaded.lastUserAt = '2026-11-14T10:04:00.000Z';
+  loaded.updatedAt = '2026-11-14T10:08:00.000Z';
+  const afterTakeover = await store.syncSession('5511999998888');
+  assert.equal(afterTakeover.human, true, 'não deve sobrescrever takeover mais recente por causa de lastUserAt antigo');
+
+  // 3. Sessão limpa localmente (history: []) não ressuscita mensagens antigas nem quando saveTimer está pendente
+  loaded.history = [];
+  loaded.updatedAt = '2026-11-14T10:01:00.000Z';
+  store.saveTimer = setTimeout(() => {}, 5000);
+  const afterClear = await store.syncSession('5511999998888');
+  assert.equal(afterClear.history.length, 0);
+  clearTimeout(store.saveTimer);
+  store.saveTimer = null;
+
+  await fs.rm(dir, { recursive: true, force: true });
 });

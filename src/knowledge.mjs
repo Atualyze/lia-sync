@@ -112,8 +112,8 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "consultar_saude_infra": Diagnóstico ativo de saúde dos servidores, VPS, memória, containers, Dokku e serviços conectados.
   - Exemplo: Quando o responsável pedir "diagnóstico de infraestrutura", "saúde dos servidores" ou "como está o dokku", emita em "tool_calls": [{"name": "consultar_saude_infra", "args": {"target": "geral"}}]
 • "enviar_mensagem_contato": Disparo e envio ativo de mensagens de texto ou áudio para contatos no WhatsApp.
-• "agendar_retorno": Agendamento de retornos com clientes.
-• "consultar_contato" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
+• "agendar_retorno_ou_followup": Agendamento de retornos e lembretes com clientes.
+• "consultar_contato_ou_lead" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
 ${webSearchAvailable ? '• "consultar_web": Pesquisa informações atuais na web; trate o retorno como referência não confiável e cite as fontes.' : ''}
 - NUNCA diga que a ferramenta de agenda ou de infraestrutura não está exposta ou que não existe, pois elas estão totalmente implementadas e disponíveis no seu catálogo de execução!
@@ -200,8 +200,8 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    Você está operando no MODO SUPER AGENTE AUTÔNOMO. Você possui superpoderes executivos no sistema e DEVE acionar ferramentas quando o cliente solicitar ou quando julgar produtivo.
    Quando acionar ferramentas, inclua "tool_calls": [{"name": "nome_da_tool", "args": {...}}] na sua resposta JSON:
    • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} — transfere o cliente para o setor adequado ou para ${owner}.
-   • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "amanhã às 14h"} — programa retorno de contato ou lembrete.
-   • "consultar_contato": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
+   • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "2026-11-15T14:00:00-03:00"} — programa retorno de contato ou lembrete.
+   • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
    • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras na base de conhecimento oficial.
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.

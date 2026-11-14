@@ -49,17 +49,18 @@ export async function handleOwnerSession({
         // Análise multimodal se houver documentos ou imagens em anexo (Painel Chatwoot ou WhatsApp)
         let copilotDocAnalysis = null;
         const targetAtt = Array.isArray(attachments) && attachments.length > 0 ? attachments[0] : null;
-        if (targetAtt && (targetAtt.url || targetAtt.dataUrl)) {
-          const rawUrl = String(targetAtt.url || targetAtt.dataUrl || '');
-          const matchB64 = rawUrl.match(/^data:([^;]+);base64,(.+)$/);
-          if (matchB64 && ai.analyzeDocument) {
-            const mime = matchB64[1] || targetAtt.mimeType || 'application/pdf';
-            const b64 = matchB64[2];
+        if (targetAtt && (targetAtt.url || targetAtt.dataUrl || targetAtt.fileUrl || targetAtt.base64) && ai?.analyzeDocument) {
+          const rawUrl = String(targetAtt.url || targetAtt.dataUrl || targetAtt.fileUrl || targetAtt.base64 || '').trim();
+          const matchB64 = rawUrl.match(/^data:([^;]+);base64,(.+)$/s);
+          const isRawBase64 = !matchB64 && !/^https?:\/\//i.test(rawUrl) && rawUrl.length > 64;
+          const mime = (matchB64 && matchB64[1]) || targetAtt.mimeType || targetAtt.mimetype || (targetAtt.fileType === 'image' || targetAtt.type === 'image' ? 'image/jpeg' : 'application/pdf');
+          const b64 = matchB64 ? matchB64[2] : (isRawBase64 ? rawUrl : '');
+          if (b64) {
             try {
               copilotDocAnalysis = await ai.analyzeDocument({
                 base64: b64,
                 mimetype: mime,
-                caption: cleanCommand,
+                caption: cleanCommand || targetAtt.fileName || targetAtt.name || '',
                 identity,
                 botConfig
               });
@@ -67,18 +68,47 @@ export async function handleOwnerSession({
               console.error('[flow] Erro ao analisar documento no Copiloto:', err.message);
             }
           }
+        } else if (!copilotDocAnalysis && (mediaType === 'document' || mediaType === 'image') && rawItem && ai?.analyzeDocument) {
+          try {
+            const media = await whatsapp.getMediaBase64?.(rawItem);
+            if (media?.base64) {
+              const fallbackMime = mediaType === 'image' ? 'image/jpeg' : 'application/pdf';
+              copilotDocAnalysis = await ai.analyzeDocument({
+                base64: media.base64,
+                mimetype: media.mimetype || fallbackMime,
+                caption: cleanCommand,
+                identity,
+                botConfig
+              });
+            }
+          } catch (err) {
+            console.error('[flow] Erro ao analisar mídia WhatsApp no Copiloto:', err.message);
+          }
         }
 
         if (copilotDocAnalysis && copilotDocAnalysis.summary) {
-          const docTypeFormatted = String(copilotDocAnalysis.docType || 'Documento').toUpperCase();
-          const pointsList = (copilotDocAnalysis.keyPoints || []).map(p => `• ${p}`).join('\n');
-          const pDetails = copilotDocAnalysis.paymentDetails;
-          let paymentText = '';
-          if (pDetails && pDetails.isPayment) {
-            paymentText = `\n\n💳 *Dados do Pagamento Identificado:*\n• *Valor:* ${pDetails.amount || 'Não identificado'}\n• *Pagador:* ${pDetails.payer || 'Não identificado'}\n• *Favorecido:* ${pDetails.receiver || 'Não identificado'}\n• *Data:* ${pDetails.date || 'Não identificada'}`;
+          sSelf.lastAnalyzedDocument = {
+            ...copilotDocAnalysis,
+            fileName: targetAtt?.fileName || targetAtt?.name || 'anexo',
+            analyzedAt: new Date(now()).toISOString()
+          };
+          const isGenericUploadOrReadCmd = !cleanCommand ||
+            /^(?:arquivo|imagem|foto|documento)\s+enviad[oa]\s*:/i.test(cleanCommand) ||
+            /^\[(?:documento|imagem|foto|m[ií]dia)/i.test(cleanCommand) ||
+            /^(?:leia|ler|analis[ea]r?|resum[ao]|veja|ver|o que diz|o que tem)\s+(?:o\s+|a\s+|esse\s+|essa\s+|este\s+|esta\s+)?(?:documento|pdf|arquivo|anexo|foto|imagem|comprovante|print)\b/i.test(cleanCommand);
+
+          if (isGenericUploadOrReadCmd) {
+            const docTypeFormatted = String(copilotDocAnalysis.docType || 'Documento').toUpperCase();
+            const pointsList = (copilotDocAnalysis.keyPoints || []).map(p => `• ${p}`).join('\n');
+            const pDetails = copilotDocAnalysis.paymentDetails;
+            let paymentText = '';
+            if (pDetails && pDetails.isPayment) {
+              paymentText = `\n\n💳 *Dados do Pagamento Identificado:*\n• *Valor:* ${pDetails.amount || 'Não identificado'}\n• *Pagador:* ${pDetails.payer || 'Não identificado'}\n• *Favorecido:* ${pDetails.receiver || 'Não identificado'}\n• *Data:* ${pDetails.date || 'Não identificada'}`;
+            }
+            const analysisReply = `📄 *Análise do Documento (${docTypeFormatted}) Concluída!*\n\n📋 *Resumo Executivo:*\n${copilotDocAnalysis.summary}${paymentText}\n\n📌 *Pontos Identificados:*\n${pointsList || 'Nenhum ponto crítico identificado.'}\n\n💡 *Ação Recomendada:* ${copilotDocAnalysis.actionNeeded || 'Revisar anexo.'}`;
+            if (!cleanCommand) cleanCommand = `[Anexo enviado: ${sSelf.lastAnalyzedDocument.fileName}]`;
+            return recordSelfTurn(filterReply(analysisReply, { isCopilot: true }).text);
           }
-          const analysisReply = `📄 *Análise do Documento (${docTypeFormatted}) Concluída!*\n\n📋 *Resumo Executivo:*\n${copilotDocAnalysis.summary}${paymentText}\n\n📌 *Pontos Identificados:*\n${pointsList || 'Nenhum ponto crítico identificado.'}\n\n💡 *Ação Recomendada:* ${copilotDocAnalysis.actionNeeded || 'Revisar anexo.'}`;
-          return recordSelfTurn(filterReply(analysisReply, { isCopilot: true }).text);
         }
         if (mediaType === 'audio' && rawItem) {
           try {
@@ -208,9 +238,14 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return recordSelfTurn(filterReply(infraMsg, { isCopilot: true }).text);
         }
 
-        // 1.0.7 Atalho Direto: Teste e Consulta do Google Agenda
-        if (/(?:google agenda|minha agenda|agenda|horarios livres|horários livres|test(?:e)? da agenda|teste.*agenda|comunica[cç][aã]o com.*agenda)\b/i.test(norm)) {
-          const calRes = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres' }, { clientName: owner, botConfig });
+        // 1.0.7 Atalho Direto: Teste e Consulta Rápida do Google Agenda (apenas se não for pedido de agendar/criar/cancelar evento)
+        const isCalendarCreateOrEdit = /(?:marcar|marque|agendar|agende|criar|crie|adicionar|adicione|cancelar|cancele|remarcar|remarque)\b/i.test(norm);
+        if (!isCalendarCreateOrEdit && /(?:google agenda|minha agenda|horarios livres|horários livres|test(?:e)? da agenda|teste.*agenda|comunica[cç][aã]o com.*agenda|^agenda$)\b/i.test(norm)) {
+          const dateHintMatch = strippedCmd.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|amanh[aã]|hoje)\b/i);
+          const calRes = await executeToolCall('gerenciar_agenda_google', {
+            action: 'consultar_livres',
+            ...(dateHintMatch ? { date: dateHintMatch[1] } : {})
+          }, { clientName: owner, botConfig });
           const calStatus = calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
           const slots = calRes?.success && Array.isArray(calRes.availableSlots) ? calRes.availableSlots.join(', ') : 'Nenhum horário confirmado';
           const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *Horários Livres Confirmados:* ${slots}`;
@@ -351,7 +386,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
         }
 
         // 1.1.8 Relatório Executivo do Dia
-        if (/^(?:relatorio|relatório|resumo do dia|fechamento)\b/i.test(norm)) {
+        if (norm.split(/\s+/).length <= 5 && /^(?:relatorio|relatório|resumo do dia|fechamento)\b/i.test(norm)) {
           const sessionsArr = Object.values(store.sessions);
           const totalConvs = sessionsArr.filter(s => s.phone && s.phone !== OWNER_SELF_KEY && !s.isInternalChat).length;
           const activeConvs = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0 && s.phone !== OWNER_SELF_KEY).length;
@@ -373,7 +408,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
         }
 
         // 1.1.9 Consulta do Expediente / Janela de Atendimento
-        if (/^(?:expediente|horario|horário|janela)\b/i.test(norm)) {
+        if (norm.split(/\s+/).length <= 5 && /^(?:expediente|horario|horário|janela)\b/i.test(norm)) {
           const hoursCfg = botConfig?.business?.hoursConfig || null;
           if (!hoursCfg || !hoursCfg.enabled) {
             return recordSelfTurn(filterReply(`🕒 *Expediente de Atendimento:*\n\n🟢 *Status:* Atendimento 24 Horas (Sem restrição de horário).`, { isCopilot: true }).text);
@@ -391,7 +426,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
         }
 
         // 1.2 Status e Diagnóstico Operacional
-        if (/^(?:status|resumo|painel|diagnostico|como estamos\??|como estao as coisas\??)\b/i.test(norm)) {
+        if (norm.split(/\s+/).length <= 5 && /^(?:status|resumo|painel|diagnostico|como estamos\??|como estao as coisas\??)\b/i.test(norm)) {
           const sessionsArr = Object.values(store.sessions);
           const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
           const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
@@ -425,8 +460,10 @@ _Dica: digite *ajuda* para ver todos os comandos disponíveis._`;
         }
 
         // 1.3 Consulta de Contatos Aguardando (Fila)
-        const isFilaQuery = /(?:fila|espera|aguardando|esperando|pendentes?|transbordos?)\b/i.test(norm) ||
-          /^(?:quem|quais|lista)\b/i.test(norm);
+        const isFilaQuery = /(?:fila|\b(?:em|na)\s+espera\b|transbordos?)\b/i.test(norm) ||
+          /^(?:espera|aguardando|esperando|pendentes?)$/i.test(norm) ||
+          /(?:quem|quais|quantos|tem\s+algu[eé]m|h[aá]\s+algu[eé]m|algu[eé]m|contatos?|clientes?|atendimentos?)\b.*\b(?:espera|esperando|aguardando|fila|pendentes?)\b/i.test(norm) ||
+          /^lista(?:\s+completa|\s+(?:da\s+fila|de\s+(?:espera|aguardando|pendentes?|contatos|clientes)))?$/i.test(norm);
         if (isFilaQuery && !/(?:habilidade|capacidade|ferramenta|agenda|infra|dokku|servidor|quem [ée] voc[êe]|quem e vc|o que voc[êe]|quem [ée] voc|quem e você)/i.test(norm)) {
           const waiting = getWaitingList();
           if (!waiting.length) {
@@ -735,13 +772,16 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             contactRole: s.contactRole || null,
             notes: s.contactNotes || ''
           }));
-        const sys = buildSystemPrompt({
+        const baseSys = buildSystemPrompt({
           session: { history: recentHistory, supportContacts },
           now: new Date(now()),
           botConfig,
           isOwner: true,
           telemetry
         });
+        const sys = sSelf.lastAnalyzedDocument
+          ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
+          : baseSys;
 
         const result = await ai?.askAI?.({
           system: sys,

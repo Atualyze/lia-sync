@@ -159,6 +159,34 @@ test('config publicada mantém o horário dentro da allowlist e sem segredos', a
   assert.equal(JSON.stringify(payload).includes('outOfHoursNotice'), false);
 });
 
+test('SectorProjection usa runtime_projections sem tocar em bot_config_state', async () => {
+  const { dir, file } = await tempFile('sectors.json');
+  const ops = [];
+  const fakeClient = {
+    enabled: true,
+    async select(table, query) {
+      ops.push({ op: 'select', table, query });
+      return [{ payload: { sectors: [{ id: 'sec_1', name: 'Comercial', description: 'Vendas', isActive: true }], updatedAt: '2026-11-14T10:00:00.000Z' } }];
+    },
+    async upsert(table, rows, onConflict) {
+      ops.push({ op: 'upsert', table, rows, onConflict });
+    },
+    async request(table) {
+      ops.push({ op: 'request', table });
+    }
+  };
+
+  const projection = new SectorProjection(file, { client: fakeClient, now: () => Date.parse('2026-11-14T10:05:00.000Z') });
+  await projection.load();
+  assert.equal(projection.list().length, 1);
+
+  await projection.replace([{ id: 'sec_2', name: 'Suporte', description: 'Ajuda', isActive: true }]);
+  assert.equal(ops.some(o => o.table === 'bot_config_state'), false, 'nunca deve ler ou gravar bot_config_state');
+  assert.equal(ops.some(o => o.op === 'upsert' && o.table === 'runtime_projections' && o.onConflict === 'key'), true);
+
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 async function handlePublishedConfigReadTest(active) {
   const res = response();
   await handleBridgeRoutes({

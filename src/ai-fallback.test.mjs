@@ -208,3 +208,54 @@ test('askAI liquida o budget pelo modelo efetivo reportado pelo OpenRouter', asy
   assert.equal(committed?.model?.provider, 'openrouter');
   assert.equal(committed?.model?.model, 'vendor/effective-model');
 });
+
+test('OpenRouter percorre fallbackModels em 503 e faz downgrade gracioso de tools se modelo retornar 400', async (t) => {
+  restoreEnvAfter(t, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'QWEN_API_KEY', 'OPENAI_API_KEY']);
+  process.env.GEMINI_API_KEY = '';
+  process.env.OPENROUTER_API_KEY = 'test_openrouter_key';
+  process.env.QWEN_API_KEY = '';
+  process.env.OPENAI_API_KEY = '';
+
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url: String(url), body });
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({ error: { message: 'Provider overloaded' } }), { status: 503 });
+    }
+    if (calls.length === 2 && body.tools) {
+      return new Response(JSON.stringify({ error: { message: 'No endpoints found that support tool use' } }), { status: 400 });
+    }
+    return new Response(JSON.stringify({
+      model: body.model,
+      choices: [{ message: { content: '{"reply":"Resposta via fallback OpenRouter","intent":"outro","tool_calls":[]}' } }],
+      usage: { prompt_tokens: 12, completion_tokens: 8 }
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+
+  const { askAI } = await import('./ai.mjs');
+  const result = await askAI({
+    system: 'Você é Lia.',
+    history: [],
+    userText: 'Preciso agendar um retorno amanhã',
+    botConfig: {
+      ai: {
+        activeProvider: 'openrouter',
+        activeModel: 'google/gemma-4-31b:free',
+        fallbackModels: ['google/gemma-4-26b-a4b:free'],
+        openrouterFreeOnly: true,
+        enableToolCalling: true
+      }
+    }
+  });
+
+  assert.equal(result?.reply, 'Resposta via fallback OpenRouter');
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0].body.model, 'google/gemma-4-31b:free');
+  assert.equal(calls[1].body.model, 'google/gemma-4-26b-a4b:free');
+  assert.ok(Array.isArray(calls[1].body.tools));
+  assert.equal(calls[2].body.model, 'google/gemma-4-26b-a4b:free');
+  assert.equal(calls[2].body.tools, undefined);
+});
+
