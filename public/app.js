@@ -2874,24 +2874,26 @@ async function loadPricingDraft() {
   } catch (error) { opsFeedback('metrics-rates-feedback', `Configuração não carregada: ${error.message}`, 'error'); }
 }
 
-function render() {
+function render({ background = false } = {}) {
   try { renderList(); } catch (e) { console.error('[renderList]', e); }
   try { renderChat(); } catch (e) { console.error('[renderChat]', e); }
   try { renderHandoff(); } catch (e) { console.error('[renderHandoff]', e); }
-  if (state.view === 'admin') { try { renderAdmin(); } catch (e) { console.error('[renderAdmin]', e); } }
-  if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
-  if (state.view === 'metrics') { try { renderMetrics(); } catch (e) { console.error('[renderMetrics]', e); } }
-  if (state.view === 'overview') { try { renderOverview(); } catch (e) { console.error('[renderOverview]', e); } }
-  if (state.view === 'tools') { try { renderTools(); } catch (e) { console.error('[renderTools]', e); } }
-  if (state.view === 'users') { try { renderUsers(); } catch (e) { console.error('[renderUsers]', e); } }
-  if (state.view === 'integrations') { try { renderIntegrations(); } catch (e) { console.error('[renderIntegrations]', e); } }
+  if (!background) {
+    if (state.view === 'admin') { try { renderAdmin(); } catch (e) { console.error('[renderAdmin]', e); } }
+    if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
+    if (state.view === 'metrics') { try { renderMetrics(); } catch (e) { console.error('[renderMetrics]', e); } }
+    if (state.view === 'overview') { try { renderOverview(); } catch (e) { console.error('[renderOverview]', e); } }
+    if (state.view === 'tools') { try { renderTools(); } catch (e) { console.error('[renderTools]', e); } }
+    if (state.view === 'users') { try { renderUsers(); } catch (e) { console.error('[renderUsers]', e); } }
+    if (state.view === 'integrations') { try { renderIntegrations(); } catch (e) { console.error('[renderIntegrations]', e); } }
+  }
   const lastSync = $('#last-sync');
   if (lastSync) lastSync.textContent = `sincronizado ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-  setTimeout(() => decorateTechnicalTerms(document.body), 60);
+  if (!background) setTimeout(() => decorateTechnicalTerms(document.body), 60);
 }
 
-async function refresh() {
-  setTopProgress(true);
+async function refresh({ background = false } = {}) {
+  if (!background) setTopProgress(true);
   try {
     const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
     state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
@@ -2907,9 +2909,9 @@ async function refresh() {
     if (!state.sessions.some((item) => item.phone === state.selected)) {
       state.selected = state.sessions[0]?.phone || null;
     }
-    render();
+    render({ background });
   } finally {
-    setTopProgress(false);
+    if (!background) setTopProgress(false);
   }
 }
 
@@ -3806,6 +3808,7 @@ function startDashboard() {
       state.metricsTimer = null;
     }
     if (ms > 0) {
+      if (state.view === 'metrics' && !document.hidden) renderMetrics();
       state.metricsTimer = setInterval(() => {
         if (state.view === 'metrics' && !document.hidden) renderMetrics();
       }, ms);
@@ -3865,7 +3868,7 @@ function startDashboard() {
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
       try {
         await refresh();
-        state.refreshTimer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 5000);
+        state.refreshTimer = setInterval(() => { if (!document.hidden) refresh({ background: true }).catch(() => {}); }, 5000);
       } catch (error) {
         $('#conversation-items').innerHTML = `<div class="detail-placeholder" style="padding:18px">Não foi possível carregar o dashboard.<br>${esc(error.message)}</div>`;
         showToast({ title: 'Erro ao Carregar Conversas', message: error.message, type: 'error' });
@@ -3891,9 +3894,9 @@ document.addEventListener('visibilitychange', () => {
       state.refreshTimer = null;
     }
   } else if (!state.refreshTimer && state.initialized && (ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
-    refresh().catch(() => {});
+    refresh({ background: true }).catch(() => {});
     state.refreshTimer = setInterval(() => {
-      if (!document.hidden) refresh().catch(() => {});
+      if (!document.hidden) refresh({ background: true }).catch(() => {});
     }, 5000);
   }
 });
