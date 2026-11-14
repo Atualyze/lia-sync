@@ -57,9 +57,13 @@ export function isLegacyStaticPath(pathname) {
     pathname === '/dashboard/index.html' ||
     pathname === '/dashboard/app.js' ||
     pathname === '/dashboard/styles.css' ||
+    pathname === '/dashboard/logo.webp' ||
+    pathname === '/dashboard/logo.png' ||
     pathname.startsWith('/dashboard/vendor/') ||
     pathname === '/conectar.html' ||
     pathname === '/qrcode.png' ||
+    pathname === '/logo.webp' ||
+    pathname === '/logo.png' ||
     pathname === '/app.js' ||
     pathname === '/styles.css' ||
     pathname.startsWith('/vendor/')

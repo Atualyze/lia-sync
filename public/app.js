@@ -583,8 +583,8 @@ async function setupCaptcha(authConfig) {
   const widgetId = api.render(container, {
     sitekey: authConfig.captchaSiteKey,
     theme: 'dark',
-    size: 'flexible',
-    appearance: 'interaction-only',
+    size: 'normal',
+    appearance: 'always',
     action: 'login',
     callback: token => { captcha.token = token; },
     'expired-callback': () => { captcha.token = ''; },

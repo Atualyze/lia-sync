@@ -73,7 +73,7 @@ export async function serveStatic(req, res, config) {
   const relative = pathname === '/' || pathname === '/dashboard' || pathname === '/dashboard/'
     ? 'index.html'
     : pathname.replace(/^\/dashboard\//, '').replace(/^\//, '');
-  const allowed = new Set(['index.html', 'app.js', 'styles.css']);
+  const allowed = new Set(['index.html', 'app.js', 'styles.css', 'logo.webp', 'logo.png', 'qrcode.png']);
   if (!allowed.has(relative) && !relative.startsWith('vendor/')) {
     res.writeHead(404);
     return res.end();
@@ -81,10 +81,19 @@ export async function serveStatic(req, res, config) {
   const root = path.resolve(config.publicDir);
   const file = path.resolve(root, relative);
   if (!file.startsWith(`${root}${path.sep}`)) return res.end();
+  const contentType = relative.endsWith('.js')
+    ? 'text/javascript; charset=utf-8'
+    : relative.endsWith('.css')
+      ? 'text/css; charset=utf-8'
+      : relative.endsWith('.webp')
+        ? 'image/webp'
+        : relative.endsWith('.png')
+          ? 'image/png'
+          : 'text/html; charset=utf-8';
   try {
     const body = await fs.readFile(file);
     res.writeHead(200, {
-      'content-type': relative.endsWith('.js') ? 'text/javascript; charset=utf-8' : relative.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8',
+      'content-type': contentType,
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer',
       'content-security-policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com"
