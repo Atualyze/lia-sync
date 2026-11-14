@@ -21,6 +21,7 @@
   "dependencies": {
     "@pdfme/generator": "^6.2.8",
     "@pdfme/schemas": "^6.2.8",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4"
   }
 }

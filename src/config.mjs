@@ -17,6 +17,7 @@ export const config = Object.freeze({
   aiTimeoutMs: num('AI_TIMEOUT_MS', 30000),
   geminiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
   geminiThinkingBudget: num('GEMINI_THINKING_BUDGET', 0),
+  groqKey: process.env.GROQ_API_KEY || '',
   openrouterKey: process.env.OPENROUTER_API_KEY || '',
   openrouterBaseUrl: (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, ''),
   openrouterSiteUrl: process.env.OPENROUTER_SITE_URL || '',

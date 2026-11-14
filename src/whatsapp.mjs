@@ -224,6 +224,33 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
   throw last;
 }
 
+export async function sendImage(jid, { dataUrl, base64, mimetype = 'image/png', caption = '' } = {}, { retry = 2, onSent } = {}) {
+  await assertNotSuppressed(jid);
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
+  const cleanB64 = String(dataUrl || base64 || '').replace(/^data:[^;]+;base64,/, '');
+  if (!cleanB64) throw Error('Imagem sem conteúdo para envio');
+  let last;
+  for (let i = 0; i <= retry; i++) {
+    try {
+      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+        signal: AbortSignal.timeout(providerTimeoutMs()),
+        body: JSON.stringify({ number: jid, presence: 'composing', delay: 400 })
+      }).catch(() => {});
+
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, mediatype: 'image', mimetype, media: cleanB64, ...(caption ? { caption } : {}) }, 'image', jid);
+      j && remember(id);
+      onSent?.(id);
+      return j;
+    } catch (e) {
+      last = e;
+      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+    }
+  }
+  throw last;
+}
+
 export async function sendWhatsAppAudio(jid, audioBase64, { retry = 0, onSent } = {}) {
   await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');

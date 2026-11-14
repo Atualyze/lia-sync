@@ -8,6 +8,10 @@ import { toolConsultarSaudeInfra } from './consultar_saude_infra.mjs';
 import { toolGerenciarAgendaGoogle } from './gerenciar_agenda_google.mjs';
 import { toolGerarDocumentoPdf } from './gerar_documento_pdf.mjs';
 import { toolConsultarWeb } from './consultar_web.mjs';
+import { toolConsultarPlanilhaGoogle } from './consultar_planilha_google.mjs';
+import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
+import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
+import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
 
 export const ALL_TOOLS = [
   toolTransferirSetor,
@@ -19,7 +23,11 @@ export const ALL_TOOLS = [
   toolConsultarSaudeInfra,
   toolGerenciarAgendaGoogle,
   toolGerarDocumentoPdf,
-  toolConsultarWeb
+  toolConsultarWeb,
+  toolConsultarPlanilhaGoogle,
+  toolGerenciarDriveGoogle,
+  toolConsultarDadosBrasil,
+  toolGerarCobrancaPix
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -28,7 +36,11 @@ const TOOL_NAME_ALIASES = {
   pesquisar_web: 'consultar_web',
   google_agenda: 'gerenciar_agenda_google',
   gerar_pdf: 'gerar_documento_pdf',
-  enviar_mensagem: 'enviar_mensagem_contato'
+  enviar_mensagem: 'enviar_mensagem_contato',
+  google_sheets: 'consultar_planilha_google',
+  google_drive: 'gerenciar_drive_google',
+  consultar_cep_cnpj: 'consultar_dados_brasil',
+  gerar_pix: 'gerar_cobranca_pix'
 };
 
 export function resolveToolName(toolName) {
@@ -38,7 +50,11 @@ export function resolveToolName(toolName) {
 const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'agendar_retorno_ou_followup',
   'consultar_base_conhecimento',
-  'consultar_web'
+  'consultar_web',
+  'consultar_planilha_google',
+  'gerenciar_drive_google',
+  'consultar_dados_brasil',
+  'gerar_cobranca_pix'
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 
@@ -62,7 +78,11 @@ export {
   toolConsultarSaudeInfra,
   toolGerenciarAgendaGoogle,
   toolGerarDocumentoPdf,
-  toolConsultarWeb
+  toolConsultarWeb,
+  toolConsultarPlanilhaGoogle,
+  toolGerenciarDriveGoogle,
+  toolConsultarDadosBrasil,
+  toolGerarCobrancaPix
 };
 
 /**

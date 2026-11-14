@@ -205,11 +205,50 @@ async function synthesizeWithPiperOffline(cleanText, { voiceName = 'piper-pt-BR-
   }
 }
 
+async function transcribeWithGroqWhisper(cleanB64, cleanMime, timeoutMs = 45000) {
+  if (!config.groqKey || !cleanB64) return null;
+  const ext = cleanMime.includes('mp4') || cleanMime.includes('m4a') ? 'm4a'
+    : cleanMime.includes('mpeg') || cleanMime.includes('mp3') ? 'mp3'
+    : cleanMime.includes('wav') ? 'wav'
+    : 'ogg';
+  try {
+    const buffer = Buffer.from(cleanB64, 'base64');
+    const form = new FormData();
+    form.append('file', new Blob([buffer], { type: cleanMime }), `audio.${ext}`);
+    form.append('model', 'whisper-large-v3-turbo');
+    form.append('language', 'pt');
+    form.append('response_format', 'json');
+
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${config.groqKey}` },
+      signal: AbortSignal.timeout(Math.max(5000, Number(timeoutMs) || 45000)),
+      body: form
+    });
+    if (!res.ok) {
+      console.warn('[ai] groq whisper status:', res.status);
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    return data?.text && String(data.text).trim() ? String(data.text).trim() : null;
+  } catch (e) {
+    console.warn('[ai] groq whisper aviso:', e.message);
+    return null;
+  }
+}
+
 export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutMs = 45000 } = {}) {
-  if (!config.geminiKey || !base64) return null;
+  if (!base64) return null;
   const cleanB64 = String(base64).replace(/^data:[^;]+;base64,/, '').trim();
   if (!cleanB64) return null;
   const cleanMime = String(mimetype).split(';')[0].trim() || 'audio/ogg';
+
+  // 1. Groq Whisper Free Tier (rápido e gratuito quando GROQ_API_KEY está configurada)
+  const groqText = await transcribeWithGroqWhisper(cleanB64, cleanMime, timeoutMs);
+  if (groqText) return groqText;
+
+  // 2. Fallback automático para Gemini multimodal
+  if (!config.geminiKey) return null;
   for (const model of TRANSCRIBE_MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     try {

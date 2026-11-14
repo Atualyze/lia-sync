@@ -8,7 +8,7 @@ import { splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
-import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
+import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -134,7 +134,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     ai: { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
-    whatsapp: { sendText, sendWhatsAppAudio, sendDocument, getMediaBase64 },
+    whatsapp: { sendText, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64 },
     getHumanPhone,
     reminderStore,
     getTelemetry,
