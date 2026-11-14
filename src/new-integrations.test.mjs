@@ -6,6 +6,9 @@ import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.m
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
+import { createFlow } from './flow.mjs';
+import { SessionStore } from './sessions.mjs';
+import { OWNER_SELF_KEY } from './core/identity.mjs';
 
 test('ALL_TOOLS registra todas as novas integrações e permissões de cliente', () => {
   for (const name of [
@@ -196,4 +199,162 @@ test('Google Drive: lista e envia PDF para WhatsApp via mock', async () => {
 test('extractPdfTextWithPoppler retorna string vazia em entrada vazia/inválida sem lançar erro', async () => {
   const txt = await extractPdfTextWithPoppler('');
   assert.equal(txt, '');
+});
+
+function createPixBotConfig(key = '88998340085') {
+  return {
+    identity: { assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
+    ai: { agentMode: 'super_agente', enableToolCalling: true },
+    tools: {
+      enabled: { gerar_cobranca_pix: true },
+      settings: key ? { gerar_cobranca_pix: { key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', publicBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
+    }
+  };
+}
+
+test('Copiloto Pix: executa gerar_cobranca_pix no turno seguinte ("Pix" -> "10, sobre pagamento de almoço") mesmo se a IA omitir tool_calls e sem enviar __owner_self__', async () => {
+  const store = new SessionStore();
+  const sentImages = [];
+  const botConfig = createPixBotConfig('88998340085');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY || p === '5588998340085',
+    whatsapp: {
+      sendImage: async (phone, payload) => {
+        sentImages.push({ phone, payload });
+      }
+    },
+    ai: {
+      askAI: async ({ userText }) => {
+        if (/^pix$/i.test(userText.trim())) {
+          return { reply: '', tool_calls: [] };
+        }
+        // Simula o bug observado em produção: IA responde "já está anotado" sem tool_calls
+        return {
+          reply: 'Entendido, Tauan! O valor de *R$ 10,00* referente ao pagamento de almoço já está anotado por aqui.',
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  const turn1 = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'Pix',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+  assert.match(turn1, /valor/i);
+
+  const turn2 = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: '10, sobre pagamento de almoço',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+  assert.match(turn2, /Cobrança Pix gerada!/i);
+  assert.match(turn2, /R\$ 10,00/);
+  assert.match(turn2, /https:\/\/liasync\.atualyze\.com\.br\/pix\?/);
+  assert.match(turn2, /000201/);
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].phone, '5588998340085');
+  assert.notEqual(sentImages[0].phone, OWNER_SELF_KEY);
+});
+
+test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
+  const store = new SessionStore();
+  const botConfig = createPixBotConfig('88998340085');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: {
+      sendImage: async () => {
+        throw new Error('Evolution temporary error');
+      }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: '',
+        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 25, descricao: 'almoco' } }]
+      })
+    }
+  });
+
+  const res = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'gera um pix de 25 reais do almoço',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+  assert.match(res, /Cobrança Pix gerada!/i);
+  assert.match(res, /R\$ 25,00/);
+  assert.match(res, /000201/);
+});
+
+test('Copiloto Pix: sem chave Pix configurada pergunta naturalmente qual chave usar', async () => {
+  const store = new SessionStore();
+  const prevPix = process.env.PIX_KEY;
+  delete process.env.PIX_KEY;
+  try {
+    const botConfig = createPixBotConfig('');
+    const flow = createFlow({
+      store,
+      getBotConfig: () => botConfig,
+      isOwnerSender: p => p === OWNER_SELF_KEY,
+      ai: {
+        askAI: async () => ({
+          reply: '',
+          tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 30, descricao: 'teste' } }]
+        })
+      }
+    });
+
+    const res = await flow.process({
+      phone: OWNER_SELF_KEY,
+      text: 'gera um pix de 30 reais',
+      origin: 'owner'
+    });
+    assert.match(res, /Chave Pix/i);
+    assert.doesNotMatch(res, /Cobrança Pix gerada!/i);
+  } finally {
+    if (prevPix !== undefined) process.env.PIX_KEY = prevPix;
+  }
+});
+
+test('Cliente Pix: executa gerar_cobranca_pix, envia imagem no WhatsApp do cliente e retorna link + Copia e Cola', async () => {
+  const store = new SessionStore();
+  const sentImages = [];
+  const botConfig = createPixBotConfig('88998340085');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    isOwnerSender: () => false,
+    whatsapp: {
+      sendImage: async (phone, payload) => {
+        sentImages.push({ phone, payload });
+      }
+    },
+    ai: {
+      askAI: async () => ({
+        reply: 'Claro, vou gerar o seu Pix.',
+        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 50, descricao: 'Consulta' } }]
+      })
+    }
+  });
+
+  const res = await flow.process({
+    phone: '5585999991111',
+    text: 'Quero pagar 50 reais no Pix da consulta',
+    origin: 'client',
+    pushName: 'Maria'
+  });
+  assert.match(res, /Aqui está seu Pix para pagamento/i);
+  assert.match(res, /R\$ 50,00/);
+  assert.match(res, /000201/);
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].phone, '5585999991111');
 });

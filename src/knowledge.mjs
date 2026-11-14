@@ -115,7 +115,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "agendar_retorno_ou_followup": Agendamento de retornos e lembretes com clientes.
 • "consultar_contato_ou_lead" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
-• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRA: NUNCA diga "vou gerar o Pix" em "reply" sem emitir "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 0, "descricao": "..."}}] na mesma resposta!
+• "gerar_cobranca_pix": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRA OBRIGATÓRIA: sempre que o responsável pedir Pix (ou responder com valor/descrição após você perguntar sobre Pix, ex: "10, sobre pagamento de almoço", "gera pix de 50", "pix valor livre"), EMITA "tool_calls": [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "pagamento de almoço"}}] na mesma resposta! NUNCA apenas diga "já está anotado" ou "vou gerar o Pix" com "tool_calls": [].
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.
@@ -171,7 +171,7 @@ Contrato de saída JSON obrigatório:
   "tool_calls": [],
   "reminder": null
 }
-(Observação: preencha "tool_calls" com [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] SEMPRE que o responsável pedir para disparar ou enviar mensagem para um cliente; caso contrário, use []).
+(Observação: preencha "tool_calls" com a ferramenta correspondente SEMPRE que o responsável pedir uma ação ou responder com os dados que faltavam para executá-la — ex: [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "..."}}] para Pix ou [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] para disparar mensagem; use [] apenas quando nenhuma ferramenta precisar ser executada).
 (Observação 2: preencha "reminder" com {"text": "...", "dueAt": "..."} APENAS se o responsável pediu para criar um lembrete).
     • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} — gera documentos oficiais em PDF. IMPORTANTE: preencha "conteudo" com o corpo COMPLETO e detalhado do documento, em várias seções — use "### Título da seção", itens com "• " e linhas terminadas em ":" para subtítulos. Inclua todos os dados do pedido (itens, quantidades, valores, prazos, observações). NUNCA envie um resumo de 1 ou 2 frases; PDFs vazios são defeito grave.`;
   }

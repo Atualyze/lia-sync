@@ -144,18 +144,25 @@ export const toolGerarCobrancaPix = {
     const paymentUrl = baseUrl ? `${baseUrl}/pix?${linkParams.toString()}` : `/pix?${linkParams.toString()}`;
 
     const shouldSend = args.enviarWhatsApp !== false;
+    const rawTarget = String(context?.targetPhone || context?.phone || '').trim();
+    const isValidWhatsAppTarget = Boolean(rawTarget) && rawTarget !== '__owner_self__' && (/@(?:s\.whatsapp\.net|lid|g\.us)$/i.test(rawTarget) || /^\d{8,15}$/.test(rawTarget.replace(/\D/g, '')));
     let qrCodeSent = false;
 
-    if (shouldSend && context?.phone && context?.whatsapp?.sendImage) {
+    if (shouldSend && isValidWhatsAppTarget && context?.whatsapp?.sendImage) {
       const amountText = amount > 0 ? ` no valor de R$ ${amount.toFixed(2).replace('.', ',')}` : '';
       const linkLine = baseUrl ? `\n\nLink de pagamento:\n${paymentUrl}` : '';
       const caption = `Pix${amountText}${args.descricao ? ` — ${args.descricao}` : ''}${linkLine}\n\nCopia e Cola:\n${payload}`;
-      await context.whatsapp.sendImage(context.phone, {
-        dataUrl,
-        mimetype: 'image/png',
-        caption
-      });
-      qrCodeSent = true;
+      try {
+        await context.whatsapp.sendImage(rawTarget, {
+          dataUrl,
+          mimetype: 'image/png',
+          caption
+        });
+        qrCodeSent = true;
+      } catch {
+        // Falha no envio da imagem no WhatsApp não invalida o payload/link Pix gerado
+        qrCodeSent = false;
+      }
     }
 
     return {

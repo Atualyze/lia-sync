@@ -418,6 +418,7 @@ export async function handleClientMessage({
                 clientName: s.clientName || pushName || 'Cliente',
                 store,
                 reminderStore,
+                whatsapp,
                 botConfig,
                 identity,
                 session: s,
@@ -425,6 +426,22 @@ export async function handleClientMessage({
                 searchWebWithGemini: ai?.searchWebWithGemini
               });
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
+              if (tc.name === 'gerar_cobranca_pix') {
+                if (toolRes?.success) {
+                  const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+                  toolReplyOverride = [
+                    `💳 *Aqui está seu Pix para pagamento:*`,
+                    `• *Valor:* ${valorFmt}`,
+                    `• *Favorecido:* ${toolRes.favorecido || owner}`,
+                    toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
+                    `• *Copia e Cola:*\n\`\`\`${toolRes.pixCopiaECola}\`\`\``
+                  ].filter(Boolean).join('\n\n');
+                } else {
+                  toolReplyOverride = toolRes?.error === 'pix_key_not_configured'
+                    ? `No momento não consegui gerar o Pix automaticamente porque a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui!`
+                    : `Qual o *valor* e a *descrição* do Pix que você precisa gerar?`;
+                }
+              }
               if (tc.name === 'agendar_retorno_ou_followup') {
                 toolReplyOverride = toolRes?.success
                   ? toolRes.message

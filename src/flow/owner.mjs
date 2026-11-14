@@ -951,8 +951,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   tc.args.message = buildFriendlyMessage(tc.args.recipient, tc.args.message, { asAudio: false, identity });
                 }
 
+                const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
                 const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                   phone: OWNER_SELF_KEY,
+                  targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
                   clientName: `${owner} (Copiloto)`,
                   store,
                   reminderStore,
@@ -1053,6 +1055,28 @@ ${errMsg}`;
           }
         }
 
+        const formatPixCopilotReply = r => {
+          const valorFmt = r.valor ? `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+          return [
+            `💳 *Cobrança Pix gerada!*`,
+            `• *Valor:* ${valorFmt}`,
+            `• *Favorecido:* ${r.favorecido || owner}`,
+            r.paymentUrl ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
+            `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
+            r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
+          ].filter(Boolean).join('\n\n');
+        };
+        const extractPixArgs = text => {
+          const amountMatch = String(text || '').match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
+          const isFreeAmount = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(String(text || ''));
+          const valor = isFreeAmount ? 0 : (amountMatch ? Number(amountMatch[1].replace(',', '.')) : null);
+          const desc = String(text || '')
+            .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
+            .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b|gera\b|gerar\b|cobran[cç]a\b|valor\b|livre\b)+/i, '')
+            .trim();
+          return { hasAmountOrFree: Boolean(amountMatch || isFreeAmount), valor, desc };
+        };
+
         const pixResult = toolOutputs.find(t => t.tool === 'gerar_cobranca_pix');
         if (pixResult?.result) {
           const r = pixResult.result;
@@ -1062,16 +1086,7 @@ ${errMsg}`;
               : `${owner}, me confirma o *valor* e a *descrição* (ou a *Chave Pix*) para eu gerar a cobrança certinha?`;
             return recordSelfTurn(filterReply(askPixMsg, { isCopilot: true }).text);
           }
-          const valorFmt = r.valor ? `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
-          const pixMsg = [
-            `💳 *Cobrança Pix gerada!*`,
-            `• *Valor:* ${valorFmt}`,
-            `• *Favorecido:* ${r.favorecido || owner}`,
-            r.paymentUrl ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
-            `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
-            r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
-          ].filter(Boolean).join('\n\n');
-          return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
+          return recordSelfTurn(filterReply(formatPixCopilotReply(r), { isCopilot: true }).text);
         }
 
         const brResult = toolOutputs.find(t => t.tool === 'consultar_dados_brasil');
@@ -1108,18 +1123,24 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
-        if (rawReply && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix') && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply)) {
-          const amountMatch = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
-          const valor = amountMatch ? Number(amountMatch[1].replace(',', '.')) : 0;
-          const desc = cleanCommand
-            .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
-            .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b|gera\b|gerar\b)+/i, '')
-            .trim();
+        const askedPixRecently = /\bpix\b/i.test(String(lastAssistantMsg || ''));
+        const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a\s*pix)\b/i.test(cleanCommand);
+        const pixParsed = extractPixArgs(cleanCommand);
+        const promisedPixInReply = Boolean(rawReply && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply));
+        const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix')
+          && !isAudioForSelf
+          && (
+            promisedPixInReply
+            || ((hasPixKeyword || askedPixRecently) && pixParsed.hasAmountOrFree)
+          );
+        if (shouldAutoExecutePix) {
+          const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
           const autoPix = await executeToolCall('gerar_cobranca_pix', {
-            ...(valor > 0 ? { valor } : {}),
-            ...(desc ? { descricao: desc.slice(0, 80) } : {})
+            ...(pixParsed.valor > 0 ? { valor: pixParsed.valor } : {}),
+            ...(pixParsed.desc ? { descricao: pixParsed.desc.slice(0, 80) } : {})
           }, {
             phone: OWNER_SELF_KEY,
+            targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
             clientName: `${owner} (Copiloto)`,
             store,
             reminderStore,
@@ -1129,55 +1150,16 @@ ${errMsg}`;
             session: sSelf
           });
           if (autoPix?.success) {
-            const valorFmt = autoPix.valor ? `R$ ${Number(autoPix.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
-            const pixMsg = [
-              `💳 *Cobrança Pix gerada!*`,
-              `• *Valor:* ${valorFmt}`,
-              `• *Favorecido:* ${autoPix.favorecido || owner}`,
-              autoPix.paymentUrl ? `• *Link de pagamento:* ${autoPix.paymentUrl}` : '',
-              `• *Copia e Cola:*\n\`\`\`${autoPix.pixCopiaECola}\`\`\``
-            ].filter(Boolean).join('\n\n');
-            return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
+            return recordSelfTurn(filterReply(formatPixCopilotReply(autoPix), { isCopilot: true }).text);
+          }
+          if (autoPix?.error === 'pix_key_not_configured') {
+            return recordSelfTurn(filterReply(`${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`, { isCopilot: true }).text);
+          }
+          if (!rawReply) {
+            return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${autoPix?.message || autoPix?.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
           }
         }
         if (!rawReply) {
-          const askedPixRecently = /\bpix\b/i.test(String(lastAssistantMsg || ''));
-          if (!isAudioForSelf && (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand) || askedPixRecently)) {
-            const amountMatch = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
-            const isFreeAmount = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
-            if (amountMatch || isFreeAmount) {
-              const valor = isFreeAmount ? 0 : Number(amountMatch[1].replace(',', '.'));
-              const desc = cleanCommand
-                .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
-                .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b)+/i, '')
-                .trim();
-              const pixExec = await executeToolCall('gerar_cobranca_pix', {
-                ...(valor > 0 ? { valor } : {}),
-                ...(desc ? { descricao: desc.slice(0, 80) } : {})
-              }, {
-                phone: OWNER_SELF_KEY,
-                clientName: `${owner} (Copiloto)`,
-                store,
-                reminderStore,
-                whatsapp,
-                ai,
-                botConfig,
-                session: sSelf
-              });
-              if (pixExec?.success) {
-                const valorFmt = pixExec.valor ? `R$ ${Number(pixExec.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
-                const pixMsg = [
-                  `💳 *Cobrança Pix gerada!*`,
-                  `• *Valor:* ${valorFmt}`,
-                  `• *Favorecido:* ${pixExec.favorecido || owner}`,
-                  pixExec.paymentUrl ? `• *Link de pagamento:* ${pixExec.paymentUrl}` : '',
-                  `• *Copia e Cola:*\n\`\`\`${pixExec.pixCopiaECola}\`\`\``
-                ].filter(Boolean).join('\n\n');
-                return recordSelfTurn(filterReply(pixMsg, { isCopilot: true }).text);
-              }
-              return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${pixExec?.message || pixExec?.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
-            }
-          }
           if (isAudioForSelf) {
             const simMatch = cleanCommand.match(/(?:perguntando|avisando|falando|dizendo|sobre)\s+(?:para\s+o|para\s+a|para|pro|pra)?\s*([a-zA-ZÀ-ÿ0-9+]+)?/i);
             const rawSimName = simMatch?.[1] || '';
