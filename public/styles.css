@@ -1811,11 +1811,11 @@ button.danger:hover:not(:disabled) {
   color: #fff !important;
 }
 
-/* Chat Bubbles — Compact, Proportioned Solid iMessage Measure */
+/* Chat Bubbles — WhatsApp / Telegram Dark Refined Measure (Zero Scrollbar on Bubbles) */
 .bubble-row {
   display: flex;
   flex-direction: column;
-  max-width: min(72%, 540px);
+  max-width: min(78%, 560px);
   position: relative;
 }
 .bubble-row.in { align-self: flex-start; }
@@ -1828,9 +1828,9 @@ button.danger:hover:not(:disabled) {
   gap: 4px;
   width: fit-content;
   min-width: 115px;
-  max-width: min(72%, 540px);
-  padding: 9px 13px 7px;
-  border-radius: 16px;
+  max-width: min(78%, 560px);
+  padding: 8px 12px 6px;
+  border-radius: 12px;
   font-size: 13.2px;
   line-height: 1.45;
   word-break: break-word;
@@ -1843,18 +1843,19 @@ button.danger:hover:not(:disabled) {
 }
 .bubble.in {
   align-self: flex-start;
-  background: #1f2432;
-  border: 1px solid #2c3345;
+  background: #1c222c;
+  border: 1px solid #28313e;
   color: var(--text-primary);
-  border-bottom-left-radius: 5px;
+  border-bottom-left-radius: 4px;
   box-shadow: none;
 }
 .bubble.out {
   align-self: flex-end;
-  background: #0a78e6;
-  border: 1px solid #1687f7;
-  color: #ffffff;
-  border-bottom-right-radius: 5px;
+  /* Tom refinado inspirado no WhatsApp Dark / Telegram Dark (#0b4840 / #103c36) */
+  background: #0d463d;
+  border: 1px solid #14594f;
+  color: #e7f7f4;
+  border-bottom-right-radius: 4px;
   box-shadow: none;
 }
 
@@ -1865,38 +1866,21 @@ button.danger:hover:not(:disabled) {
   overflow-wrap: anywhere;
   font-size: 13.2px;
   line-height: 1.46;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
-/* Smart Scrollable / Collapsible Long Message Content */
+/* Sem barras de rolagem nos balões: texto flui naturalmente na rolagem do chat */
 .bubble-body.long-content {
-  max-height: 240px;
-  overflow-y: auto;
-  padding-right: 6px;
-  overscroll-behavior: contain;
+  max-height: none !important;
+  overflow: visible !important;
+  padding-right: 0 !important;
 }
 .bubble-body.long-content.expanded {
-  max-height: 460px;
+  max-height: none !important;
 }
 .bubble-expand-btn {
-  align-self: flex-start;
-  height: 22px !important;
-  padding: 0 8px !important;
-  margin-top: 2px;
-  font-size: 11px !important;
-  font-weight: 620 !important;
-  border-radius: 6px !important;
-  background: #0759ad !important;
-  border: 1px solid #1e87f0 !important;
-  color: #ffffff !important;
-  box-shadow: none !important;
-}
-.bubble.in .bubble-expand-btn {
-  background: #151924 !important;
-  border-color: #2c3345 !important;
-}
-.bubble-expand-btn:hover {
-  background: #05498f !important;
-  transform: none !important;
+  display: none !important;
 }
 
 .bubble-body code,
@@ -1909,7 +1893,8 @@ button.danger:hover:not(:disabled) {
 }
 .bubble.out .bubble-body code,
 .bubble.out .bubble-text code {
-  background: #0759ad;
+  background: #09332d;
+  color: #a7f3d0;
 }
 
 .bubble > small,
@@ -1921,13 +1906,13 @@ button.danger:hover:not(:disabled) {
   margin-top: 2px;
   font-size: 10.2px;
   line-height: 1.2;
-  color: #b5bfd1;
+  color: #8b9bb4;
   white-space: nowrap;
   user-select: none;
 }
 .bubble.out > small,
 .bubble.out .bubble-foot {
-  color: #dbeafe;
+  color: #8ee0d0;
 }
 .bubble > small svg {
   width: 12px;
@@ -1991,24 +1976,32 @@ button.danger:hover:not(:disabled) {
   padding: 6px 10px;
   margin-bottom: 4px;
   border-radius: 9px;
-  border-left: 3px solid #ffffff;
-  background: #0759ad;
+  border-left: 3px solid #2fe3b7;
+  background: #093730;
   font-size: 11.8px;
   cursor: pointer;
   max-width: 100%;
 }
 .bubble.in .bubble-quote {
-  border-left-color: var(--accent-blue-hover);
-  background: #161a24;
+  border-left-color: #38bdf8;
+  background: #141a23;
 }
 .bubble-quote strong {
   font-size: 11px;
   font-weight: 650;
+  color: #5eead4;
+}
+.bubble.in .bubble-quote strong {
+  color: #38bdf8;
 }
 .bubble-quote span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: #ccfbf1;
+}
+.bubble.in .bubble-quote span {
+  color: var(--text-secondary);
 }
 
 /* Multimodal Media Cards Inside Bubbles (Solid) */
@@ -2024,8 +2017,8 @@ button.danger:hover:not(:disabled) {
   max-width: 100%;
 }
 .bubble.out .media-card {
-  background: #0759ad;
-  border-color: #1c85f0;
+  background: #093730;
+  border-color: #115e52;
 }
 .media-audio-row {
   display: flex;
@@ -2045,11 +2038,13 @@ button.danger:hover:not(:disabled) {
 }
 .bubble.out .media-play-btn,
 .bubble.out .audio-play-btn {
-  background: #05498f !important;
-  border-color: #2990ff !important;
+  background: #0d463d !important;
+  border-color: #166e60 !important;
 }
 .media-play-btn:hover,
 .audio-play-btn:hover { background: #343f57 !important; transform: scale(1.04) !important; }
+.bubble.out .media-play-btn:hover,
+.bubble.out .audio-play-btn:hover { background: #135c50 !important; }
 .audio-waveform {
   display: flex;
   align-items: center;

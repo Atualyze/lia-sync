@@ -1281,12 +1281,7 @@ function renderChat({ forceRender = false } = {}) {
               `;
             } else {
               const rawText = String(parsed.text || '');
-              const lineCount = rawText.split('\n').length;
-              const isLong = rawText.length > 440 || lineCount > 9;
-              bodyHtml = `
-                <div class="bubble-body ${isLong ? 'long-content' : ''}">${formatWhatsAppMarkdown(rawText)}</div>
-                ${isLong ? `<button type="button" class="admin-ghost-btn btn-xs" data-toggle-long="1" style="margin-top:6px;font-size:11px;padding:3px 8px;">Expandir texto completo ▾</button>` : ''}
-              `;
+              bodyHtml = `<div class="bubble-body">${formatWhatsAppMarkdown(rawText)}</div>`;
             }
 
             const readCheck = !isUser
@@ -1319,18 +1314,6 @@ function renderChat({ forceRender = false } = {}) {
       messagesEl.scrollTop = prevScrollTop;
     }
     updateChatScrollButton();
-
-    // Bind expand/collapse long content buttons
-    messagesEl.querySelectorAll('[data-toggle-long]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const bodyEl = btn.previousElementSibling;
-        if (!bodyEl) return;
-        const expanded = !bodyEl.classList.contains('long-content');
-        bodyEl.classList.toggle('long-content', expanded);
-        btn.textContent = expanded ? 'Expandir texto completo ▾' : 'Recolher texto ▴';
-      });
-    });
 
     // Bind audio play buttons
     messagesEl.querySelectorAll('[data-play-audio]').forEach((btn) => {
