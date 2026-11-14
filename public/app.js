@@ -79,9 +79,8 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
       ${cleanMessage ? `<div class="apple-toast-msg">${esc(cleanMessage)}</div>` : ''}
     </div>
     <button type="button" class="apple-toast-close" aria-label="Fechar notificação">
-      <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg class="svg-icon sm" width="13" height="13" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <div class="apple-toast-progress" style="animation-duration:${duration}ms"></div>
   `;
 
   const dismiss = () => {
@@ -583,6 +582,9 @@ async function setupCaptcha(authConfig) {
   if (!api?.render) throw new Error('Widget CAPTCHA indisponível.');
   const widgetId = api.render(container, {
     sitekey: authConfig.captchaSiteKey,
+    theme: 'dark',
+    size: 'flexible',
+    appearance: 'interaction-only',
     action: 'login',
     callback: token => { captcha.token = token; },
     'expired-callback': () => { captcha.token = ''; },
@@ -590,6 +592,136 @@ async function setupCaptcha(authConfig) {
   });
   captcha = { token: '', reset: () => api.reset(widgetId), configured: true };
   captcha.getToken = () => provider === 'turnstile' && typeof api.getResponse === 'function' ? api.getResponse(widgetId) || '' : captcha.token;
+}
+
+// SMART LOGIN DEFENSE & MODIFIER DETECTION
+const LOGIN_SECURITY = {
+  maxAttempts: 5,
+  lockoutSeconds: 60,
+  storageKey: 'lia_sync_login_sec'
+};
+
+function getLoginSecState() {
+  try {
+    const raw = sessionStorage.getItem(LOGIN_SECURITY.storageKey);
+    if (!raw) return { attempts: 0, lockoutUntil: 0 };
+    const data = JSON.parse(raw);
+    return {
+      attempts: Number(data.attempts) || 0,
+      lockoutUntil: Number(data.lockoutUntil) || 0
+    };
+  } catch {
+    return { attempts: 0, lockoutUntil: 0 };
+  }
+}
+
+function saveLoginSecState(st) {
+  try {
+    sessionStorage.setItem(LOGIN_SECURITY.storageKey, JSON.stringify(st));
+  } catch {}
+}
+
+let loginLockoutInterval = null;
+function checkLoginLockout() {
+  const st = getLoginSecState();
+  const now = Date.now();
+  const alertEl = $('#login-lockout-alert');
+  const timerEl = $('#login-lockout-timer');
+  const submitBtn = $('#login-submit-btn') || $('#login-form button[type="submit"]');
+  const emailInput = $('#login-email');
+  const passInput = $('#login-password');
+
+  if (st.lockoutUntil && st.lockoutUntil > now) {
+    const remaining = Math.ceil((st.lockoutUntil - now) / 1000);
+    if (alertEl) alertEl.classList.remove('hidden');
+    if (timerEl) timerEl.textContent = remaining;
+    if (submitBtn) submitBtn.disabled = true;
+    if (emailInput) emailInput.disabled = true;
+    if (passInput) passInput.disabled = true;
+
+    if (!loginLockoutInterval) {
+      loginLockoutInterval = setInterval(() => {
+        const curSt = getLoginSecState();
+        const curNow = Date.now();
+        if (curSt.lockoutUntil && curSt.lockoutUntil > curNow) {
+          const rem = Math.ceil((curSt.lockoutUntil - curNow) / 1000);
+          if (timerEl) timerEl.textContent = rem;
+        } else {
+          clearInterval(loginLockoutInterval);
+          loginLockoutInterval = null;
+          curSt.attempts = 0;
+          curSt.lockoutUntil = 0;
+          saveLoginSecState(curSt);
+          if (alertEl) alertEl.classList.add('hidden');
+          if (submitBtn) submitBtn.disabled = false;
+          if (emailInput) emailInput.disabled = false;
+          if (passInput) passInput.disabled = false;
+        }
+      }, 1000);
+    }
+    return true;
+  } else {
+    if (alertEl) alertEl.classList.add('hidden');
+    if (submitBtn) submitBtn.disabled = false;
+    if (emailInput) emailInput.disabled = false;
+    if (passInput) passInput.disabled = false;
+    if (loginLockoutInterval) {
+      clearInterval(loginLockoutInterval);
+      loginLockoutInterval = null;
+    }
+    return false;
+  }
+}
+
+function recordFailedLoginAttempt() {
+  const st = getLoginSecState();
+  st.attempts = (st.attempts || 0) + 1;
+  if (st.attempts >= LOGIN_SECURITY.maxAttempts) {
+    st.lockoutUntil = Date.now() + (LOGIN_SECURITY.lockoutSeconds * 1000);
+  }
+  saveLoginSecState(st);
+  checkLoginLockout();
+}
+
+function resetLoginAttempts() {
+  saveLoginSecState({ attempts: 0, lockoutUntil: 0 });
+  checkLoginLockout();
+}
+
+function setupLoginModifierDetection() {
+  const pass = $('#login-password');
+  const email = $('#login-email');
+  const caps = $('#login-caps-badge');
+  const numlock = $('#login-numlock-badge');
+
+  function updateModifiers(e) {
+    if (!e || typeof e.getModifierState !== 'function') return;
+    const isCaps = e.getModifierState('CapsLock');
+    const isNumLock = e.getModifierState('NumLock');
+
+    if (caps) {
+      if (isCaps) caps.classList.remove('hidden');
+      else caps.classList.add('hidden');
+    }
+
+    if (numlock) {
+      if (e.code && e.code.startsWith('Numpad') && !isNumLock) {
+        numlock.classList.remove('hidden');
+      } else if (isNumLock) {
+        numlock.classList.add('hidden');
+      }
+    }
+  }
+
+  [pass, email].forEach(inp => {
+    if (!inp) return;
+    inp.addEventListener('keydown', updateModifiers);
+    inp.addEventListener('keyup', updateModifiers);
+    inp.addEventListener('blur', () => {
+      if (caps) caps.classList.add('hidden');
+      if (numlock) numlock.classList.add('hidden');
+    });
+  });
 }
 
 function hydrateSessionUser(session) {
@@ -686,9 +818,12 @@ async function initAuth() {
       return;
     }
     showLogin();
+    setupLoginModifierDetection();
+    checkLoginLockout();
     if (config.captchaSiteKey) await setupCaptcha(config);
     $('#login-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (checkLoginLockout()) return;
       $('#login-error').textContent = '';
       const submit = $('#login-form button[type="submit"]');
       if (submit) submit.disabled = true;
@@ -705,6 +840,7 @@ async function initAuth() {
         if (error) {
           if (captcha.reset) captcha.reset();
           captcha.token = '';
+          recordFailedLoginAttempt();
           const msg = readableAuthError(error);
           $('#login-error').textContent = msg;
           showToast({ title: 'Falha na Autenticação', message: msg, type: 'error' });
@@ -712,15 +848,17 @@ async function initAuth() {
         }
         accessToken = result.session?.access_token || '';
         if (!accessToken) throw new Error('O Supabase não retornou um token de acesso.');
+        resetLoginAttempts();
         hydrateSessionUser(result.session);
         showToast({ title: 'Sessão Iniciada', message: `Bem-vindo ao Lia Sync Console, ${state.userName || 'operador'}.`, type: 'success' });
         showDashboard();
       } catch (error) {
+        recordFailedLoginAttempt();
         const msg = readableAuthError(error);
         $('#login-error').textContent = msg;
         showToast({ title: 'Erro no Login', message: msg, type: 'error' });
       } finally {
-        if (submit) submit.disabled = false;
+        if (submit && !checkLoginLockout()) submit.disabled = false;
       }
     });
     supabase.auth.onAuthStateChange((_event, session) => {
@@ -741,6 +879,8 @@ async function initAuth() {
 function showLogin() {
   $('#login-screen').classList.remove('hidden');
   $('#dashboard-shell').classList.add('hidden');
+  setupLoginModifierDetection();
+  checkLoginLockout();
 }
 
 function showDashboard() {
@@ -1936,7 +2076,7 @@ function renderAdminFaq() {
     <textarea data-faq-answer rows="2" aria-label="Resposta">${esc(item.answer || '')}</textarea>
     <label class="faq-enabled"><input type="checkbox" data-faq-enabled ${item.enabled !== false ? 'checked' : ''} /> ativo</label>
     <button type="button" class="icon-btn faq-remove" data-faq-remove="${index}" aria-label="Remover item">
-      <svg class="svg-icon xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>`).join('') || '<div class="detail-placeholder admin-empty">Nenhum item cadastrado. Adicione a primeira resposta da base.</div>';
 }

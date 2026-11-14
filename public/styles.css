@@ -23,9 +23,9 @@
   --text-secondary: #a6a8b1;
   --text-tertiary: #6e7078;
 
-  /* Gradientes Oficiais da Marca */
-  --gradient-blue: linear-gradient(120deg, #20495b, #397f91);
-  --gradient-green: linear-gradient(120deg, #27845f, #86deba);
+  /* Cores de Destaque da Marca (Cores 100% Opacas e Sólidas) */
+  --gradient-blue: #295c6f;
+  --gradient-green: #48aa7e;
 
   /* Superfícies & Layout Mapeados */
   --bg-app: #131313;
@@ -205,23 +205,32 @@ html, body {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 13px 15px 15px;
-  border-radius: 14px;
-  background: #1c222f;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 8px 20px #050609;
-  animation: toastIn 220ms var(--ease-spring) forwards;
+  box-shadow: 0 10px 24px #06070a;
+  animation: toastIn 180ms ease forwards;
 }
 .apple-toast.leaving,
 .apple-toast.toast-leaving {
-  animation: toastOut 180ms var(--ease-spring) forwards;
+  animation: toastOut 150ms ease forwards;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
 }
 
 .toast-icon,
 .apple-toast-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,8 +238,8 @@ html, body {
 }
 .toast-icon svg,
 .apple-toast-icon svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.1;
@@ -238,13 +247,13 @@ html, body {
   stroke-linejoin: round;
 }
 .apple-toast.success .toast-icon,
-.apple-toast.toast-success .apple-toast-icon { background: var(--accent-green-soft); color: var(--accent-green); }
+.apple-toast.toast-success .apple-toast-icon { background: #172d23; color: var(--lia-green); }
 .apple-toast.error .toast-icon,
-.apple-toast.toast-error .apple-toast-icon { background: var(--accent-red-soft); color: var(--accent-red); }
+.apple-toast.toast-error .apple-toast-icon { background: #2e1819; color: var(--accent-red); }
 .apple-toast.warning .toast-icon,
-.apple-toast.toast-warn .apple-toast-icon { background: var(--accent-amber-soft); color: var(--accent-amber); }
+.apple-toast.toast-warn .apple-toast-icon { background: #2e2414; color: var(--accent-amber); }
 .apple-toast.info .toast-icon,
-.apple-toast.toast-info .apple-toast-icon { background: var(--accent-blue-soft); color: var(--accent-blue-hover); }
+.apple-toast.toast-info .apple-toast-icon { background: #142831; color: var(--lia-mint); }
 
 .toast-body,
 .apple-toast-body { flex: 1; min-width: 0; }
@@ -266,36 +275,25 @@ html, body {
 }
 .toast-close,
 .apple-toast-close {
-  width: 24px !important;
-  height: 24px !important;
+  width: 22px !important;
+  height: 22px !important;
   padding: 0 !important;
-  border-radius: 50% !important;
+  border-radius: 6px !important;
   border: none !important;
-  background: #262d3d !important;
+  background: transparent !important;
   color: var(--text-secondary) !important;
   flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .toast-close:hover,
-.apple-toast-close:hover { background: #323b4f !important; color: #fff !important; }
-.toast-progress,
-.apple-toast-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2.5px;
-  transform-origin: left center;
-  background: var(--accent-blue);
-  animation-name: toastProgress;
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
+.apple-toast-close:hover {
+  background: var(--bg-card) !important;
+  color: #fff !important;
 }
-.apple-toast.success .toast-progress,
-.apple-toast.toast-success .apple-toast-progress { background: var(--accent-green); }
-.apple-toast.error .toast-progress,
-.apple-toast.toast-error .apple-toast-progress { background: var(--accent-red); }
-.apple-toast.warning .toast-progress,
-.apple-toast.toast-warn .apple-toast-progress { background: var(--accent-amber); }
 
 /* ==========================================================================
    Native Apple Context Menu & Technical Term Explainer Popover (Solid)
@@ -457,7 +455,7 @@ html, body {
 }
 
 /* ==========================================================================
-   Login Screen (Solid Matte)
+   Login Screen (Minimalist, Smart & Solid Matte)
    ========================================================================== */
 .login-screen {
   min-height: 100dvh;
@@ -469,33 +467,213 @@ html, body {
 
 .login-card {
   width: 100%;
-  max-width: 416px;
+  max-width: 420px;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xl);
-  padding: 24px 28px 30px;
-  box-shadow: none;
+  border-radius: 16px;
+  padding: 26px 26px 28px;
+  box-shadow: 0 16px 36px #08090c;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
-.login-card .apple-window-controls { margin-bottom: 16px; }
-.login-card h1 { margin: 8px 0 6px; font-size: 22px; font-weight: 680; letter-spacing: -0.025em; }
-.login-card p { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; }
-.login-card label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 12.5px; color: var(--text-secondary); font-weight: 550; }
+
+.login-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.login-logo-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.login-brand-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.login-brand-meta strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.login-brand-meta span {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.login-badge-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #172d23;
+  color: var(--lia-mint);
+  border: 1px solid #205c45;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.login-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.login-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.login-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.login-field-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.login-input-icon {
+  position: absolute;
+  left: 13px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.login-input-wrap input {
+  width: 100%;
+  height: 42px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  padding: 0 14px 0 38px;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.login-input-wrap input:hover {
+  background: var(--bg-input-hover);
+  border-color: var(--border-strong);
+}
+.login-input-wrap input:focus {
+  border-color: var(--lia-blue);
+  background: var(--bg-input-hover);
+}
+.login-modifiers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mod-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.mod-pill.mod-warn {
+  background: #2e2414;
+  color: var(--accent-amber);
+  border: 1px solid #5a401c;
+}
+.mod-pill.mod-info {
+  background: #142831;
+  color: var(--lia-mint);
+  border: 1px solid #1f4756;
+}
+
+.login-captcha {
+  margin: 4px 0;
+  min-height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
+.login-captcha iframe {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color-scheme: dark !important;
+  border-radius: 8px !important;
+}
+
 .login-button {
   width: 100%;
   height: 42px;
-  margin-top: 8px;
-  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  border-radius: 8px;
   background: var(--lia-green);
   border: 1px solid #3d946d;
   color: #fff;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
 }
 .login-button:hover:not(:disabled) {
   background: #3d946d;
-  border-color: var(--lia-green);
 }
-.login-error { margin-top: 12px; color: var(--accent-red); font-size: 12.5px; min-height: 18px; }
+.login-button:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.login-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.login-lockout-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #2e1819;
+  border: 1px solid #5c2427;
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 550;
+}
+.login-lockout-banner svg {
+  flex-shrink: 0;
+  color: var(--accent-red);
+}
+.login-error {
+  color: var(--accent-red);
+  font-size: 12px;
+  min-height: 16px;
+  line-height: 1.4;
+}
 
 /* ==========================================================================
    App Shell & Sidebar (Zero Wrapping, Solid Matte)
@@ -550,7 +728,7 @@ html, body {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: var(--gradient-blue);
+  background: var(--lia-blue);
   border: 1px solid #397f91;
   color: #fff;
   display: flex;
@@ -558,6 +736,18 @@ html, body {
   justify-content: center;
   flex-shrink: 0;
   box-shadow: none;
+  overflow: hidden;
+}
+.brand-mark.brand-mark-img {
+  background: transparent;
+  border: none;
+}
+.brand-logo-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-copy { min-width: 0; }
@@ -656,10 +846,20 @@ html, body {
   border-right: 1.7px solid currentColor;
   border-bottom: 1.7px solid currentColor;
   transform: rotate(-45deg);
-  transition: transform 180ms var(--ease-spring);
+  transition: transform 180ms ease;
   flex-shrink: 0;
 }
+.chevron-svg {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  transition: transform 180ms ease;
+  flex-shrink: 0;
+  vertical-align: middle;
+  color: var(--text-secondary);
+}
 details[open] > summary .chevron { transform: rotate(45deg); }
+details[open] > summary .chevron-svg { transform: rotate(180deg); }
 
 .nav .nav-item {
   width: 100%;
@@ -1662,7 +1862,7 @@ button.danger:hover:not(:disabled) {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
@@ -1834,7 +2034,7 @@ button.danger:hover:not(:disabled) {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable;
   padding: 20px 22px 24px;
   display: flex;
@@ -2296,7 +2496,7 @@ button.danger:hover:not(:disabled) {
   max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable;
   border: none;
   border-left: 1px solid var(--border-hairline);
@@ -2384,7 +2584,7 @@ button.danger:hover:not(:disabled) {
   max-height: 420px;
   overflow-y: auto;
   overflow-x: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable;
   border-radius: var(--radius-sm);
 }
@@ -2418,7 +2618,7 @@ button.danger:hover:not(:disabled) {
 #metrics-circuit-list {
   max-height: 410px;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   padding-right: 4px;
 }
 
@@ -2552,7 +2752,7 @@ button.danger:hover:not(:disabled) {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   padding: 22px;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 45px #040508;
 }
 .sim-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
@@ -2583,7 +2783,7 @@ button.danger:hover:not(:disabled) {
   border-radius: 14px;
   padding: 0;
   overflow: hidden;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 24px 60px #040508;
   display: flex;
   flex-direction: column;
 }
@@ -2740,9 +2940,9 @@ button.danger:hover:not(:disabled) {
   border: 1px solid var(--border-hairline);
 }
 .cmd-item-badge.badge-glossary {
-  background: rgba(72, 170, 126, 0.15);
+  background: #172d23;
   color: var(--lia-mint);
-  border: 1px solid rgba(72, 170, 126, 0.35);
+  border: 1px solid #205c45;
 }
 .cmd-item:hover .cmd-item-badge.badge-nav,
 .cmd-item.active .cmd-item-badge.badge-nav {
