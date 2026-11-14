@@ -405,7 +405,7 @@ test('Cliente envia áudio: Lia responde apenas com áudio, sem legenda ou pergu
     store,
     humanPhone: '5588921694598',
     getHumanPhone: () => '5588921694598',
-    getBotConfig: () => ({ voice: { autoVoiceOnAudio: true } }),
+    getBotConfig: () => ({ voice: { autoVoiceOnAudio: true, deliveryMode: 'audio_only', sendTranscriptionWithAudio: false } }),
     whatsapp: {
       getMediaBase64: async () => ({ base64: 'FAKE_AUDIO_IN', mimetype: 'audio/ogg' }),
       sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); }
@@ -430,7 +430,48 @@ test('Cliente envia áudio: Lia responde apenas com áudio, sem legenda ou pergu
 
   assert.equal(sentAudios.length, 1, 'Deve ter enviado a resposta sintetizada em áudio para o cliente');
   assert.match(sentAudios[0].base64, /Oi, Lima! Nosso atendimento funciona de segunda a sexta/);
-  assert.equal(textFollowUp, null, 'Áudio não deve levar legenda em texto');
+  assert.equal(textFollowUp, null, 'Áudio não deve levar legenda em texto quando configurado como audio_only');
+});
+
+test('Cliente envia áudio: Lia responde com áudio E transcrição em texto quando deliveryMode é audio_and_text', async () => {
+  const store = createMockStore();
+  const clientPhone = '5585991099483';
+  const sLima = store.get(clientPhone);
+  sLima.clientName = 'Lima';
+  sLima.human = false;
+
+  const sentAudios = [];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    getBotConfig: () => ({ voice: { autoVoiceOnAudio: true, deliveryMode: 'audio_and_text', sendTranscriptionWithAudio: true } }),
+    whatsapp: {
+      getMediaBase64: async () => ({ base64: 'FAKE_AUDIO_IN', mimetype: 'audio/ogg' }),
+      sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); }
+    },
+    ai: {
+      transcribeAudio: async () => 'Qual o horário de atendimento de vocês?',
+      askAI: async () => ({
+        reply: 'Oi, Lima! Nosso atendimento funciona de segunda a sexta, das 8h às 18h.',
+        intent: 'duvida',
+        handoff: false
+      }),
+      synthesizeVoice: async (text) => ({ base64: `VOICE_OUT:${text}`, mimeType: 'audio/ogg' })
+    }
+  });
+
+  const textFollowUp = await flow.process({
+    phone: clientPhone,
+    mediaType: 'audio',
+    nonText: true,
+    rawItem: { jid: `${clientPhone}@s.whatsapp.net`, key: { id: 'msg1' }, message: { audioMessage: {} } }
+  });
+
+  assert.equal(sentAudios.length, 1, 'Deve ter enviado a resposta sintetizada em áudio para o cliente');
+  assert.match(sentAudios[0].base64, /Oi, Lima! Nosso atendimento funciona de segunda a sexta/);
+  assert.equal(textFollowUp, 'Oi, Lima! Nosso atendimento funciona de segunda a sexta, das 8h às 18h.', 'Deve retornar o texto da resposta para envio junto com o áudio');
 });
 
 test('Copiloto: gerar PDF pergunta as informações antes e gera após a resposta', async () => {

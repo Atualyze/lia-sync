@@ -17,6 +17,17 @@ export function normalizeBotConfig(raw = {}) {
     source.webSearch = { ...(source.webSearch || {}), enabled: source.automation.enableWebSearch };
     delete source.automation.enableWebSearch;
   }
+  if (source.voice && typeof source.voice === 'object') {
+    if (source.voice.deliveryMode === 'audio_only') {
+      source.voice.sendTranscriptionWithAudio = false;
+    } else if (source.voice.deliveryMode === 'audio_and_text') {
+      source.voice.sendTranscriptionWithAudio = true;
+    } else if (source.voice.sendTranscriptionWithAudio === false) {
+      source.voice.deliveryMode = 'audio_only';
+    } else if (source.voice.sendTranscriptionWithAudio === true) {
+      source.voice.deliveryMode = 'audio_and_text';
+    }
+  }
   return merge(DEFAULT_BOT_CONFIG, source);
 }
 
@@ -103,6 +114,8 @@ export const DEFAULT_BOT_CONFIG = {
     tone: 'Acolhedor, dinâmico e profissional',
     speed: 1.0,
     autoVoiceOnAudio: true,
+    deliveryMode: 'audio_and_text', // 'audio_and_text' | 'audio_only'
+    sendTranscriptionWithAudio: true,
     requestTimeoutMs: 45000
   },
   integrations: {
@@ -178,6 +191,9 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!supportedVoices.has(value.voice?.voiceName)) errors.push('Selecione uma voz suportada.');
   if (typeof value.voice?.tone !== 'string' || value.voice.tone.length > 500) errors.push('O tom da voz deve ter até 500 caracteres.');
   if (typeof value.voice?.autoVoiceOnAudio !== 'boolean') errors.push('A resposta automática em áudio deve ser verdadeiro/falso.');
+  const allowedDeliveryModes = new Set(['audio_and_text', 'audio_only']);
+  if (value.voice?.deliveryMode !== undefined && !allowedDeliveryModes.has(value.voice.deliveryMode)) errors.push('O modo de entrega de áudio deve ser "audio_and_text" ou "audio_only".');
+  if (value.voice?.sendTranscriptionWithAudio !== undefined && typeof value.voice.sendTranscriptionWithAudio !== 'boolean') errors.push('O envio de transcrição com áudio deve ser verdadeiro/falso.');
   if (!Number.isInteger(value.voice?.requestTimeoutMs) || value.voice.requestTimeoutMs < 5000 || value.voice.requestTimeoutMs > 120000) errors.push('O timeout de áudio deve estar entre 5 e 120 segundos.');
   const calendar = value.integrations?.googleCalendar;
   if (!calendar || typeof calendar !== 'object' || Array.isArray(calendar)) errors.push('A configuração do Google Calendar é obrigatória.');

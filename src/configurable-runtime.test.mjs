@@ -12,6 +12,8 @@ test('configuração padrão expõe memória, voz e agenda ajustáveis', () => {
   assert.equal(DEFAULT_BOT_CONFIG.ai.autoRouting, true);
   assert.equal(DEFAULT_BOT_CONFIG.ai.contextTurns, 24);
   assert.equal(DEFAULT_BOT_CONFIG.voice.requestTimeoutMs, 45000);
+  assert.equal(DEFAULT_BOT_CONFIG.voice.deliveryMode, 'audio_and_text');
+  assert.equal(DEFAULT_BOT_CONFIG.voice.sendTranscriptionWithAudio, true);
   assert.equal(DEFAULT_BOT_CONFIG.integrations.googleCalendar.enabled, true);
   assert.deepEqual(validateBotConfig(DEFAULT_BOT_CONFIG), []);
 });
@@ -21,7 +23,7 @@ test('rascunho publicado pelo painel é persistido e carregado com parâmetros n
   const file = path.join(dir, 'bot-config.json');
   const first = new AdminConfigStore(file);
   await first.load();
-  const updated = await first.updateDraft({ ai: { contextTurns: 48, maxStoredHistory: 200 }, voice: { speed: 1.15 }, integrations: { googleCalendar: { defaultEventDurationMinutes: 45 } } });
+  const updated = await first.updateDraft({ ai: { contextTurns: 48, maxStoredHistory: 200 }, voice: { speed: 1.15, deliveryMode: 'audio_only' }, integrations: { googleCalendar: { defaultEventDurationMinutes: 45 } } });
   assert.equal(updated.ok, true);
   const published = await first.publish('test');
   assert.equal(published.ok, true);
@@ -30,6 +32,8 @@ test('rascunho publicado pelo painel é persistido e carregado com parâmetros n
   assert.equal(second.active.ai.contextTurns, 48);
   assert.equal(second.active.ai.maxStoredHistory, 200);
   assert.equal(second.active.voice.speed, 1.15);
+  assert.equal(second.active.voice.deliveryMode, 'audio_only');
+  assert.equal(second.active.voice.sendTranscriptionWithAudio, false);
   assert.equal(second.active.integrations.googleCalendar.defaultEventDurationMinutes, 45);
 });
 
@@ -63,4 +67,10 @@ test('agenda respeita desativação no painel', async () => {
   const result = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, { botConfig: { integrations: { googleCalendar: { enabled: false } } } });
   assert.equal(result.success, false);
   assert.equal(result.error, 'google_calendar_disabled');
+});
+
+test('voice: deliveryMode e sendTranscriptionWithAudio sincronizam e validam', () => {
+  assert.deepEqual(validateBotConfig({ ...DEFAULT_BOT_CONFIG, voice: { ...DEFAULT_BOT_CONFIG.voice, deliveryMode: 'invalido' } }), ['O modo de entrega de áudio deve ser "audio_and_text" ou "audio_only".']);
+  assert.deepEqual(validateBotConfig({ ...DEFAULT_BOT_CONFIG, voice: { ...DEFAULT_BOT_CONFIG.voice, deliveryMode: 'audio_only', sendTranscriptionWithAudio: false } }), []);
+  assert.deepEqual(validateBotConfig({ ...DEFAULT_BOT_CONFIG, voice: { ...DEFAULT_BOT_CONFIG.voice, deliveryMode: 'audio_and_text', sendTranscriptionWithAudio: true } }), []);
 });

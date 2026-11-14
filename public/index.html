@@ -793,6 +793,12 @@
                     <input data-config="voice.autoVoiceOnAudio" type="checkbox" />
                     <span>Responder automaticamente com nota de voz quando o cliente enviar áudio</span>
                   </label>
+                  <label class="wide">Formato de Resposta em Áudio
+                    <select data-config="voice.deliveryMode" id="admin-voice-delivery-mode">
+                      <option value="audio_and_text">Áudio + Texto (envia a nota de voz e a transcrição em texto)</option>
+                      <option value="audio_only">Somente Áudio (envia exclusivamente a nota de voz)</option>
+                    </select>
+                  </label>
                   <label>Velocidade de Locução (0.25x a 2.0x)
                     <input data-config="voice.speed" type="number" min="0.25" max="2" step="0.05" />
                   </label>

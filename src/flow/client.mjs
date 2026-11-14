@@ -576,9 +576,13 @@ export async function handleClientMessage({
 
       if (clientWantsVoiceNow) {
         const targetJid = rawItem?.jid || phone;
-        // Áudio não leva legenda: a própria mensagem de voz é a resposta.
         if (await sendVoiceReply({ ai, whatsapp, botConfig, logger, text: safeReplyText, targetJid })) {
-          return null;
+          const sendTranscription = botConfig?.voice?.sendTranscriptionWithAudio !== false && botConfig?.voice?.deliveryMode !== 'audio_only';
+          if (!sendTranscription) {
+            return null; // Envia exclusivamente o áudio
+          }
+          // Envia áudio + texto: retorna finalReply para entrega subsequente da mensagem de texto
+          return finalReply;
         }
       }
 

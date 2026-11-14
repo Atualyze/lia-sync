@@ -144,7 +144,14 @@ export const toolEnviarMensagemContato = {
           catch (e) { console.error('[tool:enviar_mensagem_contato] Falha na síntese de áudio:', e.code || e.name || 'tts_failed'); }
         }
         if (voiceRes?.base64) {
-          try { await sendAudioFn(targetPhone, voiceRes.base64); }
+          try {
+            await sendAudioFn(targetPhone, voiceRes.base64);
+            const sendTranscription = context.botConfig?.voice?.sendTranscriptionWithAudio !== false && context.botConfig?.voice?.deliveryMode !== 'audio_only';
+            if (sendTranscription) {
+              const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
+              await sendFn(targetPhone, cleanMsg);
+            }
+          }
           catch (e) {
             return { success: false, deliveryUnknown: e?.deliveryUnknown === true, error: e?.deliveryUnknown ? 'O resultado da entrega de áudio é incerto; não foi feito retry nem fallback para texto.' : 'A Evolution recusou a entrega do áudio; o texto não foi enviado automaticamente.' };
           }

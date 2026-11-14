@@ -608,7 +608,10 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
                     const tPhone = getHumanPhone();
                     if (tPhone) {
                       await whatsapp.sendWhatsAppAudio(tPhone, voiceRes.base64);
-                      const okSelf = `🎙️ *Áudio gravado e enviado para você no WhatsApp!* 👆\n\n> "${pendingAudio.message}"`;
+                      const sendTranscription = botConfig?.voice?.sendTranscriptionWithAudio !== false && botConfig?.voice?.deliveryMode !== 'audio_only';
+                      const okSelf = sendTranscription
+                        ? `🎙️ *Áudio gravado e enviado para você no WhatsApp!* 👆\n\n> "${pendingAudio.message}"`
+                        : `🎙️ *Áudio gravado e enviado para você no WhatsApp!* 👆`;
                       return recordSelfTurn(filterReply(okSelf, { isCopilot: true }).text);
                     }
                   }
@@ -1141,11 +1144,12 @@ ${errMsg}`;
                 logger.error?.('[flow] Erro ao enviar áudio do Copiloto no WhatsApp:', audioErr.message);
               }
             }
+            const sendTranscription = botConfig?.voice?.sendTranscriptionWithAudio !== false && botConfig?.voice?.deliveryMode !== 'audio_only';
             const displayReply = rawReply.startsWith(`Estou aqui, ${owner}`)
               ? 'Áudio de demonstração gerado com sucesso para você!'
               : rawReply;
             const okSelfReply = audioSent
-              ? `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}`
+              ? (sendTranscription ? `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}` : `🎙️ *Áudio gravado e enviado para você!* 👆`)
               : `⚠️ *Não consegui enviar o áudio no momento, mas aqui está a resposta:*\n\n${displayReply}`;
             return recordSelfTurn(filterReply(okSelfReply, { isCopilot: true }).text);
           } else {

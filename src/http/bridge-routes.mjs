@@ -52,7 +52,9 @@ function publicLiaConfig(active = {}) {
     voice: {
       voiceName: String(voice.voiceName || 'Aoede'),
       tone: typeof voice.tone === 'string' ? voice.tone.slice(0, 500) : '',
-      autoVoiceOnAudio: voice.autoVoiceOnAudio !== false
+      autoVoiceOnAudio: voice.autoVoiceOnAudio !== false,
+      deliveryMode: voice.deliveryMode === 'audio_only' ? 'audio_only' : 'audio_and_text',
+      sendTranscriptionWithAudio: voice.sendTranscriptionWithAudio !== false && voice.deliveryMode !== 'audio_only'
     },
     // Horário de atendimento: projeção somente-leitura do painel central.
     // Nunca expõe o texto do aviso ao cliente, que é conteúdo do atendimento da Lia.

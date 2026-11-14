@@ -2015,6 +2015,9 @@ function renderAdmin({ force = false } = {}) {
   if (state.adminFormDirty && !force) return;
   const draft = state.adminConfig?.draft;
   if (!draft) return;
+  if (draft.voice && !draft.voice.deliveryMode) {
+    draft.voice.deliveryMode = draft.voice.sendTranscriptionWithAudio === false ? 'audio_only' : 'audio_and_text';
+  }
   document.querySelectorAll('[data-config]').forEach(input => {
     const value = adminGet(draft, input.dataset.config);
     if (input.type === 'checkbox') input.checked = Boolean(value);
@@ -2201,6 +2204,11 @@ function adminReadForm() {
     item.enabled = row.querySelector('[data-faq-enabled]').checked;
   });
   draft.ai.enableToolCalling = draft.ai.agentMode === 'super_agente';
+  if (draft.voice) {
+    const delivery = draft.voice.deliveryMode || (draft.voice.sendTranscriptionWithAudio === false ? 'audio_only' : 'audio_and_text');
+    draft.voice.deliveryMode = delivery;
+    draft.voice.sendTranscriptionWithAudio = delivery !== 'audio_only';
+  }
 }
 
 async function saveAdminDraft(showMessage = false) {
