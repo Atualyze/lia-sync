@@ -67,10 +67,12 @@ export async function evaluateProspectGuards({
     return { allowed: false, reason: 'suppression_check_failed' };
   }
 
-  // 2. Existing client / active session check
-  const existingSession = sessionStore?.get?.(lead.phone);
-  if (existingSession && ((existingSession.history && existingSession.history.length > 0) || existingSession.human)) {
-    return { allowed: false, reason: 'existing_session' };
+  // 2. Existing client / active session check (bypassed in testMode)
+  if (!config.testMode) {
+    const existingSession = sessionStore?.get?.(lead.phone);
+    if (existingSession && ((existingSession.history && existingSession.history.length > 0) || existingSession.human)) {
+      return { allowed: false, reason: 'existing_session' };
+    }
   }
 
   // 3. Business hours in configured timezone (no Sunday), bypassed in testMode
