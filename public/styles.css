@@ -65,12 +65,12 @@
   --accent-pink: #d95d7f;
   --accent-pink-soft: #2e151e;
 
-  --radius-xs: 7px;
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-pill: 9999px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-pill: 6px;
 
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-switch: cubic-bezier(0.32, 0.72, 0, 1);
@@ -927,13 +927,13 @@ details[open] > summary .chevron-svg { transform: rotate(180deg); }
 .nav .nav-item b {
   margin-left: auto;
   flex-shrink: 0;
-  font-size: 10.5px;
-  font-weight: 620;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  background: #252629;
-  color: var(--text-secondary);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-tertiary);
 }
 .badge-mini.ok { background: var(--accent-green-soft); color: var(--accent-green); }
 .badge-mini.warn { background: var(--accent-amber-soft); color: var(--accent-amber); }
@@ -3257,8 +3257,8 @@ button.danger:hover:not(:disabled) {
   align-items: center;
   gap: 6px;
   margin-left: 10px;
-  padding: 2px 9px;
-  border-radius: 999px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
   background: var(--bg-card);
@@ -3351,14 +3351,14 @@ button.danger:hover:not(:disabled) {
   height: 8px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-hairline);
-  border-radius: 999px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .model-bar-fill {
   height: 100%;
   background: var(--lia-green);
-  border-radius: 999px;
+  border-radius: 4px;
   transition: width 0.35s ease;
 }
 
