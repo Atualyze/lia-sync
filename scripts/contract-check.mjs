@@ -42,7 +42,7 @@ const checks = [
   ['setores ficam fora da configuração publicada e valem como projeção de runtime', !adminConfigSchema.includes('sectors') && sectorsProjection.includes('MAX_SECTORS') && bridgeRoutes.includes("u.pathname === '/api/bridge/v1/sectors'")],
   ['motor usa a projeção de setores da ponte com compatibilidade para publicações antigas', clientFlow.includes('Array.isArray(sectors) && sectors.length') && clientFlow.includes("botConfig?.business?.sectors")],
   ['integrações mostram o expediente efetivo e a projeção de setores recebida', operationsRoutes.includes('resumoJanelaDeAtendimento(adminConfig?.active?.business?.hoursConfig)') && operationsRoutes.includes('sectorsProjection: sectorProjection') && app.includes("'Expediente da Lia'") && app.includes("'Setores do Chatwoot'")],
-  ['safe integration test is simulation-only by default', index.includes('Simulador Isolado') && index.includes('Nenhuma dessas ações envia WhatsApp real') && app.includes("/api/dashboard/ping-ai")],
+  ['safe integration test is simulation-only by default', index.includes('Simulador Isolado') && (index.includes('Nenhuma dessas ações envia WhatsApp real') || index.includes('sem envio real no WhatsApp')) && app.includes("/api/dashboard/ping-ai")],
   ['critical overview elements exist', ['overview-health', 'overview-costs', 'overview-models', 'overview-operations', 'admin-publish'].every(id => index.includes(`id="${id}"`))],
   ['Supabase captcha payload uses GoTrue metadata', supabaseClient.includes('gotrue_meta_security: { captcha_token: captchaToken }') && !supabaseClient.includes('...(captchaToken ? { captcha_token: captchaToken } : {})')],
 ];

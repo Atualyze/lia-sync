@@ -3,8 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Lia Sync - Console Operacional & Controle Central</title>
-  <meta name="description" content="Console de controle integrado, telemetria e governança da Lia Sync." />
+  <title>Lia Sync — Console Operacional</title>
+  <meta name="description" content="Console operacional de atendimento via WhatsApp, roteamento de IA, automação e monitoramento em tempo real." />
+  <meta property="og:title" content="Lia Sync — Console Operacional" />
+  <meta property="og:description" content="Console operacional de atendimento via WhatsApp, roteamento de IA, automação e monitoramento em tempo real." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/dashboard/styles.css" />
 </head>
 <body>
@@ -23,12 +28,12 @@
           <img src="/dashboard/logo.webp" alt="Lia Sync" class="login-logo-img" width="46" height="46" onerror="this.onerror=null;this.src='/dashboard/logo.png'" />
           <div class="login-brand-meta">
             <strong>Lia Sync</strong>
-            <span>Console Operacional & Motor de IA</span>
+            <span>Console Operacional</span>
           </div>
         </div>
-        <div class="login-badge-secure">
+        <div class="login-secure-note">
           <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <span>Acesso Seguro</span>
+          <span>Acesso seguro</span>
         </div>
       </div>
 
@@ -83,17 +88,6 @@
   <!-- DASHBOARD APP SHELL -->
   <main id="dashboard-shell" class="shell">
     <aside class="sidebar" id="app-sidebar">
-      <div class="sidebar-chrome">
-        <div class="apple-window-controls" aria-hidden="true">
-          <span class="win-dot close"></span>
-          <span class="win-dot minimize"></span>
-          <span class="win-dot expand"></span>
-        </div>
-        <button type="button" class="icon-btn mobile-only" id="sidebar-close-mobile" title="Fechar menu" aria-label="Fechar menu">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-
       <div class="sidebar-header">
         <div class="brand">
           <div class="brand-mark brand-mark-img">
@@ -101,23 +95,12 @@
           </div>
           <div class="brand-copy">
             <strong>Lia Sync</strong>
-            <span id="sidebar-version-label">Motor Central v2.4.0</span>
+            <span id="sidebar-version-label">Console v2.4.0</span>
           </div>
         </div>
-      </div>
-
-      <!-- STATUS REAL DA CONEXÃO -->
-      <div class="workspace-card" id="sidebar-workspace-card">
-        <div class="workspace-head">
-          <span class="workspace-kicker">Status do Canal</span>
-          <span id="sidebar-hours-pill" class="pill mini pale">verificando…</span>
-        </div>
-        <div class="workspace-line">
-          <span id="sidebar-wa-dot" class="status-dot pending"></span>
-          <strong id="sidebar-wa-title">WhatsApp</strong>
-          <span id="sidebar-wa-pill" class="pill mini pale">sincronizando</span>
-        </div>
-        <small id="sidebar-wa-meta">Consultando instância Evolution API…</small>
+        <button type="button" class="icon-btn mobile-only" id="sidebar-close-mobile" title="Fechar menu" aria-label="Fechar menu">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
 
       <!-- NAVEGAÇÃO COM GRUPOS RECOLHÍVEIS SEM QUEBRA -->
@@ -194,9 +177,8 @@
           <strong id="sidebar-user-name">Autenticando…</strong>
           <span id="sidebar-user-role">Verificando acesso</span>
         </div>
-        <button class="more" id="logout" title="Encerrar sessão">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          <span>Sair</span>
+        <button class="icon-btn" id="logout" title="Encerrar sessão" aria-label="Encerrar sessão">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </div>
     </aside>
@@ -204,6 +186,13 @@
     <!-- ÁREA PRINCIPAL DO APP -->
     <section class="content">
       <div id="global-top-progress" class="global-top-progress" aria-hidden="true"></div>
+      <!-- BARRA REATIVA DE RASCUNHO PENDENTE -->
+      <div id="global-draft-banner" class="global-draft-banner hidden" data-role="admin">
+        <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="global-draft-text">Rascunho pendente</span>
+        <button type="button" id="global-cancel-btn" class="btn-xs-ghost">Cancelar</button>
+        <button type="button" id="global-publish-btn" class="btn-xs-primary">Publicar</button>
+      </div>
       <header class="topbar">
         <div class="topbar-left">
           <button class="icon-btn sidebar-toggle" id="sidebar-toggle" title="Alternar menu lateral" aria-label="Alternar barra lateral">
@@ -212,47 +201,39 @@
           <div class="topbar-title-block">
             <div class="topbar-heading-row">
               <h1 id="page-title">Saúde & Operação</h1>
-              <span id="topbar-model-pill" class="pill mini pale desktop-only" title="Provedor e modelo publicados">carregando IA…</span>
             </div>
           </div>
         </div>
 
         <div class="top-actions">
-          <!-- BARRA REATIVA DE RASCUNHO PENDENTE -->
-          <div id="global-draft-banner" class="global-draft-banner hidden" data-role="admin">
-            <span class="status-dot warn"></span>
-            <span id="global-draft-text">Rascunho pendente</span>
-            <button type="button" id="global-publish-btn" class="btn-xs-primary">Publicar</button>
-          </div>
+          <span class="last-sync desktop-only" id="last-sync">sincronizando…</span>
 
-          <!-- BUSCA RÁPIDA / SPOTLIGHT (Ctrl+K) -->
-          <button type="button" class="cmd-trigger-btn" id="cmd-palette-trigger" title="Busca rápida Spotlight (Ctrl+K)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <span class="desktop-only">Buscar…</span>
-            <kbd class="desktop-only">⌘K</kbd>
-          </button>
-
-          <!-- GLOSSÁRIO DE SIGLAS & TERMOS TÉCNICOS -->
-          <button type="button" class="icon-btn" id="glossary-trigger-btn" title="Glossário de Siglas e Termos Técnicos (clique ou use botão direito em qualquer sigla)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </button>
-
-          <div class="segmented-control" role="group" aria-label="Modo de visualização">
+          <div class="segmented-control hidden" role="group" aria-label="Modo de visualização">
             <button type="button" class="segment-btn active" data-mode="real">WhatsApp</button>
             <button type="button" class="segment-btn" data-mode="simulation">Simulador</button>
             <button type="button" class="segment-btn" data-mode="all">Todas</button>
           </div>
-          <select id="mode-selector" class="mode-selector sr-only" aria-label="Modo de visualização">
-            <option value="real">WhatsApp (Tempo Real)</option>
-            <option value="simulation">Simulador Isolado</option>
-            <option value="all">Todas as Sessões</option>
+          <select id="mode-selector" class="mode-selector sr-only hidden" aria-label="Modo de visualização">
+            <option value="real">WhatsApp</option>
+            <option value="simulation">Simulador</option>
+            <option value="all">Todas</option>
           </select>
-          <span class="last-sync desktop-only" id="last-sync">sincronizando…</span>
+
+          <!-- BUSCA RÁPIDA / SPOTLIGHT (Ctrl+K) -->
+          <button type="button" class="icon-btn" id="cmd-palette-trigger" title="Busca rápida Spotlight (Ctrl+K)" aria-label="Busca rápida Spotlight (Ctrl+K)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
+
           <button type="button" class="icon-btn" id="sound-toggle-btn" title="Ativar/desativar som de clique" aria-label="Som de clique">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
           </button>
           <button class="icon-btn" id="refresh" title="Sincronizar dados agora">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </button>
+
+          <!-- GLOSSÁRIO DE SIGLAS & TERMOS TÉCNICOS -->
+          <button type="button" class="icon-btn" id="glossary-trigger-btn" title="Glossário de Siglas e Termos Técnicos (clique ou use botão direito em qualquer sigla)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
         </div>
       </header>
@@ -264,24 +245,15 @@
         <div class="ops-container">
           <div class="ops-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">
-                Central de Operações · Lia Sync v2.4
-                <span id="overview-live-pill" class="live-pill" title="Atualização automática em tempo real a cada 10s">
-                  <span class="live-pulse-dot"></span>
-                  <span>Tempo real · 10s</span>
-                </span>
-              </div>
-              <h2>Saúde, Prontidão & Governança Operacional</h2>
-              <p>Estado real das integrações, consumo mensal, disjuntores de IA e filas de atendimento.</p>
+              <h2>Saúde &amp; Operação</h2>
+              <p>Integrações, consumo mensal, provedores de IA e atendimentos ativos.</p>
             </div>
             <div class="hero-actions">
-              <button class="admin-ghost-btn" id="overview-go-config" data-role="admin">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <span>Ajustes do Motor</span>
+              <button class="icon-btn" id="overview-go-config" data-role="admin" title="Ajustes do Motor" aria-label="Ajustes do Motor">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               </button>
-              <button class="action-btn-ping" id="refresh-overview">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                <span>Atualizar Visão</span>
+              <button class="icon-btn action-btn-ping" id="refresh-overview" title="Atualizar Visão" aria-label="Atualizar Visão">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               </button>
             </div>
           </div>
@@ -337,10 +309,9 @@
             <section class="panel ops-section overview-chart-card">
               <div class="panel-head">
                 <div>
-                  <strong>Latência &amp; Cadência de Chamadas (Tempo Real)</strong>
-                  <span id="chart-latency-subtitle">Leitura contínua de /api/dashboard/metrics</span>
+                  <strong>Latência das Chamadas</strong>
+                  <span id="chart-latency-subtitle">Leitura contínua das respostas da IA</span>
                 </div>
-                <span class="pill mini" id="chart-latency-badge">- ms</span>
               </div>
               <div id="overview-chart-latency" class="overview-chart-body"></div>
             </section>
@@ -348,8 +319,8 @@
             <section class="panel ops-section overview-chart-card">
               <div class="panel-head">
                 <div>
-                  <strong>Distribuição por Modelo &amp; Taxa de Sucesso</strong>
-                  <span id="chart-models-subtitle">Chamadas reais registradas no período</span>
+                  <strong>Modelos &amp; Taxa de Sucesso</strong>
+                  <span id="chart-models-subtitle">Chamadas registradas no período</span>
                 </div>
                 <span class="pill mini ok" id="chart-success-badge">-%</span>
               </div>
@@ -361,10 +332,9 @@
             <section class="panel ops-section">
               <div class="panel-head">
                 <div>
-                  <strong>Consumo, Telemetria & Orçamento</strong>
-                  <span>Valores calculados a partir do ledger de chamadas</span>
+                  <strong>Consumo &amp; Orçamento</strong>
+                  <span>Custos e volumes calculados pelas chamadas</span>
                 </div>
-                <span class="pill mini amber">Tempo Real</span>
               </div>
               <div id="overview-costs" class="ops-list"></div>
             </section>
@@ -372,12 +342,11 @@
             <section class="panel ops-section">
               <div class="panel-head">
                 <div>
-                  <strong>Provedores & Circuit Breakers</strong>
-                  <span>Saúde das conexões de IA e fallbacks</span>
+                  <strong>Provedores de IA</strong>
+                  <span>Status das conexões e contingência</span>
                 </div>
-                <button class="admin-ghost-btn btn-sm" id="overview-ping-quick" data-role="operator">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                  <span>Ping IA</span>
+                <button class="icon-btn btn-sm" id="overview-ping-quick" data-role="operator" title="Testar Ping IA" aria-label="Testar Ping IA">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 </button>
               </div>
               <div id="overview-models" class="ops-list"></div>
@@ -388,8 +357,8 @@
             <section class="panel ops-section">
               <div class="panel-head">
                 <div>
-                  <strong>Persistência, Sessões & Saúde do Runtime</strong>
-                  <span>Operação auditada e estado real de armazenamento</span>
+                  <strong>Sessões &amp; Persistência</strong>
+                  <span>Armazenamento e filas de atendimento</span>
                 </div>
               </div>
               <div id="overview-operations" class="ops-list"></div>
@@ -398,20 +367,15 @@
             <section class="panel ops-section">
               <div class="panel-head">
                 <div>
-                  <strong>Ambiente de Teste Seguro</strong>
-                  <span>Simulação isolada por padrão</span>
+                  <strong>Simulador de Testes</strong>
+                  <span>Validação isolada sem envio real no WhatsApp</span>
                 </div>
-                <span class="pill mini mint">Isolado</span>
               </div>
-              <p class="ops-safe-copy">Use o modo <b>Simulador Isolado</b> ou o ping autenticado para validar prompts, ferramentas e roteamento. Nenhuma dessas ações envia WhatsApp real.</p>
+              <p class="ops-safe-copy">Use o simulador ou o teste de ping para validar prompts, ferramentas e roteamento antes de publicar.</p>
               <div class="hero-actions">
                 <button class="admin-primary-btn" id="overview-open-simulation">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span>Abrir Simulador Isolado</span>
-                </button>
-                <button class="admin-ghost-btn" id="overview-open-router-test">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                  <span>Testar Roteador IA</span>
+                  <span>Abrir Simulador</span>
                 </button>
               </div>
             </section>
@@ -468,7 +432,6 @@
                 <div class="chat-head-identity">
                   <div class="chat-head-title-row">
                     <strong id="chat-name">Contato</strong>
-                    <span id="chat-origin-tag" class="pill mini pale">WhatsApp</span>
                   </div>
                   <a id="chat-phone-link" href="#" target="_blank" rel="noopener" class="chat-phone-link" title="Abrir conversa diretamente no WhatsApp">
                     <span id="chat-phone">-</span>
@@ -476,18 +439,11 @@
                   </a>
                 </div>
                 <div class="chat-head-actions">
-                  <span class="mode-badge" id="chat-mode">LIA ATIVA</span>
-                  <button type="button" class="icon-btn" id="chat-search-toggle" title="Buscar nesta conversa">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  <button type="button" class="icon-btn" id="chat-more-menu" title="Menu de ações da conversa" aria-label="Menu da conversa">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
                   </button>
-                  <button type="button" class="icon-btn" id="transfer-top" title="Alternar entre Lia (Bot) e Atendimento Humano">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
-                  </button>
-                  <button type="button" class="icon-btn" id="chat-more-menu" title="Mais ações da conversa">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
-                  </button>
-                  <button type="button" class="icon-btn" id="chat-context-toggle" title="Mostrar/ocultar painel de contexto">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                  <button type="button" class="icon-btn desktop-only" id="chat-context-toggle" title="Contexto & Memória" aria-label="Alternar Contexto e Memória" aria-expanded="false" aria-controls="detail-panel">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                   </button>
                 </div>
               </div>
@@ -504,32 +460,9 @@
 
               <!-- HISTÓRICO DE MENSAGENS MULTIMODAL -->
               <div id="messages" class="messages"></div>
-              <button type="button" id="chat-scroll-bottom" class="chat-scroll-bottom hidden" title="Ir para as mensagens mais recentes">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
-                <span>Ir para o final</span>
+              <button type="button" id="chat-scroll-bottom" class="chat-scroll-bottom hidden" title="Ir para as mensagens mais recentes" aria-label="Ir para o final">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
               </button>
-
-              <!-- BARRA INTELIGENTE: MÍDIAS & RESPOSTAS RÁPIDAS -->
-              <div class="chat-smart-bar" id="chat-smart-bar">
-                <div class="smart-chips-scroll">
-                  <button type="button" class="smart-chip media-chip" data-sim-media="audio" title="Simular ou enviar nota de áudio">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-                    <span>Áudio</span>
-                  </button>
-                  <button type="button" class="smart-chip media-chip" data-sim-media="image" title="Simular análise de imagem Vision">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <span>Imagem</span>
-                  </button>
-                  <button type="button" class="smart-chip media-chip" data-sim-media="document" title="Simular envio de documento PDF">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span>Documento</span>
-                  </button>
-                  <span class="smart-divider"></span>
-                  <button type="button" class="smart-chip" data-quick-reply="Olá! Tudo bem? Estou assumindo seu atendimento por aqui. Como posso ajudar?">Saudação humana</button>
-                  <button type="button" class="smart-chip" data-quick-reply="Poderia me confirmar o melhor horário e seu e-mail para deixarmos agendado?">Confirmar horário</button>
-                  <button type="button" class="smart-chip" data-quick-reply="Recebi seus dados e já estou verificando os detalhes. Só um instante!">Em análise</button>
-                </div>
-              </div>
 
               <!-- PREVIEW DE RESPOSTA / CITAÇÃO (REPLY BAR) -->
               <div id="composer-reply-bar" class="composer-reply-bar hidden">
@@ -543,27 +476,82 @@
                 </button>
               </div>
 
-              <!-- COMPOSITOR ESTILO APPLE MESSAGES -->
-              <form id="composer" class="composer">
-                <button type="button" class="icon-btn composer-attach-btn" id="composer-attach-btn" title="Opções de mídia e ações rápidas">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                </button>
-                <input id="message-input" type="text" autocomplete="off" placeholder="Digite uma mensagem…" />
-                <button type="submit" class="btn-primary composer-send-btn" title="Enviar mensagem">
-                  <span>Enviar</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </button>
-              </form>
+              <!-- DOCK DO COMPOSITOR ESTILO WHATSAPP + PAINEL INTEGRADO NO BOTÃO + -->
+              <div class="composer-dock" id="composer-dock">
+                <div class="chat-smart-bar hidden" id="chat-smart-bar" role="dialog" aria-label="Anexos e respostas rápidas">
+                  <div class="wa-panel-section">
+                    <div class="wa-panel-title">Mídias</div>
+                    <div class="wa-attach-grid">
+                      <button type="button" class="wa-attach-item" data-sim-media="audio" title="Simular ou enviar nota de áudio">
+                        <span class="wa-attach-icon audio">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                        </span>
+                        <span>Áudio</span>
+                      </button>
+                      <button type="button" class="wa-attach-item" data-sim-media="image" title="Simular análise de imagem Vision">
+                        <span class="wa-attach-icon image">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        </span>
+                        <span>Imagem</span>
+                      </button>
+                      <button type="button" class="wa-attach-item" data-sim-media="document" title="Simular envio de documento PDF">
+                        <span class="wa-attach-icon doc">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </span>
+                        <span>Documento</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="wa-panel-divider"></div>
+
+                  <div class="wa-panel-section">
+                    <div class="wa-panel-title">Respostas rápidas</div>
+                    <div class="wa-quick-list">
+                      <button type="button" class="wa-quick-item" data-quick-reply="Olá! Tudo bem? Estou assumindo seu atendimento por aqui. Como posso ajudar?">
+                        <span class="wa-quick-dot"></span>
+                        <span>Saudação humana</span>
+                      </button>
+                      <button type="button" class="wa-quick-item" data-quick-reply="Poderia me confirmar o melhor horário e seu e-mail para deixarmos agendado?">
+                        <span class="wa-quick-dot"></span>
+                        <span>Confirmar horário</span>
+                      </button>
+                      <button type="button" class="wa-quick-item" data-quick-reply="Recebi seus dados e já estou verificando os detalhes. Só um instante!">
+                        <span class="wa-quick-dot"></span>
+                        <span>Em análise</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="wa-panel-divider"></div>
+
+                  <button type="button" class="wa-quick-item wa-export-item" id="wa-export-transcript">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Exportar transcrição (.txt)</span>
+                  </button>
+                </div>
+
+                <!-- COMPOSITOR ESTILO WHATSAPP -->
+                <form id="composer" class="composer">
+                  <button type="button" class="icon-btn composer-attach-btn" id="composer-attach-btn" title="Anexos e respostas rápidas" aria-label="Abrir anexos e respostas rápidas" aria-expanded="false" aria-controls="chat-smart-bar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                  <input id="message-input" type="text" autocomplete="off" placeholder="Digite uma mensagem…" />
+                  <button type="submit" class="btn-primary composer-send-btn" title="Enviar mensagem" aria-label="Enviar mensagem">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  </button>
+                </form>
+              </div>
             </div>
           </section>
 
-          <aside class="detail panel" id="detail-panel">
+          <aside class="detail" id="detail-panel" aria-label="Contexto e Memória">
             <div class="panel-head">
               <div>
                 <strong>Contexto & Memória</strong>
                 <span>CRM extraído, mídias e sessão</span>
               </div>
-              <button type="button" class="icon-btn mobile-only" id="detail-close-mobile" title="Fechar contexto">
+              <button type="button" class="icon-btn drawer-close-btn" id="detail-close-mobile" title="Fechar contexto" aria-label="Fechar contexto">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
@@ -582,13 +570,14 @@
           <!-- CABEÇALHO FIXO DE PUBLICAÇÃO -->
           <div class="admin-hero panel sticky-admin-bar">
             <div class="hero-copy">
-              <div class="section-tag">Controle Central Integrado · Rascunho Auditado</div>
-              <h2>Ajustes do Motor Lia Sync</h2>
-              <p id="admin-diff-summary">Gerencie todos os parâmetros do motor. Expanda as seções abaixo para editar.</p>
+              <h2>Ajustes da Assistente</h2>
+              <p id="admin-diff-summary">Edite os parâmetros abaixo e publique quando desejar aplicar no atendimento.</p>
             </div>
             <div class="admin-hero-actions">
               <span id="admin-version-badge" class="pill pale">carregando…</span>
-              <button id="admin-reset-draft" type="button" class="admin-ghost-btn">Restaurar Publicado</button>
+              <button id="admin-reset-draft" type="button" class="icon-btn" title="Restaurar publicado" aria-label="Restaurar publicado">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
               <button id="admin-publish" type="button" class="admin-primary-btn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 <span>Publicar Alterações</span>
@@ -602,9 +591,10 @@
           <div class="accordion-toolbar panel">
             <div class="accordion-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input id="admin-search-filter" type="search" placeholder="Filtrar ajuste, modelo, voz, expediente, FAQ…" />
+              <input id="admin-search-filter" type="search" placeholder="Filtrar ajuste, modelo, voz, FAQ…" />
             </div>
             <div class="accordion-quick-nav">
+              <button type="button" class="chip-btn" data-open-acc="acc-simulator">Simulador</button>
               <button type="button" class="chip-btn" data-open-acc="acc-identity">Identidade</button>
               <button type="button" class="chip-btn" data-open-acc="acc-ai">Motor IA</button>
               <button type="button" class="chip-btn" data-open-acc="acc-voice">Voz TTS</button>
@@ -615,28 +605,32 @@
               <button type="button" class="chip-btn" data-open-acc="acc-messages">Roteiros</button>
               <button type="button" class="chip-btn" data-open-acc="acc-faq">FAQ</button>
               <button type="button" class="chip-btn" data-open-acc="acc-history">Versões</button>
+              <button type="button" class="chip-btn" data-open-acc="acc-prospecting">Prospecção</button>
             </div>
             <div class="accordion-actions">
-              <button type="button" class="admin-ghost-btn btn-sm" id="admin-expand-all">Expandir</button>
-              <button type="button" class="admin-ghost-btn btn-sm" id="admin-collapse-all">Recolher</button>
+              <button type="button" class="icon-btn btn-sm" id="admin-expand-all" title="Expandir todas as seções" aria-label="Expandir todas as seções">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+              </button>
+              <button type="button" class="icon-btn btn-sm" id="admin-collapse-all" title="Recolher todas as seções" aria-label="Recolher todas as seções">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>
+              </button>
             </div>
           </div>
 
           <div class="accordion-stack" id="admin-accordion-stack">
             <!-- MENU RECOLHÍVEL 1: SIMULADOR ISOLADO DE RASCUNHO -->
-            <details class="config-accordion panel" id="acc-simulator" open>
+            <details class="config-accordion panel" id="acc-simulator">
               <summary class="config-accordion-head">
                 <div class="acc-title-group">
                   <span class="acc-icon tint-mint">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
+                    <svg class="svg-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><polygon points="10 8.5 16 12 10 15.5 10 8.5"/></svg>
                   </span>
                   <div>
-                    <strong>Simulador de Rascunho (Preview Isolado)</strong>
-                    <span>Valide o comportamento da Lia com as configurações em edição antes de publicar no WhatsApp</span>
+                    <strong>Simulador de Rascunho</strong>
+                    <span>Teste respostas com os ajustes atuais antes de publicar no WhatsApp</span>
                   </div>
                 </div>
                 <div class="acc-meta">
-                  <span class="pill mini mint">Simulação Segura</span>
                   <svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 </div>
               </summary>
@@ -658,15 +652,15 @@
             </details>
 
             <!-- MENU RECOLHÍVEL 2: IDENTIDADE, PERSONA & DIRETRIZ MESTRE -->
-            <details class="config-accordion panel" id="acc-identity" data-section-keys="identity,business.areas,business.timezone,ai.systemInstruction" open>
+            <details class="config-accordion panel" id="acc-identity" data-section-keys="identity,business.areas,business.timezone,ai.systemInstruction">
               <summary class="config-accordion-head">
                 <div class="acc-title-group">
                   <span class="acc-icon tint-blue">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M15 8h2"/><path d="M15 12h2"/><path d="M7 16h10"/></svg>
                   </span>
                   <div>
-                    <strong>1. Identidade, Persona & Diretrizes do Sistema</strong>
-                    <span>Nome da assistente, empresa, responsável, apelidos, tom de voz e System Prompt da IA</span>
+                    <strong>Identidade &amp; Diretrizes</strong>
+                    <span>Nome da assistente, empresa, tom de voz e instrução principal da IA</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -731,15 +725,15 @@
             </details>
 
             <!-- MENU RECOLHÍVEL 3: MOTOR DE IA, ROTEAMENTO & FALLBACKS -->
-            <details class="config-accordion panel" id="acc-ai" data-section-keys="ai.activeProvider,ai.activeModel,ai.fallbackModels,ai.agentMode,ai.autoRouting,ai.contextTurns,ai.maxStoredHistory,ai.maxOutputTokens,ai.openrouterFreeOnly,ai.structuredOutputs,ai.requireParameters" open>
+            <details class="config-accordion panel" id="acc-ai" data-section-keys="ai.activeProvider,ai.activeModel,ai.fallbackModels,ai.agentMode,ai.autoRouting,ai.contextTurns,ai.maxStoredHistory,ai.maxOutputTokens,ai.openrouterFreeOnly,ai.structuredOutputs,ai.requireParameters">
               <summary class="config-accordion-head">
                 <div class="acc-title-group">
                   <span class="acc-icon tint-purple">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
                   </span>
                   <div>
-                    <strong>2. Motor de IA, Roteador de Capacidades & Fallbacks</strong>
-                    <span>Provedor principal, seleção de modelo, cadeia de reserva, modo Super Agente e janela de contexto</span>
+                    <strong>Motor de IA &amp; Fallbacks</strong>
+                    <span>Provedor principal, modelo ativo, cadeia de reserva e janela de contexto</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -772,7 +766,9 @@
                       </div>
                       <div class="hero-actions">
                         <button id="admin-ai-change-model" type="button" class="admin-ghost-btn btn-sm">Trocar Modelo</button>
-                        <button id="admin-ai-models-refresh" type="button" class="admin-ghost-btn btn-sm">Sincronizar Catálogo API</button>
+                        <button id="admin-ai-models-refresh" type="button" class="icon-btn btn-sm" title="Sincronizar catálogo da API" aria-label="Sincronizar catálogo da API">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                        </button>
                       </div>
                     </div>
                     <select id="admin-ai-model" data-config="ai.activeModel" class="hidden" aria-label="Selecionar novo modelo" style="margin-top:10px;">
@@ -827,8 +823,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                   </span>
                   <div>
-                    <strong>3. Motor de Voz Neural & Síntese Offline / Nuvem</strong>
-                    <span>Vozes brasileiras humanas consistentes, suporte offline Piper ONNX na VPS e teste imediato</span>
+                    <strong>Voz &amp; Áudio</strong>
+                    <span>Seleção de voz neural, velocidade de locução e envio em áudio</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -871,8 +867,8 @@
                     </div>
                     <div class="voice-test-actions">
                       <button id="btn-test-voice" type="button" class="btn btn-sm action-btn-ping">
-                        <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                        <span>Ouvir Voz da Lia Agora</span>
+                        <svg class="svg-icon sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <span>Ouvir Voz Selecionada</span>
                       </button>
                     </div>
                   </div>
@@ -905,8 +901,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                   </span>
                   <div>
-                    <strong>4. Operações, Automação, Follow-up & Transbordo Humano</strong>
-                    <span>Processamento multimodal, regras de reengajamento, presença humana e destino de alertas</span>
+                    <strong>Automação &amp; Transbordo</strong>
+                    <span>Leitura de mídias, follow-up automático e envio de alertas humanos</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1007,8 +1003,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </span>
                   <div>
-                    <strong>5. Janela de Atendimento & Expediente Comercial</strong>
-                    <span>Horários de funcionamento da Lia (projetados em modo somente-leitura para o Chatwoot Lia)</span>
+                    <strong>Expediente Comercial</strong>
+                    <span>Dias e horários de atendimento automático e aviso fora do horário</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1080,8 +1076,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </span>
                   <div>
-                    <strong>6. Integração Google Calendar & Regras de Agenda</strong>
-                    <span>Consulta de horários livres (/freeBusy), criação de compromissos, duração de slots e expediente da agenda</span>
+                    <strong>Google Calendar &amp; Agenda</strong>
+                    <span>Consulta de horários livres, duração de atendimentos e novos eventos</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1126,8 +1122,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                   </span>
                   <div>
-                    <strong>7. Segurança, Guardrails & Mensagens de Contingência</strong>
-                    <span>Proteção anti-alucinação, bloqueio de instruções restritas, resposta de emergência e fallback técnico</span>
+                    <strong>Segurança &amp; Contingência</strong>
+                    <span>Regras de proteção, mensagens de bloqueio e resposta em falhas</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1162,8 +1158,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>
                   </span>
                   <div>
-                    <strong>8. Mensagens-Base & Roteiros de Triagem</strong>
-                    <span>Saudação inicial, planos/serviços, encaminhamento ao responsável, políticas e condições comerciais</span>
+                    <strong>Mensagens &amp; Roteiros</strong>
+                    <span>Saudação inicial, atendimento comercial, políticas e pagamentos</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1200,12 +1196,14 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                   </span>
                   <div>
-                    <strong>9. Base de Conhecimento (FAQ Dinâmico)</strong>
-                    <span id="admin-faq-summary">Respostas determinísticas prioritárias e contexto oficial da Lia</span>
+                    <strong>Base de Conhecimento (FAQ)</strong>
+                    <span id="admin-faq-summary">Respostas rápidas e contexto oficial do atendimento</span>
                   </div>
                 </div>
                 <div class="acc-meta">
-                  <button id="admin-add-faq" type="button" class="admin-ghost-btn btn-sm">+ Nova Pergunta</button>
+                  <button id="admin-add-faq" type="button" class="icon-btn btn-sm" title="Adicionar nova pergunta" aria-label="Adicionar nova pergunta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
                   <svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 </div>
               </summary>
@@ -1222,8 +1220,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
                   </span>
                   <div>
-                    <strong>10. Histórico de Revisões & Rollback Instantâneo</strong>
-                    <span>Linha do tempo das publicações salvas no Supabase com restauração em 1 clique</span>
+                    <strong>Histórico de Versões</strong>
+                    <span>Revisões publicadas com restauração rápida</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1246,8 +1244,8 @@
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>
                   </span>
                   <div>
-                    <strong>11. Prospecção Ativa & Importação de Leads (CSV/JSON)</strong>
-                    <span>Regras de aquecimento, janela de envio, template padrão, importação de listas e controle de ativação</span>
+                    <strong>Prospecção Ativa</strong>
+                    <span>Limites diários, janela de envio e importação de listas (CSV/JSON)</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -1283,7 +1281,7 @@
                   </label>
                 </div>
 
-                <hr style="border:0;border-top:1px solid var(--border);margin:18px 0;" />
+                <hr style="border:0;border-top:1px solid var(--border-hairline);margin:18px 0;" />
 
                 <div class="admin-form-grid">
                   <label>Nome da Nova Lista
@@ -1292,7 +1290,7 @@
                   <label>Segmento
                     <input id="prospect-list-segment" type="text" placeholder="Ex.: Clínicas odontológicas" maxlength="120" />
                   </label>
-                  <label>Base de Consentimento (LGPD)
+                  <label class="wide">Base de Consentimento (LGPD)
                     <input id="prospect-list-consent" type="text" placeholder="Ex.: Cadastro evento / Legítimo interesse" maxlength="160" />
                   </label>
                   <label>Início Programado (opcional)
@@ -1301,16 +1299,18 @@
                   <label>Término Programado (opcional)
                     <input id="prospect-list-end" type="datetime-local" />
                   </label>
-                  <label>Carregar Arquivo (.csv ou .json)
+                  <label class="wide">Carregar Arquivo (.csv ou .json)
                     <input id="prospect-file-input" type="file" accept=".csv,.json,.txt" />
                   </label>
                   <label class="wide">Conteúdo CSV ou JSON (colunas: nome, telefone, segmento)
                     <textarea id="prospect-leads-text" rows="5" placeholder="nome,telefone,segmento&#10;Ana Silva,(85) 99999-1111,Clínica"></textarea>
                   </label>
                   <div class="wide" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <button id="prospect-import-btn" type="button" class="admin-primary-btn">Importar Lista de Leads</button>
-                    <button id="prospect-refresh-btn" type="button" class="admin-ghost-btn">Atualizar Listas</button>
-                    <button id="prospect-test-tick-btn" type="button" class="admin-ghost-btn">Executar Teste Agora</button>
+                    <button id="prospect-import-btn" type="button" class="admin-primary-btn">Importar Lista</button>
+                    <button id="prospect-test-tick-btn" type="button" class="admin-ghost-btn">Testar Agora</button>
+                    <button id="prospect-refresh-btn" type="button" class="icon-btn" title="Atualizar listas" aria-label="Atualizar listas">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    </button>
                     <span id="prospect-import-status" class="field-hint" aria-live="polite"></span>
                   </div>
                 </div>
@@ -1331,45 +1331,15 @@
         <div class="ops-container">
           <div class="ops-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Arquitetura Cognitiva · Motor v2.4.0</div>
-              <h2>Capacidades da IA & Roteador Inteligente</h2>
-              <p>Inspeção ao vivo dos modelos, capacidades exigidas por intenção, módulos ativos e simulador de decisão de roteamento.</p>
+              <h2>Roteador de IA</h2>
+              <p>Modelos disponíveis, capacidades por tipo de tarefa e módulos ativos.</p>
             </div>
-            <button class="action-btn-ping" id="agent-refresh-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              <span>Atualizar Arquitetura</span>
+            <button class="icon-btn action-btn-ping" id="agent-refresh-btn" title="Atualizar arquitetura" aria-label="Atualizar arquitetura">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             </button>
           </div>
 
           <div class="kpi-strip" id="agent-runtime-strip"></div>
-
-          <section class="panel ops-section">
-            <div class="panel-head">
-              <div>
-                <strong>Simulador do Roteador por Capacidades (<code>src/model-router.mjs</code>)</strong>
-                <span>Digite qualquer frase para ver quais capacidades e qual modelo a Lia escolhe em tempo real</span>
-              </div>
-              <span class="pill mini mint">Tempo Real</span>
-            </div>
-            <div class="router-tester-grid">
-              <label class="wide">Frase ou comando do usuário / gestor
-                <input id="router-test-input" type="text" value="Pesquise na web a cotação do dólar hoje e agende uma reunião amanhã às 14h" placeholder="Digite um comando para testar o roteador…" />
-              </label>
-              <label class="toggle-field">
-                <input id="router-test-doc" type="checkbox" />
-                <span>Simular anexo PDF / Imagem na sessão (<code>document_context</code>)</span>
-              </label>
-              <label class="toggle-field">
-                <input id="router-test-owner" type="checkbox" />
-                <span>Simular comando do Proprietário (Copiloto)</span>
-              </label>
-              <button type="button" class="admin-primary-btn" id="router-test-btn">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <span>Inspecionar Decisão de Rota</span>
-              </button>
-            </div>
-            <div id="router-test-output" class="router-test-output"></div>
-          </section>
 
           <section class="panel ops-section">
             <div class="panel-head">
@@ -1420,9 +1390,8 @@
         <div class="metrics-container ops-container">
           <div class="ops-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Observabilidade em Tempo Real</div>
-              <h2>Telemetria, Latência & Custos de IA</h2>
-              <p>Métricas persistidas no Supabase, status dos disjuntores (circuit breakers), histórico de chamadas e controle de orçamento.</p>
+              <h2>Monitoramento &amp; Custos</h2>
+              <p>Latência, consumo de tokens, custo mensal estimado e chamadas recentes.</p>
             </div>
             <div class="toolbar-actions">
               <select id="metrics-refresh-rate" class="metrics-select" title="Intervalo de atualização">
@@ -1431,11 +1400,15 @@
                 <option value="30000">Auto: 30s</option>
                 <option value="0">Pausado</option>
               </select>
-              <button class="admin-ghost-btn" id="btn-refresh-metrics" title="Atualizar agora">Atualizar</button>
-              <button class="admin-ghost-btn" id="btn-reset-metrics" data-role="admin" title="Zerar métricas em memória; o histórico persistente será preservado">Zerar Memória</button>
+              <button class="icon-btn" id="btn-refresh-metrics" title="Atualizar métricas" aria-label="Atualizar métricas">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
+              <button class="icon-btn danger" id="btn-reset-metrics" data-role="admin" title="Zerar métricas em memória; o histórico persistente será preservado" aria-label="Zerar métricas em memória">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
               <button class="action-btn-ping primary-ping" id="btn-ping-ai" data-role="operator">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                <span>Testar Latência (Ping)</span>
+                <span>Ping IA</span>
               </button>
             </div>
           </div>
@@ -1609,9 +1582,8 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="admin-hero-copy">
-              <span class="eyebrow">Gerenciador de Tarefas · Somente Leitura</span>
-              <h2>Monitoramento em Tempo Real da VPS</h2>
-              <p id="vps-subtitle">CPU, memória RAM, ZRAM/Swap, disco, containers Docker e processos do host em tempo real (sem ações destrutivas).</p>
+              <h2>Monitor da VPS</h2>
+              <p id="vps-subtitle">Uso de CPU, memória RAM, Swap/ZRAM, disco, containers Docker e processos ativos.</p>
             </div>
             <div class="admin-hero-actions">
               <label class="ops-select-wrap">
@@ -1623,7 +1595,9 @@
                   <option value="0">Pausado</option>
                 </select>
               </label>
-              <button id="btn-refresh-vps" class="btn-secondary">Atualizar Agora</button>
+              <button id="btn-refresh-vps" class="icon-btn btn-secondary" title="Atualizar VPS agora" aria-label="Atualizar VPS agora">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
             </div>
           </div>
 
@@ -1761,14 +1735,15 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Lia Sync · Catálogo de Tool Calling</div>
-              <h2>Ferramentas & Consulta Web em Tempo Real</h2>
-              <p>Habilite ou desabilite ferramentas nativas da Lia e o Google Search Grounding. Alterações entram em vigor ao publicar.</p>
+              <h2>Ferramentas &amp; Busca Web</h2>
+              <p>Habilite ou configure ferramentas da assistente. As alterações valem após publicar.</p>
             </div>
             <div class="hero-actions">
-              <button class="admin-ghost-btn" id="tools-refresh">Atualizar Catálogo</button>
-              <button class="admin-primary-btn" id="tools-save" data-role="admin">Salvar Rascunho</button>
-              <button class="action-btn-ping" id="tools-publish" data-role="admin">Salvar & Publicar Agora</button>
+              <button class="icon-btn" id="tools-refresh" title="Atualizar catálogo" aria-label="Atualizar catálogo">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
+              <button class="admin-primary-btn" id="tools-save" data-role="admin">Salvar</button>
+              <button class="action-btn-ping" id="tools-publish" data-role="admin">Publicar</button>
             </div>
           </div>
           <div id="tools-feedback" class="admin-feedback hidden" role="status"></div>
@@ -1795,7 +1770,9 @@
                 <span id="tools-catalog-count">Carregando…</span>
               </div>
               <div class="hero-actions" data-role="admin">
-                <button type="button" class="admin-ghost-btn btn-sm" id="tools-enable-all">Marcar todas</button>
+                <button type="button" class="icon-btn btn-sm" id="tools-enable-all" title="Marcar todas as ferramentas" aria-label="Marcar todas as ferramentas">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </button>
               </div>
             </div>
             <div id="tools-catalog" class="tool-catalog"></div>
@@ -1810,14 +1787,38 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Conectividade & Runtime</div>
-              <h2>Integrações, Ponte Chatwoot & Ledger de Webhooks</h2>
-              <p>Estado verificado diretamente no servidor. Credenciais e payloads sensíveis permanecem protegidos no backend.</p>
+              <h2>Integrações &amp; Webhooks</h2>
+              <p>Conectividade dos canais, banco de dados, provedores e eventos recentes.</p>
             </div>
-            <button class="action-btn-ping" id="integrations-refresh">Verificar Agora</button>
+            <button class="icon-btn action-btn-ping" id="integrations-refresh" title="Verificar integrações agora" aria-label="Verificar integrações agora">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
           </div>
           <div id="integrations-feedback" class="admin-feedback hidden" role="status"></div>
-          <div id="integrations-status" class="integration-grid"></div>
+          <section class="panel ops-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Conectividade, Ponte Chatwoot &amp; Provedores</h3>
+                <p>Estado operacional da ponte, canais, banco de dados e provedores de IA verificados no servidor</p>
+              </div>
+              <span id="integrations-status-count" class="badge-mini">0 itens</span>
+            </div>
+            <div class="table-wrap integrations-table-wrap">
+              <table class="data-table integrations-table">
+                <thead>
+                  <tr>
+                    <th>Serviço / Integração</th>
+                    <th>Categoria</th>
+                    <th>Estado</th>
+                    <th>Detalhes &amp; Diagnóstico</th>
+                  </tr>
+                </thead>
+                <tbody id="integrations-status">
+                  <tr><td colspan="4" class="muted">Carregando…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section class="panel ops-section">
             <div class="panel-head">
@@ -1854,11 +1855,12 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Controle de Acesso Baseado em Papéis (RBAC)</div>
-              <h2>Usuários, Perfis & Trilha de Auditoria</h2>
-              <p>Gerencie permissões (<code>admin</code>, <code>operator</code>, <code>viewer</code>) e acompanhe todas as ações administrativas registradas.</p>
+              <h2>Acessos &amp; Auditoria</h2>
+              <p>Gerencie papéis de acesso (<code>admin</code>, <code>operator</code>, <code>viewer</code>) e consulte as ações registradas.</p>
             </div>
-            <button class="action-btn-ping" id="users-refresh">Atualizar</button>
+            <button class="icon-btn action-btn-ping" id="users-refresh" title="Atualizar usuários e auditoria" aria-label="Atualizar usuários e auditoria">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
           </div>
           <div id="users-feedback" class="admin-feedback hidden" role="status"></div>
 
@@ -1907,11 +1909,12 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="hero-copy">
-              <div class="section-tag">Intervenção Humana</div>
-              <h2>Fila de Transbordos & Atendimentos Assumidos</h2>
-              <p>Contatos que solicitaram falar com o responsável ou foram transferidos para atendimento humano.</p>
+              <h2>Fila de Atendimento Humano</h2>
+              <p>Contatos que pediram atendimento humano ou aguardam retorno da equipe.</p>
             </div>
-            <button class="action-btn-ping" id="refresh-handoff" title="Atualizar fila agora">Atualizar Fila</button>
+            <button class="icon-btn action-btn-ping" id="refresh-handoff" title="Atualizar fila agora" aria-label="Atualizar fila agora">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
           </div>
           <div id="handoff-list" class="handoff-list">
             <div class="empty-state panel">

@@ -484,7 +484,7 @@ function decorateTechnicalTerms(root = document.body) {
     '.kpi-label', '.kpi-sub', '.panel-head span', '.panel-head strong',
     '.acc-title-group strong', '.acc-title-group span', '.field-hint',
     '.ops-muted', '.section-tag', '.admin-lead', '.metrics-table th',
-    '.integration-card-head strong', '.integration-card p', '.tool-meta'
+    '.integrations-table td strong', '.integrations-table .integrations-detail', '.tool-meta'
   ];
   const targets = root.querySelectorAll(selectors.join(','));
   targets.forEach((el) => {
@@ -603,6 +603,9 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#apple-context-menu') && !e.target.closest('#chat-more-menu') && !e.target.closest('#chat-more-btn') && !e.target.closest('#composer-attach-btn') && !e.target.closest('[data-msg-menu]')) {
     closeAppleContextMenu();
   }
+  if (!e.target.closest('#chat-smart-bar') && !e.target.closest('#composer-attach-btn')) {
+    closeComposerAttachPanel();
+  }
 });
 document.addEventListener('contextmenu', (e) => {
   const termEl = e.target.closest('.tech-term[data-tech-key]');
@@ -624,6 +627,7 @@ document.addEventListener('contextmenu', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeAppleContextMenu();
+    closeComposerAttachPanel();
     hideTechTooltip();
     if (state.replyTo) clearReplyTo();
   }
@@ -832,7 +836,6 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
   const waPill = $('#sidebar-wa-pill');
   const waMeta = $('#sidebar-wa-meta');
   const hoursPill = $('#sidebar-hours-pill');
-  const topbarModel = $('#topbar-model-pill');
 
   if (integ?.evolution) {
     const ev = integ.evolution;
@@ -870,13 +873,6 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
       hoursPill.textContent = 'Fora de hora';
       hoursPill.className = 'pill mini amber';
     }
-  }
-
-  const provider = cfg?.active?.ai?.activeProvider || hlth?.system?.provider || state.metrics?.system?.activeProvider;
-  const model = cfg?.active?.ai?.activeModel || hlth?.system?.model || state.metrics?.system?.activeModel;
-  if (topbarModel && (provider || model)) {
-    topbarModel.textContent = `${provider || 'IA'} · ${model || '-'}`;
-    topbarModel.className = 'pill mini mint desktop-only';
   }
 }
 
@@ -1219,6 +1215,14 @@ function setReplyTo(message, index) {
   $('#message-input')?.focus();
 }
 
+function closeComposerAttachPanel() {
+  const panel = $('#chat-smart-bar');
+  const btn = $('#composer-attach-btn');
+  panel?.classList.add('hidden');
+  btn?.classList.remove('open');
+  btn?.setAttribute('aria-expanded', 'false');
+}
+
 function clearReplyTo() {
   state.replyTo = null;
   $('#composer-reply-bar')?.classList.add('hidden');
@@ -1309,13 +1313,13 @@ function renderList() {
       const statusLabel = item.human ? 'humano' : 'lia ativa';
       const statusClass = item.human ? 'human' : 'bot';
       const mediaIcon = detectConversationMediaBadge(item.preview);
-      const originBadge = item.origin === 'simulation' ? '<span class="pill mini pale" style="font-size:9.5px;padding:1px 6px;">SIM</span>' : '';
+      const originTag = item.origin === 'simulation' ? '<span class="ops-inline-sep">· Simulador</span>' : '';
 
       return `<div class="conversation ${isSelected}" data-phone="${esc(item.phone)}">
         <div class="contact-avatar">${esc(initials(titleName))}</div>
         <div class="conversation-body">
           <div class="conversation-top"><strong title="${titleName}">${titleName}</strong><time>${timeLabel}</time></div>
-          <div class="conversation-phone-tag">${phoneLabel} ${originBadge}</div>
+          <div class="conversation-phone-tag">${phoneLabel}${originTag}</div>
           <p>${mediaIcon}${previewText}</p>
           <span class="mode-mini ${statusClass}">${statusLabel}</span>
         </div>
@@ -1327,7 +1331,16 @@ function renderList() {
     el.addEventListener('click', () => {
       state.selected = el.dataset.phone;
       clearReplyTo();
-      $('#inbox-grid')?.classList.add('mobile-chat-open');
+      const grid = $('#inbox-grid');
+      if (grid) {
+        grid.classList.add('mobile-chat-open');
+        grid.classList.remove('mobile-context-open');
+      }
+      const ctxBtn = $('#chat-context-toggle');
+      if (ctxBtn && window.innerWidth <= 1120) {
+        ctxBtn.classList.remove('active');
+        ctxBtn.setAttribute('aria-expanded', 'false');
+      }
       render();
     });
 
@@ -1400,17 +1413,9 @@ function renderChat({ forceRender = false } = {}) {
 
   $('#chat-avatar').textContent = initials(dName);
   $('#chat-name').textContent = dName;
-  const originTag = $('#chat-origin-tag');
-  if (originTag) {
-    originTag.textContent = session.origin === 'simulation' ? 'Simulador' : 'WhatsApp';
-    originTag.className = `pill mini ${session.origin === 'simulation' ? 'amber' : 'mint'}`;
-  }
   const phoneLink = $('#chat-phone-link');
   if (phoneLink) phoneLink.href = cleanNum ? `https://wa.me/${cleanNum}` : '#';
   $('#chat-phone').textContent = fPhone;
-  const badge = $('#chat-mode');
-  badge.textContent = session.human ? 'HUMANO' : 'LIA ATIVA';
-  badge.className = `mode-badge ${session.human ? 'human' : 'bot'}`;
 
   const rawHistory = session.history || [];
   const searchQ = (state.chatSearchQuery || '').trim().toLowerCase();
@@ -1600,16 +1605,6 @@ function renderChat({ forceRender = false } = {}) {
           },
           { divider: true },
           {
-            label: 'Testar Frase no Roteador IA',
-            icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-            action: () => {
-              const routerInput = $('#router-test-input');
-              if (routerInput) routerInput.value = String(msg.content || '').slice(0, 220);
-              showView('agent');
-              setTimeout(() => runRouterTest(), 120);
-            }
-          },
-          {
             label: 'Reutilizar Texto no Campo de Envio',
             icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
             action: () => {
@@ -1666,7 +1661,7 @@ function renderChat({ forceRender = false } = {}) {
   if (submitBtn) submitBtn.disabled = false;
   $('#message-input').placeholder = isRealSession
     ? (session.human ? 'Responder cliente via WhatsApp (modo humano ativo)…' : 'Responder cliente via WhatsApp (assume atendimento)…')
-    : 'Digite uma mensagem de teste ou use os chips acima…';
+    : 'Digite uma mensagem de teste ou use o botão +…';
 
   const doc = session.lastAnalyzedDocument;
   const docHtml = doc
@@ -1688,7 +1683,7 @@ function renderChat({ forceRender = false } = {}) {
         <div>
           <strong>${esc(dName)}</strong>
           <span style="display:block;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);">${esc(fPhone)}</span>
-          ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent-blue-hover);text-decoration:none;display:inline-block;margin-top:4px;">Abrir no WhatsApp ↗</a>` : ''}
+          ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="detail-wa-link"><span>Abrir no WhatsApp</span><svg class="svg-icon xs" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></a>` : ''}
         </div>
       </div>
     </div>
@@ -1702,8 +1697,10 @@ function renderChat({ forceRender = false } = {}) {
     </div>
     ${crmHtml}
     ${docHtml}
-    <button class="detail-action primary" id="toggle-mode">${session.human ? 'Reativar Lia (Bot)' : 'Transferir para Humano'}</button>
-    <button class="detail-action" id="clear-session">${session.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa'}</button>
+    <div class="detail-actions">
+      <button type="button" class="detail-action primary" id="toggle-mode">${session.human ? 'Reativar Lia (Bot)' : 'Transferir para Humano'}</button>
+      <button type="button" class="detail-action danger" id="clear-session">${session.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa'}</button>
+    </div>
   `;
   $('#toggle-mode')?.addEventListener('click', () => setMode(session.human ? 'bot' : 'human'));
   $('#clear-session')?.addEventListener('click', clearSession);
@@ -1782,18 +1779,18 @@ async function renderAgent({ force = false } = {}) {
       capTbody.innerHTML = entries.map(([modelId, meta]) => {
         const isPrimary = modelId === rt.activeModel;
         const isFallback = Array.isArray(rt.fallbackModels) && rt.fallbackModels.some(f => f.includes(modelId));
-        const roleBadge = isPrimary
-          ? '<span class="pill mini mint">Principal Publicado</span>'
+        const roleTag = isPrimary
+          ? '<span class="inline-role-tag is-primary">Principal</span>'
           : isFallback
-          ? '<span class="pill mini amber">Reserva / Fallback</span>'
-          : '<span class="pill mini pale">Roteável sob demanda</span>';
+          ? '<span class="inline-role-tag is-fallback">Fallback</span>'
+          : '<span class="inline-role-tag is-demand">Sob demanda</span>';
         const caps = (meta.capabilities || []).map(c => `<span class="cap-chip">${esc(c)}</span>`).join('');
         return `<tr>
           <td><strong>${esc(modelId)}</strong></td>
           <td>${esc((meta.provider || 'gemini').toUpperCase())}</td>
           <td>${caps}</td>
           <td><code>${Number(meta.thinkingBudget || 0)} tokens</code></td>
-          <td>${roleBadge}</td>
+          <td>${roleTag}</td>
         </tr>`;
       }).join('');
     }
@@ -1801,24 +1798,27 @@ async function renderAgent({ force = false } = {}) {
     const modContainer = $('#agent-modules-container');
     if (modContainer) {
       const groups = [
-        ['capabilities', 'Capacidades Cognitivas & Execução'],
-        ['knowledge', 'Conhecimento & Regras de Negócio'],
-        ['controls', 'Controles Operacionais & Segurança']
+        ['capabilities', 'Capacidades & Execução'],
+        ['knowledge', 'Conhecimento & Regras'],
+        ['controls', 'Controles & Segurança']
       ];
       modContainer.innerHTML = groups.map(([groupKey, groupTitle]) => {
         const items = Object.entries(data[groupKey] || {});
         if (!items.length) return '';
         return `<section class="panel ops-section">
-          <div class="panel-head"><div><strong>${esc(groupTitle)}</strong><span>Clique em um módulo para inspecionar parâmetros reais</span></div></div>
+          <div class="panel-head"><div><strong>${esc(groupTitle)}</strong><span>Clique em um módulo para ver os detalhes</span></div></div>
           <div class="ops-list">
             ${items.map(([topicKey, item]) => `
-              <div class="ops-row agent-card-item" data-topic="${esc(topicKey)}" style="cursor:pointer;">
-                <div>
+              <button type="button" class="ops-row agent-card-item" data-topic="${esc(topicKey)}">
+                <div class="agent-card-copy">
                   <strong>${esc(item.title || topicKey)}</strong>
                   <div class="ops-muted">${esc(item.description || '')}</div>
                 </div>
-                <span class="pill mini pale">Inspecionar →</span>
-              </div>
+                <span class="row-inspect-link">
+                  <span>Inspecionar</span>
+                  <svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </span>
+              </button>
             `).join('')}
           </div>
         </section>`;
@@ -1828,39 +1828,9 @@ async function renderAgent({ force = false } = {}) {
       });
     }
 
-    await runRouterTest();
   } catch (error) {
-    const out = $('#router-test-output');
-    if (out) out.textContent = `Não foi possível carregar a arquitetura do agente: ${error.message}`;
-  }
-}
-
-async function runRouterTest() {
-  const input = $('#router-test-input');
-  const out = $('#router-test-output');
-  if (!input || !out) return;
-  const text = input.value.trim();
-  if (!text) {
-    out.textContent = 'Digite uma frase acima para simular a decisão do roteador.';
-    return;
-  }
-  const hasDoc = Boolean($('#router-test-doc')?.checked);
-  const isOwner = Boolean($('#router-test-owner')?.checked);
-  try {
-    const res = await api(`/api/dashboard/agent-structure?testText=${encodeURIComponent(text)}&hasDocument=${hasDoc}&actor=${isOwner ? 'owner' : 'client'}`);
-    const preview = res.routePreview;
-    if (!preview) return;
-    const d = preview.decision || {};
-    const caps = (preview.requiredCapabilities || []).map(c => `<span class="cap-chip">${esc(c)}</span>`).join('');
-    out.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-        <div><strong>Modelo Escolhido:</strong> <code style="color:var(--accent-blue-hover);font-weight:700;">${esc(d.model)}</code> <span class="pill mini mint">${esc(d.tier || 'flash')}</span></div>
-        <div><strong>Thinking Budget:</strong> <code>${Number(d.thinkingBudget || 0)}</code> · <strong>Motivo:</strong> <code>${esc(d.reason || '-')}</code></div>
-      </div>
-      <div><strong>Capacidades Exigidas Detectadas:</strong> ${caps || 'nenhuma'}</div>
-    `;
-  } catch (err) {
-    out.textContent = `Falha ao simular rota: ${err.message}`;
+    const modContainer = $('#agent-modules-container');
+    if (modContainer) modContainer.innerHTML = `<div class="panel">Não foi possível carregar a arquitetura do agente: ${esc(error.message)}</div>`;
   }
 }
 
@@ -1996,7 +1966,7 @@ async function renderMetrics() {
                 <span>${item.latencyMs} ms</span>
               </div>
             </td>
-            <td>${item.tokenUsageKnown === false ? '<span class="ops-muted">tokens desconhecidos</span>' : `<span class="ops-muted">↓${item.promptTokens || 0} ↑${item.completionTokens || 0}</span> <b>(${item.totalTokens || 0})</b>`}</td>
+            <td>${item.tokenUsageKnown === false ? '<span class="ops-muted">tokens desconhecidos</span>' : `<span class="ops-muted">Ent. ${item.promptTokens || 0} · Saí. ${item.completionTokens || 0}</span> <b>(${item.totalTokens || 0})</b>`}</td>
             <td>${statusHtml}</td>
           </tr>`;
           })
@@ -2018,7 +1988,7 @@ async function renderMetrics() {
 
           return `<div class="provider-status-card">
           <div>
-            <strong>${esc(prov.toUpperCase())} ${isCurrent ? '<span class="pill mini mint" style="font-size:9px">ativo</span>' : ''}</strong>
+            <strong>${esc(prov.toUpperCase())}${isCurrent ? ' <span class="ops-inline-accent">· em uso</span>' : ''}</strong>
             <span>${info.configured ? `Disjuntor: ${info.status} · Falhas: ${info.failures}` : 'Chave não configurada no servidor'}</span>
           </div>
           <div>${statusBadge}</div>
@@ -2080,7 +2050,7 @@ function renderHandoff() {
         <div class="handoff-info">
           <div class="handoff-header">
             <strong>${dName}</strong>
-            <span style="font-family:var(--font-mono);font-size:12px;opacity:0.8;">${fPhone}</span>
+            <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${fPhone}</span>
             ${urgency}
           </div>
           <div class="handoff-reason">Motivo: <em>${reason}</em></div>
@@ -2091,7 +2061,7 @@ function renderHandoff() {
         </div>
         <div class="handoff-actions">
           <button class="btn-handoff primary" data-open-chat="${esc(item.phone)}">Abrir no Console</button>
-          ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="btn-handoff wa">WhatsApp ↗</a>` : ''}
+          ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="btn-handoff wa"><span>WhatsApp</span><svg class="svg-icon xs" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></a>` : ''}
           <button class="btn-handoff resume" data-resume-bot="${esc(item.phone)}">Reativar Lia</button>
         </div>
       </div>`;
@@ -2509,14 +2479,8 @@ async function renderAdminData() {
 async function publishAdminChanges() {
   const btn = $('#admin-publish');
   const globalBtn = $('#global-publish-btn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Publicando…';
-  }
-  if (globalBtn) {
-    globalBtn.disabled = true;
-    globalBtn.textContent = 'Publicando…';
-  }
+  setButtonLoading(btn, true, 'Publicando…');
+  setButtonLoading(globalBtn, true, 'Publicando…');
   try {
     if (state.adminConfig && state.adminFormDirty) {
       await saveAdminDraft();
@@ -2532,23 +2496,24 @@ async function publishAdminChanges() {
     adminFeedback(`Erro na publicação: ${error.message}`, 'error');
     opsFeedback('tools-feedback', `Erro na publicação: ${error.message}`, 'error');
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Publicar Alterações';
-    }
-    if (globalBtn) {
-      globalBtn.disabled = false;
-      globalBtn.textContent = 'Publicar';
-    }
+    setButtonLoading(btn, false);
+    setButtonLoading(globalBtn, false);
   }
 }
 
 const ROLE_LEVEL = { viewer: 0, operator: 1, admin: 2 };
+function syncModeSelectorVisibility() {
+  const level = ROLE_LEVEL[state.role] ?? 0;
+  const showModeControl = state.view === 'inbox' && level >= ROLE_LEVEL.operator;
+  $('.segmented-control')?.classList.toggle('hidden', !showModeControl);
+  $('#mode-selector')?.classList.toggle('hidden', !showModeControl);
+}
 function applyRoleVisibility() {
   const level = ROLE_LEVEL[state.role] ?? 0;
   document.querySelectorAll('[data-role]').forEach(el => el.classList.toggle('hidden', level < (ROLE_LEVEL[el.dataset.role] ?? 2)));
-  const operationalControls = ['#mode-selector', '#refresh', '#new-sim', '#overview-open-simulation'];
+  const operationalControls = ['#refresh', '#new-sim', '#overview-open-simulation'];
   operationalControls.forEach(selector => $(selector)?.classList.toggle('hidden', level < ROLE_LEVEL.operator));
+  syncModeSelectorVisibility();
   if (level < ROLE_LEVEL.operator && ['inbox', 'handoff', 'admin'].includes(state.view)) showView('overview');
   updateSidebarUserProfile();
 }
@@ -2570,10 +2535,55 @@ function opsFeedback(id, message, type = 'success') {
 // ============================================================================
 // OVERVIEW, TOOLS, CAMPAIGNS, USERS, INTEGRATIONS
 // ============================================================================
+function drawOverviewLatencySvg(latEl) {
+  if (!latEl) return;
+  const wrap = latEl.querySelector('.chart-svg-wrap');
+  if (!wrap) return;
+
+  const samples = state.overviewSamples.length
+    ? state.overviewSamples
+    : [{ ts: '--:--:--', latencyMs: 0, requests: 0 }];
+
+  const w = Math.max(220, Math.round(wrap.clientWidth || 520));
+  const h = Math.max(148, Math.round(wrap.clientHeight || 156));
+  wrap._lastW = wrap.clientWidth;
+  wrap._lastH = wrap.clientHeight;
+
+  const maxLat = Math.max(100, ...samples.map((s) => s.latencyMs));
+  const insetX = 6;
+  const padTop = 10;
+  const padBottom = 10;
+  const plotW = Math.max(1, w - insetX * 2);
+  const plotH = Math.max(1, h - padTop - padBottom);
+
+  const pts = samples.map((s, idx) => {
+    const x = samples.length === 1 ? w / 2 : insetX + (idx / (samples.length - 1)) * plotW;
+    const y = padTop + plotH - (Math.min(s.latencyMs, maxLat) / maxLat) * plotH;
+    return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), ...s };
+  });
+
+  const midY = Number((padTop + plotH / 2).toFixed(1));
+  const baseY = h - padBottom;
+  const innerPoints = pts.map((p) => `L${p.x},${p.y}`).join(' ');
+  const linePath = `M0,${pts[0].y} ${innerPoints} L${w},${pts[pts.length - 1].y}`;
+  const areaPath = `${linePath} L${w},${h} L0,${h} Z`;
+  const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.2" fill="#86DEBA" stroke="#131313" stroke-width="1.4"><title>${esc(p.ts)}: ${p.latencyMs} ms (${p.requests} req)</title></circle>`).join('');
+
+  wrap.innerHTML = `
+    <svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Gráfico de latência em tempo real">
+      <line x1="0" y1="${padTop}" x2="${w}" y2="${padTop}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke" />
+      <line x1="0" y1="${midY}" x2="${w}" y2="${midY}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke" />
+      <line x1="0" y1="${baseY}" x2="${w}" y2="${baseY}" stroke="#2A2B2F" stroke-width="1" vector-effect="non-scaling-stroke" />
+      <path d="${areaPath}" fill="#17323e" />
+      <path d="${linePath}" fill="none" stroke="#48AA7E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+      ${circles}
+    </svg>
+  `;
+}
+
 function renderOverviewCharts(metrics, health) {
   const latEl = $('#overview-chart-latency');
   const modEl = $('#overview-chart-models');
-  const latBadge = $('#chart-latency-badge');
   const succBadge = $('#chart-success-badge');
   const latSub = $('#chart-latency-subtitle');
   const modSub = $('#chart-models-subtitle');
@@ -2587,7 +2597,6 @@ function renderOverviewCharts(metrics, health) {
   state.overviewSamples.push({ ts: nowLabel, latencyMs: avgLat, requests: totalReq });
   if (state.overviewSamples.length > 16) state.overviewSamples.shift();
 
-  if (latBadge) latBadge.textContent = `${avgLat} ms`;
   if (succBadge) {
     succBadge.textContent = `${successRate}% sucesso`;
     succBadge.className = `pill mini ${successRate >= 95 ? 'mint' : successRate >= 80 ? 'amber' : 'err'}`;
@@ -2595,43 +2604,35 @@ function renderOverviewCharts(metrics, health) {
   if (latSub) latSub.textContent = `${state.overviewSamples.length} amostra(s) em sessão · última às ${nowLabel}`;
 
   const samples = state.overviewSamples;
-  const maxLat = Math.max(100, ...samples.map((s) => s.latencyMs));
-  const w = 420;
-  const h = 110;
-  const padX = 12;
-  const padY = 12;
-  const plotW = w - padX * 2;
-  const plotH = h - padY * 2;
+  const uptimeText = health?.liveness?.uptimeSeconds != null ? `${Math.floor(health.liveness.uptimeSeconds / 60)} min` : 'ativo';
 
-  const pts = samples.map((s, idx) => {
-    const x = samples.length === 1 ? padX + plotW / 2 : padX + (idx / (samples.length - 1)) * plotW;
-    const y = padY + plotH - (Math.min(s.latencyMs, maxLat) / maxLat) * plotH;
-    return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), ...s };
-  });
+  let wrap = latEl.querySelector('.chart-svg-wrap');
+  let legend = latEl.querySelector('.chart-legend-row');
+  if (!wrap || !legend) {
+    latEl.innerHTML = `
+      <div class="chart-svg-wrap"></div>
+      <div class="chart-legend-row"></div>
+    `;
+    wrap = latEl.querySelector('.chart-svg-wrap');
+    legend = latEl.querySelector('.chart-legend-row');
+  }
 
-  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-  const areaPath = pts.length > 1
-    ? `${linePath} L${pts[pts.length - 1].x},${h - padY} L${pts[0].x},${h - padY} Z`
-    : '';
-  const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.2" fill="#86DEBA" stroke="#131313" stroke-width="1.4"><title>${esc(p.ts)}: ${p.latencyMs} ms (${p.requests} req)</title></circle>`).join('');
-
-  latEl.innerHTML = `
-    <div class="chart-svg-wrap">
-      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Gráfico de latência em tempo real">
-        <line x1="${padX}" y1="${padY}" x2="${w - padX}" y2="${padY}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" />
-        <line x1="${padX}" y1="${h / 2}" x2="${w - padX}" y2="${h / 2}" stroke="#2A2B2F" stroke-dasharray="3 3" stroke-width="1" />
-        <line x1="${padX}" y1="${h - padY}" x2="${w - padX}" y2="${h - padY}" stroke="#2A2B2F" stroke-width="1" />
-        ${areaPath ? `<path d="${areaPath}" fill="#20495B" fill-opacity="0.38" />` : ''}
-        ${linePath ? `<path d="${linePath}" fill="none" stroke="#48AA7E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />` : ''}
-        ${circles}
-      </svg>
-    </div>
-    <div class="chart-legend-row">
-      <span>Pico observado: <strong>${Math.max(0, ...samples.map((s) => s.latencyMs))} ms</strong></span>
-      <span>Chamadas acumuladas: <strong>${totalReq}</strong></span>
-      <span>Uptime: <strong>${health?.liveness?.uptimeSeconds != null ? `${Math.floor(health.liveness.uptimeSeconds / 60)} min` : 'ativo'}</strong></span>
-    </div>
+  legend.innerHTML = `
+    <span>Pico observado: <strong>${Math.max(0, ...samples.map((s) => s.latencyMs))} ms</strong></span>
+    <span>Chamadas acumuladas: <strong>${totalReq}</strong></span>
+    <span>Uptime: <strong>${uptimeText}</strong></span>
   `;
+
+  drawOverviewLatencySvg(latEl);
+
+  if (wrap && !wrap._ro && typeof ResizeObserver === 'function') {
+    wrap._ro = new ResizeObserver(() => {
+      if (!wrap.clientWidth || !wrap.clientHeight) return;
+      if (wrap.clientWidth === wrap._lastW && wrap.clientHeight === wrap._lastH) return;
+      requestAnimationFrame(() => drawOverviewLatencySvg(latEl));
+    });
+    wrap._ro.observe(wrap);
+  }
 
   const byModelRaw = metrics?.byModel || metrics?.models || {};
   const entries = Array.isArray(byModelRaw)
@@ -2792,7 +2793,7 @@ async function renderTools() {
       const currentSettings = tool.settings && typeof tool.settings === 'object' ? tool.settings : {};
       const settingsHtml = schema.length ? `
         <details class="tool-settings-details">
-          <summary>Configurações da ferramenta (${schema.length})</summary>
+          <summary><span>Configurações da ferramenta (${schema.length})</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="tool-settings-body">
             ${schema.map(field => `
               <label class="tool-setting-field">
@@ -2861,15 +2862,32 @@ async function renderIntegrations() {
     const hoursDetail = `${hours.summary || 'Expediente indisponível.'}${hours.enabled && !hours.isOpenNow && hours.nextOpenAt ? ` · reabertura ${new Date(hours.nextOpenAt).toLocaleString('pt-BR')}` : ''}`;
     const sectorsDetail = `${Number(sectors.count) || 0} setor(es) na projeção · última leitura ${sectors.updatedAt ? new Date(sectors.updatedAt).toLocaleString('pt-BR') : 'ainda não sincronizada'}`;
     const statuses = [
-      ['Ponte Chatwoot Lia', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '-'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
-      ['Expediente da Lia', !hours.enabled ? '24 horas' : (hours.isOpenNow ? 'aberto' : 'fechado'), hoursDetail],
-      ['Setores do Chatwoot', sectors.synced ? 'sincronizado' : 'aguardando sincronização', sectorsDetail],
-      ['Evolution API', data.evolution.status, `Host ${data.evolution.apiHost || '-'} · instância ${data.evolution.instance || '-'} · latência ${data.evolution.latencyMs ?? '-'} ms`],
-      ['Supabase', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '-'} · backend-only`],
-      ['Autenticação do webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
-      ...(data.providers || []).map(item => [item.name, item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
+      ['Ponte Chatwoot Lia', 'Ponte Chatwoot', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '-'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
+      ['Expediente da Lia', 'Operação', !hours.enabled ? '24 horas' : (hours.isOpenNow ? 'aberto' : 'fechado'), hoursDetail],
+      ['Setores do Chatwoot', 'Ponte Chatwoot', sectors.synced ? 'sincronizado' : 'aguardando sincronização', sectorsDetail],
+      ['Evolution API', 'WhatsApp & Canal', data.evolution.status, `Host ${data.evolution.apiHost || '-'} · instância ${data.evolution.instance || '-'} · latência ${data.evolution.latencyMs ?? '-'} ms`, data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'],
+      ['Supabase', 'Banco de Dados', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '-'} · backend-only`],
+      ['Autenticação do webhook', 'Webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
+      ...(data.providers || []).map(item => [item.name, 'Provedor IA', item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
     ];
-    $('#integrations-status').innerHTML = statuses.map(([name, status, detail]) => `<article class="integration-card"><div class="integration-card-head"><strong>${esc(name)}</strong><span class="status-text ${/connected|ok|configured|token configured|operacional|aberto|24 horas|sincronizado/i.test(status) ? 'ok' : /not_configured|não configurado|disconnected|unreachable|timeout|awaiting_first_read|stale|unknown|fechado|aguardando/i.test(status) ? 'warn' : 'err'}">${esc(status)}</span></div><p>${esc(detail)}</p>${name === 'Evolution API' ? `<p>${data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'}</p>` : ''}</article>`).join('');
+    const countBadge = $('#integrations-status-count');
+    if (countBadge) countBadge.textContent = `${statuses.length} itens`;
+    $('#integrations-status').innerHTML = statuses.map(([name, category, status, detail, extra]) => {
+      const tone = /connected|ok|configured|token configured|token configurado|operacional|aberto|24 horas|sincronizado|configurado/i.test(status)
+        ? 'ok'
+        : /not_configured|não configurado|nao_configurado|disconnected|unreachable|timeout|awaiting_first_read|stale|unknown|fechado|aguardando/i.test(status)
+          ? 'warn'
+          : 'err';
+      return `<tr>
+        <td><strong>${esc(name)}</strong></td>
+        <td><span class="badge-mini">${esc(category)}</span></td>
+        <td><span class="status-text ${tone}">${esc(status)}</span></td>
+        <td class="integrations-detail-cell">
+          <div class="integrations-detail">${esc(detail)}</div>
+          ${extra ? `<div class="ops-muted">${esc(extra)}</div>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
     const events = data.webhook.recentEvents || [];
     $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
     $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '-')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '-')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
@@ -2930,12 +2948,10 @@ async function refresh({ background = false } = {}) {
 async function setMode(mode) {
   if (!state.selected) return;
   const toggleBtn = $('#toggle-mode');
-  const topBtn = $('#transfer-top');
   if (toggleBtn) {
     toggleBtn.disabled = true;
     toggleBtn.textContent = mode === 'bot' ? 'Reativando Lia…' : 'Transferindo para humano…';
   }
-  if (topBtn) topBtn.disabled = true;
   try {
     await api('/api/dashboard/mode', { method: 'POST', body: JSON.stringify({ phone: state.selected, mode }) });
     await refresh();
@@ -2948,7 +2964,6 @@ async function setMode(mode) {
     showToast({ title: 'Falha ao Alternar Modo', message: err.message, type: 'error' });
   } finally {
     if (toggleBtn) toggleBtn.disabled = false;
-    if (topBtn) topBtn.disabled = false;
   }
 }
 
@@ -2980,26 +2995,37 @@ async function clearSession() {
 
 const VIEW_TITLES = {
   overview: 'Saúde & Operação',
-  inbox: 'Conversas em Tempo Real',
-  handoff: 'Fila de Transbordos Humanos',
-  admin: 'Configurações Gerais da Lia',
+  inbox: 'Conversas',
+  handoff: 'Fila Humana',
+  admin: 'Ajustes da Assistente',
   tools: 'Ferramentas & Busca Web',
-  agent: 'Capacidades & Roteador IA',
-  integrations: 'Integrações & Ponte Chatwoot',
-  users: 'Usuários, Perfis & Auditoria',
+  agent: 'Roteador de IA',
+  integrations: 'Integrações & Webhooks',
+  users: 'Acessos & Auditoria',
   metrics: 'Monitoramento & Custos',
-  vps: 'Monitor VPS (Somente Leitura)'
+  vps: 'Monitor da VPS'
 };
 
 function showView(view) {
   state.view = view;
   document.querySelectorAll('.view').forEach((item) => item.classList.remove('active-view'));
-  document.querySelector(`#${view}-view`)?.classList.add('active-view');
+  const activeViewEl = document.querySelector(`#${view}-view`);
+  activeViewEl?.classList.add('active-view');
+  if (activeViewEl && view !== 'inbox') {
+    activeViewEl.scrollTop = 0;
+  }
   document.querySelectorAll('.nav-item, .mob-nav-btn').forEach((item) => item.classList.toggle('active', item.dataset.view === view));
   $('#page-title').textContent = VIEW_TITLES[view] || 'Console Lia Sync';
 
   $('#app-sidebar')?.classList.remove('mobile-open');
   $('#sidebar-backdrop')?.classList.add('hidden');
+  $('#inbox-grid')?.classList.remove('mobile-context-open');
+  const ctxBtn = $('#chat-context-toggle');
+  if (ctxBtn && window.innerWidth <= 1120) {
+    ctxBtn.classList.remove('active');
+    ctxBtn.setAttribute('aria-expanded', 'false');
+  }
+  syncModeSelectorVisibility();
 
   if (view === 'inbox') {
     renderList();
@@ -3248,8 +3274,8 @@ function startDashboard() {
     });
   });
 
-  // In-chat search bar controls
-  $('#chat-search-toggle')?.addEventListener('click', () => {
+  // In-chat search bar & context panel helpers
+  const toggleChatSearch = () => {
     const bar = $('#chat-search-bar');
     if (!bar) return;
     bar.classList.toggle('hidden');
@@ -3260,7 +3286,36 @@ function startDashboard() {
       if ($('#chat-search-input')) $('#chat-search-input').value = '';
       renderChat({ forceRender: true });
     }
-  });
+  };
+  const isChatContextOpen = () => {
+    const grid = $('#inbox-grid');
+    if (!grid) return false;
+    if (window.innerWidth <= 1120) {
+      return grid.classList.contains('mobile-context-open');
+    }
+    return !grid.classList.contains('context-collapsed');
+  };
+  const syncChatContextToggle = () => {
+    const btn = $('#chat-context-toggle');
+    if (!btn) return;
+    const open = isChatContextOpen();
+    btn.classList.toggle('active', open);
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  const toggleChatContextPanel = () => {
+    const grid = $('#inbox-grid');
+    if (!grid) return;
+    if (window.innerWidth <= 1120) {
+      grid.classList.toggle('mobile-context-open');
+    } else {
+      grid.classList.toggle('context-collapsed');
+    }
+    syncChatContextToggle();
+  };
+  syncChatContextToggle();
+  window.addEventListener('resize', syncChatContextToggle);
+  $('#chat-context-toggle')?.addEventListener('click', toggleChatContextPanel);
+
   $('#chat-search-close')?.addEventListener('click', () => {
     $('#chat-search-bar')?.classList.add('hidden');
     state.chatSearchQuery = '';
@@ -3282,32 +3337,39 @@ function startDashboard() {
     }
   });
 
-  // Chat Header More Options (⋮)
+  // Chat Header Hamburger Menu (Unified Actions)
   const openChatHeaderMenu = (e) => {
     e.stopPropagation();
     const sess = selectedSession();
     if (!sess) return;
     const rect = e.currentTarget.getBoundingClientRect();
+    const searchOpen = !$('#chat-search-bar')?.classList.contains('hidden');
+    const contextOpen = isChatContextOpen();
     openAppleContextMenu({
-      x: rect.right - 220,
+      x: rect.right - 230,
       y: rect.bottom + 8,
       header: 'Ações da Conversa',
       items: [
         {
-          label: 'Buscar nesta conversa',
+          label: searchOpen ? 'Fechar busca na conversa' : 'Buscar nesta conversa',
           shortcut: '⌘F',
           icon: `<svg width="15" height="15" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
-          action: () => $('#chat-search-toggle')?.click()
+          action: toggleChatSearch
+        },
+        {
+          label: sess.human ? 'Reativar Lia (Automático)' : 'Transferir para Humano',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>`,
+          action: () => setMode(sess.human ? 'bot' : 'human')
+        },
+        {
+          label: contextOpen ? 'Ocultar Contexto & Memória' : 'Mostrar Contexto & Memória',
+          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>`,
+          action: toggleChatContextPanel
         },
         {
           label: 'Exportar Transcrição (.txt)',
           icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
           action: () => exportConversationTranscript(sess)
-        },
-        {
-          label: sess.human ? 'Reativar Lia (Automático)' : 'Transferir para Humano',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
-          action: () => setMode(sess.human ? 'bot' : 'human')
         },
         { divider: true },
         {
@@ -3322,47 +3384,27 @@ function startDashboard() {
   $('#chat-more-menu')?.addEventListener('click', openChatHeaderMenu);
   $('#chat-more-btn')?.addEventListener('click', openChatHeaderMenu);
 
-  // Composer Attach (+) Context Menu
+  // Composer Attach (+) Integrated WhatsApp Panel
   $('#composer-attach-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    openAppleContextMenu({
-      x: rect.left,
-      y: rect.top - 220,
-      header: 'Enviar Mídia / Ação Inteligente',
-      items: [
-        {
-          label: 'Simular Nota de Voz (Áudio PTT)',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>`,
-          action: () => document.querySelector('[data-sim-media="audio"]')?.click()
-        },
-        {
-          label: 'Simular Imagem (Visão Computacional)',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
-          action: () => document.querySelector('[data-sim-media="image"]')?.click()
-        },
-        {
-          label: 'Simular Documento PDF Analisado',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
-          action: () => document.querySelector('[data-sim-media="document"]')?.click()
-        },
-        { divider: true },
-        {
-          label: 'Exportar Transcrição da Conversa',
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-          action: () => exportConversationTranscript(selectedSession())
-        }
-      ]
-    });
+    closeAppleContextMenu();
+    const panel = $('#chat-smart-bar');
+    const btn = e.currentTarget;
+    if (!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !willOpen);
+    btn.classList.toggle('open', willOpen);
+    btn.setAttribute('aria-expanded', String(willOpen));
   });
 
   // Composer Reply Cancel
   $('#reply-bar-cancel')?.addEventListener('click', clearReplyTo);
   $('#composer-reply-cancel')?.addEventListener('click', clearReplyTo);
 
-  // Smart Bar: Media Simulation & Quick Reply Chips
+  // Integrated Panel: Media Simulation, Quick Replies & Transcript Export
   document.querySelectorAll('[data-sim-media]').forEach((chip) => {
     chip.addEventListener('click', async () => {
+      closeComposerAttachPanel();
       if (!state.selected) {
         showToast({ title: 'Selecione uma Conversa', message: 'Abra uma conversa ou inicie uma simulação primeiro.', type: 'warn' });
         return;
@@ -3390,6 +3432,7 @@ function startDashboard() {
 
   document.querySelectorAll('[data-quick-reply]').forEach((chip) => {
     chip.addEventListener('click', () => {
+      closeComposerAttachPanel();
       const input = $('#message-input');
       if (!input) return;
       input.value = chip.dataset.quickReply || '';
@@ -3397,21 +3440,19 @@ function startDashboard() {
     });
   });
 
+  $('#wa-export-transcript')?.addEventListener('click', () => {
+    closeComposerAttachPanel();
+    exportConversationTranscript(selectedSession());
+  });
+
   // Mobile Inbox & Context Drawer controls
   $('#chat-mobile-back')?.addEventListener('click', () => {
-    $('#inbox-grid')?.classList.remove('mobile-chat-open');
-  });
-  $('#chat-context-toggle')?.addEventListener('click', () => {
-    const grid = $('#inbox-grid');
-    if (!grid) return;
-    if (window.innerWidth <= 1120) {
-      grid.classList.toggle('mobile-context-open');
-    } else {
-      grid.classList.toggle('context-collapsed');
-    }
+    $('#inbox-grid')?.classList.remove('mobile-chat-open', 'mobile-context-open');
+    syncChatContextToggle();
   });
   $('#detail-close-mobile')?.addEventListener('click', () => {
     $('#inbox-grid')?.classList.remove('mobile-context-open');
+    syncChatContextToggle();
   });
 
   $('#composer')?.addEventListener('submit', async (event) => {
@@ -3435,46 +3476,64 @@ function startDashboard() {
       if (btn) setTimeout(() => btn.classList.remove('spinning'), 600);
     }
   };
+  const withIconSpin = async (btn, fn) => {
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('spinning');
+    }
+    try {
+      await fn();
+    } finally {
+      if (btn) {
+        setTimeout(() => {
+          btn.classList.remove('spinning');
+          btn.disabled = false;
+        }, 480);
+      }
+    }
+  };
+
   $('#refresh')?.addEventListener('click', () => triggerRefreshWithIcon($('#refresh')));
-  $('#refresh-overview')?.addEventListener('click', () => renderOverview());
+  $('#refresh-overview')?.addEventListener('click', () => withIconSpin($('#refresh-overview'), renderOverview));
   $('#overview-go-config')?.addEventListener('click', () => showView('admin'));
-  $('#overview-open-router-test')?.addEventListener('click', () => showView('agent'));
   $('#overview-ping-quick')?.addEventListener('click', () => {
     showView('metrics');
     setTimeout(() => $('#btn-ping-ai')?.click(), 120);
   });
 
-  // Agent & Router Test controls
-  $('#agent-refresh-btn')?.addEventListener('click', () => renderAgent({ force: true }));
-  $('#router-test-btn')?.addEventListener('click', runRouterTest);
-  $('#router-test-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runRouterTest(); } });
-  $('#router-test-doc')?.addEventListener('change', runRouterTest);
-  $('#router-test-owner')?.addEventListener('change', runRouterTest);
+  // Agent controls
+  $('#agent-refresh-btn')?.addEventListener('click', () => withIconSpin($('#agent-refresh-btn'), () => renderAgent({ force: true })));
 
   // Tools controls
-  $('#tools-refresh')?.addEventListener('click', renderTools);
+  $('#tools-refresh')?.addEventListener('click', () => withIconSpin($('#tools-refresh'), renderTools));
   $('#tools-save')?.addEventListener('click', async () => {
+    const btn = $('#tools-save');
+    setButtonLoading(btn, true, 'Salvando…');
     try {
       const result = await saveToolsDraft();
-      opsFeedback('tools-feedback', `Rascunho salvo (revisão v${result.revision}). Clique em "Salvar & Publicar Agora" para ativar no runtime.`, 'success');
+      opsFeedback('tools-feedback', `Rascunho salvo (revisão v${result.revision}). Clique em "Publicar" para ativar no runtime.`, 'success');
       await renderTools();
     } catch (error) { opsFeedback('tools-feedback', `Não foi possível salvar: ${error.message}`, 'error'); }
+    finally { setButtonLoading(btn, false); }
   });
   $('#tools-publish')?.addEventListener('click', async () => {
+    const btn = $('#tools-publish');
+    setButtonLoading(btn, true, 'Publicando…');
     try {
       await saveToolsDraft();
       await publishAdminChanges();
       opsFeedback('tools-feedback', `Ferramentas e busca web publicadas e ativas no motor!`, 'success');
       await renderTools();
     } catch (error) { opsFeedback('tools-feedback', `Não foi possível publicar: ${error.message}`, 'error'); }
+    finally { setButtonLoading(btn, false); }
   });
   $('#tools-enable-all')?.addEventListener('click', () => {
     document.querySelectorAll('.tool-toggle').forEach(el => { if (!el.disabled) el.checked = true; });
     showToast({ title: 'Ferramentas Selecionadas', message: 'Todas as ferramentas foram marcadas. Salve ou publique para aplicar.', type: 'info' });
   });
 
-  $('#integrations-refresh')?.addEventListener('click', renderIntegrations);
-  $('#users-refresh')?.addEventListener('click', renderUsers);
+  $('#integrations-refresh')?.addEventListener('click', () => withIconSpin($('#integrations-refresh'), renderIntegrations));
+  $('#users-refresh')?.addEventListener('click', () => withIconSpin($('#users-refresh'), renderUsers));
   $('#users-table')?.addEventListener('click', async event => {
     const button = event.target.closest('[data-user-save]');
     if (!button) return;
@@ -3556,10 +3615,6 @@ function startDashboard() {
       }
     }
   });
-  $('#transfer-top')?.addEventListener('click', () => {
-    const session = selectedSession();
-    if (session) setMode(session.human ? 'bot' : 'human');
-  });
   $('#agent-drawer-close')?.addEventListener('click', () => $('#agent-detail-drawer')?.classList.add('hidden'));
 
   // Collapsible Settings Accordion Toolbar
@@ -3571,6 +3626,7 @@ function startDashboard() {
   });
   document.querySelectorAll('[data-open-acc]').forEach(chip => {
     chip.addEventListener('click', () => {
+      document.querySelectorAll('[data-open-acc]').forEach((item) => item.classList.toggle('active', item === chip));
       const target = document.getElementById(chip.dataset.openAcc);
       if (target) {
         target.open = true;
@@ -3777,8 +3833,7 @@ function startDashboard() {
       body.provider = 'openrouter';
       body.model = selectVal;
     }
-    btn.disabled = true;
-    btn.textContent = 'Testando latência…';
+    setButtonLoading(btn, true, 'Testando…');
     banner.classList.add('hidden');
     try {
       const res = await api('/api/dashboard/ping-ai', { method: 'POST', body: JSON.stringify(body) });
@@ -3803,15 +3858,14 @@ function startDashboard() {
       banner.innerHTML = `Erro ao testar conectividade: ${esc(e.message)}`;
       showToast({ title: 'Erro de Conectividade', message: e.message, type: 'error' });
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Testar Latência (Ping)';
+      setButtonLoading(btn, false);
     }
   };
 
   $('#btn-ping-ai')?.addEventListener('click', handlePing);
   $('#metrics-ping-btn')?.addEventListener('click', handlePing);
 
-  $('#btn-refresh-metrics')?.addEventListener('click', () => renderMetrics());
+  $('#btn-refresh-metrics')?.addEventListener('click', () => withIconSpin($('#btn-refresh-metrics'), renderMetrics));
   $('#btn-reset-metrics')?.addEventListener('click', async () => {
     if (!window.confirm('Deseja zerar as métricas de latência e consumo em memória desta instância?')) return;
     await api('/api/dashboard/metrics/reset', { method: 'POST' });
@@ -3837,7 +3891,7 @@ function startDashboard() {
     if (state.view === 'metrics' && !document.hidden) renderMetrics();
   }, 15000);
 
-  $('#btn-refresh-vps')?.addEventListener('click', () => renderVpsMonitor());
+  $('#btn-refresh-vps')?.addEventListener('click', () => withIconSpin($('#btn-refresh-vps'), renderVpsMonitor));
   $('#vps-refresh-rate')?.addEventListener('change', (e) => {
     const ms = Number(e.target.value);
     if (state.vpsTimer) {
@@ -3948,18 +4002,35 @@ document.addEventListener('visibilitychange', () => {
 (() => {
   const sidebar = document.querySelector('.sidebar');
   const toggleBtn = document.getElementById('sidebar-toggle');
+  const topbarLeft = document.querySelector('.topbar-left');
+  const sidebarHeader = sidebar?.querySelector('.sidebar-header');
   const closeMobileBtn = document.getElementById('sidebar-close-mobile');
   const backdrop = document.getElementById('sidebar-backdrop');
-  if (!sidebar || !toggleBtn) return;
+  if (!sidebar || !toggleBtn || !topbarLeft || !sidebarHeader) return;
 
   const STORAGE_KEY = 'lia_sidebar_collapsed';
+  const isMobile = () => window.innerWidth <= 820;
+
   const applyState = (collapsed) => {
-    sidebar.classList.toggle('collapsed', collapsed);
-    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    const activeCollapsed = !isMobile() && collapsed;
+    sidebar.classList.toggle('collapsed', activeCollapsed);
+    toggleBtn.setAttribute('aria-expanded', String(!activeCollapsed));
+    toggleBtn.setAttribute('title', activeCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral');
+    toggleBtn.setAttribute('aria-label', activeCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral');
+
+    if (activeCollapsed) {
+      if (toggleBtn.parentElement !== sidebarHeader) {
+        sidebarHeader.insertBefore(toggleBtn, sidebarHeader.firstChild);
+      }
+    } else if (toggleBtn.parentElement !== topbarLeft) {
+      topbarLeft.insertBefore(toggleBtn, topbarLeft.firstChild);
+    }
   };
 
-  if (window.innerWidth > 768 && localStorage.getItem(STORAGE_KEY) === '1') {
+  if (!isMobile() && localStorage.getItem(STORAGE_KEY) === '1') {
     applyState(true);
+  } else {
+    applyState(false);
   }
 
   const closeMobile = () => {
@@ -3968,7 +4039,7 @@ document.addEventListener('visibilitychange', () => {
   };
 
   toggleBtn.addEventListener('click', () => {
-    if (window.innerWidth <= 768) {
+    if (isMobile()) {
       const nextOpen = !sidebar.classList.contains('mobile-open');
       sidebar.classList.toggle('mobile-open', nextOpen);
       backdrop?.classList.toggle('hidden', !nextOpen);
@@ -3979,8 +4050,23 @@ document.addEventListener('visibilitychange', () => {
     localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
   });
 
+  window.addEventListener('resize', () => {
+    applyState(localStorage.getItem(STORAGE_KEY) === '1');
+  });
+
   closeMobileBtn?.addEventListener('click', closeMobile);
   backdrop?.addEventListener('click', closeMobile);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeMobile();
+      $('#inbox-grid')?.classList.remove('mobile-context-open');
+      const ctxBtn = document.getElementById('chat-context-toggle');
+      if (ctxBtn && window.innerWidth <= 1120) {
+        ctxBtn.classList.remove('active');
+        ctxBtn.setAttribute('aria-expanded', 'false');
+      }
+    }
+  });
 })();
 
 // Segmented Control sync with #mode-selector
@@ -4068,7 +4154,7 @@ document.addEventListener('visibilitychange', () => {
               <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="paused" ${status === 'paused' ? 'disabled' : ''}>Pausar</button>
               <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="stopped" ${status === 'stopped' ? 'disabled' : ''}>Parar</button>
             </div>
-            <div class="prospect-edit-box hidden" data-edit-box="${esc(l.id)}" style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
+            <div class="prospect-edit-box hidden" data-edit-box="${esc(l.id)}" style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-hairline);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
               <label>Nome <input type="text" data-edit-name="${esc(l.id)}" value="${esc(l.name)}" /></label>
               <label>Segmento <input type="text" data-edit-segment="${esc(l.id)}" value="${esc(l.segment || '')}" /></label>
               <label>Teto/dia <input type="number" min="1" max="500" data-edit-cap="${esc(l.id)}" value="${Number(l.daily_cap || 20)}" /></label>
