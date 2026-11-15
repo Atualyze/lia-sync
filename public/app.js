@@ -3994,3 +3994,115 @@ document.addEventListener('visibilitychange', () => {
   select.addEventListener('change', syncButtons);
   syncButtons();
 })();
+
+// ============================================================================
+// PROSPECÇÃO ATIVA & IMPORTAÇÃO CSV/JSON
+// ============================================================================
+(() => {
+  const fileInput = document.getElementById('prospect-file-input');
+  const leadsText = document.getElementById('prospect-leads-text');
+  const importBtn = document.getElementById('prospect-import-btn');
+  const refreshBtn = document.getElementById('prospect-refresh-btn');
+  const statusEl = document.getElementById('prospect-import-status');
+  const container = document.getElementById('prospect-lists-container');
+  const acc = document.getElementById('acc-prospecting');
+  if (!container) return;
+
+  const setStatus = (msg, isError = false) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg || '';
+    statusEl.style.color = isError ? 'var(--danger, #f87171)' : '';
+  };
+
+  async function loadProspectLists() {
+    try {
+      const data = await api('/api/dashboard/prospecting/lists');
+      const lists = data?.lists || [];
+      if (!lists.length) {
+        container.innerHTML = '<div class="detail-placeholder">Nenhuma lista de prospecção cadastrada ainda.</div>';
+        return;
+      }
+      container.innerHTML = lists.map((l) => {
+        const s = l.stats || {};
+        const isActive = l.status === 'active';
+        return `
+          <div class="ops-item" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+              <strong>${esc(l.name)}</strong>
+              <span class="pill mini ${isActive ? 'mint' : 'amber'}" style="margin-left:8px;">${isActive ? 'Ativa' : 'Pausada'}</span>
+              <div class="field-hint" style="margin-top:4px;">
+                Segmento: ${esc(l.segment || '—')} · Total: ${s.total || 0} · Novos: ${s.new || 0} · Contatados: ${s.contacted || 0} · Opt-out: ${s.opted_out || 0}
+              </div>
+            </div>
+            <button type="button" class="admin-ghost-btn btn-sm prospect-toggle-btn" data-list-id="${esc(l.id)}" data-next-status="${isActive ? 'paused' : 'active'}">
+              ${isActive ? 'Pausar' : 'Ativar'}
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.prospect-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const listId = btn.dataset.listId;
+          const nextStatus = btn.dataset.nextStatus;
+          btn.disabled = true;
+          try {
+            await api(`/api/dashboard/prospecting/lists/${encodeURIComponent(listId)}/status`, {
+              method: 'POST',
+              body: JSON.stringify({ status: nextStatus })
+            });
+            await loadProspectLists();
+          } catch (err) {
+            setStatus(err?.message || 'Erro ao atualizar status da lista.', true);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="detail-placeholder">${esc(err?.message || 'Não foi possível carregar as listas.')}</div>`;
+    }
+  }
+
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file || !leadsText) return;
+    leadsText.value = await file.text();
+    const nameInput = document.getElementById('prospect-list-name');
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = file.name.replace(/\.(csv|json|txt)$/i, '');
+    }
+    setStatus(`Arquivo "${file.name}" carregado no campo abaixo.`);
+  });
+
+  importBtn?.addEventListener('click', async () => {
+    const name = document.getElementById('prospect-list-name')?.value?.trim() || '';
+    const segment = document.getElementById('prospect-list-segment')?.value?.trim() || '';
+    const consentBasis = document.getElementById('prospect-list-consent')?.value?.trim() || '';
+    const raw = leadsText?.value?.trim() || '';
+    if (!name || !raw) {
+      setStatus('Informe o nome da lista e cole ou carregue um CSV/JSON.', true);
+      return;
+    }
+    importBtn.disabled = true;
+    setStatus('Importando leads...');
+    try {
+      const res = await api('/api/dashboard/prospecting/lists', {
+        method: 'POST',
+        body: JSON.stringify({ name, segment, consentBasis, leadsText: raw })
+      });
+      setStatus(`Lista importada: ${res.importedCount} lead(s) válidos, ${res.rejectedCount} rejeitado(s).`);
+      if (leadsText) leadsText.value = '';
+      await loadProspectLists();
+    } catch (err) {
+      setStatus(err?.message || 'Falha ao importar lista.', true);
+    } finally {
+      importBtn.disabled = false;
+    }
+  });
+
+  refreshBtn?.addEventListener('click', loadProspectLists);
+  acc?.addEventListener('toggle', () => {
+    if (acc.open) loadProspectLists();
+  });
+})();

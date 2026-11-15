@@ -145,6 +145,14 @@ export const DEFAULT_BOT_CONFIG = {
   },
   style: {
     emoji: 'leve' // 'off' | 'leve' | 'normal'
+  },
+  prospecting: {
+    enabled: false,
+    dailyCap: 20,
+    warmupDays: 21,
+    windowStart: '09:00',
+    windowEnd: '18:00',
+    defaultTemplate: 'Olá {{nome}}, tudo bem? Gostaria de apresentar rapidamente nossa solução. Se preferir não receber mensagens, responda SAIR.'
   }
 };
 
@@ -231,6 +239,19 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   errors.push(...hoursErrors);
   if (value.style?.emoji !== undefined && !['off', 'leve', 'normal'].includes(value.style.emoji)) {
     errors.push('Estilo de emojis inválido. Use off, leve ou normal.');
+  }
+  if (value.prospecting !== undefined) {
+    const p = value.prospecting;
+    if (p.dailyCap !== undefined && (!Number.isFinite(Number(p.dailyCap)) || Number(p.dailyCap) < 1 || Number(p.dailyCap) > 500)) {
+      errors.push('Teto diário de prospecção deve estar entre 1 e 500.');
+    }
+    if (p.warmupDays !== undefined && (!Number.isFinite(Number(p.warmupDays)) || Number(p.warmupDays) < 0 || Number(p.warmupDays) > 90)) {
+      errors.push('Dias de aquecimento da prospecção devem estar entre 0 e 90.');
+    }
+    const hhmm = /^\d{2}:\d{2}$/;
+    if ((p.windowStart !== undefined && !hhmm.test(String(p.windowStart))) || (p.windowEnd !== undefined && !hhmm.test(String(p.windowEnd)))) {
+      errors.push('Janela de horário da prospecção deve usar o formato HH:MM.');
+    }
   }
   return errors;
 };

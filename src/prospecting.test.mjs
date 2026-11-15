@@ -157,3 +157,76 @@ test('prospecting guards & scheduler: blocks outside business hours or suppresse
   assert.equal(failingGuard.allowed, false);
   assert.equal(failingGuard.reason, 'suppression_check_failed');
 });
+
+import { createProspecting } from './prospecting/index.mjs';
+import { handleProspectingRoutes } from './http/prospecting-routes.mjs';
+import { Readable } from 'node:stream';
+
+function mockReq(method, url, body = null) {
+  const raw = body ? JSON.stringify(body) : '';
+  const req = Readable.from(raw ? [Buffer.from(raw)] : []);
+  req.method = method;
+  req.url = url;
+  req.headers = { 'content-type': 'application/json' };
+  return req;
+}
+
+function mockRes() {
+  let status = 200;
+  let body = '';
+  return {
+    writeHead(s) { status = s; },
+    end(chunk = '') { body += chunk; },
+    get result() { return { status, data: JSON.parse(body || '{}') }; }
+  };
+}
+
+test('prospecting routes & UI config: imports CSV, lists stats, toggles status, and reads adminConfig', async () => {
+  const adminConfig = {
+    active: {
+      business: { hoursConfig: { timezone: 'America/Fortaleza' } },
+      prospecting: { enabled: true, dailyCap: 15, warmupDays: 0, windowStart: '00:00', windowEnd: '23:59' }
+    }
+  };
+  const prospecting = createProspecting({
+    sender: async () => {},
+    campaignStore: { isSuppressed: async () => false },
+    adminConfig
+  });
+  assert.equal(prospecting.enabled, true);
+
+  const createRes = mockRes();
+  await handleProspectingRoutes({
+    req: mockReq('POST', '/api/dashboard/prospecting/lists', {
+      name: 'Clinicas Teste',
+      segment: 'Odonto',
+      leadsText: 'nome,telefone\nMaria,(85) 99999-4444'
+    }),
+    res: createRes,
+    u: new URL('http://localhost/api/dashboard/prospecting/lists'),
+    prospecting
+  });
+  assert.equal(createRes.result.status, 201);
+  assert.equal(createRes.result.data.importedCount, 1);
+  const listId = createRes.result.data.list.id;
+
+  const statusRes = mockRes();
+  await handleProspectingRoutes({
+    req: mockReq('POST', `/api/dashboard/prospecting/lists/${listId}/status`, { status: 'active' }),
+    res: statusRes,
+    u: new URL(`http://localhost/api/dashboard/prospecting/lists/${listId}/status`),
+    prospecting
+  });
+  assert.equal(statusRes.result.status, 200);
+  assert.equal(statusRes.result.data.list.status, 'active');
+
+  const listRes = mockRes();
+  await handleProspectingRoutes({
+    req: mockReq('GET', '/api/dashboard/prospecting/lists'),
+    res: listRes,
+    u: new URL('http://localhost/api/dashboard/prospecting/lists'),
+    prospecting
+  });
+  assert.equal(listRes.result.status, 200);
+  assert.equal(listRes.result.data.lists[0].stats.total, 1);
+});

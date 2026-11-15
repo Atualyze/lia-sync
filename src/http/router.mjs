@@ -8,6 +8,7 @@ import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { renderPixPaymentPage } from './pix-page.mjs';
 import { handleInfinitePayWebhookRoute } from './infinitepay-webhook.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
+import { handleProspectingRoutes } from './prospecting-routes.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 
@@ -18,6 +19,8 @@ function requiredRole(pathname, method) {
   if (pathname.startsWith('/api/admin/') || pathname === '/api/dashboard/users' || pathname.startsWith('/api/dashboard/users/') || pathname === '/api/dashboard/audit') return 'admin';
   if (method === 'POST' && /^\/api\/dashboard\/campaigns\/[0-9a-f-]{36}\/execute$/i.test(pathname)) return 'admin';
   if (pathname === '/api/dashboard/suppressions' && method === 'DELETE') return 'admin';
+  if (pathname.startsWith('/api/dashboard/prospecting') && method !== 'GET') return 'admin';
+  if (pathname.startsWith('/api/dashboard/prospecting') && method === 'GET') return 'operator';
   if (pathname === '/api/dashboard/tools' && method !== 'GET') return 'admin';
   if (pathname === '/api/dashboard/metrics/reset') return 'admin';
   if (['/api/dashboard/state', '/api/dashboard/send', '/api/dashboard/simulate', '/api/dashboard/mode', '/api/dashboard/clear', '/api/dashboard/operations', '/api/dashboard/tts'].includes(pathname)) return 'operator';
@@ -94,6 +97,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (adminResult !== NOT_HANDLED) return adminResult;
     const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {}, sectorProjection });
     if (operationsResult !== NOT_HANDLED) return operationsResult;
+    const prospectingResult = await handleProspectingRoutes({ req, res, u, prospecting });
+    if (prospectingResult !== NOT_HANDLED) return prospectingResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });

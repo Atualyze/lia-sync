@@ -241,4 +241,91 @@ export class ProspectLeadStore {
     }
     return (data || []).length;
   }
+
+  async setListStatus(listId, status) {
+    if (!['active', 'paused', 'completed'].includes(status)) {
+      throw new Error('Status de lista inválido.');
+    }
+    const now = new Date().toISOString();
+    if (!this.client) {
+      const list = this.mem.lists.get(listId);
+      if (!list) return null;
+      list.status = status;
+      if (status === 'active' && !list.warmup_started_at) {
+        list.warmup_started_at = now;
+      }
+      list.updated_at = now;
+      return { ...list };
+    }
+    const { data: existing, error: fetchErr } = await this.client
+      .from('prospect_lists')
+      .select('id, warmup_started_at')
+      .eq('id', listId)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!existing) return null;
+
+    const patch = {
+      status,
+      updated_at: now,
+      ...(status === 'active' && !existing.warmup_started_at ? { warmup_started_at: now } : {})
+    };
+    const { data, error } = await this.client
+      .from('prospect_lists')
+      .update(patch)
+      .eq('id', listId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async listListsWithStats({ limit = 30 } = {}) {
+    if (!this.client) {
+      return [...this.mem.lists.values()]
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, limit)
+        .map(list => {
+          const leads = [...this.mem.leads.values()].filter(l => l.list_id === list.id);
+          return {
+            ...list,
+            stats: {
+              total: leads.length,
+              new: leads.filter(l => l.status === 'new').length,
+              contacted: leads.filter(l => l.status === 'contacted').length,
+              replied: leads.filter(l => l.status === 'replied').length,
+              opted_out: leads.filter(l => l.status === 'opted_out').length,
+              failed: leads.filter(l => l.status === 'failed').length
+            }
+          };
+        });
+    }
+
+    const { data: lists, error } = await this.client
+      .from('prospect_lists')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    if (!lists?.length) return [];
+
+    const { data: leads, error: leadsErr } = await this.client
+      .from('prospect_leads')
+      .select('list_id, status')
+      .in('list_id', lists.map(l => l.id));
+    if (leadsErr) throw leadsErr;
+
+    const byList = new Map();
+    for (const row of leads || []) {
+      const bucket = byList.get(row.list_id) || { total: 0, new: 0, contacted: 0, replied: 0, opted_out: 0, failed: 0 };
+      bucket.total += 1;
+      if (row.status in bucket) bucket[row.status] += 1;
+      byList.set(row.list_id, bucket);
+    }
+
+    return lists.map(list => ({
+      ...list,
+      stats: byList.get(list.id) || { total: 0, new: 0, contacted: 0, replied: 0, opted_out: 0, failed: 0 }
+    }));
+  }
 }

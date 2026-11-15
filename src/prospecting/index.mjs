@@ -6,30 +6,45 @@ import { handleInboundOptOut, isOptOutMessage } from './optout.mjs';
 
 export function createProspecting({ client = null, sender, campaignStore, sessionStore = null, adminConfig = null, env = process.env } = {}) {
   const leadStore = new ProspectLeadStore({ client });
-  const enabled = String(env.PROSPECTING_ENABLED || 'false').toLowerCase() === 'true';
 
-  const getRuntimeConfig = () => ({
-    timeZone: adminConfig?.active?.business?.hoursConfig?.timezone || adminConfig?.active?.business?.timezone || 'America/Sao_Paulo',
-    dailyCap: Number(env.PROSPECTING_DAILY_CAP) || 20,
-    warmupDays: Number(env.PROSPECTING_WARMUP_DAYS) || 21,
-    windowStart: (env.PROSPECTING_WINDOW || '09:00-18:00').split('-')[0] || '09:00',
-    windowEnd: (env.PROSPECTING_WINDOW || '09:00-18:00').split('-')[1] || '18:00'
-  });
+  const isEnabled = () => {
+    if (adminConfig?.active?.prospecting?.enabled !== undefined) {
+      return Boolean(adminConfig.active.prospecting.enabled);
+    }
+    return String(env.PROSPECTING_ENABLED || 'false').toLowerCase() === 'true';
+  };
+
+  const getRuntimeConfig = () => {
+    const ui = adminConfig?.active?.prospecting || {};
+    const envWindow = String(env.PROSPECTING_WINDOW || '09:00-18:00').split('-');
+    return {
+      timeZone: adminConfig?.active?.business?.hoursConfig?.timezone || adminConfig?.active?.business?.timezone || 'America/Sao_Paulo',
+      dailyCap: Number(ui.dailyCap ?? env.PROSPECTING_DAILY_CAP) || 20,
+      warmupDays: Number(ui.warmupDays ?? env.PROSPECTING_WARMUP_DAYS ?? 21),
+      windowStart: ui.windowStart || envWindow[0] || '09:00',
+      windowEnd: ui.windowEnd || envWindow[1] || '18:00',
+      defaultTemplate: ui.defaultTemplate || undefined
+    };
+  };
 
   return {
-    enabled,
+    get enabled() { return isEnabled(); },
     leadStore,
     importLeads: importProspectLeads,
     handleInboundOptOut: params => handleInboundOptOut({ ...params, campaignStore, prospectStore: leadStore, send: sender }),
-    tick: (opts = {}) => runProspectingTick({
-      enabled,
-      leadStore,
-      campaignStore,
-      sessionStore,
-      send: sender,
-      config: getRuntimeConfig(),
-      ...opts
-    })
+    tick: (opts = {}) => {
+      const cfg = getRuntimeConfig();
+      return runProspectingTick({
+        enabled: isEnabled(),
+        leadStore,
+        campaignStore,
+        sessionStore,
+        send: sender,
+        template: cfg.defaultTemplate,
+        config: cfg,
+        ...opts
+      });
+    }
   };
 }
 
