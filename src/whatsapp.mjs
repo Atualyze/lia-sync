@@ -277,3 +277,59 @@ export async function sendWhatsAppAudio(jid, audioBase64, { retry = 0, onSent } 
   }
   throw last;
 }
+
+function toRemoteJid(jid = '') {
+  const s = String(jid || '').trim();
+  if (!s) return '';
+  return s.includes('@') ? s : `${s.replace(/\D/g, '')}@s.whatsapp.net`;
+}
+
+export async function markChatAsRead({ jid, messageId, fromMe = false } = {}) {
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance || !jid || !messageId) return { ok: false };
+  try {
+    const res = await fetch(`${config.evolutionUrl}/chat/markMessageAsRead/${encodeURIComponent(config.evolutionInstance)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+      signal: AbortSignal.timeout(providerTimeoutMs()),
+      body: JSON.stringify({
+        readMessages: [{ remoteJid: toRemoteJid(jid), fromMe: Boolean(fromMe), id: String(messageId) }]
+      })
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function archiveChat({ jid, archive = true } = {}) {
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance || !jid) return { ok: false };
+  try {
+    const res = await fetch(`${config.evolutionUrl}/chat/archiveChat/${encodeURIComponent(config.evolutionInstance)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+      signal: AbortSignal.timeout(providerTimeoutMs()),
+      body: JSON.stringify({
+        chat: toRemoteJid(jid),
+        archive: Boolean(archive)
+      })
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function deleteChatForSync({ jid } = {}) {
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance || !jid) return { ok: false };
+  try {
+    const res = await fetch(`${config.evolutionUrl}/chat/delete/${encodeURIComponent(config.evolutionInstance)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+      signal: AbortSignal.timeout(providerTimeoutMs()),
+      body: JSON.stringify({ chat: toRemoteJid(jid) })
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
+  }
+}

@@ -154,6 +154,11 @@ export const DEFAULT_BOT_CONFIG = {
     windowStart: '09:00',
     windowEnd: '18:00',
     defaultTemplate: 'Olá {{nome}}, tudo bem? Gostaria de apresentar rapidamente nossa solução. Se preferir não receber mensagens, responda SAIR.'
+  },
+  sync: {
+    whatsappSyncEnabled: false,
+    readReceipts: false,
+    archiveDeletedMessages: true
   }
 };
 

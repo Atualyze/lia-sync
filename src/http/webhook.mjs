@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { json, readBody, authorized, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
-import { parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, sendText } from '../whatsapp.mjs';
+import { parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, sendText, markChatAsRead } from '../whatsapp.mjs';
 import { resolveIdentity, isOwnerContact, escapeRegExp, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { broadcastBridgeEvent } from './bridge.mjs';
 import { handleInboundOptOut } from '../prospecting/optout.mjs';
@@ -65,6 +65,40 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       await updateInstanceOwner().catch(() => {});
       await finish('processed');
       return;
+    }
+
+    const syncCfg = adminConfig?.active?.sync || {};
+    if (syncCfg.whatsappSyncEnabled) {
+      const archiveMode = syncCfg.archiveDeletedMessages !== false;
+      if (['CHATSDELETE', 'CHATS_DELETE'].includes(rawEvent)) {
+        const rawJid = payload?.data?.id || payload?.data?.remoteJid || payload?.data?.[0]?.id || item.jid || item.phone || '';
+        const targetPhone = String(rawJid).replace(/@.*$/, '').replace(/\D/g, '');
+        if (targetPhone) {
+          await store.softDeleteConversation?.({ key: targetPhone, source: 'whatsapp', archive: archiveMode });
+          broadcastBridgeEvent('whatsapp_sync', { action: 'chat_deleted', phone: targetPhone, archived: archiveMode, timestamp: Date.now() });
+        }
+        await finish('processed', 'chat_deleted_sync');
+        return;
+      }
+      if (['MESSAGESDELETE', 'MESSAGES_DELETE'].includes(rawEvent)) {
+        const deletedId = payload?.data?.key?.id || payload?.data?.id || messageId;
+        if (deletedId) {
+          await store.softDeleteMessage?.({ externalId: deletedId, source: 'whatsapp', archive: archiveMode });
+          broadcastBridgeEvent('whatsapp_sync', { action: 'message_deleted', messageId: deletedId, archived: archiveMode, timestamp: Date.now() });
+        }
+        await finish('processed', 'message_deleted_sync');
+        return;
+      }
+      if (['CHATSUPDATE', 'CHATS_UPDATE'].includes(rawEvent)) {
+        const rawData = Array.isArray(payload?.data) ? payload.data[0] : payload?.data;
+        const targetPhone = String(rawData?.id || rawData?.remoteJid || item.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
+        if (targetPhone && typeof rawData?.archive === 'boolean') {
+          if (rawData.archive) await store.archive?.(targetPhone, 'arquivado_no_whatsapp');
+          broadcastBridgeEvent('whatsapp_sync', { action: 'chat_archived', phone: targetPhone, archived: rawData.archive, timestamp: Date.now() });
+        }
+        await finish('processed', 'chat_update_sync');
+        return;
+      }
     }
 
     if (!isMessageUpsert(item.event) || isIgnoredJid(item.jid) || !item.phone) {
@@ -206,6 +240,10 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
         await finish('processed', 'opt_out');
         return;
       }
+    }
+
+    if (adminConfig?.active?.sync?.whatsappSyncEnabled && adminConfig?.active?.sync?.readReceipts && messageId) {
+      markChatAsRead({ jid: item.jid || item.phone, messageId, fromMe: false }).catch(() => {});
     }
 
     broadcastBridgeEvent('whatsapp_message', {

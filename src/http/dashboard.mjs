@@ -1,7 +1,7 @@
 import { json, readBody, formatPhoneNumber, formatActivityTime, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
-import { sendText } from '../whatsapp.mjs';
+import { sendText, deleteChatForSync } from '../whatsapp.mjs';
 import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus } from '../ai.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
@@ -167,7 +167,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
 }
 
 // Modo/limpeza/configuração do painel (executadas depois das rotas /api/bridge/*).
-export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI }) {
+export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null }) {
   if (req.method === 'POST' && u.pathname === '/api/dashboard/mode') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -198,8 +198,21 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
     const simulation = body.mode === 'simulation' || body.simulation === true;
     if (!simulation && !(body.confirm === true && typeof body.reason === 'string' && body.reason.trim())) return json(res, 400, { error: 'confirm_and_reason_required' });
-    if (simulation) await store.archive(`sim:${body.phone}`, body.reason || 'simulação encerrada');
-    else await store.archive(body.phone, body.reason);
+    if (simulation) {
+      await store.archive(`sim:${body.phone}`, body.reason || 'simulação encerrada');
+    } else {
+      const syncCfg = adminConfig?.active?.sync || {};
+      if (syncCfg.whatsappSyncEnabled) {
+        await store.softDeleteConversation?.({
+          key: body.phone,
+          source: 'dashboard',
+          archive: syncCfg.archiveDeletedMessages !== false
+        });
+        await deleteChatForSync({ jid: body.phone }).catch(() => {});
+      } else {
+        await store.archive(body.phone, body.reason);
+      }
+    }
     return json(res, 200, { ok: true });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/config') return json(res, 200, { provider: runtimeAI().provider, model: runtimeAI().model, instance: config.evolutionInstance, faqUrl: Boolean(config.faqUrl), faqCacheSeconds: config.faqCacheSeconds, fallbackModels: runtimeAI().fallbackModels, providers: getCircuitBreakers(), persistence: store.persistence || 'fallback', persistenceError: store.remoteError || null });

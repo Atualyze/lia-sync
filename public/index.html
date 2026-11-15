@@ -935,6 +935,18 @@
                     <input data-config="automation.businessHoursOnly" type="checkbox" />
                     <span>Disparar follow-ups somente dentro do horário comercial</span>
                   </label>
+                  <label class="toggle-field">
+                    <input data-config="sync.whatsappSyncEnabled" type="checkbox" />
+                    <span>Sincronização bidirecional com WhatsApp (exclusões, arquivamento e leitura)</span>
+                  </label>
+                  <label class="toggle-field">
+                    <input data-config="sync.readReceipts" type="checkbox" />
+                    <span>Enviar confirmação de leitura automática no WhatsApp</span>
+                  </label>
+                  <label class="toggle-field">
+                    <input data-config="sync.archiveDeletedMessages" type="checkbox" />
+                    <span>Arquivar mensagens/conversas excluídas no banco (ocultas nos painéis, visíveis via SQL)</span>
+                  </label>
 
                   <label>Follow-up de Leads: Mínimo (horas)
                     <input id="admin-followup-min" data-config="behavior.leadFollowUpMinHours" type="number" min="1" max="719" step="1" />

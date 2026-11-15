@@ -263,7 +263,12 @@ export class SupabaseSessionStore extends SessionStore {
     }
     if (!this.client?.enabled) return this.sessions;
     try {
-      const rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&order=updated_at.desc&limit=500');
+      let rows;
+      try {
+        rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&deleted_at=is.null&order=updated_at.desc&limit=500');
+      } catch {
+        rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&order=updated_at.desc&limit=500');
+      }
       const ids = rows.map(row => row.id).filter(Boolean);
       const grouped = new Map();
       const CHUNK_SIZE = 50;
@@ -271,7 +276,12 @@ export class SupabaseSessionStore extends SessionStore {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
         const batch = await this.client.select(
           'conversation_messages',
-          `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${chunk.join(',')})&order=created_at.desc&limit=${chunk.length * 60}`
+          `select=conversation_id,external_id,role,content,created_at,deleted_at&conversation_id=in.(${chunk.join(',')})&deleted_at=is.null&order=created_at.desc&limit=${chunk.length * 60}`
+        ).catch(() =>
+          this.client.select(
+            'conversation_messages',
+            `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${chunk.join(',')})&order=created_at.desc&limit=${chunk.length * 60}`
+          )
         ).catch(err => {
           this.logger.warn?.(`[supabase] falha ao buscar mensagens em lote: ${err.message}`);
           return [];
@@ -544,6 +554,78 @@ export class SupabaseSessionStore extends SessionStore {
       } catch (error) { this.remoteError = error.message; this.logger.warn?.(`[supabase] arquivamento remoto indisponível; cópia local preservada: ${error.message}`); }
     }
     return result;
+  }
+
+  async softDeleteConversation({ key, source = 'dashboard', archive = true } = {}) {
+    const cleanKey = normalizePhone(key);
+    if (!cleanKey) return false;
+    delete this.sessions?.[cleanKey];
+    this.markDirty?.();
+    await this.flush?.().catch(() => {});
+
+    if (!this.client?.enabled) return true;
+    const now = new Date().toISOString();
+    try {
+      const convs = await this.client.select('conversations', `select=id&external_key=eq.${encodeURIComponent(cleanKey)}&limit=1`);
+      const convId = convs?.[0]?.id;
+      if (archive) {
+        await this.client.request('conversations', {
+          method: 'PATCH',
+          query: `external_key=eq.${encodeURIComponent(cleanKey)}`,
+          body: { deleted_at: now, deleted_source: source, updated_at: now }
+        });
+        if (convId) {
+          await this.client.request('conversation_messages', {
+            method: 'PATCH',
+            query: `conversation_id=eq.${encodeURIComponent(convId)}&deleted_at=is.null`,
+            body: { deleted_at: now, deleted_source: source }
+          });
+        }
+      } else {
+        await this.client.request('conversations', {
+          method: 'DELETE',
+          query: `external_key=eq.${encodeURIComponent(cleanKey)}`
+        });
+      }
+      return true;
+    } catch (error) {
+      this.remoteError = error.message;
+      this.logger.warn?.(`[supabase] softDeleteConversation falhou: ${error.message}`);
+      return false;
+    }
+  }
+
+  async softDeleteMessage({ externalId, source = 'whatsapp', archive = true } = {}) {
+    if (!externalId) return false;
+    const candidates = [String(externalId), `wa:${externalId}`];
+    for (const s of Object.values(this.sessions || {})) {
+      if (Array.isArray(s.history)) {
+        s.history = s.history.filter(m => !candidates.includes(String(m.id || '')));
+      }
+    }
+    this.markDirty?.();
+    if (!this.client?.enabled) return true;
+    const now = new Date().toISOString();
+    const inList = candidates.map(c => `"${c.replace(/"/g, '')}"`).join(',');
+    try {
+      if (archive) {
+        await this.client.request('conversation_messages', {
+          method: 'PATCH',
+          query: `external_id=in.(${inList})`,
+          body: { deleted_at: now, deleted_source: source }
+        });
+      } else {
+        await this.client.request('conversation_messages', {
+          method: 'DELETE',
+          query: `external_id=in.(${inList})`
+        });
+      }
+      return true;
+    } catch (error) {
+      this.remoteError = error.message;
+      this.logger.warn?.(`[supabase] softDeleteMessage falhou: ${error.message}`);
+      return false;
+    }
   }
 
   async recordAICall(call) {
