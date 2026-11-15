@@ -4005,6 +4005,14 @@ document.addEventListener('visibilitychange', () => {
     statusEl.style.color = isError ? 'var(--danger, #f87171)' : '';
   };
 
+  const toLocalInputValue = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   async function loadProspectLists() {
     try {
       const data = await api('/api/dashboard/prospecting/lists');
@@ -4032,13 +4040,69 @@ document.addEventListener('visibilitychange', () => {
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="admin-ghost-btn btn-sm prospect-edit-btn" data-list-id="${esc(l.id)}">Editar</button>
               <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="active" ${status === 'active' ? 'disabled' : ''}>Iniciar</button>
               <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="paused" ${status === 'paused' ? 'disabled' : ''}>Pausar</button>
               <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="stopped" ${status === 'stopped' ? 'disabled' : ''}>Parar</button>
             </div>
+            <div class="prospect-edit-box hidden" data-edit-box="${esc(l.id)}" style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
+              <label>Nome <input type="text" data-edit-name="${esc(l.id)}" value="${esc(l.name)}" /></label>
+              <label>Segmento <input type="text" data-edit-segment="${esc(l.id)}" value="${esc(l.segment || '')}" /></label>
+              <label>Teto/dia <input type="number" min="1" max="500" data-edit-cap="${esc(l.id)}" value="${Number(l.daily_cap || 20)}" /></label>
+              <label>Início <input type="datetime-local" data-edit-start="${esc(l.id)}" value="${esc(toLocalInputValue(l.start_at))}" /></label>
+              <label>Término <input type="datetime-local" data-edit-end="${esc(l.id)}" value="${esc(toLocalInputValue(l.end_at))}" /></label>
+              <div style="display:flex;gap:6px;align-items:flex-end;">
+                <button type="button" class="admin-primary-btn btn-sm prospect-save-edit-btn" data-list-id="${esc(l.id)}">Salvar</button>
+                <button type="button" class="admin-ghost-btn btn-sm prospect-cancel-edit-btn" data-list-id="${esc(l.id)}">Cancelar</button>
+              </div>
+            </div>
           </div>
         `;
       }).join('');
+
+      container.querySelectorAll('.prospect-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const box = container.querySelector(`[data-edit-box="${btn.dataset.listId}"]`);
+          box?.classList.toggle('hidden');
+        });
+      });
+
+      container.querySelectorAll('.prospect-cancel-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const box = container.querySelector(`[data-edit-box="${btn.dataset.listId}"]`);
+          box?.classList.add('hidden');
+        });
+      });
+
+      container.querySelectorAll('.prospect-save-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.listId;
+          const name = container.querySelector(`[data-edit-name="${id}"]`)?.value?.trim() || '';
+          const segment = container.querySelector(`[data-edit-segment="${id}"]`)?.value?.trim() || '';
+          const dailyCap = Number(container.querySelector(`[data-edit-cap="${id}"]`)?.value || 20);
+          const startRaw = container.querySelector(`[data-edit-start="${id}"]`)?.value || '';
+          const endRaw = container.querySelector(`[data-edit-end="${id}"]`)?.value || '';
+          btn.disabled = true;
+          try {
+            await api(`/api/dashboard/prospecting/lists/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                name,
+                segment,
+                dailyCap,
+                startAt: startRaw ? new Date(startRaw).toISOString() : null,
+                endAt: endRaw ? new Date(endRaw).toISOString() : null
+              })
+            });
+            setStatus('Lista atualizada com sucesso.');
+            await loadProspectLists();
+          } catch (err) {
+            setStatus(err?.message || 'Erro ao salvar edição da lista.', true);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
 
       container.querySelectorAll('.prospect-status-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {

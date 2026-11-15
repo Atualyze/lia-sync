@@ -170,6 +170,31 @@ export class ProspectLeadStore {
     return Array.isArray(rows) ? (rows[0] || null) : null;
   }
 
+  async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
+    const now = new Date().toISOString();
+    const patch = { updated_at: now };
+    if (name !== undefined) patch.name = String(name).trim();
+    if (segment !== undefined) patch.segment = String(segment).trim();
+    if (dailyCap !== undefined) patch.daily_cap = Math.max(1, Math.min(500, Number(dailyCap) || 20));
+    if (startAt !== undefined) patch.start_at = startAt ? new Date(startAt).toISOString() : null;
+    if (endAt !== undefined) patch.end_at = endAt ? new Date(endAt).toISOString() : null;
+
+    if (!this.remoteEnabled) {
+      const list = this.mem.lists.get(listId);
+      if (!list) return null;
+      Object.assign(list, patch);
+      return { ...list };
+    }
+
+    const rows = await this.client.request('prospect_lists', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(listId)}`,
+      body: patch,
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
+  }
+
   async releaseClaim(leadId, claimToken, updates = {}) {
     const now = new Date().toISOString();
     if (!this.remoteEnabled) {
@@ -183,6 +208,31 @@ export class ProspectLeadStore {
       method: 'PATCH',
       query: `id=eq.${encodeURIComponent(leadId)}&claim_token=eq.${encodeURIComponent(claimToken)}`,
       body: { ...updates, claim_token: null, claimed_at: null, updated_at: now },
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
+  }
+
+  async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
+    const now = new Date().toISOString();
+    const patch = { updated_at: now };
+    if (name !== undefined) patch.name = String(name).trim();
+    if (segment !== undefined) patch.segment = String(segment).trim();
+    if (dailyCap !== undefined) patch.daily_cap = Math.max(1, Math.min(500, Number(dailyCap) || 20));
+    if (startAt !== undefined) patch.start_at = startAt ? new Date(startAt).toISOString() : null;
+    if (endAt !== undefined) patch.end_at = endAt ? new Date(endAt).toISOString() : null;
+
+    if (!this.remoteEnabled) {
+      const list = this.mem.lists.get(listId);
+      if (!list) return null;
+      Object.assign(list, patch);
+      return { ...list };
+    }
+
+    const rows = await this.client.request('prospect_lists', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(listId)}`,
+      body: patch,
       prefer: 'return=representation'
     });
     return Array.isArray(rows) ? (rows[0] || null) : null;
@@ -281,6 +331,31 @@ export class ProspectLeadStore {
       updated_at: now,
       ...(status === 'active' && !existing.warmup_started_at ? { warmup_started_at: now } : {})
     };
+    const rows = await this.client.request('prospect_lists', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(listId)}`,
+      body: patch,
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
+  }
+
+  async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
+    const now = new Date().toISOString();
+    const patch = { updated_at: now };
+    if (name !== undefined) patch.name = String(name).trim();
+    if (segment !== undefined) patch.segment = String(segment).trim();
+    if (dailyCap !== undefined) patch.daily_cap = Math.max(1, Math.min(500, Number(dailyCap) || 20));
+    if (startAt !== undefined) patch.start_at = startAt ? new Date(startAt).toISOString() : null;
+    if (endAt !== undefined) patch.end_at = endAt ? new Date(endAt).toISOString() : null;
+
+    if (!this.remoteEnabled) {
+      const list = this.mem.lists.get(listId);
+      if (!list) return null;
+      Object.assign(list, patch);
+      return { ...list };
+    }
+
     const rows = await this.client.request('prospect_lists', {
       method: 'PATCH',
       query: `id=eq.${encodeURIComponent(listId)}`,

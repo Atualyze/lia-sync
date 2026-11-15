@@ -87,6 +87,28 @@ export async function handleProspectingRoutes({ req, res, u, prospecting }) {
       return json(res, 200, { ok: true, list: updated });
     }
 
+    const editMatch = u.pathname.match(/^\/api\/dashboard\/prospecting\/lists\/([0-9a-f-]{36})$/i);
+    if (req.method === 'PATCH' && editMatch) {
+      const body = await readBody(req).catch(() => ({}));
+      const startAt = body?.startAt ? new Date(body.startAt) : (body?.startAt === null || body?.startAt === '' ? null : undefined);
+      const endAt = body?.endAt ? new Date(body.endAt) : (body?.endAt === null || body?.endAt === '' ? null : undefined);
+      if ((startAt instanceof Date && Number.isNaN(startAt.getTime())) || (endAt instanceof Date && Number.isNaN(endAt.getTime()))) {
+        return json(res, 400, { error: 'invalid_schedule', message: 'Data/hora de início ou término inválida.' });
+      }
+      if (startAt instanceof Date && endAt instanceof Date && endAt <= startAt) {
+        return json(res, 400, { error: 'invalid_schedule', message: 'A data/hora de término deve ser posterior ao início.' });
+      }
+      const updated = await prospecting.leadStore.updateList(editMatch[1], {
+        name: body?.name,
+        segment: body?.segment,
+        dailyCap: body?.dailyCap,
+        startAt: startAt === undefined ? undefined : (startAt ? startAt.toISOString() : null),
+        endAt: endAt === undefined ? undefined : (endAt ? endAt.toISOString() : null)
+      });
+      if (!updated) return json(res, 404, { error: 'list_not_found' });
+      return json(res, 200, { ok: true, list: updated });
+    }
+
     if (req.method === 'POST' && u.pathname === '/api/dashboard/prospecting/tick') {
       const body = await readBody(req).catch(() => ({}));
       const testMode = Boolean(body?.testMode);
