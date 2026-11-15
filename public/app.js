@@ -2350,24 +2350,40 @@ function fallbackEntry(value = '') {
   const match = String(value).trim().match(/^(gemini|openrouter|cloudflare|openai|qwen):(.*)$/i);
   return match ? { provider: match[1].toLowerCase(), model: match[2].trim() } : { provider: 'openrouter', model: String(value).trim() };
 }
+function populateFallbackModelSelect(select, provider, selectedModel = '') {
+  if (!select) return;
+  const models = state.fallbackCatalogs[provider] || [];
+  const options = models.map(model => `<option value="${esc(model.id)}" ${model.id === selectedModel ? 'selected' : ''}>${esc(model.name || model.id)} · ${esc(model.id)}</option>`).join('');
+  const extra = selectedModel && !models.some(model => model.id === selectedModel)
+    ? `<option value="${esc(selectedModel)}" selected>${esc(selectedModel)} (salvo)</option>`
+    : '';
+  select.innerHTML = `<option value="">Nenhum modelo selecionado</option>${options}${extra}`;
+  if (selectedModel) select.value = selectedModel;
+}
 function renderFallbackRows() {
   const container = $('#admin-fallback-rows');
   if (!container || state.adminFormDirty) return;
   const values = Array.isArray(state.adminConfig?.draft?.ai?.fallbackModels) ? state.adminConfig.draft.ai.fallbackModels.slice(0, 3) : [];
   container.innerHTML = [0, 1, 2].map(index => {
     const selected = fallbackEntry(values[index] || '');
-    const models = state.fallbackCatalogs[selected.provider] || [];
-    const options = models.map(model => `<option value="${esc(model.id)}" ${model.id === selected.model ? 'selected' : ''}>${esc(model.name || model.id)} · ${esc(model.id)}</option>`).join('');
-    const extra = selected.model && !models.some(model => model.id === selected.model) ? `<option value="${esc(selected.model)}" selected>${esc(selected.model)} (salvo)</option>` : '';
     return `<div class="fallback-row-card">
       <span class="fallback-slot-title">Reserva #${index + 1}</span>
       <select class="admin-fallback-provider" data-index="${index}">${FALLBACK_PROVIDERS.map(([id, name]) => `<option value="${id}" ${id === selected.provider ? 'selected' : ''}>${name}</option>`).join('')}</select>
-      <select class="admin-fallback-model" data-index="${index}"><option value="">Nenhum modelo selecionado</option>${options}${extra}</select>
+      <select class="admin-fallback-model" data-index="${index}"></select>
     </div>`;
   }).join('');
+  [0, 1, 2].forEach(index => {
+    const selected = fallbackEntry(values[index] || '');
+    const modelSelect = container.querySelector(`.admin-fallback-model[data-index="${index}"]`);
+    populateFallbackModelSelect(modelSelect, selected.provider, selected.model);
+  });
   container.querySelectorAll('.admin-fallback-provider').forEach(select => select.addEventListener('change', async event => {
-    await loadFallbackCatalog(event.target.value, { refresh: true });
-    renderFallbackRows();
+    const index = event.target.dataset.index;
+    const provider = event.target.value;
+    const modelSelect = container.querySelector(`.admin-fallback-model[data-index="${index}"]`);
+    if (modelSelect) modelSelect.innerHTML = '<option value="">Carregando modelos...</option>';
+    await loadFallbackCatalog(provider, { refresh: true });
+    populateFallbackModelSelect(modelSelect, provider, '');
     syncFallbackModelInputs();
   }));
   container.querySelectorAll('.admin-fallback-model').forEach(select => select.addEventListener('change', syncFallbackModelInputs));
