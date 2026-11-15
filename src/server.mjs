@@ -238,5 +238,11 @@ if (isDirectRun) {
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
   }).catch(e => console.error('[maintenance]', e.message));
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
-  const stop = async () => { clearInterval(maintenanceTimer); await store.flush(); server.close(() => process.exit(0)); }; process.on('SIGTERM', stop); process.on('SIGINT', stop);
+  const stop = async () => {
+    clearInterval(maintenanceTimer);
+    await store.flush().catch(() => {});
+    const forceExit = setTimeout(() => process.exit(0), 5000);
+    forceExit.unref?.();
+    server.close(() => process.exit(0));
+  }; process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }

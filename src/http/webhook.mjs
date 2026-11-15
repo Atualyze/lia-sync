@@ -168,7 +168,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       return;
     }
 
-    if (isSelfChat || isCallingAssistantDirectly) {
+    if (isSelfChat) {
       broadcastBridgeEvent('whatsapp_message', {
         id: messageId || undefined,
         phone: OWNER_SELF_KEY,

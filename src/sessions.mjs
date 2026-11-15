@@ -19,7 +19,7 @@ export function normalizePhone(raw = '') {
       return isSim ? `sim:${normalized}` : normalized;
     }
   }
-  if (digits.length === 10 && !digits.startsWith('55')) {
+  if (digits.length === 10) {
     const ddd = digits.slice(0, 2);
     const num = digits.slice(2);
     if (/^[6-9]/.test(num)) {
@@ -27,7 +27,7 @@ export function normalizePhone(raw = '') {
       return isSim ? `sim:${normalized}` : normalized;
     }
   }
-  if (digits.length === 11 && !digits.startsWith('55')) {
+  if (digits.length === 11) {
     const normalized = `55${digits}`;
     return isSim ? `sim:${normalized}` : normalized;
   }
@@ -178,6 +178,7 @@ export class SessionStore {
   }
 
   markDirty() {
+    this.dirty = true;
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.flush().catch((e) => {
@@ -189,13 +190,17 @@ export class SessionStore {
   async flush() {
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
+    this.dirty = true;
     if (this.saving) return this.saving;
     this.saving = (async () => {
       try {
         await fs.mkdir(path.dirname(this.file), { recursive: true });
-        const tmp = `${this.file}.tmp`;
-        await fs.writeFile(tmp, JSON.stringify(this.sessions, null, 2));
-        await fs.rename(tmp, this.file);
+        while (this.dirty) {
+          this.dirty = false;
+          const tmp = `${this.file}.tmp`;
+          await fs.writeFile(tmp, JSON.stringify(this.sessions));
+          await fs.rename(tmp, this.file);
+        }
       } catch (e) {
         this.logger.error?.('[sessions] falha de gravação', e?.message || e);
         throw e;

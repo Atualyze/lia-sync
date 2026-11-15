@@ -53,9 +53,9 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
       if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);
       const authResult = await auth(req, config);
-      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
-      if (!authorizedRequest) return json(res, typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
-      const role = typeof authResult === 'object' ? authResult.role : 'admin';
+      const authorizedRequest = authResult && typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      if (!authorizedRequest) return json(res, authResult && typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
+      const role = authResult && typeof authResult === 'object' ? authResult.role : 'admin';
       if (!(ROLE_RANK[role] >= ROLE_RANK.operator)) return json(res, 403, { error: 'dashboard_role_not_authorized' });
       return proxyToChatwoot(req, res);
     }
@@ -63,13 +63,13 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     let authContext = null;
     if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) {
       const authResult = await auth(req, config);
-      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      const authorizedRequest = authResult && typeof authResult === 'object' ? authResult.ok === true : authResult === true;
       if (!authorizedRequest) {
-        const status = typeof authResult === 'object' ? authResult.status || 401 : 401;
-        const reason = typeof authResult === 'object' ? authResult.reason || 'dashboard_auth_required' : 'dashboard_auth_required';
+        const status = authResult && typeof authResult === 'object' ? authResult.status || 401 : 401;
+        const reason = authResult && typeof authResult === 'object' ? authResult.reason || 'dashboard_auth_required' : 'dashboard_auth_required';
         return json(res, status, { error: status === 403 ? 'dashboard_profile_not_authorized' : status === 503 ? 'dashboard_auth_unavailable' : 'dashboard_auth_required', reason });
       }
-      authContext = typeof authResult === 'object' ? authResult : { ok: true, role: 'admin' };
+      authContext = authResult && typeof authResult === 'object' ? authResult : { ok: true, role: 'admin' };
       const minimumRole = requiredRole(u.pathname, req.method);
       if (!(ROLE_RANK[authContext.role] >= ROLE_RANK[minimumRole])) return json(res, 403, { error: 'dashboard_role_not_authorized', requiredRole: minimumRole });
       req.dashboardAuth = authContext;
@@ -80,8 +80,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
         return serveStatic(req, res, config);
       }
       const authResult = await auth(req, config);
-      const authorizedRequest = typeof authResult === 'object' ? authResult.ok === true : authResult === true;
-      if (!authorizedRequest) return json(res, typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
+      const authorizedRequest = authResult && typeof authResult === 'object' ? authResult.ok === true : authResult === true;
+      if (!authorizedRequest) return json(res, authResult && typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
       return proxyToChatwoot(req, res, () => serveStatic(req, res, config));
     }
     const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f });

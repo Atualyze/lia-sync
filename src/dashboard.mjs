@@ -73,14 +73,17 @@ export async function serveStatic(req, res, config) {
   const relative = pathname === '/' || pathname === '/dashboard' || pathname === '/dashboard/'
     ? 'index.html'
     : pathname.replace(/^\/dashboard\//, '').replace(/^\//, '');
-  const allowed = new Set(['index.html', 'app.js', 'styles.css', 'logo.webp', 'logo.png', 'qrcode.png']);
+  const allowed = new Set(['index.html', 'conectar.html', 'app.js', 'styles.css', 'logo.webp', 'logo.png', 'qrcode.png']);
   if (!allowed.has(relative) && !relative.startsWith('vendor/')) {
     res.writeHead(404);
     return res.end();
   }
   const root = path.resolve(config.publicDir);
   const file = path.resolve(root, relative);
-  if (!file.startsWith(`${root}${path.sep}`)) return res.end();
+  if (!file.startsWith(`${root}${path.sep}`)) {
+    res.writeHead(403);
+    return res.end();
+  }
   const contentType = relative.endsWith('.js')
     ? 'text/javascript; charset=utf-8'
     : relative.endsWith('.css')

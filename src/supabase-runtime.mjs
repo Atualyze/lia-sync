@@ -35,7 +35,15 @@ export class SupabaseRestClient {
   }
 
   async select(table, query) { return this.request(table, { query }); }
-  async upsert(table, rows, onConflict) { return this.request(table, { method: 'POST', query: onConflict ? `on_conflict=${encodeURIComponent(onConflict)}` : '', body: rows, prefer: 'resolution=merge-duplicates,return=representation' }); }
+  async upsert(table, rows, onConflict, { returnRepresentation = true } = {}) {
+    const returnMode = returnRepresentation ? 'return=representation' : 'return=minimal';
+    return this.request(table, {
+      method: 'POST',
+      query: onConflict ? `on_conflict=${encodeURIComponent(onConflict)}` : '',
+      body: rows,
+      prefer: `resolution=merge-duplicates,${returnMode}`
+    });
+  }
   async insert(table, rows) { return this.request(table, { method: 'POST', body: rows, prefer: 'return=minimal' }); }
   async rpc(name, args = {}) {
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(name)) throw new Error('Supabase RPC inválida');
@@ -43,14 +51,14 @@ export class SupabaseRestClient {
   }
 }
 
-const externalIdFor = (key, index, message) => {
+const externalIdFor = (key, _index, message) => {
   if (message.id) {
     const id = String(message.id);
     return id.startsWith('runtime:') || id.startsWith('wa:') ? id : `wa:${id}`;
   }
-  const datePart = message.createdAt ? String(message.createdAt).slice(0, 10) : 'nodate';
-  const hash = crypto.createHash('sha1').update(`${message.role}:${datePart}:${String(message.content || '').trim()}`).digest('hex').slice(0, 16);
-  return `runtime:${key}:${index}:${hash}`;
+  const tsPart = message.createdAt ? String(message.createdAt).slice(0, 19) : 'nodate';
+  const hash = crypto.createHash('sha1').update(`${message.role}:${tsPart}:${String(message.content || '').trim()}`).digest('hex').slice(0, 16);
+  return `runtime:${key}:${tsPart}:${hash}`;
 };
 
 function dedupeMessages(messages = []) {
@@ -490,7 +498,7 @@ export class SupabaseSessionStore extends SessionStore {
               }
             });
           }
-          if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id');
+          if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id', { returnRepresentation: false });
           session._flushedSig = sig;
         }
         this.persistence = 'supabase';

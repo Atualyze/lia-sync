@@ -11,7 +11,7 @@ import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
 import { classificarSetorPorTexto } from './triage-router.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
 import { createFlow } from './flow.mjs';
-import { SessionStore } from './sessions.mjs';
+import { SessionStore, normalizePhone } from './sessions.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { buildSystemPrompt } from './knowledge.mjs';
 import { listKnowledgeBasesSync } from './knowledge-bases.mjs';
@@ -1064,4 +1064,9 @@ test('Schemas Gemini e OpenRouter declaram sector, sentiment e context_summary',
   for (const field of ['sector', 'sentiment', 'context_summary']) {
     assert.ok(orProps[field], `OpenRouter schema precisa declarar ${field}`);
   }
+});
+
+test('normalizePhone preserva DDD 55 (RS) em numeros de 10 e 11 digitos', () => {
+  assert.equal(normalizePhone('55999999999'), '5555999999999');
+  assert.equal(normalizePhone('5591234567'), '5555991234567');
 });
