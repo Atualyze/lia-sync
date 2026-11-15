@@ -265,23 +265,22 @@ export class SupabaseSessionStore extends SessionStore {
     try {
       const rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&order=updated_at.desc&limit=500');
       const ids = rows.map(row => row.id).filter(Boolean);
-      const messageBatches = await Promise.all(
-        ids.map(id =>
-          this.client.select(
-            'conversation_messages',
-            `select=conversation_id,external_id,role,content,created_at&conversation_id=eq.${id}&order=created_at.desc&limit=60`
-          ).catch(err => {
-            this.logger.warn?.(`[supabase] falha ao buscar mensagens de ${id}: ${err.message}`);
-            return [];
-          })
-        )
-      );
       const grouped = new Map();
-      for (const batch of messageBatches) {
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const batch = await this.client.select(
+          'conversation_messages',
+          `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${chunk.join(',')})&order=created_at.desc&limit=${chunk.length * 60}`
+        ).catch(err => {
+          this.logger.warn?.(`[supabase] falha ao buscar mensagens em lote: ${err.message}`);
+          return [];
+        });
         if (!Array.isArray(batch)) continue;
         for (const message of [...batch].reverse()) {
           if (!grouped.has(message.conversation_id)) grouped.set(message.conversation_id, []);
-          grouped.get(message.conversation_id).push(message);
+          const arr = grouped.get(message.conversation_id);
+          if (arr.length < 60) arr.push(message);
         }
       }
       const remote = {};
@@ -449,67 +448,81 @@ export class SupabaseSessionStore extends SessionStore {
   async flush() {
     const local = super.flush();
     if (!this.client?.enabled) return local;
-    const remote = (async () => {
-      try {
-        for (const [key, session] of Object.entries(this.sessions)) {
-          const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}`;
-          if (session._conversationId && session._flushedSig === sig) continue;
-          const externalId = key.replace(/^sim:/, '');
-          const resolvedName = session.clientName || session.contactName || session.pushName || null;
-          const contacts = await this.client.upsert('contacts', [{
-            channel: 'whatsapp',
-            external_id: externalId,
-            phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
-            display_name: resolvedName,
-            push_name: session.pushName || resolvedName,
-            last_seen_at: session.lastUserAt || new Date().toISOString()
-          }], 'channel,external_id');
-          const contactId = contacts?.[0]?.id;
-          const conversations = await this.client.upsert('conversations', [sessionToConversation(key, session, contactId)], 'external_key');
-          const conversationId = conversations?.[0]?.id || session._conversationId;
-          if (!conversationId) continue;
-          session._conversationId = conversationId;
-          session.history = dedupeMessages(session.history || []);
-          const messages = [];
-          const seenExtIds = new Set();
-          for (let index = 0; index < session.history.length; index++) {
-            const message = session.history[index];
-            if (!message.createdAt) {
-              message.createdAt = session.lastBotAt || session.lastUserAt || session.updatedAt || new Date().toISOString();
-            }
-            const extId = externalIdFor(key, index, message);
-            if (seenExtIds.has(extId)) continue;
-            seenExtIds.add(extId);
-            messages.push({
-              conversation_id: conversationId,
-              external_id: extId,
-              role: message.role === 'assistant' ? 'assistant' : 'user',
-              content: String(message.content || ''),
-              message_type: 'text',
-              from_me: message.role === 'assistant',
-              delivery_status: message.role === 'assistant' ? 'sent' : 'received',
-              created_at: message.createdAt,
-              metadata: {
-                runtime: 'node',
-                ...(message.replyTo ? { replyTo: message.replyTo } : {}),
-                ...(message.mediaType ? { mediaType: message.mediaType } : {}),
-                ...(message.fileName ? { fileName: message.fileName } : {}),
-                ...(message.fromCopilot ? { fromCopilot: true } : {})
-              }
-            });
+    this._remoteFlushDirty = true;
+    if (!this._remoteFlushPromise) {
+      this._remoteFlushPromise = (async () => {
+        try {
+          while (this._remoteFlushDirty) {
+            this._remoteFlushDirty = false;
+            await this._flushRemoteOnce();
           }
-          if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id', { returnRepresentation: false });
-          session._flushedSig = sig;
+        } finally {
+          this._remoteFlushPromise = null;
         }
-        this.persistence = 'supabase';
-        this.remoteError = null;
-      } catch (error) {
-        this.persistence = 'fallback';
-        this.remoteError = error.message;
-        this.logger.warn?.(`[supabase] gravação indisponível; fallback local preservado: ${error.message}`);
+      })();
+    }
+    await Promise.all([local, this._remoteFlushPromise]);
+  }
+
+  async _flushRemoteOnce() {
+    try {
+      for (const [key, session] of Object.entries(this.sessions)) {
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}`;
+        if (session._conversationId && session._flushedSig === sig) continue;
+        const externalId = key.replace(/^sim:/, '');
+        const resolvedName = session.clientName || session.contactName || session.pushName || null;
+        const contacts = await this.client.upsert('contacts', [{
+          channel: 'whatsapp',
+          external_id: externalId,
+          phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
+          display_name: resolvedName,
+          push_name: session.pushName || resolvedName,
+          last_seen_at: session.lastUserAt || new Date().toISOString()
+        }], 'channel,external_id');
+        const contactId = contacts?.[0]?.id;
+        const conversations = await this.client.upsert('conversations', [sessionToConversation(key, session, contactId)], 'external_key');
+        const conversationId = conversations?.[0]?.id || session._conversationId;
+        if (!conversationId) continue;
+        session._conversationId = conversationId;
+        session.history = dedupeMessages(session.history || []);
+        const messages = [];
+        const seenExtIds = new Set();
+        for (let index = 0; index < session.history.length; index++) {
+          const message = session.history[index];
+          if (!message.createdAt) {
+            message.createdAt = session.lastBotAt || session.lastUserAt || session.updatedAt || new Date().toISOString();
+          }
+          const extId = externalIdFor(key, index, message);
+          if (seenExtIds.has(extId)) continue;
+          seenExtIds.add(extId);
+          messages.push({
+            conversation_id: conversationId,
+            external_id: extId,
+            role: message.role === 'assistant' ? 'assistant' : 'user',
+            content: String(message.content || ''),
+            message_type: 'text',
+            from_me: message.role === 'assistant',
+            delivery_status: message.role === 'assistant' ? 'sent' : 'received',
+            created_at: message.createdAt,
+            metadata: {
+              runtime: 'node',
+              ...(message.replyTo ? { replyTo: message.replyTo } : {}),
+              ...(message.mediaType ? { mediaType: message.mediaType } : {}),
+              ...(message.fileName ? { fileName: message.fileName } : {}),
+              ...(message.fromCopilot ? { fromCopilot: true } : {})
+            }
+          });
+        }
+        if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id', { returnRepresentation: false });
+        session._flushedSig = sig;
       }
-    })();
-    await Promise.all([local, remote]);
+      this.persistence = 'supabase';
+      this.remoteError = null;
+    } catch (error) {
+      this.persistence = 'fallback';
+      this.remoteError = error.message;
+      this.logger.warn?.(`[supabase] gravação indisponível; fallback local preservado: ${error.message}`);
+    }
   }
 
   async archive(phone, reason = '') {

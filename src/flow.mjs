@@ -94,33 +94,32 @@ export function createFlow({
       s && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
     );
 
-    // 2. Por dígitos (telefone)
+    // 2. Por dígitos (telefone): exato primeiro, ou sufixo único (sem criar sessão fantasma)
     const digits = raw.replace(/\D/g, '');
     if (digits.length >= 8) {
-      for (const s of all) {
-        const sDigits = String(s.phone || '').replace(/\D/g, '');
-        if (sDigits === digits || sDigits.endsWith(digits) || digits.endsWith(sDigits)) {
-          return s;
-        }
-      }
+      const exactDigit = all.find((s) => String(s.phone || '').replace(/\D/g, '') === digits);
+      if (exactDigit) return exactDigit;
       if (store.sessions[digits]) return store.sessions[digits];
       if (store.sessions[`sim:${digits}`]) return store.sessions[`sim:${digits}`];
+      const suffixMatches = all.filter((s) => {
+        const sDigits = String(s.phone || '').replace(/\D/g, '');
+        return sDigits.endsWith(digits) || digits.endsWith(sDigits);
+      });
+      if (suffixMatches.length === 1) return suffixMatches[0];
     }
 
-    // 3. Por nome do contato (busca por substring insensível a maiúsculas e acentos)
+    // 3. Por nome do contato: exato primeiro, depois palavra inteira única (evita "Ana" -> "Mariana")
     const normName = normalize(raw);
     if (normName.length >= 2) {
-      for (const s of all) {
+      const exactName = all.find((s) => normalize(s.clientName || s.contactName || s.pushName || '') === normName);
+      if (exactName) return exactName;
+      const escaped = normName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordRe = new RegExp(`\\b${escaped}\\b`, 'i');
+      const wordMatches = all.filter((s) => {
         const cName = normalize(s.clientName || s.contactName || s.pushName || '');
-        if (cName && (cName.includes(normName) || normName.includes(cName))) {
-          return s;
-        }
-      }
-    }
-
-    // 4. Fallback pelo store.get se for número de telefone completo
-    if (digits.length >= 8) {
-      return store.get(digits);
+        return cName && wordRe.test(cName);
+      });
+      if (wordMatches.length === 1) return wordMatches[0];
     }
 
     return null;

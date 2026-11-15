@@ -240,6 +240,12 @@ if (isDirectRun) {
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   const stop = async () => {
     clearInterval(maintenanceTimer);
+    for (const [phone, job] of pending.entries()) {
+      clearTimeout(job.timer);
+      pending.delete(phone);
+      deliver(job);
+    }
+    await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});
     const forceExit = setTimeout(() => process.exit(0), 5000);
     forceExit.unref?.();
