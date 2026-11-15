@@ -47,7 +47,11 @@ function normalizeModel(provider, model) {
   const id = String(provider === 'gemini' || provider === 'cloudflare' ? model.name || model.id || '' : model.id || '').replace(/^models\//, '').trim();
   if (!id || id.length > 200) return null;
   if (provider !== 'gemini' && /(?:embedding|embed-|text-embedding|whisper|transcri|moderation|dall-e|tts|text-to-speech|rerank|reranker)/i.test(id)) return null;
-  if (provider === 'gemini' && Array.isArray(model.supportedGenerationMethods) && !model.supportedGenerationMethods.includes('generateContent')) return null;
+  if (provider === 'gemini') {
+    if (!id.startsWith('gemini-')) return null;
+    if (/(?:-tts\b|-image\b|-image-preview\b|nano-banana|transcribe|computer-use|robotics|deep-research|antigravity|lyria|-omni-|customtools|^gemini-4-(?:argon|carbon|hydrogen)$)/i.test(id)) return null;
+    if (Array.isArray(model.supportedGenerationMethods) && !model.supportedGenerationMethods.includes('generateContent')) return null;
+  }
   const requireWorkersPaid = provider === 'cloudflare' && Array.isArray(model.properties)
     ? model.properties.some(prop => prop?.property_id === 'require_workers_paid' && String(prop?.value).toLowerCase() === 'true')
     : false;
