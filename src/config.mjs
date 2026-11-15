@@ -54,6 +54,8 @@ export const config = Object.freeze({
   supabaseCaptchaProvider: (process.env.SUPABASE_CAPTCHA_PROVIDER || 'turnstile').toLowerCase(),
   faqUrl: process.env.FAQ_URL || '',
   faqCacheSeconds: num('FAQ_CACHE_SECONDS', 60),
+  apiV1Keys: Object.freeze((process.env.LIA_API_KEYS || process.env.LIA_API_KEY || '').split(',').map(s => s.trim()).filter(Boolean)),
+  apiV1RateLimitPerMin: Math.max(10, num('API_V1_RATE_LIMIT_PER_MIN', 60)),
   publicDir: path.resolve('./public')
 });
 

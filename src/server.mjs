@@ -215,7 +215,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     webhookEventStore,
     aiBudgetGate: budgetGate,
     sectorProjection,
-    prospecting
+    prospecting,
+    askAI: askAIWithBudget
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; return app;
 }

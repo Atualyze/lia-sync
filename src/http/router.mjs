@@ -11,6 +11,7 @@ import { handleOperationsRoutes } from './operations.mjs';
 import { handleProspectingRoutes } from './prospecting-routes.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
+import { createApiV1Handler } from './api-v1.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -29,7 +30,7 @@ function requiredRole(pathname, method) {
   return 'viewer';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, apiV1 = createApiV1Handler() }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -103,6 +104,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });
     if (webhookResult !== NOT_HANDLED) return webhookResult;
+    const apiV1Result = await apiV1({ req, res, u, store, adminConfig, runtimeAI, readinessCheck, askAI });
+    if (apiV1Result !== NOT_HANDLED) return apiV1Result;
     return json(res, 404, { error: 'not_found' });
   };
 }
