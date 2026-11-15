@@ -262,21 +262,23 @@ export class SupabaseSessionStore extends SessionStore {
   }
 
   async load({ isRefresh = false } = {}) {
-    const inMemory = { ...(this.sessions || {}) };
-    await super.load();
-    for (const [k, memSession] of Object.entries(inMemory)) {
-      const diskSession = this.sessions[k];
-      if (!diskSession) {
-        this.sessions[k] = memSession;
-      } else {
-        const memTime = new Date(memSession.lastUserAt || memSession.lastBotAt || memSession.updatedAt || 0).getTime();
-        const diskTime = new Date(diskSession.lastUserAt || diskSession.lastBotAt || diskSession.updatedAt || 0).getTime();
-        if (memTime >= diskTime) {
+    if (!this.client?.enabled) {
+      const inMemory = { ...(this.sessions || {}) };
+      await super.load();
+      for (const [k, memSession] of Object.entries(inMemory)) {
+        const diskSession = this.sessions[k];
+        if (!diskSession) {
           this.sessions[k] = memSession;
+        } else {
+          const memTime = new Date(memSession.lastUserAt || memSession.lastBotAt || memSession.updatedAt || 0).getTime();
+          const diskTime = new Date(diskSession.lastUserAt || diskSession.lastBotAt || diskSession.updatedAt || 0).getTime();
+          if (memTime >= diskTime) {
+            this.sessions[k] = memSession;
+          }
         }
       }
+      return this.sessions;
     }
-    if (!this.client?.enabled) return this.sessions;
     try {
       let rows;
       try {
@@ -314,6 +316,7 @@ export class SupabaseSessionStore extends SessionStore {
         remote[key] = rowToSession(row, grouped.get(row.id) || []);
       }
       const local = { ...(this.sessions || {}) };
+      this.sessions = {};
       for (const [key, rSession] of Object.entries(remote)) {
         const lSession = local[key];
         if (lSession) {
@@ -356,8 +359,10 @@ export class SupabaseSessionStore extends SessionStore {
         }
         this.sessions[key] = rSession;
       }
-      for (const [key, lSession] of Object.entries(local)) {
-        if (!this.sessions[key]) this.sessions[key] = lSession;
+      if (this.dirty) {
+        for (const [key, lSession] of Object.entries(local)) {
+          if (!this.sessions[key]) this.sessions[key] = lSession;
+        }
       }
       const hasLocalOnly = Object.keys(local).some(key => !remote[key]);
       this.persistence = 'supabase';
@@ -471,8 +476,8 @@ export class SupabaseSessionStore extends SessionStore {
   }
 
   async flush() {
-    const local = super.flush();
-    if (!this.client?.enabled) return local;
+    if (!this.client?.enabled) return super.flush();
+    this.dirty = false;
     this._remoteFlushDirty = true;
     if (!this._remoteFlushPromise) {
       this._remoteFlushPromise = (async () => {
