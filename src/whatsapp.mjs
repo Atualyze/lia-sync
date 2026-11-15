@@ -57,7 +57,8 @@ export function parsePayload(data) {
   const message = d?.message || {};
   const jid = String(key.remoteJid || d?.remoteJid || '');
   const alt = String(d.remoteJidAlt || d.senderPn || d.participantPn || key.remoteJidAlt || '');
-  const rawPhone = alt ? alt.split('@')[0].replace(/\D/g, '') : /@lid$/i.test(jid) ? jid : jid.split('@')[0].replace(/\D/g, '');
+  const lid = /@lid$/i.test(jid) ? jid : (/@lid$/i.test(alt) ? alt : '');
+  const rawPhone = alt && !/@lid$/i.test(alt) ? alt.split('@')[0].replace(/\D/g, '') : /@lid$/i.test(jid) ? jid : jid.split('@')[0].replace(/\D/g, '');
   const phone = /@lid$/i.test(rawPhone) ? rawPhone : normalizePhone(rawPhone);
 
   const text = message.conversation ||
@@ -87,6 +88,7 @@ export function parsePayload(data) {
     key,
     message,
     jid,
+    lid,
     phone,
     text,
     nonText,

@@ -121,7 +121,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       await finish('ignored', 'unsupported_event');
       return;
     }
-    if (item.jid && item.phone) store.rememberLid?.(item.jid, item.phone);
+    if ((item.lid || item.jid) && item.phone) store.rememberLid?.(item.lid || item.jid, item.phone);
 
     const isOwnerSelf = (jid = '', phone = '') => {
       const options = { humanPhone: getHumanPhone(), cachedOwner: getCachedInstanceOwner(), identity };
