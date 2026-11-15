@@ -148,6 +148,7 @@ export const DEFAULT_BOT_CONFIG = {
   },
   prospecting: {
     enabled: false,
+    testMode: false,
     dailyCap: 20,
     warmupDays: 21,
     windowStart: '09:00',

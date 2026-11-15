@@ -23,6 +23,7 @@ export function createProspecting({ client = null, sender, campaignStore, sessio
       warmupDays: Number(ui.warmupDays ?? env.PROSPECTING_WARMUP_DAYS ?? 21),
       windowStart: ui.windowStart || envWindow[0] || '09:00',
       windowEnd: ui.windowEnd || envWindow[1] || '18:00',
+      testMode: Boolean(ui.testMode),
       defaultTemplate: ui.defaultTemplate || undefined
     };
   };
@@ -33,16 +34,16 @@ export function createProspecting({ client = null, sender, campaignStore, sessio
     importLeads: importProspectLeads,
     handleInboundOptOut: params => handleInboundOptOut({ ...params, campaignStore, prospectStore: leadStore, send: sender }),
     tick: (opts = {}) => {
-      const cfg = getRuntimeConfig();
+      const cfg = { ...getRuntimeConfig(), ...(opts.config || {}) };
       return runProspectingTick({
-        enabled: isEnabled(),
+        enabled: opts.enabled ?? isEnabled(),
         leadStore,
         campaignStore,
         sessionStore,
         send: sender,
         template: cfg.defaultTemplate,
-        config: cfg,
-        ...opts
+        ...opts,
+        config: cfg
       });
     }
   };

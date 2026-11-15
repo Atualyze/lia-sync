@@ -88,8 +88,10 @@ export async function handleProspectingRoutes({ req, res, u, prospecting }) {
     }
 
     if (req.method === 'POST' && u.pathname === '/api/dashboard/prospecting/tick') {
-      const summary = await prospecting.tick();
-      return json(res, 200, { ok: true, summary });
+      const body = await readBody(req).catch(() => ({}));
+      const testMode = Boolean(body?.testMode);
+      const summary = await prospecting.tick(testMode ? { enabled: true, config: { testMode: true } } : {});
+      return json(res, 200, { ok: true, testMode, summary });
     }
 
     return NOT_HANDLED;

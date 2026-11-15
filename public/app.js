@@ -4110,6 +4110,25 @@ document.addEventListener('visibilitychange', () => {
   });
 
   refreshBtn?.addEventListener('click', loadProspectLists);
+  document.getElementById('prospect-test-tick-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('prospect-test-tick-btn');
+    if (btn) btn.disabled = true;
+    setStatus('Executando ciclo de teste na lista ativa...');
+    try {
+      const res = await api('/api/dashboard/prospecting/tick', {
+        method: 'POST',
+        body: JSON.stringify({ testMode: true })
+      });
+      const s = res?.summary || {};
+      const blockedReasons = (s.details || []).filter(d => d.status === 'blocked').map(d => d.reason).join(', ');
+      setStatus(`Teste concluído: ${s.sent || 0} enviado(s), ${s.blocked || 0} bloqueado(s)${blockedReasons ? ` (${blockedReasons})` : ''}, ${s.failed || 0} falha(s).`);
+      await loadProspectLists();
+    } catch (err) {
+      setStatus(err?.message || 'Falha ao executar teste.', true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
   acc?.addEventListener('toggle', () => {
     if (acc.open) loadProspectLists();
   });

@@ -1244,6 +1244,10 @@
                     <input type="checkbox" data-config="prospecting.enabled" />
                     <span>Ativar motor de prospecção automática no ciclo de manutenção</span>
                   </label>
+                  <label class="toggle-field wide">
+                    <input type="checkbox" data-config="prospecting.testMode" />
+                    <span>Modo Teste (ignora restrição de domingo/horário comercial para testar com sua lista)</span>
+                  </label>
                   <label>Teto Diário Base (leads/dia)
                     <input type="number" data-config="prospecting.dailyCap" min="1" max="500" step="1" />
                   </label>
@@ -1289,6 +1293,7 @@
                   <div class="wide" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <button id="prospect-import-btn" type="button" class="admin-primary-btn">Importar Lista de Leads</button>
                     <button id="prospect-refresh-btn" type="button" class="admin-ghost-btn">Atualizar Listas</button>
+                    <button id="prospect-test-tick-btn" type="button" class="admin-ghost-btn">Executar Teste Agora</button>
                     <span id="prospect-import-status" class="field-hint" aria-live="polite"></span>
                   </div>
                 </div>

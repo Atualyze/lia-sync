@@ -73,10 +73,12 @@ export async function evaluateProspectGuards({
     return { allowed: false, reason: 'existing_session' };
   }
 
-  // 3. Business hours in configured timezone (no Sunday)
-  const timeZone = config.timeZone || 'America/Sao_Paulo';
-  if (!isWithinBusinessWindow({ now, timeZone, windowStart: config.windowStart || '09:00', windowEnd: config.windowEnd || '18:00' })) {
-    return { allowed: false, reason: 'outside_business_hours' };
+  // 3. Business hours in configured timezone (no Sunday), bypassed in testMode
+  if (!config.testMode) {
+    const timeZone = config.timeZone || 'America/Sao_Paulo';
+    if (!isWithinBusinessWindow({ now, timeZone, windowStart: config.windowStart || '09:00', windowEnd: config.windowEnd || '18:00' })) {
+      return { allowed: false, reason: 'outside_business_hours' };
+    }
   }
 
   // 4. Cooldown per lead (default 48h)
