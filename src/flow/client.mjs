@@ -483,9 +483,7 @@ export async function handleClientMessage({
             if (
               tc.name === 'gerar_cobranca_pix' &&
               !isToolEnabled('gerar_cobranca_pix', botConfig) &&
-              isToolEnabled('checkout_infinitepay', botConfig) &&
-              hasPositiveAmount &&
-              !askedPixKeyOrFree
+              isToolEnabled('checkout_infinitepay', botConfig)
             ) {
               tc.name = 'checkout_infinitepay';
               tc.args = { acao: 'criar_link', ...(tc.args || {}) };
@@ -506,10 +504,7 @@ export async function handleClientMessage({
                 userText,
                 searchWebWithGemini: ai?.searchWebWithGemini
               };
-              const useDirectPixFallback = tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && Boolean(configuredPixKey);
-              const toolRes = useDirectPixFallback
-                ? await toolGerarCobrancaPix.execute(tc.args || {}, toolContext)
-                : await executeToolCall(tc.name, tc.args || {}, toolContext);
+              const toolRes = await executeToolCall(tc.name, tc.args || {}, toolContext);
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerar_cobranca_pix') {
                 pixHandledByTool = true;
