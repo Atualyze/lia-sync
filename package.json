@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "node src/server.mjs",
     "start": "node src/server.mjs",
-    "build": "node scripts/check-syntax.mjs",
+    "build": "node scripts/build-dist.mjs",
     "lint": "node scripts/check-syntax.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
