@@ -99,7 +99,7 @@ export async function serveStatic(req, res, config) {
       'content-type': contentType,
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer',
-      'content-security-policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com"
+      'content-security-policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; media-src 'self' data: blob:; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com"
     });
     res.end(body);
   } catch {
