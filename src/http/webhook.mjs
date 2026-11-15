@@ -71,11 +71,15 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
     if (syncCfg.whatsappSyncEnabled) {
       const archiveMode = syncCfg.archiveDeletedMessages !== false;
       if (['CHATSDELETE', 'CHATS_DELETE'].includes(rawEvent)) {
-        const rawJid = payload?.data?.id || payload?.data?.remoteJid || payload?.data?.[0]?.id || item.jid || item.phone || '';
-        const targetPhone = String(rawJid).replace(/@.*$/, '').replace(/\D/g, '');
-        if (targetPhone) {
-          await store.softDeleteConversation?.({ key: targetPhone, source: 'whatsapp', archive: archiveMode });
-          broadcastBridgeEvent('whatsapp_sync', { action: 'chat_deleted', phone: targetPhone, archived: archiveMode, timestamp: Date.now() });
+        const entries = Array.isArray(payload?.data) ? payload.data : [payload?.data];
+        for (const entry of entries) {
+          const rawJid = typeof entry === 'string' ? entry : (entry?.id || entry?.remoteJid || item.jid || item.phone || '');
+          const cleanJid = String(rawJid || '').trim();
+          const targetPhone = /@lid$/i.test(cleanJid) ? cleanJid : cleanJid.replace(/@.*$/, '').replace(/\D/g, '');
+          if (targetPhone) {
+            await store.softDeleteConversation?.({ key: targetPhone, source: 'whatsapp', archive: archiveMode });
+            broadcastBridgeEvent('whatsapp_sync', { action: 'chat_deleted', phone: targetPhone, archived: archiveMode, timestamp: Date.now() });
+          }
         }
         await finish('processed', 'chat_deleted_sync');
         return;
