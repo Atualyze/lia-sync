@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "node src/server.mjs",
+    "dev": "node scripts/dev-preview.mjs",
     "start": "node src/server.mjs",
     "build": "node scripts/build-dist.mjs",
     "lint": "node scripts/check-syntax.mjs",
