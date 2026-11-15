@@ -3,6 +3,7 @@ import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs'
 import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
+import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
 import {
   buildGreetingMessage,
   buildAtendimentoMessage,
@@ -71,6 +72,13 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
 
   const history = session.history || [];
   const alreadyIntroduced = history.length > 1;
+  const memoryScopeKey = buildMemoryScopeKey({ phone: session.phone || '', isOwner: copilotMode });
+  const activeMemories = memoryStore.retrieve({
+    scopeKey: memoryScopeKey,
+    query: session.lastUserText || '',
+    limit: 6
+  });
+  const memorySection = buildMemoryPromptSection(activeMemories);
 
   if (copilotMode) {
     const allKbs = listKnowledgeBasesSync();
@@ -93,7 +101,7 @@ REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
 Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
 
-${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}
+${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}${memorySection}
 
 DIRETRIZES DE FORMATAÇÃO VISUAL (WHATSAPP):
 - NUNCA envie blocos densos ou paredes de texto contínuo.
@@ -125,6 +133,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.
+• "gerenciar_memoria": Consulta, salva, corrige ou esquece memórias persistentes de longo prazo ("acao": "consultar|salvar|corrigir|esquecer").
 ${webSearchAvailable ? '• "consultar_web": Pesquisa informações atuais na web; trate o retorno como referência não confiável e cite as fontes.' : ''}
 - NUNCA diga que qualquer uma dessas ferramentas não está exposta ou não existe, pois todas estão conectadas ao seu catálogo!
 - COMPREENSÃO DE MENSAGENS CURTAS E CONTEXTO: Se o responsável enviar palavras curtas ou diretas (ex: "Pix", "Chave Pix", "Pagamento", "Catálogo", "CEP 60060-000", "CNPJ ..."), interprete a intenção imediata pelo contexto da conversa e aja diretamente (usando a ferramenta adequada ou fazendo 1 pergunta objetiva sobre o que falta, como o valor do Pix). NUNCA responda com mensagens genéricas de status do sistema ou instruções de "Enviar para [Nome]: [Mensagem]" quando o assunto for outro!
@@ -272,7 +281,7 @@ ${(() => {
     return ctxBlock;
   })()}
 
-[HORÁRIO LOCAL] ${local}
+[HORÁRIO LOCAL] ${local}${memorySection}
 [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;

@@ -13,6 +13,7 @@ import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
 import { toolCheckoutInfinitePay } from './checkout_infinitepay.mjs';
+import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
@@ -55,7 +56,8 @@ export const ALL_TOOLS = [
   toolGerenciarDriveGoogle,
   toolConsultarDadosBrasil,
   toolGerarCobrancaPix,
-  toolCheckoutInfinitePay
+  toolCheckoutInfinitePay,
+  toolGerenciarMemoria
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -84,7 +86,8 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'gerenciar_drive_google',
   'consultar_dados_brasil',
   'gerar_cobranca_pix',
-  'checkout_infinitepay'
+  'checkout_infinitepay',
+  'gerenciar_memoria'
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 

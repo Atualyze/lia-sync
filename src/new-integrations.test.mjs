@@ -943,3 +943,60 @@ test('Lia Personality Engine injeta identidade compacta, adapta temperatura e de
   assert.ok(bad.issues.includes('robotic_closer'));
   assert.ok(bad.issues.some((i) => i.startsWith('too_many_questions:')));
 });
+
+test('Lia Memory Engine isola usuarios, bloqueia dados sensiveis e permite consultar/corrigir/esquecer', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const fs = await import('node:fs');
+  const { MemoryStore, buildMemoryScopeKey, extractMemoryCandidates } = await import('./core/memory.mjs');
+  const { executeToolCall, isClientToolAllowed } = await import('./tools/index.mjs');
+
+  assert.equal(isClientToolAllowed('gerenciar_memoria'), true);
+
+  const tmpFile = path.join(os.tmpdir(), `lia-mem-${Date.now()}.json`);
+  const memStore = new MemoryStore(tmpFile);
+
+  try {
+    const scopeA = buildMemoryScopeKey({ phone: '5511948273615', isOwner: false });
+    const scopeB = buildMemoryScopeKey({ phone: '5511948273699', isOwner: false });
+
+    // Bloqueio LGPD / sensivel
+    const blocked = memStore.remember({ scopeKey: scopeA, type: 'fact', content: 'Meu CPF e 123.456.789-00' });
+    assert.equal(blocked.saved, false);
+    assert.equal(blocked.reason, 'sensitive_data_blocked');
+
+    // Extracao heuristica zero-custo
+    const cands = extractMemoryCandidates('Prefiro que voce responda de forma direta e estou desenvolvendo o LiaSync');
+    assert.ok(cands.some((c) => c.type === 'preference'));
+    assert.ok(cands.some((c) => c.type === 'project'));
+
+    // Via tool: salvar, consultar, corrigir, esquecer + isolamento entre A e B
+    const saved = await executeToolCall(
+      'gerenciar_memoria',
+      { acao: 'salvar', tipo: 'preference', conteudo: 'Prefere respostas diretas e sem rodeios' },
+      { actor: 'client', phone: '5511948273615', memoryStore: memStore }
+    );
+    assert.equal(saved.success, true);
+
+    const listB = memStore.list(scopeB);
+    assert.equal(listB.length, 0);
+
+    const corrected = await executeToolCall(
+      'gerenciar_memoria',
+      { acao: 'corrigir', referencia: 'respostas diretas', conteudo: 'Prefere respostas diretas e com exemplos praticos' },
+      { actor: 'client', phone: '5511948273615', memoryStore: memStore }
+    );
+    assert.equal(corrected.success, true);
+    assert.equal(memStore.retrieve({ scopeKey: scopeA, query: 'exemplos' })[0].content, 'Prefere respostas diretas e com exemplos praticos');
+
+    const forgotten = await executeToolCall(
+      'gerenciar_memoria',
+      { acao: 'esquecer', referencia: 'respostas diretas' },
+      { actor: 'client', phone: '5511948273615', memoryStore: memStore }
+    );
+    assert.equal(forgotten.success, true);
+    assert.equal(memStore.list(scopeA).length, 0);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+});

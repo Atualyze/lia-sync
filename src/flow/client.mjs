@@ -1,5 +1,6 @@
 import { sanitizeInput, isEmergency, filterReply, normalize } from '../safety.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
+import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
@@ -337,6 +338,11 @@ export async function handleClientMessage({
       }
 
       // Atendimento inteligente: a assistente usa a IA com memória do contexto
+      s.lastUserText = clean;
+      const clientMemScope = buildMemoryScopeKey({ phone: s.phone, isOwner: false });
+      for (const cand of extractMemoryCandidates(clean)) {
+        memoryStore.remember({ scopeKey: clientMemScope, ...cand, source: 'conversation' });
+      }
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
       const systemPrompt = buildSystemPrompt({ session: s, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
