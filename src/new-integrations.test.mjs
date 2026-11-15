@@ -19,6 +19,7 @@ import { toolConsultarBaseConhecimento } from './tools/consultar_base_conhecimen
 import { synthesizeVoice } from './ai/voice.mjs';
 import { decidirModeloPorContexto } from './model-router.mjs';
 import { askAI } from './ai.mjs';
+import { responseSchema, buildOpenRouterBody } from './ai/parsing.mjs';
 import { config } from './config.mjs';
 
 test('ALL_TOOLS registra todas as novas integrações e permissões de cliente', () => {
@@ -996,6 +997,8 @@ test('Lia Memory Engine isola usuarios, bloqueia dados sensiveis e permite consu
     );
     assert.equal(forgotten.success, true);
     assert.equal(memStore.list(scopeA).length, 0);
+    const persistedRaw = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
+    assert.equal(persistedRaw.some((m) => m.scopeKey === scopeA && /respostas diretas/i.test(m.content)), false);
 
     // Etapa 2: busca semantica com embedding (mock) + fail-open quando embedding retorna null
     const mockFetch = async (_url, opts) => {
@@ -1044,5 +1047,21 @@ test('Lia Memory Engine isola usuarios, bloqueia dados sensiveis e permite consu
     assert.equal(fallbackRanked[0].content, 'Gosta de cafe sem acucar');
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
+  }
+});
+
+test('Schemas Gemini e OpenRouter declaram sector, sentiment e context_summary', () => {
+  for (const field of ['sector', 'sentiment', 'context_summary']) {
+    assert.ok(responseSchema.properties[field], `Gemini responseSchema precisa declarar ${field}`);
+  }
+  const orBody = buildOpenRouterBody({
+    model: 'openai/gpt-4o-mini',
+    system: 'sys',
+    userText: 'oi',
+    structuredOutputs: true,
+  });
+  const orProps = orBody?.response_format?.json_schema?.schema?.properties || {};
+  for (const field of ['sector', 'sentiment', 'context_summary']) {
+    assert.ok(orProps[field], `OpenRouter schema precisa declarar ${field}`);
   }
 });

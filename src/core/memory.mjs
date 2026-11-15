@@ -119,7 +119,12 @@ export class MemoryStore {
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
       const all = [...this.items.values()].slice(-1000);
-      fs.writeFileSync(this.filePath, JSON.stringify(all, null, 2), 'utf8');
+      if (this.items.size > 1000) {
+        this.items = new Map(all.map((item) => [item.id, item]));
+      }
+      const tmpPath = `${this.filePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(all, null, 2), 'utf8');
+      fs.renameSync(tmpPath, this.filePath);
     } catch {
       // falha de disco não interrompe o atendimento
     }
@@ -304,16 +309,14 @@ export class MemoryStore {
     if (!cleanScope || !needle) return { forgotten: false, count: 0 };
 
     const active = this.list(cleanScope);
-    const nowIso = new Date().toISOString();
     let count = 0;
 
     for (const m of active) {
       const exactId = m.id === needle;
       const textMatch = m.content.toLowerCase().includes(needle.toLowerCase()) || tokenSimilarity(m.content, needle) >= 0.45;
       if (exactId || textMatch) {
-        m.status = 'forgotten';
-        m.updatedAt = nowIso;
-        this.items.set(m.id, m);
+        // Exclusão física definitiva para conformidade LGPD (não conserva conteúdo esquecido)
+        this.items.delete(m.id);
         count++;
       }
     }

@@ -66,16 +66,21 @@ export async function call(provider, {
   enableSearch,
   toolDeclarations = [],
   routingDecision = null,
-  temperature
+  temperature,
+  isOwner,
+  isTauan = false
 }) {
   if (!available(provider) || opened.get(provider) > Date.now()) return null;
   const runtime = resolveAIConfig({ ai: aiConfig });
   const nativeTools = Array.isArray(toolDeclarations) ? toolDeclarations : [];
+  const resolvedIsOwner = typeof isOwner === 'boolean'
+    ? (isOwner || isTauan === true)
+    : (isTauan === true || routingDecision?.tier === 'pro');
   const adaptiveTemperature = resolveAdaptiveTemperature({
     explicitTemperature: temperature,
     hasTools: nativeTools.length > 0,
     isJsonResponse: true,
-    isOwner: routingDecision?.tier === 'pro'
+    isOwner: resolvedIsOwner
   });
   const toolCatalogPrompt = nativeTools.length
     ? `\n\n[CATÁLOGO DE FERRAMENTAS ATIVAS (PREENCHA "tool_calls" NO JSON QUANDO NECESSÁRIO)]\n` +

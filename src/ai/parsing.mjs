@@ -8,6 +8,9 @@ export const responseSchema = {
     red_flags: { type: 'BOOLEAN' },
     handoff: { type: 'BOOLEAN' },
     handoff_reason: { type: 'STRING' },
+    sector: { type: 'STRING', nullable: true },
+    sentiment: { type: 'STRING', nullable: true },
+    context_summary: { type: 'STRING', nullable: true },
     tool_calls: {
       type: 'ARRAY',
       items: {
@@ -75,6 +78,9 @@ const openRouterSchema = {
     red_flags: { type: 'boolean' },
     handoff: { type: 'boolean' },
     handoff_reason: { type: ['string', 'null'] },
+    sector: { type: ['string', 'null'] },
+    sentiment: { type: ['string', 'null'] },
+    context_summary: { type: ['string', 'null'] },
     tool_calls: {
       type: 'array',
       items: {
