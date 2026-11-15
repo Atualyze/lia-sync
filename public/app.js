@@ -2362,7 +2362,7 @@ function populateFallbackModelSelect(select, provider, selectedModel = '') {
 }
 function renderFallbackRows() {
   const container = $('#admin-fallback-rows');
-  if (!container || state.adminFormDirty) return;
+  if (!container || state.adminFormDirty || container.contains(document.activeElement)) return;
   const values = Array.isArray(state.adminConfig?.draft?.ai?.fallbackModels) ? state.adminConfig.draft.ai.fallbackModels.slice(0, 3) : [];
   container.innerHTML = [0, 1, 2].map(index => {
     const selected = fallbackEntry(values[index] || '');
@@ -2381,10 +2381,12 @@ function renderFallbackRows() {
     const index = event.target.dataset.index;
     const provider = event.target.value;
     const modelSelect = container.querySelector(`.admin-fallback-model[data-index="${index}"]`);
+    state.adminFormDirty = true;
+    state.adminChangeVersion += 1;
+    clearTimeout(state.adminSaveTimer);
     if (modelSelect) modelSelect.innerHTML = '<option value="">Carregando modelos...</option>';
     await loadFallbackCatalog(provider, { refresh: true });
     populateFallbackModelSelect(modelSelect, provider, '');
-    syncFallbackModelInputs();
   }));
   container.querySelectorAll('.admin-fallback-model').forEach(select => select.addEventListener('change', syncFallbackModelInputs));
 }
@@ -2409,6 +2411,7 @@ function syncFallbackModelInputs() {
     return provider && select.value && !(provider === $('#admin-ai-provider')?.value && select.value === primary) ? `${provider}:${select.value}` : '';
   }).filter(Boolean).slice(0, 3);
   hidden.value = selected.join('\n');
+  if (state.adminConfig?.draft?.ai) state.adminConfig.draft.ai.fallbackModels = selected;
   queueAdminSave();
 }
 
