@@ -1845,6 +1845,192 @@
               </table>
             </div>
           </section>
+
+          <section class="panel ops-section" data-role="admin">
+            <div class="panel-head">
+              <div>
+                <strong>Webhooks de Saída</strong>
+                <span>Avisamos o n8n, Make ou seu sistema quando algo acontece na Lia Sync</span>
+              </div>
+              <button type="button" class="admin-primary-btn" id="btn-toggle-webhook-form">+ Novo webhook</button>
+            </div>
+
+            <form id="outbound-webhook-form" class="ops-inline-form hidden">
+              <div class="ops-form-grid">
+                <label>Nome do webhook
+                  <input id="wh-name" type="text" placeholder="Ex.: n8n Atendimento" required maxlength="80" />
+                </label>
+                <label>URL de destino (HTTPS)
+                  <input id="wh-url" type="url" placeholder="https://n8n.seudominio.com/webhook/lia" required />
+                </label>
+              </div>
+              <div class="ops-checks-row">
+                <span class="ops-muted">Eventos que disparam:</span>
+                <label class="ops-check"><input type="checkbox" name="wh-event" value="message.received" checked /> Mensagem recebida</label>
+                <label class="ops-check"><input type="checkbox" name="wh-event" value="handoff.triggered" checked /> Transbordo humano</label>
+                <label class="ops-check"><input type="checkbox" name="wh-event" value="lead.updated" checked /> Lead / CRM atualizado</label>
+              </div>
+              <div class="hero-actions">
+                <button type="submit" class="admin-primary-btn">Salvar webhook</button>
+                <button type="button" class="btn-secondary" id="btn-cancel-webhook-form">Cancelar</button>
+              </div>
+            </form>
+
+            <div id="wh-secret-banner" class="ping-banner hidden"></div>
+
+            <div class="metrics-table-wrapper">
+              <table class="metrics-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>URL</th>
+                    <th>Eventos</th>
+                    <th>Último disparo</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="outbound-webhooks-list">
+                  <tr><td colspan="6" class="table-empty">Nenhum webhook cadastrado.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel ops-section" data-role="admin">
+            <div class="panel-head">
+              <div>
+                <strong>Chaves de API (<code>/api/v1/*</code>)</strong>
+                <span>Conecte o n8n, Make, site ou ERP. Cada chave tem permissões próprias e pode ser revogada a qualquer momento.</span>
+              </div>
+              <button type="button" class="admin-primary-btn" id="btn-toggle-apikey-form">+ Nova chave</button>
+            </div>
+
+            <form id="api-key-form" class="ops-inline-form hidden">
+              <div class="ops-form-grid">
+                <label>Nome da integração
+                  <input id="apikey-name" type="text" placeholder="Ex.: n8n Produção" required maxlength="80" />
+                </label>
+                <div class="ops-checks-row">
+                  <span class="ops-muted">Permissões:</span>
+                  <label class="ops-check"><input type="checkbox" name="apikey-scope" value="read" checked /> Leitura (GET)</label>
+                  <label class="ops-check"><input type="checkbox" name="apikey-scope" value="write" checked /> Envio &amp; CRM</label>
+                  <label class="ops-check"><input type="checkbox" name="apikey-scope" value="ai" checked /> Motor IA</label>
+                </div>
+              </div>
+              <div class="hero-actions">
+                <button type="submit" class="admin-primary-btn">Gerar chave</button>
+                <button type="button" class="btn-secondary" id="btn-cancel-apikey-form">Cancelar</button>
+              </div>
+            </form>
+
+            <div id="apikey-created-banner" class="ping-banner hidden"></div>
+
+            <div class="metrics-table-wrapper">
+              <table class="metrics-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Prefixo</th>
+                    <th>Permissões</th>
+                    <th>Último uso</th>
+                    <th>Estado</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="api-keys-list">
+                  <tr><td colspan="6" class="table-empty">Nenhuma chave gerada pelo painel.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel ops-section">
+            <div class="panel-head">
+              <div>
+                <strong>Como Integrar (Guia Rápido n8n &amp; API)</strong>
+                <span>Exemplos prontos para copiar e colar no nó HTTP Request sem precisar programar</span>
+              </div>
+              <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-openapi-url">Copiar OpenAPI URL</button>
+            </div>
+
+            <div class="ops-guide-list">
+              <details class="ops-guide-item" open>
+                <summary>1. Começando — URL base e autenticação</summary>
+                <div class="ops-guide-body">
+                  <p>Use o header <code>x-api-key: SUA_CHAVE</code> (ou <code>Authorization: Bearer SUA_CHAVE</code>) em todas as chamadas:</p>
+                  <div class="ops-code-row">
+                    <code id="guide-openapi-url">https://liasync.atualyze.com.br/api/v1/openapi.json</code>
+                    <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-openapi-url">Copiar</button>
+                  </div>
+                  <p class="ops-muted">Observação sobre WhatsApp: como a Lia Sync usa <strong>Evolution API</strong>, não há bloqueio de janela de 24h nem necessidade de template aprovado pela Meta para iniciar conversas.</p>
+                </div>
+              </details>
+
+              <details class="ops-guide-item">
+                <summary>2. Enviar mensagem pelo n8n (<code>POST /api/v1/messages/send</code>)</summary>
+                <div class="ops-guide-body">
+                  <div class="ops-code-row">
+                    <code id="guide-send-url">https://liasync.atualyze.com.br/api/v1/messages/send</code>
+                    <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-send-url">Copiar URL</button>
+                  </div>
+                  <pre id="guide-send-json">{
+  "phone": "5511988887777",
+  "message": "Olá! Recebemos seu pedido e já estamos separando."
+}</pre>
+                  <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-send-json">Copiar JSON</button>
+                </div>
+              </details>
+
+              <details class="ops-guide-item">
+                <summary>3. Capturar lead ou mover etapa do funil (<code>POST /api/v1/leads</code> &amp; <code>PATCH /api/v1/contacts/{phone}</code>)</summary>
+                <div class="ops-guide-body">
+                  <div class="ops-code-row">
+                    <code id="guide-lead-url">https://liasync.atualyze.com.br/api/v1/leads</code>
+                    <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-lead-url">Copiar URL</button>
+                  </div>
+                  <pre id="guide-lead-json">{
+  "phone": "5511988887777",
+  "name": "Marina",
+  "interest": "Plano Pro",
+  "source": "Site",
+  "sendGreeting": true
+}</pre>
+                  <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-lead-json">Copiar JSON</button>
+                </div>
+              </details>
+
+              <details class="ops-guide-item">
+                <summary>4. Ligar / desligar a IA e mover etapa (<code>PATCH /api/v1/contacts/{phone}</code>)</summary>
+                <div class="ops-guide-body">
+                  <div class="ops-code-row">
+                    <code id="guide-patch-url">https://liasync.atualyze.com.br/api/v1/contacts/5511988887777</code>
+                    <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-patch-url">Copiar URL</button>
+                  </div>
+                  <pre id="guide-patch-json">{
+  "dealStage": "qualificado",
+  "humanMode": true,
+  "notes": "Assumido pelo vendedor no CRM"
+}</pre>
+                  <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-patch-json">Copiar JSON</button>
+                </div>
+              </details>
+
+              <details class="ops-guide-item">
+                <summary>5. Consultar a IA diretamente (<code>POST /api/v1/ai/ask</code>)</summary>
+                <div class="ops-guide-body">
+                  <div class="ops-code-row">
+                    <code id="guide-ai-url">https://liasync.atualyze.com.br/api/v1/ai/ask</code>
+                    <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-ai-url">Copiar URL</button>
+                  </div>
+                  <pre id="guide-ai-json">{
+  "prompt": "Resuma nossos serviços em 2 frases."
+}</pre>
+                  <button type="button" class="btn-secondary copy-snippet-btn" data-copy-target="guide-ai-json">Copiar JSON</button>
+                </div>
+              </details>
+            </div>
+          </section>
         </div>
       </section>
 

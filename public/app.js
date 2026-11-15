@@ -2891,6 +2891,9 @@ async function renderIntegrations() {
     const events = data.webhook.recentEvents || [];
     $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
     $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '-')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '-')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
+    if (state.role === 'admin') {
+      await loadApiIntegrationsPanel();
+    }
     decorateTechnicalTerms($('#integrations-view'));
   } catch (error) { opsFeedback('integrations-feedback', `Falha ao consultar integrações: ${error.message}`, 'error'); }
 }
@@ -4472,3 +4475,176 @@ async function renderVpsMonitor() {
     }
   }
 }
+
+
+async function copyTextWithFeedback(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const prev = btn ? btn.textContent : '';
+    if (btn) btn.textContent = 'Copiado!';
+    setTimeout(() => { if (btn) btn.textContent = prev; }, 1500);
+  } catch {
+    showToast({ title: 'Copiar', message: 'Não foi possível copiar automaticamente.', type: 'warn' });
+  }
+}
+
+async function loadApiIntegrationsPanel() {
+  try {
+    const data = await api('/api/admin/integrations/keys');
+    const webhooks = Array.isArray(data?.webhooks) ? data.webhooks : [];
+    const keys = Array.isArray(data?.apiKeys) ? data.apiKeys : [];
+
+    const whBody = $('#outbound-webhooks-list');
+    if (whBody) {
+      whBody.innerHTML = webhooks.length
+        ? webhooks.map((w) => {
+            const statusLabel = w.lastStatus ? `HTTP ${w.lastStatus}` : (w.lastError || 'aguardando');
+            const badgeTone = !w.enabled ? 'warn' : (w.lastStatus >= 200 && w.lastStatus < 300 ? 'ok' : (w.lastError ? 'err' : 'ok'));
+            return `<tr>
+              <td><strong>${esc(w.name)}</strong></td>
+              <td><code>${esc(w.url)}</code></td>
+              <td>${(w.events || []).map((ev) => `<span class="badge-mini">${esc(ev)}</span>`).join(' ')}</td>
+              <td>${w.lastTriggeredAt ? esc(new Date(w.lastTriggeredAt).toLocaleString('pt-BR')) : '<span class="ops-muted">Nunca</span>'}</td>
+              <td><span class="status-text ${badgeTone}">${esc(w.enabled ? statusLabel : 'pausado')}</span></td>
+              <td class="ops-actions-cell">
+                <button type="button" class="btn-secondary" data-wh-test="${esc(w.id)}">Testar</button>
+                <button type="button" class="btn-secondary" data-wh-toggle="${esc(w.id)}" data-enabled="${w.enabled ? '1' : '0'}">${w.enabled ? 'Pausar' : 'Ativar'}</button>
+                <button type="button" class="btn-danger-ghost" data-wh-del="${esc(w.id)}">Excluir</button>
+              </td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="6" class="table-empty">Nenhum webhook de saída cadastrado.</td></tr>';
+    }
+
+    const keysBody = $('#api-keys-list');
+    if (keysBody) {
+      keysBody.innerHTML = keys.length
+        ? keys.map((k) => {
+            const revoked = Boolean(k.revokedAt);
+            return `<tr>
+              <td><strong>${esc(k.name)}</strong></td>
+              <td><code>${esc(k.prefix)}</code></td>
+              <td>${(k.scopes || []).map((s) => `<span class="badge-mini">${esc(s)}</span>`).join(' ')}</td>
+              <td>${k.lastUsedAt ? esc(new Date(k.lastUsedAt).toLocaleString('pt-BR')) : '<span class="ops-muted">Nunca</span>'}</td>
+              <td><span class="status-text ${revoked ? 'err' : 'ok'}">${revoked ? 'revogada' : 'ativa'}</span></td>
+              <td class="ops-actions-cell">
+                ${revoked ? '<span class="ops-muted">—</span>' : `<button type="button" class="btn-danger-ghost" data-key-revoke="${esc(k.id)}">Revogar</button>`}
+              </td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="6" class="table-empty">Nenhuma chave gerada pelo painel.</td></tr>';
+    }
+  } catch (err) {
+    console.warn('[api-integrations]', err?.message || err);
+  }
+}
+
+(() => {
+  const whForm = $('#outbound-webhook-form');
+  const keyForm = $('#api-key-form');
+
+  $('#btn-toggle-webhook-form')?.addEventListener('click', () => whForm?.classList.toggle('hidden'));
+  $('#btn-cancel-webhook-form')?.addEventListener('click', () => whForm?.classList.add('hidden'));
+  $('#btn-toggle-apikey-form')?.addEventListener('click', () => keyForm?.classList.toggle('hidden'));
+  $('#btn-cancel-apikey-form')?.addEventListener('click', () => keyForm?.classList.add('hidden'));
+
+  whForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#wh-name')?.value.trim() || '';
+    const url = $('#wh-url')?.value.trim() || '';
+    const events = [...whForm.querySelectorAll('input[name="wh-event"]:checked')].map((el) => el.value);
+    try {
+      const res = await api('/api/admin/integrations/webhooks', {
+        method: 'POST',
+        body: JSON.stringify({ name, url, events })
+      });
+      whForm.reset();
+      whForm.classList.add('hidden');
+      const banner = $('#wh-secret-banner');
+      if (banner && res?.secret) {
+        banner.className = 'ping-banner';
+        banner.innerHTML = `Webhook criado! Segredo HMAC (<code>x-lia-signature</code>): <code id="wh-once-secret">${esc(res.secret)}</code> <button type="button" class="btn-secondary" id="btn-copy-wh-secret">Copiar</button>`;
+        $('#btn-copy-wh-secret')?.addEventListener('click', (ev) => copyTextWithFeedback(res.secret, ev.currentTarget));
+      }
+      await loadApiIntegrationsPanel();
+    } catch (err) {
+      opsFeedback('integrations-feedback', err?.message || 'Erro ao criar webhook.', 'error');
+    }
+  });
+
+  keyForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#apikey-name')?.value.trim() || '';
+    const scopes = [...keyForm.querySelectorAll('input[name="apikey-scope"]:checked')].map((el) => el.value);
+    try {
+      const res = await api('/api/admin/integrations/keys', {
+        method: 'POST',
+        body: JSON.stringify({ name, scopes })
+      });
+      keyForm.reset();
+      keyForm.classList.add('hidden');
+      const banner = $('#apikey-created-banner');
+      if (banner && res?.plainKey) {
+        banner.className = 'ping-banner';
+        banner.innerHTML = `Chave gerada (copie agora, não será exibida novamente): <code>${esc(res.plainKey)}</code> <button type="button" class="btn-secondary" id="btn-copy-new-apikey">Copiar</button>`;
+        $('#btn-copy-new-apikey')?.addEventListener('click', (ev) => copyTextWithFeedback(res.plainKey, ev.currentTarget));
+      }
+      await loadApiIntegrationsPanel();
+    } catch (err) {
+      opsFeedback('integrations-feedback', err?.message || 'Erro ao gerar chave.', 'error');
+    }
+  });
+
+  $('#outbound-webhooks-list')?.addEventListener('click', async (e) => {
+    const testBtn = e.target.closest('[data-wh-test]');
+    if (testBtn) {
+      const id = testBtn.getAttribute('data-wh-test');
+      testBtn.disabled = true;
+      try {
+        const res = await api(`/api/admin/integrations/webhooks/${encodeURIComponent(id)}/test`, { method: 'POST' });
+        showToast({ title: 'Teste de Webhook', message: res?.ok ? `Entregue (HTTP ${res.status})` : `Falhou (${res?.error || res?.status})`, type: res?.ok ? 'info' : 'error' });
+        await loadApiIntegrationsPanel();
+      } catch (err) {
+        showToast({ title: 'Teste de Webhook', message: err?.message || 'Falha ao testar', type: 'error' });
+      } finally {
+        testBtn.disabled = false;
+      }
+      return;
+    }
+    const toggleBtn = e.target.closest('[data-wh-toggle]');
+    if (toggleBtn) {
+      const id = toggleBtn.getAttribute('data-wh-toggle');
+      const currentlyEnabled = toggleBtn.getAttribute('data-enabled') === '1';
+      await api(`/api/admin/integrations/webhooks/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !currentlyEnabled })
+      });
+      await loadApiIntegrationsPanel();
+      return;
+    }
+    const delBtn = e.target.closest('[data-wh-del]');
+    if (delBtn) {
+      if (!window.confirm('Excluir este webhook de saída?')) return;
+      const id = delBtn.getAttribute('data-wh-del');
+      await api(`/api/admin/integrations/webhooks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadApiIntegrationsPanel();
+    }
+  });
+
+  $('#api-keys-list')?.addEventListener('click', async (e) => {
+    const revokeBtn = e.target.closest('[data-key-revoke]');
+    if (!revokeBtn) return;
+    if (!window.confirm('Revogar esta chave de API? Integrações usando ela deixarão de funcionar imediatamente.')) return;
+    const id = revokeBtn.getAttribute('data-key-revoke');
+    await api(`/api/admin/integrations/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadApiIntegrationsPanel();
+  });
+
+  document.addEventListener('click', (e) => {
+    const copyBtn = e.target.closest('.copy-snippet-btn');
+    if (!copyBtn) return;
+    const targetId = copyBtn.getAttribute('data-copy-target');
+    const el = targetId ? document.getElementById(targetId) : null;
+    if (el) copyTextWithFeedback(el.textContent.trim(), copyBtn);
+  });
+})();

@@ -26,6 +26,7 @@ import { AIBudgetGate } from './ai/budget.mjs';
 import { WebhookEventStore } from './webhook-events.mjs';
 import { SectorProjection } from './sectors.mjs';
 import { createProspecting } from './prospecting/index.mjs';
+import { IntegrationsStore } from './http/integrations-store.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -154,7 +155,12 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   };
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
   const deliver = (job) => store.enqueue(job.phone, async () => {
+    const wasHuman = Boolean(store.get(job.phone)?.human);
+    void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
     const answer = await f.process({ ...job, messageId: job.keyId || '' });
+    if (!wasHuman && store.get(job.phone)?.human) {
+      void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
+    }
     if (!answer) return null;
     const parts = splitReply(formatOutgoingMessage(answer));
     for (let i = 0; i < parts.length; i++) {
@@ -194,6 +200,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     adminConfig
   });
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
+  const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });
+  await integrationsStore.load().catch(() => {});
 
   const app = createRouter({
     store,
@@ -216,7 +224,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     aiBudgetGate: budgetGate,
     sectorProjection,
     prospecting,
-    askAI: askAIWithBudget
+    askAI: askAIWithBudget,
+    integrationsStore
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; return app;
 }

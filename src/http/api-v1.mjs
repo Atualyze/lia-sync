@@ -107,23 +107,31 @@ export function createApiV1Handler({
   apiKeys = config.apiV1Keys,
   rateLimitPerMin = config.apiV1RateLimitPerMin,
   sendMessage = sendText,
-  askAIImpl = null
+  askAIImpl = null,
+  integrationsStore = null
 } = {}) {
   const checkRate = createApiRateLimiter(rateLimitPerMin);
 
   return async function handleApiV1Routes({ req, res, u, store, adminConfig, runtimeAI, readinessCheck, askAI }) {
     if (!u.pathname.startsWith('/api/v1/')) return NOT_HANDLED;
 
-    const keys = Array.isArray(apiKeys) ? apiKeys : [];
-    if (keys.length === 0) {
-      return json(res, 503, { ok: false, error: 'api_v1_not_configured', message: 'Configure LIA_API_KEY ou LIA_API_KEYS no servidor.' });
+    const envKeys = Array.isArray(apiKeys) ? apiKeys : [];
+    const providedKey = extractApiKey(req);
+    let keyMeta = null;
+    if (verifyApiKey(providedKey, envKeys)) {
+      keyMeta = { id: 'env', name: 'env', scopes: ['read', 'write', 'ai'] };
+    } else if (integrationsStore && providedKey) {
+      keyMeta = await integrationsStore.verifyKey(providedKey);
     }
 
-    const providedKey = extractApiKey(req);
-    if (!verifyApiKey(providedKey, keys)) {
+    if (!keyMeta) {
+      if (envKeys.length === 0 && !integrationsStore) {
+        return json(res, 503, { ok: false, error: 'api_v1_not_configured', message: 'Configure LIA_API_KEY ou gere uma chave no painel.' });
+      }
       return json(res, 401, { ok: false, error: 'unauthorized', message: 'API key ausente ou inválida.' });
     }
 
+    const scopes = new Set(keyMeta.scopes || ['read', 'write', 'ai']);
     const rateKey = crypto.createHash('sha256').update(providedKey).digest('hex').slice(0, 16);
     const rate = checkRate(rateKey);
     if (!rate.allowed) {
@@ -131,6 +139,10 @@ export function createApiV1Handler({
     }
 
     const subPath = u.pathname.slice('/api/v1'.length);
+    const requiredScope = subPath === '/ai/ask' ? 'ai' : (req.method === 'GET' ? 'read' : 'write');
+    if (!scopes.has(requiredScope)) {
+      return json(res, 403, { ok: false, error: 'insufficient_scope', requiredScope });
+    }
 
     if (req.method === 'GET' && subPath === '/health') {
       const readiness = readinessCheck ? await readinessCheck() : { ok: true, checks: [] };
@@ -178,7 +190,9 @@ export function createApiV1Handler({
         session.updatedAt = Date.now();
         store.markDirty?.();
         await store.flush?.();
-        return json(res, 200, { ok: true, contact: sanitizeContact(phone, session) });
+        const contact = sanitizeContact(phone, session);
+        void integrationsStore?.dispatchEvent('lead.updated', { phone, contact }).catch(() => {});
+        return json(res, 200, { ok: true, contact });
       }
     }
 
@@ -241,7 +255,9 @@ export function createApiV1Handler({
       }
 
       await store.flush?.();
-      return json(res, 201, { ok: true, contact: sanitizeContact(phone, session), sent: Boolean(delivery) });
+      const contact = sanitizeContact(phone, session);
+      void integrationsStore?.dispatchEvent('lead.updated', { phone, contact, source: source || 'api_v1' }).catch(() => {});
+      return json(res, 201, { ok: true, contact, sent: Boolean(delivery) });
     }
 
     if (req.method === 'POST' && subPath === '/ai/ask') {
