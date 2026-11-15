@@ -216,12 +216,12 @@ export async function call(provider, {
         }
         if (!response.ok) {
           const detail = safeErrorDetail(await response.text());
-          throw Error(`cloudflare ${response.status}${detail ? ` — ${detail}` : ''}`);
+          throw Error(`cloudflare ${response.status}${detail ? ` - ${detail}` : ''}`);
         }
         const data = await response.json();
         if (data?.success === false) {
           const detail = safeErrorDetail(JSON.stringify(data.errors || []));
-          throw Error(`cloudflare error${detail ? ` — ${detail}` : ''}`);
+          throw Error(`cloudflare error${detail ? ` - ${detail}` : ''}`);
         }
         const resultObj = data?.result || {};
         const functionCalls = normalizeProviderToolCalls(resultObj.tool_calls || []);
@@ -284,7 +284,7 @@ export async function call(provider, {
       }
       if (!response.ok) {
         const detail = safeErrorDetail(await response.text());
-        throw Error(`${provider} ${response.status}${detail ? ` — ${detail}` : ''}`);
+        throw Error(`${provider} ${response.status}${detail ? ` - ${detail}` : ''}`);
       }
       const data = await response.json();
       const message = data.choices?.[0]?.message || {};

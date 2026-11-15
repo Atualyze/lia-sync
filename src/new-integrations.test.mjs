@@ -923,7 +923,7 @@ test('Lia Personality Engine injeta identidade compacta, adapta temperatura e de
   const { buildSystemPrompt } = await import('./knowledge.mjs');
 
   const block = buildPersonalityPrompt({ botName: 'Lia', botConfig: { personality: { tone: 'objetivo e cordial' } } });
-  assert.ok(block.includes('[PERSONALIDADE CONVERSACIONAL — LIA]'));
+  assert.ok(block.includes('[PERSONALIDADE CONVERSACIONAL - LIA]'));
   assert.ok(block.includes('objetivo e cordial'));
   assert.ok(block.length < 1300, 'Camada de personalidade deve ser compacta para economizar tokens');
 

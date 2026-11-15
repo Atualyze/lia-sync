@@ -27,7 +27,7 @@ function extractMetaFromMarkdown(id, rawContent) {
       title = trimmed
         .replace(/^#\s+/, '')
         .replace(/^[^\wÀ-ÿ]+/, '')
-        .replace(/^MANUAL DE CONHECIMENTO\s*[&E]\s*SUPORTE OPERACIONAL\s*[—-]\s*/i, '')
+        .replace(/^MANUAL DE CONHECIMENTO\s*[&E]\s*SUPORTE OPERACIONAL\s*[--]\s*/i, '')
         .trim() || trimmed.replace(/^#\s+/, '').trim();
       break;
     }

@@ -38,7 +38,7 @@ function providerConfig(provider) {
 }
 
 function normalizeModel(provider, model) {
-  const id = String(provider === 'gemini' ? model.name || '' : model.id || '').replace(/^models\//, '').trim();
+  const id = String(provider === 'gemini' || provider === 'cloudflare' ? model.name || model.id || '' : model.id || '').replace(/^models\//, '').trim();
   if (!id || id.length > 200) return null;
   if (provider !== 'gemini' && /(?:embedding|embed-|text-embedding|whisper|transcri|moderation|dall-e|tts|text-to-speech|rerank|reranker)/i.test(id)) return null;
   if (provider === 'gemini' && Array.isArray(model.supportedGenerationMethods) && !model.supportedGenerationMethods.includes('generateContent')) return null;

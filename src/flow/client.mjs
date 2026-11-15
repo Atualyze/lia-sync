@@ -5,10 +5,32 @@ import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
+import { toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToTauanRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
+
+function resolveConfiguredPixKey(botConfig) {
+  return String(
+    botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
+    botConfig?.integrations?.pix?.key ||
+    process.env.PIX_KEY ||
+    ''
+  ).trim();
+}
+
+function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false } = {}) {
+  const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+  return [
+    `💳 *Aqui está seu Pix para pagamento:*`,
+    `• *Valor:* ${valorFmt}`,
+    `• *Favorecido:* ${toolRes.favorecido || owner}`,
+    (includeKey && pixKey) ? `• *Chave Pix:* \`${pixKey}\`` : '',
+    toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
+    `• *Copia e Cola:*\n\`\`\`${toolRes.pixCopiaECola}\`\`\``
+  ].filter(Boolean).join('\n\n');
+}
 
 export async function handleClientMessage({
   store, ai, whatsapp, faq, reminderStore, logger, now,
@@ -454,14 +476,24 @@ export async function handleClientMessage({
       if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
         for (const tc of result.tool_calls) {
           if (tc?.name && isClientToolAllowed(tc.name)) {
-            if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+            const configuredPixKey = resolveConfiguredPixKey(botConfig);
+            const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
+            const numericAmount = Number(String(tc.args?.valor ?? '').replace(',', '.'));
+            const hasPositiveAmount = Number.isFinite(numericAmount) && numericAmount > 0;
+            if (
+              tc.name === 'gerar_cobranca_pix' &&
+              !isToolEnabled('gerar_cobranca_pix', botConfig) &&
+              isToolEnabled('checkout_infinitepay', botConfig) &&
+              hasPositiveAmount &&
+              !askedPixKeyOrFree
+            ) {
               tc.name = 'checkout_infinitepay';
               tc.args = { acao: 'criar_link', ...(tc.args || {}) };
             }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
             try {
-              const toolRes = await executeToolCall(tc.name, tc.args || {}, {
+              const toolContext = {
                 actor: 'client',
                 phone: s.phone,
                 clientName: s.clientName || pushName || 'Cliente',
@@ -473,19 +505,20 @@ export async function handleClientMessage({
                 session: s,
                 userText,
                 searchWebWithGemini: ai?.searchWebWithGemini
-              });
+              };
+              const useDirectPixFallback = tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && Boolean(configuredPixKey);
+              const toolRes = useDirectPixFallback
+                ? await toolGerarCobrancaPix.execute(tc.args || {}, toolContext)
+                : await executeToolCall(tc.name, tc.args || {}, toolContext);
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerar_cobranca_pix') {
                 pixHandledByTool = true;
                 if (toolRes?.success) {
-                  const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
-                  toolReplyOverride = [
-                    `💳 *Aqui está seu Pix para pagamento:*`,
-                    `• *Valor:* ${valorFmt}`,
-                    `• *Favorecido:* ${toolRes.favorecido || owner}`,
-                    toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
-                    `• *Copia e Cola:*\n\`\`\`${toolRes.pixCopiaECola}\`\`\``
-                  ].filter(Boolean).join('\n\n');
+                  toolReplyOverride = formatPixSuccessReply(toolRes, {
+                    owner,
+                    pixKey: configuredPixKey,
+                    includeKey: !toolRes.valor || askedPixKeyOrFree
+                  });
                 } else {
                   toolReplyOverride = toolRes?.error === 'pix_key_not_configured'
                     ? `No momento não consegui gerar o Pix automaticamente porque a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui!`
@@ -527,11 +560,28 @@ export async function handleClientMessage({
                   ].filter(Boolean).join('\n\n');
                 } else {
                   const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
-                  toolReplyOverride = toolRes?.error === 'invalid_amount'
-                    ? (askedFree
-                      ? `Esse link de pagamento exige um valor fixo (não aceita valor livre). Qual o *valor* que você gostaria de pagar?`
-                      : `Qual o *valor* e a *descrição* para eu gerar o link de pagamento?`)
-                    : `Não consegui gerar o link de pagamento agora. Vou pedir para a equipe te enviar por aqui!`;
+                  if (configuredPixKey && (askedPixKeyOrFree || toolRes?.error !== 'invalid_amount')) {
+                    const pixFallback = await toolGerarCobrancaPix.execute(
+                      { valor: hasPositiveAmount ? numericAmount : 0, descricao: tc.args?.descricao || '' },
+                      toolContext
+                    ).catch(() => null);
+                    if (pixFallback?.success) {
+                      pixHandledByTool = true;
+                      toolReplyOverride = formatPixSuccessReply(pixFallback, {
+                        owner,
+                        pixKey: configuredPixKey,
+                        includeKey: !pixFallback.valor || askedPixKeyOrFree
+                      });
+                    } else {
+                      toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${configuredPixKey}\`\n• *Favorecido:* ${owner}`;
+                    }
+                  } else {
+                    toolReplyOverride = toolRes?.error === 'invalid_amount'
+                      ? (askedFree
+                        ? `Esse link de pagamento exige um valor fixo (não aceita valor livre). Qual o *valor* que você gostaria de pagar?`
+                        : `Qual o *valor* e a *descrição* para eu gerar o link de pagamento?`)
+                      : `Não consegui gerar o link de pagamento agora. Vou pedir para a equipe te enviar por aqui!`;
+                  }
                 }
               }
               if (tc.name === 'agendar_retorno_ou_followup') {

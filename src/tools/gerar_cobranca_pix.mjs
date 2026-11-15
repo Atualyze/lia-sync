@@ -201,7 +201,7 @@ export const toolGerarCobrancaPix = {
     let qrCodeSent = false;
 
     if (shouldSend && isValidWhatsAppTarget && context?.whatsapp?.sendImage) {
-      const amountText = amount > 0 ? ` — R$ ${amount.toFixed(2).replace('.', ',')}` : '';
+      const amountText = amount > 0 ? ` - R$ ${amount.toFixed(2).replace('.', ',')}` : '';
       const cleanDescCap = cleanPixDescription(args.descricao || '');
       const caption = `💳 *QR Code Pix*${amountText}${cleanDescCap ? ` (${cleanDescCap})` : ''}`;
       try {

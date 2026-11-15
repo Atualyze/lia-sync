@@ -11,7 +11,7 @@ export function summary(session, reason = 'solicitação de atendimento', urgenc
   const clientName = session.clientName || session.contactName || 'Contato';
   const phone = session.phone || '';
   const cleanDigits = phone.replace(/@.*$/, '').replace(/\D/g, '');
-  const waLink = cleanDigits ? `https://wa.me/${cleanDigits}` : '—';
+  const waLink = cleanDigits ? `https://wa.me/${cleanDigits}` : '-';
   const tagUrgency = urgency === 'emergencia' ? ' 🚨 *URGENTE*' : '';
 
   const warmContext = [

@@ -216,13 +216,13 @@ Atuo como seu braço direito no dia a dia${identity.companyName ? ` da ${identit
 • *Bases de Conhecimento:* Consulto os dossiês completos dos sistemas de cada cliente e parceiro cadastrado.
 
 💬 *Comandos Rápidos do Chat Interno:*
-• *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
-• *infra* ou *servidores* — Diagnóstico completo de saúde das máquinas
-• *status* ou *resumo* — Raio-X dos atendimentos e IA
-• *fila* — Clientes que aguardam seu retorno manual
-• *ping* — Teste de latência real em ms
-• *bot off* / *bot on* — Pausa ou reativa o bot globalmente
-• *ajuda* — Ver todos os comandos
+• *agenda* ou *livres* - Consulta horários disponíveis no Google Agenda
+• *infra* ou *servidores* - Diagnóstico completo de saúde das máquinas
+• *status* ou *resumo* - Raio-X dos atendimentos e IA
+• *fila* - Clientes que aguardam seu retorno manual
+• *ping* - Teste de latência real em ms
+• *bot off* / *bot on* - Pausa ou reativa o bot globalmente
+• *ajuda* - Ver todos os comandos
 
 _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return recordSelfTurn(filterReply(capMsg, { isCopilot: true }).text);
@@ -282,7 +282,7 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           sSelf.pendingPdf = { tipo, titulo, destinatario: ownerLabel, label: tipoInfo.label, labelLabel: tipoTitulo };
           store.markDirty();
           const perguntas = {
-            relatorio: `Claro, ${owner}! Antes de gerar o *relatório em PDF*, me diga quais informações ele deve ter.\n\n• Digite *dados do sistema* — eu monto com o raio-X em tempo real (IA, WhatsApp, atendimentos, lembretes)\n• Ou descreva o conteúdo: período, assunto, números e o que deve constar`,
+            relatorio: `Claro, ${owner}! Antes de gerar o *relatório em PDF*, me diga quais informações ele deve ter.\n\n• Digite *dados do sistema* - eu monto com o raio-X em tempo real (IA, WhatsApp, atendimentos, lembretes)\n• Ou descreva o conteúdo: período, assunto, números e o que deve constar`,
             orcamento: `Perfeito, ${owner}! Para o *orçamento em PDF* ficar completo, me informe:\n\n• *Serviço/produto* e descrição dos itens\n• *Quantidades* e *valores* de cada item (ou valor total)\n• *Prazo* de entrega/vigência\n• *Cliente* e observações, se houver`,
             proposta: `Perfeito, ${owner}! Para a *proposta em PDF* ficar completa, me informe:\n\n• *Cliente* e escopo da proposta\n• *Itens/fases* com valores, se houver\n• *Prazo* e *condições* (pagamento, validade)\n• Alguma observação importante`,
             recibo: `Ok, ${owner}! Para o *recibo em PDF* me informe:\n\n• *Quem pagou* e o que foi pago\n• *Valor* e forma de pagamento\n• *Data* do pagamento`,
@@ -298,31 +298,31 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
 Olá, *${owner}*! Aqui estão todos os controles e testes operacionais em tempo real:
 
 📊 *Telemetria, Desempenho & Consumo:*
-• *status* — Raio-X do sistema: conexão, sessões e modelo ativo
-• *metricas* ou *consumo* — Requisições, tokens consumidos e taxa de sucesso
-• *ping* ou *teste* — Mede a latência real de resposta da IA em milissegundos
-• *relatorio* — Resumo executivo de atendimentos e conversas do dia
+• *status* - Raio-X do sistema: conexão, sessões e modelo ativo
+• *metricas* ou *consumo* - Requisições, tokens consumidos e taxa de sucesso
+• *ping* ou *teste* - Mede a latência real de resposta da IA em milissegundos
+• *relatorio* - Resumo executivo de atendimentos e conversas do dia
 
 ⚡ *Controle Geral do Bot:*
-• *bot off* ou *pausar bot* — Desativa a ${assistant} globalmente (modo 100% humano)
-• *bot on* ou *ativar bot* — Reativa a ${assistant} globalmente para todos os contatos
-• *expediente* — Consulta o status da Janela de Atendimento atual
+• *bot off* ou *pausar bot* - Desativa a ${assistant} globalmente (modo 100% humano)
+• *bot on* ou *ativar bot* - Reativa a ${assistant} globalmente para todos os contatos
+• *expediente* - Consulta o status da Janela de Atendimento atual
 
 👥 *Gestão por Contato Específico:*
-• *fila* ou *espera* — Contatos aguardando sua resposta com link direto
-• *bot [número]* — Reativa a ${assistant} para atender um contato específico
-• *humano [número]* — Pausa a ${assistant} para você assumir o contato manual
-• *limpar [número]* — Reseta o histórico de conversa com o contato
+• *fila* ou *espera* - Contatos aguardando sua resposta com link direto
+• *bot [número]* - Reativa a ${assistant} para atender um contato específico
+• *humano [número]* - Pausa a ${assistant} para você assumir o contato manual
+• *limpar [número]* - Reseta o histórico de conversa com o contato
 
 ⏰ *Organização Pessoal:*
-• *lembretes* — Seus compromissos e tarefas agendadas pendentes
+• *lembretes* - Seus compromissos e tarefas agendadas pendentes
 • Converse em linguagem natural: _"me lembra amanhã às 9h de..."_
 
 📅 *Google Agenda & Infraestrutura:*
-• *agenda* ou *livres* — Consulta horários disponíveis no Google Agenda
-• *infra* ou *servidores* — Diagnóstico completo de saúde das máquinas e instâncias
-• *capacidades* ou *ferramentas* — Visão completa de tudo o que eu sou capaz de fazer
-• *gerar pdf* — Testa e emite um documento oficial em PDF gerado pelo pdfme`;
+• *agenda* ou *livres* - Consulta horários disponíveis no Google Agenda
+• *infra* ou *servidores* - Diagnóstico completo de saúde das máquinas e instâncias
+• *capacidades* ou *ferramentas* - Visão completa de tudo o que eu sou capaz de fazer
+• *gerar pdf* - Testa e emite um documento oficial em PDF gerado pelo pdfme`;
           return recordSelfTurn(filterReply(helpMsg, { isCopilot: true }).text);
         }
 
@@ -1146,7 +1146,7 @@ ${errMsg}`;
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
           }
           if (r.action === 'verificar_pagamento') {
-            const valorFmt = r.amount ? `R$ ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')}` : '—';
+            const valorFmt = r.amount ? `R$ ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')}` : '-';
             const msg = r.paid
               ? `✅ *Pagamento InfinitePay confirmado!*\n• *Pedido:* \`${r.orderNsu}\`\n• *Valor:* ${valorFmt}\n• *Forma:* ${r.captureMethod === 'credit_card' ? 'Cartão de Crédito' : 'Pix'}${r.receiptUrl ? `\n• *Comprovante:* ${r.receiptUrl}` : ''}`
               : `⏳ *Pagamento ainda pendente* para o pedido \`${r.orderNsu}\`. Assim que for aprovado, o webhook confirma automaticamente por aqui.`;
@@ -1171,11 +1171,11 @@ ${errMsg}`;
             return recordSelfTurn(filterReply(`⚠️ ${r.message || 'Não foi possível concluir a consulta pública.'}`, { isCopilot: true }).text);
           }
           if (r.cep && r.cidade) {
-            const msg = `📍 *CEP ${r.cep}:*\n\n• *Endereço:* ${r.logradouro || '—'}\n• *Bairro:* ${r.bairro || '—'}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
+            const msg = `📍 *CEP ${r.cep}:*\n\n• *Endereço:* ${r.logradouro || '-'}\n• *Bairro:* ${r.bairro || '-'}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
           }
           if (r.cnpj) {
-            const msg = `🏢 *CNPJ ${r.cnpj}:*\n\n• *Razão Social:* ${r.razaoSocial}\n• *Fantasia:* ${r.nomeFantasia || '—'}\n• *Situação:* ${r.situacaoCadastral}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
+            const msg = `🏢 *CNPJ ${r.cnpj}:*\n\n• *Razão Social:* ${r.razaoSocial}\n• *Fantasia:* ${r.nomeFantasia || '-'}\n• *Situação:* ${r.situacaoCadastral}\n• *Cidade/UF:* ${r.cidade} - ${r.uf}`;
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
           }
         }

@@ -260,7 +260,7 @@ const TECH_GLOSSARY = {
   'Tool Calling': {
     term: 'Tool Calling · Chamada Autônoma de Ferramentas',
     category: 'Agente IA',
-    summary: 'Capacidade da Lia de executar funções reais do sistema durante a conversa — como consultar agenda no Google Calendar, buscar na web ou transferir para humano.',
+    summary: 'Capacidade da Lia de executar funções reais do sistema durante a conversa - como consultar agenda no Google Calendar, buscar na web ou transferir para humano.',
     view: 'tools'
   },
   'Super Agente': {
@@ -842,7 +842,7 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
       waPill.className = `pill mini ${isOk ? 'mint' : 'amber'}`;
     }
     if (waMeta) {
-      waMeta.textContent = `Instância: ${ev.instance || '—'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
+      waMeta.textContent = `Instância: ${ev.instance || '-'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
     }
   } else if (hlth?.readiness?.checks) {
     const evCheck = hlth.readiness.checks.find(c => c.name === 'evolution');
@@ -874,7 +874,7 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
   const provider = cfg?.active?.ai?.activeProvider || hlth?.system?.provider || state.metrics?.system?.activeProvider;
   const model = cfg?.active?.ai?.activeModel || hlth?.system?.model || state.metrics?.system?.activeModel;
   if (topbarModel && (provider || model)) {
-    topbarModel.textContent = `${provider || 'IA'} · ${model || '—'}`;
+    topbarModel.textContent = `${provider || 'IA'} · ${model || '-'}`;
     topbarModel.className = 'pill mini mint desktop-only';
   }
 }
@@ -1132,7 +1132,7 @@ async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError }
   try {
     const res = await api('/api/dashboard/tts', {
       method: 'POST',
-      body: { text: clean, voiceName: voiceName || state.draft?.voice?.voiceName }
+      body: { text: clean, voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName }
     });
     if (res?.ok && res.audioBase64) {
       const src = `data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`;
@@ -1154,10 +1154,11 @@ async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError }
   } catch (err) {
     console.warn('[tts] Fallback para síntese de fala local:', err.message);
     if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(clean);
       utter.lang = 'pt-BR';
       utter.rate = 1.05;
-      utter.onstart = () => onStart?.({ engine: 'browser-speech-fallback' });
+      utter.onstart = () => onStart?.({ engine: 'browser-speech-fallback', isFallback: true, error: err.message });
       utter.onend = () => onEnd?.();
       utter.onerror = () => onEnd?.();
       window.speechSynthesis.speak(utter);
@@ -1753,7 +1754,7 @@ async function renderAgent({ force = false } = {}) {
       strip.innerHTML = `
         <article class="kpi-tile panel">
           <span class="kpi-label">Modelo Principal Ativo</span>
-          <strong class="kpi-val">${esc(rt.activeModel || '—')}</strong>
+          <strong class="kpi-val">${esc(rt.activeModel || '-')}</strong>
           <small class="kpi-sub">Provedor: ${esc((rt.activeProvider || 'gemini').toUpperCase())} · rev v${Number(rt.revision || 0)}</small>
         </article>
         <article class="kpi-tile panel">
@@ -1853,7 +1854,7 @@ async function runRouterTest() {
     out.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
         <div><strong>Modelo Escolhido:</strong> <code style="color:var(--accent-blue-hover);font-weight:700;">${esc(d.model)}</code> <span class="pill mini mint">${esc(d.tier || 'flash')}</span></div>
-        <div><strong>Thinking Budget:</strong> <code>${Number(d.thinkingBudget || 0)}</code> · <strong>Motivo:</strong> <code>${esc(d.reason || '—')}</code></div>
+        <div><strong>Thinking Budget:</strong> <code>${Number(d.thinkingBudget || 0)}</code> · <strong>Motivo:</strong> <code>${esc(d.reason || '-')}</code></div>
       </div>
       <div><strong>Capacidades Exigidas Detectadas:</strong> ${caps || 'nenhuma'}</div>
     `;
@@ -1877,9 +1878,9 @@ async function renderMetrics() {
     const elAvg = $('#metric-avg-latency') || $('#kpi-latency');
     if (elAvg) elAvg.textContent = avg;
     const elLast = $('#metric-last-latency');
-    if (elLast) elLast.textContent = overview?.lastLatencyMs ? `${overview.lastLatencyMs} ms` : '—';
+    if (elLast) elLast.textContent = overview?.lastLatencyMs ? `${overview.lastLatencyMs} ms` : '-';
     const elP95 = $('#metric-p95-latency');
-    if (elP95) elP95.textContent = overview?.p95LatencyMs ? `${overview.p95LatencyMs} ms` : '—';
+    if (elP95) elP95.textContent = overview?.p95LatencyMs ? `${overview.p95LatencyMs} ms` : '-';
     const latBadge = $('#metric-latency-badge') || $('#kpi-latency-status');
     if (latBadge) {
       if (avg === 0) {
@@ -1919,7 +1920,7 @@ async function renderMetrics() {
     const providerTable = $('#metrics-provider-model');
     if (providerTable) providerTable.innerHTML = byProviderModel?.length ? byProviderModel.map(item => {
       const monthCost = item.monthlyEstimatedUsd === null ? 'Não calculado' : `US$ ${Number(item.monthlyEstimatedUsd || 0).toFixed(4)}`;
-      const budget = item.budgetUsd === null ? '—' : `US$ ${Number(item.budgetUsd).toFixed(2)} · ${item.budgetUsagePercent === null ? (item.monthlyTokenUsageComplete ? 'sem tarifa' : 'uso incompleto') : `${item.budgetUsagePercent}%`}`;
+      const budget = item.budgetUsd === null ? '-' : `US$ ${Number(item.budgetUsd).toFixed(2)} · ${item.budgetUsagePercent === null ? (item.monthlyTokenUsageComplete ? 'sem tarifa' : 'uso incompleto') : `${item.budgetUsagePercent}%`}`;
       const tokenUse = item.tokenUsageComplete ? `${Number(item.promptTokens || 0).toLocaleString('pt-BR')} / ${Number(item.completionTokens || 0).toLocaleString('pt-BR')}` : `${Number(item.promptTokens || 0).toLocaleString('pt-BR')} / ${Number(item.completionTokens || 0).toLocaleString('pt-BR')} · parcial`;
       return `<tr><td><strong>${esc(item.provider)}</strong><div class="ops-muted">${esc(item.model)}</div></td><td>${item.requests} <span class="ops-muted">(${item.failedRequests} falhas)</span></td><td title="Chamadas com falha não têm tokens presumidos">${tokenUse}</td><td>${Number(item.avgLatencyMs || 0)} ms</td><td>${monthCost}</td><td>${budget}</td></tr>`;
     }).join('') : '<tr><td colspan="6" class="table-empty">Nenhuma chamada persistida no escopo informado.</td></tr>';
@@ -1949,7 +1950,7 @@ async function renderMetrics() {
     const elProv = $('#metric-active-provider') || $('#kpi-provider');
     if (elProv) elProv.textContent = (system?.activeProvider || 'Gemini').toUpperCase();
     const elModel = $('#metric-active-model') || $('#kpi-model');
-    if (elModel) elModel.textContent = system?.activeModel || '—';
+    if (elModel) elModel.textContent = system?.activeModel || '-';
     renderActiveModelLabel();
 
     // 5. Badge no menu lateral
@@ -2173,7 +2174,7 @@ function renderAdminHistory() {
     return;
   }
   listEl.innerHTML = history.map((entry) => {
-    const time = entry.at ? new Date(entry.at).toLocaleString('pt-BR') : '—';
+    const time = entry.at ? new Date(entry.at).toLocaleString('pt-BR') : '-';
     const canRollback = Boolean(entry.snapshot) && Number(entry.revision) !== Number(state.adminConfig?.revision);
     const label = entry.action === 'published' ? 'Publicação' : entry.action === 'rollback' ? `Rollback (de v${entry.sourceRevision})` : 'Rascunho salvo';
     return `<article class="ops-row">
@@ -2344,9 +2345,9 @@ function renderModelOptions(models, primary) {
   renderActiveModelLabel();
 }
 
-const FALLBACK_PROVIDERS = [['gemini', 'Gemini'], ['openrouter', 'OpenRouter'], ['openai', 'OpenAI'], ['qwen', 'Qwen']];
+const FALLBACK_PROVIDERS = [['gemini', 'Gemini'], ['openrouter', 'OpenRouter'], ['cloudflare', 'Cloudflare Workers AI'], ['openai', 'OpenAI'], ['qwen', 'Qwen']];
 function fallbackEntry(value = '') {
-  const match = String(value).trim().match(/^(gemini|openrouter|openai|qwen):(.*)$/i);
+  const match = String(value).trim().match(/^(gemini|openrouter|cloudflare|openai|qwen):(.*)$/i);
   return match ? { provider: match[1].toLowerCase(), model: match[2].trim() } : { provider: 'openrouter', model: String(value).trim() };
 }
 function renderFallbackRows() {
@@ -2624,7 +2625,7 @@ function renderOverviewCharts(metrics, health) {
   if (modSub) modSub.textContent = top.length ? `${top.length} modelo(s) ativos no ledger` : 'Aguardando chamadas de IA no período';
 
   if (!top.length) {
-    const activeProvider = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '—'}`;
+    const activeProvider = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '-'}`;
     modEl.innerHTML = `
       <div class="model-bar-list">
         <div class="model-bar-row">
@@ -2698,10 +2699,10 @@ async function renderOverview(opts = {}) {
     const ev = integrations?.evolution;
     if ($('#ov-kpi-wa')) {
       $('#ov-kpi-wa').textContent = ev ? (ev.connected ? 'Conectado' : ev.status) : (health?.readiness?.ok ? 'Online' : 'Verificando');
-      $('#ov-kpi-wa-sub').textContent = ev ? `Instância ${ev.instance || '—'} · ${ev.latencyMs ?? '—'} ms` : `Instância ${health?.system?.instance || '—'}`;
+      $('#ov-kpi-wa-sub').textContent = ev ? `Instância ${ev.instance || '-'} · ${ev.latencyMs ?? '-'} ms` : `Instância ${health?.system?.instance || '-'}`;
     }
     if ($('#ov-kpi-ai')) {
-      $('#ov-kpi-ai').textContent = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '—'}`;
+      $('#ov-kpi-ai').textContent = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '-'}`;
       $('#ov-kpi-ai-sub').textContent = `Revisão publicada v${health?.system?.revision ?? state.adminConfig?.revision ?? 0}`;
     }
     if ($('#ov-kpi-sessions')) {
@@ -2833,7 +2834,7 @@ async function saveToolsDraft() {
 async function renderUsers() {
   try {
     const [usersResult, auditResult] = await Promise.all([api('/api/dashboard/users'), api('/api/dashboard/audit')]);
-    $('#users-table').innerHTML = usersResult.users.map(user => `<tr><td>${esc(user.fullName || 'Sem nome')}</td><td>${esc(user.email || '—')}</td><td><select class="user-action-select" data-user-role="${esc(user.id)}"><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>viewer</option><option value="operator" ${user.role === 'operator' ? 'selected' : ''}>operator</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option></select></td><td><input type="checkbox" data-user-active="${esc(user.id)}" ${user.active ? 'checked' : ''} aria-label="Perfil ativo" /></td><td>${esc(user.lastSignInAt || '—')}</td><td><button class="admin-ghost-btn btn-sm" data-user-save="${esc(user.id)}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum perfil encontrado.</td></tr>';
+    $('#users-table').innerHTML = usersResult.users.map(user => `<tr><td>${esc(user.fullName || 'Sem nome')}</td><td>${esc(user.email || '-')}</td><td><select class="user-action-select" data-user-role="${esc(user.id)}"><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>viewer</option><option value="operator" ${user.role === 'operator' ? 'selected' : ''}>operator</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option></select></td><td><input type="checkbox" data-user-active="${esc(user.id)}" ${user.active ? 'checked' : ''} aria-label="Perfil ativo" /></td><td>${esc(user.lastSignInAt || '-')}</td><td><button class="admin-ghost-btn btn-sm" data-user-save="${esc(user.id)}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum perfil encontrado.</td></tr>';
     $('#audit-list').innerHTML = auditResult.entries.map(entry => `<article class="ops-row"><div><strong>${esc(entry.action)}</strong><div class="ops-muted">${esc(entry.entityType || 'sistema')} · ator ${esc(entry.actorId || 'não identificado')} · ${esc(entry.createdAt || '')}</div><div class="ops-muted">${esc(JSON.stringify(entry.metadata || {}))}</div></div></article>`).join('') || '<div class="detail-placeholder">Nenhum evento de auditoria registrado.</div>';
     decorateTechnicalTerms($('#users-view'));
   } catch (error) { opsFeedback('users-feedback', `Falha ao carregar usuários/auditoria: ${error.message}`, 'error'); }
@@ -2849,18 +2850,18 @@ async function renderIntegrations() {
     const hoursDetail = `${hours.summary || 'Expediente indisponível.'}${hours.enabled && !hours.isOpenNow && hours.nextOpenAt ? ` · reabertura ${new Date(hours.nextOpenAt).toLocaleString('pt-BR')}` : ''}`;
     const sectorsDetail = `${Number(sectors.count) || 0} setor(es) na projeção · última leitura ${sectors.updatedAt ? new Date(sectors.updatedAt).toLocaleString('pt-BR') : 'ainda não sincronizada'}`;
     const statuses = [
-      ['Ponte Chatwoot Lia', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '—'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
+      ['Ponte Chatwoot Lia', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '-'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
       ['Expediente da Lia', !hours.enabled ? '24 horas' : (hours.isOpenNow ? 'aberto' : 'fechado'), hoursDetail],
       ['Setores do Chatwoot', sectors.synced ? 'sincronizado' : 'aguardando sincronização', sectorsDetail],
-      ['Evolution API', data.evolution.status, `Host ${data.evolution.apiHost || '—'} · instância ${data.evolution.instance || '—'} · latência ${data.evolution.latencyMs ?? '—'} ms`],
-      ['Supabase', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '—'} · backend-only`],
+      ['Evolution API', data.evolution.status, `Host ${data.evolution.apiHost || '-'} · instância ${data.evolution.instance || '-'} · latência ${data.evolution.latencyMs ?? '-'} ms`],
+      ['Supabase', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '-'} · backend-only`],
       ['Autenticação do webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
       ...(data.providers || []).map(item => [item.name, item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
     ];
     $('#integrations-status').innerHTML = statuses.map(([name, status, detail]) => `<article class="integration-card"><div class="integration-card-head"><strong>${esc(name)}</strong><span class="status-text ${/connected|ok|configured|token configured|operacional|aberto|24 horas|sincronizado/i.test(status) ? 'ok' : /not_configured|não configurado|disconnected|unreachable|timeout|awaiting_first_read|stale|unknown|fechado|aguardando/i.test(status) ? 'warn' : 'err'}">${esc(status)}</span></div><p>${esc(detail)}</p>${name === 'Evolution API' ? `<p>${data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'}</p>` : ''}</article>`).join('');
     const events = data.webhook.recentEvents || [];
     $('#webhook-summary').textContent = `${events.length} eventos recentes · ${data.webhook.ledgerConfigured ? 'ledger persistente' : 'ledger não disponível'}`;
-    $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '—')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '—')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
+    $('#webhook-events').innerHTML = events.map(event => `<tr><td>${esc(event.receivedAt || '')}</td><td>${esc(event.eventType)}</td><td>${esc(event.instance || '-')}</td><td>${esc(event.status)}</td><td>${Number(event.attempts || 1)}</td><td>${esc(event.errorCode || '-')}</td></tr>`).join('') || '<tr><td colspan="6" class="table-empty">Nenhum evento recente ou ledger não aplicado.</td></tr>';
     decorateTechnicalTerms($('#integrations-view'));
   } catch (error) { opsFeedback('integrations-feedback', `Falha ao consultar integrações: ${error.message}`, 'error'); }
 }
@@ -2903,7 +2904,7 @@ async function refresh({ background = false } = {}) {
       subtitle.textContent = data.persistence === 'supabase'
         ? `${state.sessions.length} sessões (${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}) · Supabase`
         : data.persistenceError
-        ? 'fallback local — Supabase indisponível'
+        ? 'fallback local - Supabase indisponível'
         : `${state.sessions.length} sessões ativas`;
     }
     if (!state.sessions.some((item) => item.phone === state.selected)) {
@@ -3596,7 +3597,10 @@ function startDashboard() {
     state.modelCatalogProvider = null;
     state.modelCatalog = [];
     const primary = $('#admin-ai-model');
-    if (primary) primary.value = '';
+    if (primary) {
+      primary.value = '';
+      primary.classList.remove('hidden');
+    }
     loadProviderModels({ refresh: true });
   });
   $('#admin-ai-models-refresh')?.addEventListener('click', () => loadProviderModels({ refresh: true }));
@@ -3840,8 +3844,14 @@ function startDashboard() {
     await playNeuralAudio('Olá! Eu sou a Lia, assistente virtual da Atualyze. Como posso ajudar você hoje?', {
       voiceName: chosenVoice,
       onStart: (info) => {
-        if (statusText) statusText.textContent = `Reproduzindo com motor ${info?.engine || 'neural'} (${chosenVoice}).`;
-        showToast({ title: 'Voz Neural em Execução', message: `Motor ativo: ${info?.engine || 'neural'}`, type: 'success' });
+        if (info?.isFallback) {
+          if (statusText) statusText.textContent = `Motor neural do servidor indisponível (${info?.error || 'fallback'}); reproduzindo voz padrão do navegador.`;
+          showToast({ title: 'Fallback do Navegador', message: 'Motor neural do servidor indisponível. A voz padrão do navegador foi usada.', type: 'warning' });
+          return;
+        }
+        const activeVoice = info?.voiceName || chosenVoice;
+        if (statusText) statusText.textContent = `Reproduzindo com motor ${info?.engine || 'neural'} (${activeVoice}).`;
+        showToast({ title: 'Voz Neural em Execução', message: `Voz: ${activeVoice} · Motor: ${info?.engine || 'neural'}`, type: 'success' });
       },
       onEnd: () => {
         if (btn) btn.disabled = false;

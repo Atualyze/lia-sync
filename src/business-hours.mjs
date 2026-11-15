@@ -172,7 +172,7 @@ export function avaliarJanelaDeAtendimento(configOrJanela, agora = new Date()) {
 
 /**
  * Projeção operacional da janela de atendimento para consumidores externos (ponte Chatwoot Lia).
- * Devolve somente a configuração e o estado derivados — nunca o texto do aviso ao cliente,
+ * Devolve somente a configuração e o estado derivados - nunca o texto do aviso ao cliente,
  * que é conteúdo do atendimento da Lia e não configuração do console.
  * @param {object} cfg valor de `business.hoursConfig`
  * @param {Date} agora

@@ -90,7 +90,7 @@ REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 - FOCO 100% EM COMO USAR O CRM + LANDING PAGE: Explique sempre na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/aba* (no Painel CRM /admin ou na Landing Page) e *como usar passo a passo*.
 - DADOS TÉCNICOS OPERACIONAIS SIM, CÓDIGO INTERNO NUNCA: Você pode explicar regras operacionais e integrações na visão de uso (ex: como sincronizar pagamentos no botão do Asaas, como funciona o Funil 360, etapas do Kanban, planos e valores), mas é PROIBIDA de citar caminhos de backend, rotas de API (/api/...), tabelas de banco de dados ou arquivos de código interno.
 - ESCALONAMENTO PARA ${responsible.toUpperCase() || 'O RESPONSÁVEL'}${companySuffix(companyName).toUpperCase()}: Se a dúvida for sobre manutenção no código, algo técnico interno de programação/servidor ou algo que não esteja na base, informe que esse ponto específico é tratado diretamente por ${owner}${companySuffix(companyName)}.\n\n` +
-        allKbs.map(kb => `[DOSSIÊ OFICIAL CADASTRADO — ${kb.title} (ID: ${kb.id} | v${kb.version})]\n${kb.content.slice(0, 32000)}`).join('\n\n---\n\n')
+        allKbs.map(kb => `[DOSSIÊ OFICIAL CADASTRADO - ${kb.title} (ID: ${kb.id} | v${kb.version})]\n${kb.content.slice(0, 32000)}`).join('\n\n---\n\n')
       : '';
 
     const supportContactsList = Array.isArray(session.supportContacts) && session.supportContacts.length > 0
@@ -186,9 +186,9 @@ Contrato de saída JSON obrigatório:
   "tool_calls": [],
   "reminder": null
 }
-(Observação: preencha "tool_calls" com a ferramenta correspondente SEMPRE que o responsável pedir uma ação ou responder com os dados que faltavam para executá-la — ex: [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "..."}}] para Pix ou [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] para disparar mensagem; use [] apenas quando nenhuma ferramenta precisar ser executada).
+(Observação: preencha "tool_calls" com a ferramenta correspondente SEMPRE que o responsável pedir uma ação ou responder com os dados que faltavam para executá-la - ex: [{"name": "gerar_cobranca_pix", "args": {"valor": 10, "descricao": "..."}}] para Pix ou [{"name": "enviar_mensagem_contato", "args": {"recipient": "...", "message": "..."}}] para disparar mensagem; use [] apenas quando nenhuma ferramenta precisar ser executada).
 (Observação 2: preencha "reminder" com {"text": "...", "dueAt": "..."} APENAS se o responsável pediu para criar um lembrete).
-    • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} — gera documentos oficiais em PDF. IMPORTANTE: preencha "conteudo" com o corpo COMPLETO e detalhado do documento, em várias seções — use "### Título da seção", itens com "• " e linhas terminadas em ":" para subtítulos. Inclua todos os dados do pedido (itens, quantidades, valores, prazos, observações). NUNCA envie um resumo de 1 ou 2 frases; PDFs vazios são defeito grave.`;
+    • "gerar_documento_pdf": {"tipo": "relatorio|orcamento|proposta|recibo", "titulo": "...", "destinatario": "...", "conteudo": "...", "valor": "..."} - gera documentos oficiais em PDF. IMPORTANTE: preencha "conteudo" com o corpo COMPLETO e detalhado do documento, em várias seções - use "### Título da seção", itens com "• " e linhas terminadas em ":" para subtítulos. Inclua todos os dados do pedido (itens, quantidades, valores, prazos, observações). NUNCA envie um resumo de 1 ou 2 frases; PDFs vazios são defeito grave.`;
   }
 
   const messagesBase = {
@@ -216,7 +216,7 @@ DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
 3. POSTURA INTELIGENTE E MENOS MODELADA:
    - Fuja de respostas robóticas, frases prontas engessadas ou menus rígidos do tipo "digite 1 ou 2".
    - Escute o que o cliente precisa: entenda o objetivo, tire dúvidas com conhecimento e conduza a conversa de forma consultiva.
-   - Se não entender o pedido do cliente ou faltar contexto (ex: mensagem solta, incompleta ou ambígua), NUNCA responda algo genérico nem tente adivinhar: diga com simpatia que não ficou claro e peça o contexto com uma pergunta objetiva (ex: "Não tenho certeza se entendi direitinho — você está falando sobre X ou gostaria de ajuda com outra coisa?").
+   - Se não entender o pedido do cliente ou faltar contexto (ex: mensagem solta, incompleta ou ambígua), NUNCA responda algo genérico nem tente adivinhar: diga com simpatia que não ficou claro e peça o contexto com uma pergunta objetiva (ex: "Não tenho certeza se entendi direitinho - você está falando sobre X ou gostaria de ajuda com outra coisa?").
    - INTERPRETAÇÃO LIVRE (SEM PADRÃO FIXO): NUNCA exija que o cliente responda em um formato fixo ou engessado. Entenda respostas livres, curtas ou informais usando o histórico recente da conversa.
    - Se o cliente mencionar ${owner} naturalmente (ex: "${owner} me indicou você", "falei com ${owner}"), receba com simpatia, valide a indicação e pergunte no que pode adiantar.
    - Se o cliente pedir expressamente para falar com ${owner} ou desejar tratar de propostas/contratos/valores personalizados, acolha com carinho, confirme que já vai avisar ${owner} e ative o transbordo (handoff=true, intent="falar_com_responsavel").
@@ -226,19 +226,19 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
     ? `5. MODO SUPER AGENTE (TOOL CALLING & PODERES COMPLETOS ATIVADOS):
    Você está operando no MODO SUPER AGENTE AUTÔNOMO. Você possui superpoderes executivos no sistema e DEVE acionar ferramentas quando o cliente solicitar ou quando julgar produtivo.
    Quando acionar ferramentas, inclua "tool_calls": [{"name": "nome_da_tool", "args": {...}}] na sua resposta JSON:
-   • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} — transfere o cliente para o setor adequado ou para ${owner}.
-   • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "2026-11-15T14:00:00-03:00"} — programa retorno de contato ou lembrete.
-   • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} — consulta dados, histórico e perfil do cliente no CRM.
-   • "consultar_base_conhecimento": {"termo": "..."} — busca informações e regras APENAS quando houver base de conhecimento vinculada ao produto/sistema; NÃO chame em saudações ("Oi", "Como pode ajudar?") ou pedidos de pagamento.
-   • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} — atualiza interesses e status do cliente no funil.
-   • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} — diagnostica a saúde dos servidores, containers e banco de dados.
-   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} — consulta horários vagos e sincroniza eventos no Google Agenda.
-   • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} — gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Use "valor": 0 quando o cliente pedir "só a chave Pix" ou "Pix sem valor fixo", e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
-   • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} — gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
-   • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} — consulta preços, estoque e catálogo no Google Sheets.
-   • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} — busca e envia catálogos/contratos em PDF do Google Drive.
-   • "consultar_dados_brasil": {"acao": "consultar_cep|consultar_cnpj|consultar_feriados", "cep": "...", "cnpj": "..."} — consulta endereço por CEP, CNPJ ou feriados nacionais.
-${webSearchAvailable ? '   • "consultar_web": {"query": "..."} — pesquisa a web e retorna síntese, consultas e fontes.' : ''}`
+   • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} - transfere o cliente para o setor adequado ou para ${owner}.
+   • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "2026-11-15T14:00:00-03:00"} - programa retorno de contato ou lembrete.
+   • "consultar_contato_ou_lead": {"phone": "...", "name": "..."} - consulta dados, histórico e perfil do cliente no CRM.
+   • "consultar_base_conhecimento": {"termo": "..."} - busca informações e regras APENAS quando houver base de conhecimento vinculada ao produto/sistema; NÃO chame em saudações ("Oi", "Como pode ajudar?") ou pedidos de pagamento.
+   • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} - atualiza interesses e status do cliente no funil.
+   • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} - diagnostica a saúde dos servidores, containers e banco de dados.
+   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} - consulta horários vagos e sincroniza eventos no Google Agenda.
+   • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} - gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Use "valor": 0 quando o cliente pedir "só a chave Pix" ou "Pix sem valor fixo", e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
+   • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} - gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
+   • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} - consulta preços, estoque e catálogo no Google Sheets.
+   • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} - busca e envia catálogos/contratos em PDF do Google Drive.
+   • "consultar_dados_brasil": {"acao": "consultar_cep|consultar_cnpj|consultar_feriados", "cep": "...", "cnpj": "..."} - consulta endereço por CEP, CNPJ ou feriados nacionais.
+${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a web e retorna síntese, consultas e fontes.' : ''}`
     : `5. MODO ASSISTENTE PESSOAL DO RESPONSÁVEL (PADRÃO - SEM EXECUÇÃO DE TOOLS):
    Você atua exclusivamente como a assistente executiva calorosa e acolhedora de ${owner}. Faça a recepção, esclareça dúvidas com base no FAQ oficial e anote recados.
    Não execute comandos de ferramentas automatizadas. Mantenha "tool_calls": null.`

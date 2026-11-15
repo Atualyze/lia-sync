@@ -265,7 +265,7 @@ test('Áudio personalizado: Lia NUNCA envia o comando literal, gera prévia amig
     text: 'Lia, envie um áudio pro Lima sobre o pagamento dos boletos de R$ 2500'
   });
 
-  // NÃO deve ter enviado o áudio ainda — deve ter pedido confirmação!
+  // NÃO deve ter enviado o áudio ainda - deve ter pedido confirmação!
   assert.equal(sentAudios.length, 0, 'Não deve disparar o áudio antes da confirmação do Tauan');
   assert.match(preview, /Prévia do áudio personalizado para Lima/i);
   assert.match(preview, /Oi, Lima!/i);

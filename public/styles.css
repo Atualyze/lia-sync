@@ -1,5 +1,5 @@
-﻿/* ==========================================================================
-   Lia Sync v2.4.0 — Identidade Visual Nativa Atualyze / Lia Sync
+/* ==========================================================================
+   Lia Sync v2.4.0 - Identidade Visual Nativa Atualyze / Lia Sync
    Escura · Tecnológica · Sofisticada (Azul Petróleo, Verde Esmeralda e Grafite)
    ========================================================================== */
 
@@ -129,7 +129,7 @@ html, body {
 .svg-icon.sm { width: 14px; height: 14px; stroke-width: 2; }
 .svg-icon.lg { width: 20px; height: 20px; stroke-width: 1.85; }
 
-/* Tactile Scrollbars — Paleta Nativa Lia Sync */
+/* Tactile Scrollbars - Paleta Nativa Lia Sync */
 * {
   scrollbar-width: thin;
   scrollbar-color: #3f4148 #1c1d1f;
@@ -837,7 +837,7 @@ html, body {
 .pill.pale { background: #1e2431; color: var(--text-secondary); border-color: #2b3242; }
 .pill.err { background: var(--accent-red-soft); color: var(--accent-red); border-color: #592629; }
 
-/* Sidebar Navigation — Strictly Single-Line, Zero Wrapping */
+/* Sidebar Navigation - Strictly Single-Line, Zero Wrapping */
 .nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .nav-group { border: none; margin: 0; }
 .nav-group-label {
@@ -1738,7 +1738,7 @@ button:focus-visible {
   box-shadow: none;
 }
 
-/* Botões Principais — Verde Esmeralda #48AA7E (Ação) */
+/* Botões Principais - Verde Esmeralda #48AA7E (Ação) */
 .admin-primary-btn,
 .action-btn-ping,
 .btn-primary,
@@ -1760,7 +1760,7 @@ button:focus-visible {
   box-shadow: none;
 }
 
-/* Botões Secundários — Azul Petróleo #295C6F (Institucional) */
+/* Botões Secundários - Azul Petróleo #295C6F (Institucional) */
 button.secondary,
 .btn-secondary,
 .btn-handoff.secondary {
@@ -1791,7 +1791,7 @@ button.danger:hover:not(:disabled) {
 }
 
 /* ==========================================================================
-   3-Column Responsive Multimodal Inbox (#inbox-view) — Strict Scroll Architecture
+   3-Column Responsive Multimodal Inbox (#inbox-view) - Strict Scroll Architecture
    ========================================================================== */
 #inbox-view.active-view {
   display: flex;
@@ -2059,7 +2059,7 @@ button.danger:hover:not(:disabled) {
   font-size: 12.5px;
 }
 
-/* Multimodal Messages Stream — True Apple iMessage Scrollable Viewport */
+/* Multimodal Messages Stream - True Apple iMessage Scrollable Viewport */
 .messages {
   flex: 1 1 0%;
   min-height: 0;
@@ -2096,7 +2096,7 @@ button.danger:hover:not(:disabled) {
   color: #fff !important;
 }
 
-/* Chat Bubbles — Paleta Nativa Lia Sync (Zero Scrollbar on Bubbles) */
+/* Chat Bubbles - Paleta Nativa Lia Sync (Zero Scrollbar on Bubbles) */
 .bubble-row {
   display: flex;
   flex-direction: column;
@@ -2787,7 +2787,7 @@ button.danger:hover:not(:disabled) {
 }
 .sim-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
-/* Spotlight Command Palette (Ctrl+K) — Apple-inspired Translucent Backdrop & Refined Layout */
+/* Spotlight Command Palette (Ctrl+K) - Apple-inspired Translucent Backdrop & Refined Layout */
 .cmd-modal-overlay {
   position: fixed;
   inset: 0;
