@@ -823,3 +823,96 @@ test('Seleção de voz respeita voiceName explícito sobre botConfig, thinkingBu
     try { Object.defineProperty(mutableConfig, 'cloudflareApiToken', { value: origCfTok, configurable: true }); } catch {}
   }
 });
+
+test('atualizar_dados_crm e permitido no modo cliente e salva etiquetas em session.tags', async () => {
+  const { executeToolCall, isClientToolAllowed } = await import('./tools/index.mjs');
+  assert.equal(isClientToolAllowed('atualizar_dados_crm'), true);
+
+  const session = { phone: '5511999998888', tags: ['comercial'] };
+  const store = { dirty: false, markDirty() { this.dirty = true; } };
+  const res = await executeToolCall(
+    'atualizar_dados_crm',
+    {
+      interesse: 'Site + CRM',
+      estagio: 'proposta',
+      observacoes: 'Pediu orcamento para 2 unidades',
+      etiquetas: ['Orçamento', 'Site Profissional', 'comercial']
+    },
+    { actor: 'client', session, store }
+  );
+
+  assert.equal(res.success, true);
+  assert.equal(session.productInterest, 'Site + CRM');
+  assert.equal(session.dealStage, 'proposta');
+  assert.deepEqual(session.tags, ['comercial', 'orçamento', 'site-profissional']);
+  assert.equal(store.dirty, true);
+});
+
+test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora se ja pago', async () => {
+  const { processMaintenance } = await import('./maintenance.mjs');
+  const nowMs = new Date('2026-11-14T15:00:00-03:00').getTime(); // 15h daytime
+  const sent = [];
+  const sessionUnpaid = {
+    phone: '5511948273615',
+    human: false,
+    lastBotAt: new Date(nowMs - 50 * 60000).toISOString(),
+    tags: ['checkout-pendente'],
+    history: [],
+    pendingCheckout: {
+      orderNsu: 'ord-1',
+      checkoutUrl: 'https://pay.infinitepay.io/teste1',
+      amountCents: 15000,
+      handle: 'atualyze',
+      createdAt: new Date(nowMs - 50 * 60000).toISOString(),
+      recoverySentAt: null,
+      paidAt: null
+    }
+  };
+  const sessionPaid = {
+    phone: '5511948273616',
+    human: false,
+    lastBotAt: new Date(nowMs - 50 * 60000).toISOString(),
+    tags: ['checkout-pendente'],
+    history: [],
+    pendingCheckout: {
+      orderNsu: 'ord-2',
+      checkoutUrl: 'https://pay.infinitepay.io/teste2',
+      amountCents: 20000,
+      handle: 'atualyze',
+      createdAt: new Date(nowMs - 50 * 60000).toISOString(),
+      recoverySentAt: null,
+      paidAt: null
+    }
+  };
+  const store = {
+    sessions: { '5511948273615': sessionUnpaid, '5511948273616': sessionPaid },
+    markDirty() {},
+    async flush() {}
+  };
+
+  await processMaintenance({
+    store,
+    send: async (phone, msg) => { sent.push({ phone, msg }); },
+    notify: async () => {},
+    now: () => nowMs,
+    checkPayment: async ({ orderNsu }) => ({ paid: orderNsu === 'ord-2' })
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].phone, '5511948273615');
+  assert.ok(sent[0].msg.includes('https://pay.infinitepay.io/teste1'));
+  assert.ok(sessionUnpaid.pendingCheckout.recoverySentAt);
+  assert.ok(sessionPaid.pendingCheckout.paidAt);
+  assert.ok(sessionPaid.tags.includes('pagamento-confirmado'));
+  assert.equal(sessionPaid.tags.includes('checkout-pendente'), false);
+
+  // Segunda execucao nao envia duplicado
+  await processMaintenance({
+    store,
+    send: async (phone, msg) => { sent.push({ phone, msg }); },
+    notify: async () => {},
+    now: () => nowMs + 60000,
+    checkPayment: async () => ({ paid: false })
+  });
+  assert.equal(sent.length, 1);
+});

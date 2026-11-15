@@ -1,5 +1,6 @@
 import { normalizePhone, isValidRealMobilePhone, isOwnerContact } from './sessions.mjs';
 import { isOwnerKey, resolveIdentity } from './core/identity.mjs';
+import { checkInfinitePayPayment } from './tools/checkout_infinitepay.mjs';
 
 const followUpLocks = new WeakMap();
 
@@ -12,6 +13,7 @@ export async function processMaintenance({
   send,
   notify,
   reminderStore,
+  checkPayment = checkInfinitePayPayment,
   now = Date.now,
   timeZone = 'America/Sao_Paulo',
   staleHours = 12,
@@ -213,6 +215,54 @@ export async function processMaintenance({
           locks.delete(key);
         }
         continue;
+      }
+    }
+
+    // 2.3b Recuperação automática de Checkout / Pix pendente (após 45 min, dentro de 24h, em horário diurno)
+    if (
+      !session.human &&
+      daytime &&
+      session.pendingCheckout &&
+      !session.pendingCheckout.paidAt &&
+      !session.pendingCheckout.recoverySentAt &&
+      session.pendingCheckout.checkoutUrl
+    ) {
+      const checkoutCreatedMs = new Date(session.pendingCheckout.createdAt || 0).getTime();
+      const checkoutElapsed = Number.isFinite(checkoutCreatedMs) && checkoutCreatedMs > 0 ? current - checkoutCreatedMs : 0;
+      if (checkoutElapsed >= 45 * 60000 && checkoutElapsed <= 24 * 3600000) {
+        let alreadyPaid = false;
+        if (session.pendingCheckout.handle && session.pendingCheckout.orderNsu) {
+          try {
+            const payStatus = await checkPayment?.({
+              handle: session.pendingCheckout.handle,
+              orderNsu: session.pendingCheckout.orderNsu
+            });
+            if (payStatus?.paid) {
+              alreadyPaid = true;
+              session.pendingCheckout.paidAt = new Date(current).toISOString();
+              session.tags = Array.from(new Set([...(Array.isArray(session.tags) ? session.tags : []).filter((t) => t !== 'checkout-pendente'), 'pagamento-confirmado'])).slice(0, 20);
+              store.markDirty();
+            }
+          } catch (e) {
+            logger.warn?.('[maintenance] Falha ao checar pagamento InfinitePay antes da recuperação:', e.message);
+          }
+        }
+        if (!alreadyPaid) {
+          session.pendingCheckout.recoverySentAt = new Date(current).toISOString();
+          const valorFmt = session.pendingCheckout.amountCents
+            ? ` de *R$ ${(Number(session.pendingCheckout.amountCents) / 100).toFixed(2).replace('.', ',')}*`
+            : '';
+          const recMsg = `Oi! Passando só para lembrar que seu link de pagamento${valorFmt} ainda está disponível caso queira concluir:\n\n${session.pendingCheckout.checkoutUrl}\n\nSe já tiver pago ou precisar de alguma ajuda, é só me avisar por aqui! 😊`;
+          store.markDirty();
+          try {
+            await send?.(session.phone, recMsg);
+            session.history = [...(session.history || []), { role: 'assistant', content: recMsg }].slice(-12);
+            store.markDirty();
+          } catch (e) {
+            logger.error?.('[maintenance] Erro ao enviar recuperação de checkout:', e.message);
+          }
+          continue;
+        }
       }
     }
 

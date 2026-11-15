@@ -20,11 +20,16 @@ export const toolAtualizarDadosCRM = {
         type: 'STRING',
         enum: ['lead', 'qualificacao', 'proposta', 'negociacao', 'fechado', 'perdido'],
         description: 'Estágio do cliente no funil comercial.'
+      },
+      etiquetas: {
+        type: 'ARRAY',
+        items: { type: 'STRING' },
+        description: 'Etiquetas (tags) curtas para classificar o lead no CRM (ex: ["orcamento", "site", "urgente"]).'
       }
     },
     required: []
   },
-  async execute({ interesse, observacoes, estagio }, context = {}) {
+  async execute({ interesse, observacoes, estagio, etiquetas }, context = {}) {
     const session = context.session;
     if (!session) return { success: false, error: 'Não foi possível identificar o contato atual para atualizar o CRM.' };
     if (interesse) session.productInterest = interesse.trim();
@@ -34,11 +39,19 @@ export const toolAtualizarDadosCRM = {
       session.notes = observacoes.trim();
     }
     if (estagio) session.dealStage = estagio;
+    if (Array.isArray(etiquetas) && etiquetas.length > 0) {
+      const existing = Array.isArray(session.tags) ? session.tags : [];
+      const normalized = etiquetas
+        .map((t) => String(t || '').trim().toLowerCase().replace(/\s+/g, '-'))
+        .filter(Boolean);
+      session.tags = Array.from(new Set([...existing, ...normalized])).slice(0, 20);
+    }
     context.store?.markDirty?.();
     return {
       success: true,
       interesse: interesse || null,
       estagio: estagio || null,
+      etiquetas: Array.isArray(session.tags) ? session.tags : [],
       message: 'Dados do cliente atualizados com sucesso no CRM.'
     };
   }

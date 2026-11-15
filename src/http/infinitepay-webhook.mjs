@@ -69,8 +69,15 @@ export async function processInfinitePayWebhook({
         ].filter(Boolean).join('\n\n');
         await sendText(clientPhone, clientMsg).catch(() => {});
         const session = store?.get?.(clientPhone);
-        if (session && Array.isArray(session.history)) {
-          session.history.push({ role: 'model', text: clientMsg });
+        if (session) {
+          if (session.pendingCheckout && session.pendingCheckout.orderNsu === orderNsu) {
+            session.pendingCheckout.paidAt = new Date().toISOString();
+          }
+          const tags = Array.isArray(session.tags) ? session.tags.filter((t) => t !== 'checkout-pendente') : [];
+          session.tags = Array.from(new Set([...tags, 'pagamento-confirmado'])).slice(0, 20);
+          if (Array.isArray(session.history)) {
+            session.history.push({ role: 'model', text: clientMsg });
+          }
           store?.scheduleSave?.();
         }
       }

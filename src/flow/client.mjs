@@ -359,15 +359,29 @@ export async function handleClientMessage({
         deadline: aiDeadline
       });
 
+      const addSessionTags = (tagsToAdd) => {
+        const existing = Array.isArray(s.tags) ? s.tags : [];
+        const normalized = tagsToAdd
+          .map((t) => String(t || '').trim().toLowerCase().replace(/\s+/g, '-'))
+          .filter(Boolean);
+        if (normalized.length > 0) {
+          s.tags = Array.from(new Set([...existing, ...normalized])).slice(0, 20);
+        }
+      };
+
       if (result?.sector && Array.isArray(triageSectors) && triageSectors.length > 0) {
         const resolvedSector = resolverSetorPorCategoria(result.sector, triageSectors, identity);
         if (resolvedSector?.sectorId) {
           s.sectorId = resolvedSector.sectorId;
           s.sectorName = resolvedSector.sectorName;
           s.sectorCategory = resolvedSector.category;
+          addSessionTags([resolvedSector.category || resolvedSector.sectorName]);
         }
       }
-      if (result?.sentiment) s.sentiment = result.sentiment;
+      if (result?.sentiment) {
+        s.sentiment = result.sentiment;
+        if (result.sentiment === 'frustrado') addSessionTags(['frustrado']);
+      }
       if (result?.context_summary) s.contextSummary = result.context_summary;
       if (result && (result.sentiment === 'frustrado' || (s.repeatCount || 0) >= 2)) {
         result.handoff = true;
@@ -474,11 +488,29 @@ export async function handleClientMessage({
               }
               if (tc.name === 'checkout_infinitepay') {
                 if (toolRes?.success && toolRes.action === 'verificar_pagamento') {
+                  if (toolRes.paid) {
+                    if (s.pendingCheckout && (!toolRes.orderNsu || s.pendingCheckout.orderNsu === toolRes.orderNsu)) {
+                      s.pendingCheckout.paidAt = new Date(now()).toISOString();
+                    }
+                    s.tags = (Array.isArray(s.tags) ? s.tags : []).filter((t) => t !== 'checkout-pendente');
+                    addSessionTags(['pagamento-confirmado']);
+                  }
                   const valorFmt = toolRes.amount ? `R$ ${(Number(toolRes.amount) / 100).toFixed(2).replace('.', ',')}` : '';
                   toolReplyOverride = toolRes.paid
                     ? `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido \`${toolRes.orderNsu}\`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`
                     : `⏳ O pagamento do pedido \`${toolRes.orderNsu}\` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`;
                 } else if (toolRes?.success) {
+                  s.pendingCheckout = {
+                    orderNsu: toolRes.orderNsu || '',
+                    checkoutUrl: toolRes.checkoutUrl || '',
+                    amountCents: Math.round(Number(toolRes.valor || 0) * 100),
+                    description: toolRes.descricao || '',
+                    handle: toolRes.handle || '',
+                    createdAt: new Date(now()).toISOString(),
+                    recoverySentAt: null,
+                    paidAt: null
+                  };
+                  addSessionTags(['checkout-pendente']);
                   const valorFmt = `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}`;
                   toolReplyOverride = [
                     `💳 *Aqui está seu link de pagamento (Pix ou Cartão):*`,
