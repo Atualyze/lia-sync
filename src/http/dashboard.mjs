@@ -7,6 +7,7 @@ import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
+import { readVpsMetrics } from '../vps-monitor.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f }) {
@@ -360,6 +361,11 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/voice-status') {
     return json(res, 200, { ok: true, status: getVoiceRuntimeStatus() });
+  }
+
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/vps-monitor') {
+    const payload = await readVpsMetrics();
+    return json(res, 200, payload);
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/tts') {
     let body;

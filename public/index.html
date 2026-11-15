@@ -135,6 +135,11 @@
               <span class="nav-label">Monitoramento</span>
               <b id="metrics-status-badge" class="badge-mini ok">ok</b>
             </button>
+            <button class="nav-item" data-view="vps" title="Monitor VPS (Somente Leitura)">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+              <span class="nav-label">Monitor VPS</span>
+              <b id="vps-status-badge" class="badge-mini ok">ok</b>
+            </button>
           </div>
         </details>
 
@@ -1594,6 +1599,158 @@
               <div id="metrics-rates-feedback" class="admin-feedback hidden" role="status"></div>
             </div>
           </details>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           VIEW 5B: MONITOR VPS (SOMENTE LEITURA)
+           ==================================================================== -->
+      <section id="vps-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="admin-hero-copy">
+              <span class="eyebrow">Gerenciador de Tarefas · Somente Leitura</span>
+              <h2>Monitoramento em Tempo Real da VPS</h2>
+              <p id="vps-subtitle">CPU, memória RAM, ZRAM/Swap, disco, containers Docker e processos do host em tempo real (sem ações destrutivas).</p>
+            </div>
+            <div class="admin-hero-actions">
+              <label class="ops-select-wrap">
+                <span>Atualização</span>
+                <select id="vps-refresh-rate">
+                  <option value="3000" selected>3s</option>
+                  <option value="5000">5s</option>
+                  <option value="15000">15s</option>
+                  <option value="0">Pausado</option>
+                </select>
+              </label>
+              <button id="btn-refresh-vps" class="btn-secondary">Atualizar Agora</button>
+            </div>
+          </div>
+
+          <div id="vps-status-banner" class="ping-banner hidden"></div>
+
+          <div class="ops-kpi-grid">
+            <article class="kpi-card">
+              <span class="kpi-label">CPU &amp; Carga</span>
+              <strong id="vps-cpu-pct" class="kpi-value">--%</strong>
+              <span id="vps-cpu-sub" class="kpi-sub">Load: -- / Cores: --</span>
+              <div class="vps-bar"><div id="vps-cpu-bar" class="vps-bar-fill" style="width:0%"></div></div>
+            </article>
+            <article class="kpi-card">
+              <span class="kpi-label">Memória RAM</span>
+              <strong id="vps-ram-pct" class="kpi-value">--%</strong>
+              <span id="vps-ram-sub" class="kpi-sub">-- / -- MB</span>
+              <div class="vps-bar"><div id="vps-ram-bar" class="vps-bar-fill" style="width:0%"></div></div>
+            </article>
+            <article class="kpi-card">
+              <span class="kpi-label">Swap &amp; ZRAM</span>
+              <strong id="vps-swap-pct" class="kpi-value">--%</strong>
+              <span id="vps-swap-sub" class="kpi-sub">-- / -- MB</span>
+              <div class="vps-bar"><div id="vps-swap-bar" class="vps-bar-fill" style="width:0%"></div></div>
+            </article>
+            <article class="kpi-card">
+              <span class="kpi-label">Disco (/) &amp; Docker</span>
+              <strong id="vps-disk-pct" class="kpi-value">--%</strong>
+              <span id="vps-disk-sub" class="kpi-sub">-- / -- GB</span>
+              <div class="vps-bar"><div id="vps-disk-bar" class="vps-bar-fill" style="width:0%"></div></div>
+            </article>
+          </div>
+
+          <div class="ops-grid-2">
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Dispositivos Swap / ZRAM</h3>
+                  <p>Prioridades e uso por dispositivo de paginação</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Dispositivo</th>
+                      <th>Tipo</th>
+                      <th>Tamanho</th>
+                      <th>Usado</th>
+                      <th>Prioridade</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vps-swap-devices-body">
+                    <tr><td colspan="5" class="muted">Carregando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Uso de Disco Docker &amp; Host</h3>
+                  <p id="vps-host-meta">Uptime: -- · Hostname: --</p>
+                </div>
+              </div>
+              <div id="vps-docker-disk-body" class="vps-kv-list">
+                <span class="muted">Carregando...</span>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel ops-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Containers Docker (Somente Leitura)</h3>
+                <p>Consumo de CPU, memória, I/O de rede/bloco e PIDs por container</p>
+              </div>
+              <span id="vps-containers-count" class="badge-mini">0</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Container</th>
+                    <th>Status</th>
+                    <th>CPU %</th>
+                    <th>Memória</th>
+                    <th>Mem %</th>
+                    <th>Rede I/O</th>
+                    <th>Disco I/O</th>
+                    <th>PIDs</th>
+                  </tr>
+                </thead>
+                <tbody id="vps-containers-body">
+                  <tr><td colspan="8" class="muted">Carregando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel ops-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Processos do Host (Top RAM &amp; CPU)</h3>
+                <p>Processos ordenados por consumo de memória residente (RSS) e CPU</p>
+              </div>
+              <span id="vps-processes-count" class="badge-mini">0</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>PID</th>
+                    <th>Usuário</th>
+                    <th>Estado</th>
+                    <th>CPU %</th>
+                    <th>RAM (RSS)</th>
+                    <th>RAM %</th>
+                    <th>Comando</th>
+                  </tr>
+                </thead>
+                <tbody id="vps-processes-body">
+                  <tr><td colspan="7" class="muted">Carregando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 

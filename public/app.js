@@ -15,6 +15,7 @@ const state = {
   health: null,
   refreshTimer: null,
   metricsTimer: null,
+  vpsTimer: null,
   adminConfig: null,
   adminSaveTimer: null,
   adminFormDirty: false,
@@ -2986,7 +2987,8 @@ const VIEW_TITLES = {
   agent: 'Capacidades & Roteador IA',
   integrations: 'Integrações & Ponte Chatwoot',
   users: 'Usuários, Perfis & Auditoria',
-  metrics: 'Monitoramento & Custos'
+  metrics: 'Monitoramento & Custos',
+  vps: 'Monitor VPS (Somente Leitura)'
 };
 
 function showView(view) {
@@ -3010,6 +3012,7 @@ function showView(view) {
   }
   if (view === 'agent') renderAgent();
   if (view === 'metrics') renderMetrics();
+  if (view === 'vps') renderVpsMonitor();
   if (view === 'admin') renderAdminData();
   if (view === 'overview') renderOverview();
   if (view === 'tools') renderTools();
@@ -3027,6 +3030,7 @@ function setupCommandPalette() {
   const commands = [
     { title: 'Saúde & Operação', sub: 'Visão geral, liveness e readiness', action: () => showView('overview') },
     { title: 'Monitoramento & Custos', sub: 'Telemetria, latência e circuit breakers', action: () => showView('metrics') },
+    { title: 'Monitor VPS (Somente Leitura)', sub: 'CPU, RAM, Swap/ZRAM, Docker e processos em tempo real', action: () => showView('vps') },
     { title: 'Conversas (Inbox)', sub: 'Atendimento em tempo real e simulador', role: 'operator', action: () => showView('inbox') },
     { title: 'Fila de Transbordos', sub: 'Atendimentos aguardando humano', role: 'operator', action: () => showView('handoff') },
     { title: 'Ferramentas & Consulta Web', sub: 'Catálogo de Tool Calling e Google Search', action: () => showView('tools') },
@@ -3832,6 +3836,25 @@ function startDashboard() {
   state.metricsTimer = setInterval(() => {
     if (state.view === 'metrics' && !document.hidden) renderMetrics();
   }, 15000);
+
+  $('#btn-refresh-vps')?.addEventListener('click', () => renderVpsMonitor());
+  $('#vps-refresh-rate')?.addEventListener('change', (e) => {
+    const ms = Number(e.target.value);
+    if (state.vpsTimer) {
+      clearInterval(state.vpsTimer);
+      state.vpsTimer = null;
+    }
+    if (ms > 0) {
+      if (state.view === 'vps' && !document.hidden) renderVpsMonitor();
+      state.vpsTimer = setInterval(() => {
+        if (state.view === 'vps' && !document.hidden) renderVpsMonitor();
+      }, ms);
+    }
+  });
+  state.vpsTimer = setInterval(() => {
+    if (state.view === 'vps' && !document.hidden) renderVpsMonitor();
+  }, 3000);
+
   state.sessionTimer = setInterval(() => {
     if (!document.hidden) syncSession().catch(() => {});
   }, 30000);
@@ -4197,3 +4220,169 @@ document.addEventListener('visibilitychange', () => {
     if (acc.open) loadProspectLists();
   });
 })();
+
+
+function formatUptime(totalSeconds = 0) {
+  const sec = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m ${sec % 60}s`;
+}
+
+function setVpsBar(id, pct) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+  el.style.width = `${clamped.toFixed(1)}%`;
+  el.classList.remove('warn', 'crit');
+  if (clamped >= 85) el.classList.add('crit');
+  else if (clamped >= 65) el.classList.add('warn');
+}
+
+async function renderVpsMonitor() {
+  try {
+    const data = await api('/api/dashboard/vps-monitor');
+    const m = data?.metrics || {};
+    const cpu = m.cpu || {};
+    const mem = m.memory || {};
+    const swap = m.swap || {};
+    const disk = m.disk || {};
+    const dockerDisk = m.docker_disk || {};
+
+    const badge = $('#vps-status-badge');
+    if (badge) {
+      badge.textContent = data?.stale ? 'stale' : data?.source === 'local-fallback' ? 'local' : 'ok';
+      badge.className = `badge-mini ${data?.stale ? 'warn' : 'ok'}`;
+    }
+
+    const banner = $('#vps-status-banner');
+    if (banner) {
+      if (data?.stale) {
+        banner.className = 'ping-banner error';
+        banner.textContent = `Coletor do host atrasado há ${data.age_seconds}s. Verifique o serviço lia-vps-monitor.service.`;
+      } else if (data?.source === 'local-fallback') {
+        banner.className = 'ping-banner';
+        banner.textContent = 'Modo fallback local ativo (arquivo vps-metrics.json do host ainda não encontrado).';
+      } else {
+        banner.className = 'ping-banner hidden';
+      }
+    }
+
+    const cpuPct = Number(cpu.usage_pct || 0);
+    if ($('#vps-cpu-pct')) $('#vps-cpu-pct').textContent = `${cpuPct.toFixed(1)}%`;
+    if ($('#vps-cpu-sub')) {
+      $('#vps-cpu-sub').textContent = `Load: ${cpu.load_1m ?? '--'} / ${cpu.load_5m ?? '--'} / ${cpu.load_15m ?? '--'} · ${cpu.cores ?? '--'} vCPU`;
+    }
+    setVpsBar('vps-cpu-bar', cpuPct);
+
+    const ramPct = Number(mem.used_pct || 0);
+    if ($('#vps-ram-pct')) $('#vps-ram-pct').textContent = `${ramPct.toFixed(1)}%`;
+    if ($('#vps-ram-sub')) {
+      $('#vps-ram-sub').textContent = `${Math.round(mem.used_mb || 0)} / ${Math.round(mem.total_mb || 0)} MB (Disp: ${Math.round(mem.available_mb || 0)} MB)`;
+    }
+    setVpsBar('vps-ram-bar', ramPct);
+
+    const swapPct = Number(swap.used_pct || 0);
+    if ($('#vps-swap-pct')) $('#vps-swap-pct').textContent = `${swapPct.toFixed(1)}%`;
+    if ($('#vps-swap-sub')) {
+      $('#vps-swap-sub').textContent = `${Math.round(swap.used_mb || 0)} / ${Math.round(swap.total_mb || 0)} MB (${(swap.devices || []).length} disp.)`;
+    }
+    setVpsBar('vps-swap-bar', swapPct);
+
+    const diskPct = Number(disk.used_pct || 0);
+    if ($('#vps-disk-pct')) $('#vps-disk-pct').textContent = disk.total_gb ? `${diskPct.toFixed(1)}%` : '--%';
+    if ($('#vps-disk-sub')) {
+      $('#vps-disk-sub').textContent = disk.total_gb
+        ? `${disk.used_gb} / ${disk.total_gb} GB (Livre: ${disk.avail_gb} GB)`
+        : 'Indisponível no modo local';
+    }
+    setVpsBar('vps-disk-bar', diskPct);
+
+    if ($('#vps-host-meta')) {
+      const collectedAt = m.collected_at ? new Date(m.collected_at).toLocaleTimeString('pt-BR') : '--';
+      $('#vps-host-meta').textContent = `Host: ${m.hostname || '--'} · Uptime: ${formatUptime(m.uptime_seconds)} · Coletado às ${collectedAt}`;
+    }
+
+    const swapBody = $('#vps-swap-devices-body');
+    if (swapBody) {
+      const devs = Array.isArray(swap.devices) ? swap.devices : [];
+      swapBody.innerHTML = devs.length
+        ? devs
+            .map(
+              (d) => `<tr>
+                <td><code>${esc(d.name)}</code></td>
+                <td>${esc(d.type)}</td>
+                <td>${Math.round(d.size_mb || 0)} MB</td>
+                <td>${Math.round(d.used_mb || 0)} MB</td>
+                <td>${esc(String(d.priority ?? '--'))}</td>
+              </tr>`
+            )
+            .join('')
+        : '<tr><td colspan="5" class="muted">Nenhum dispositivo de swap ativo</td></tr>';
+    }
+
+    const dockerDiskEl = $('#vps-docker-disk-body');
+    if (dockerDiskEl) {
+      dockerDiskEl.innerHTML = dockerDisk && dockerDisk.images_size
+        ? `
+          <div class="vps-kv-row"><span>Imagens (${esc(String(dockerDisk.images_count ?? '--'))})</span><strong>${esc(dockerDisk.images_size)} <small class="muted">(recup: ${esc(dockerDisk.images_reclaimable || '0B')})</small></strong></div>
+          <div class="vps-kv-row"><span>Camadas de Containers</span><strong>${esc(dockerDisk.containers_size || '0B')}</strong></div>
+          <div class="vps-kv-row"><span>Volumes</span><strong>${esc(dockerDisk.volumes_size || '0B')}</strong></div>
+          <div class="vps-kv-row"><span>Build Cache</span><strong>${esc(dockerDisk.build_cache_size || '0B')}</strong></div>
+        `
+        : '<span class="muted">Sem dados do Docker disk neste ambiente.</span>';
+    }
+
+    const containers = Array.isArray(m.containers) ? m.containers : [];
+    if ($('#vps-containers-count')) $('#vps-containers-count').textContent = String(containers.length);
+    const cBody = $('#vps-containers-body');
+    if (cBody) {
+      cBody.innerHTML = containers.length
+        ? containers
+            .map(
+              (c) => `<tr>
+                <td><strong>${esc(c.name)}</strong></td>
+                <td><span class="badge-mini ${String(c.status || '').includes('Up') ? 'ok' : 'warn'}">${esc(c.status || '--')}</span></td>
+                <td>${Number(c.cpu_pct || 0).toFixed(2)}%</td>
+                <td>${esc(c.mem_used || '--')} <small class="muted">/ ${esc(c.mem_limit || '--')}</small></td>
+                <td>${Number(c.mem_pct || 0).toFixed(1)}%</td>
+                <td><small>${esc(c.net_io || '--')}</small></td>
+                <td><small>${esc(c.block_io || '--')}</small></td>
+                <td>${esc(String(c.pids ?? '--'))}</td>
+              </tr>`
+            )
+            .join('')
+        : '<tr><td colspan="8" class="muted">Nenhum container encontrado</td></tr>';
+    }
+
+    const procs = Array.isArray(m.processes) ? m.processes : [];
+    if ($('#vps-processes-count')) $('#vps-processes-count').textContent = String(procs.length);
+    const pBody = $('#vps-processes-body');
+    if (pBody) {
+      pBody.innerHTML = procs.length
+        ? procs
+            .map(
+              (p) => `<tr>
+                <td><code>${esc(String(p.pid))}</code></td>
+                <td>${esc(p.user || '--')}</td>
+                <td><code>${esc(p.stat || '--')}</code></td>
+                <td>${Number(p.cpu_pct || 0).toFixed(1)}%</td>
+                <td>${Number(p.rss_mb || 0).toFixed(1)} MB</td>
+                <td>${Number(p.mem_pct || 0).toFixed(1)}%</td>
+                <td class="vps-cmd-cell" title="${esc(p.command || '')}"><code>${esc(p.command || '--')}</code></td>
+              </tr>`
+            )
+            .join('')
+        : '<tr><td colspan="7" class="muted">Sem processos listados</td></tr>';
+    }
+  } catch (err) {
+    const banner = $('#vps-status-banner');
+    if (banner) {
+      banner.className = 'ping-banner error';
+      banner.textContent = `Erro ao carregar métricas da VPS: ${err?.message || 'falha desconhecida'}`;
+    }
+  }
+}

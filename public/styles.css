@@ -3426,3 +3426,53 @@ button.danger:hover:not(:disabled) {
   font-size: 12px;
   padding: 6px 9px;
 }
+
+.vps-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+
+.vps-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-primary, #10b981);
+  transition: width 0.25s ease;
+}
+
+.vps-bar-fill.warn {
+  background: #f59e0b;
+}
+
+.vps-bar-fill.crit {
+  background: #ef4444;
+}
+
+.vps-kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.vps-kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: 12.5px;
+}
+
+.vps-kv-row:last-child {
+  border-bottom: none;
+}
+
+.vps-cmd-cell {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
