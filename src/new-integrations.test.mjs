@@ -996,6 +996,52 @@ test('Lia Memory Engine isola usuarios, bloqueia dados sensiveis e permite consu
     );
     assert.equal(forgotten.success, true);
     assert.equal(memStore.list(scopeA).length, 0);
+
+    // Etapa 2: busca semantica com embedding (mock) + fail-open quando embedding retorna null
+    const mockFetch = async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      const txt = String(body?.content?.parts?.[0]?.text || '').toLowerCase();
+      const vec = txt.includes('arquitetura') || txt.includes('motor de ia')
+        ? [1, 0, 0]
+        : [0, 1, 0];
+      return {
+        ok: true,
+        async json() {
+          return { embedding: { values: vec } };
+        },
+      };
+    };
+
+    const semA = await memStore.rememberWithEmbedding(
+      { scopeKey: scopeA, type: 'project', content: 'Separacao entre motor de IA e CRM', importance: 0.7 },
+      { apiKey: 'test-key', fetchImpl: mockFetch }
+    );
+    assert.equal(semA.saved, true);
+    assert.deepEqual(semA.memory.embedding, [1, 0, 0]);
+
+    await memStore.rememberWithEmbedding(
+      { scopeKey: scopeA, type: 'preference', content: 'Gosta de cafe sem acucar', importance: 0.9 },
+      { apiKey: 'test-key', fetchImpl: mockFetch }
+    );
+
+    const ranked = await memStore.retrieveSemantic({
+      scopeKey: scopeA,
+      query: 'como esta a arquitetura do sistema',
+      limit: 2,
+      apiKey: 'test-key',
+      fetchImpl: mockFetch,
+    });
+    assert.equal(ranked.length, 2);
+    assert.equal(ranked[0].content, 'Separacao entre motor de IA e CRM');
+
+    // Fail-open sem apiKey (fallback lexical/importancia)
+    const fallbackRanked = await memStore.retrieveSemantic({
+      scopeKey: scopeA,
+      query: 'cafe',
+      limit: 2,
+      apiKey: '',
+    });
+    assert.equal(fallbackRanked[0].content, 'Gosta de cafe sem acucar');
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
   }

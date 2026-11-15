@@ -1,9 +1,53 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { config } from '../config.mjs';
 
 const DEFAULT_MEMORY_FILE = path.resolve(process.cwd(), 'data', 'memories.json');
 const VALID_TYPES = new Set(['preference', 'project', 'decision', 'fact']);
+
+export function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = Number(a[i]) || 0;
+    const y = Number(b[i]) || 0;
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom > 0 ? Math.max(0, dot / denom) : 0;
+}
+
+export async function generateMemoryEmbedding(text = '', {
+  apiKey = config.geminiKey,
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 4000
+} = {}) {
+  const clean = String(text || '').trim();
+  if (!clean || !apiKey || typeof fetchImpl !== 'function') return null;
+  try {
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent';
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify({
+        model: 'models/text-embedding-004',
+        content: { parts: [{ text: clean.slice(0, 1000) }] }
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const values = data?.embedding?.values;
+    return Array.isArray(values) && values.length > 0 ? values : null;
+  } catch {
+    return null;
+  }
+}
 
 const SENSITIVE_PATTERNS = [
   /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/, // CPF
@@ -154,7 +198,7 @@ export class MemoryStore {
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   }
 
-  retrieve({ scopeKey, query = '', limit = 6 } = {}) {
+  retrieve({ scopeKey, query = '', queryEmbedding = null, limit = 6 } = {}) {
     const active = this.list(scopeKey);
     if (active.length === 0) return [];
     const qTokens = new Set(tokenize(query));
@@ -167,14 +211,59 @@ export class MemoryStore {
         const hits = mTokens.filter((t) => qTokens.has(t)).length;
         queryScore = hits > 0 ? Math.min(1, hits / Math.min(4, qTokens.size)) : 0;
       }
+      const semanticScore = (Array.isArray(queryEmbedding) && Array.isArray(m.embedding))
+        ? cosineSimilarity(queryEmbedding, m.embedding)
+        : 0;
       const ageDays = Math.max(0, (nowMs - new Date(m.updatedAt || m.createdAt || nowMs).getTime()) / 86400000);
       const recencyScore = Math.max(0, 1 - ageDays / 90);
-      const total = queryScore * 1.4 + (m.importance || 0.5) * 0.8 + recencyScore * 0.3;
+      const total = semanticScore * 1.8 + queryScore * 1.4 + (m.importance || 0.5) * 0.8 + recencyScore * 0.3;
       return { memory: m, total };
     });
 
     scored.sort((a, b) => b.total - a.total);
     return scored.slice(0, Math.max(1, limit)).map((s) => s.memory);
+  }
+
+  async rememberWithEmbedding(params = {}, embedOpts = {}) {
+    const res = this.remember(params);
+    if (!res.saved || !res.memory) return res;
+    const embedding = await generateMemoryEmbedding(res.memory.content, embedOpts);
+    if (embedding) {
+      res.memory.embedding = embedding;
+      this.items.set(res.memory.id, res.memory);
+      this._persist();
+    }
+    return res;
+  }
+
+  async retrieveSemantic({ scopeKey, query = '', limit = 6, ...embedOpts } = {}) {
+    const queryEmbedding = query ? await generateMemoryEmbedding(query, embedOpts) : null;
+    return this.retrieve({ scopeKey, query, queryEmbedding, limit });
+  }
+
+  listAllScopes() {
+    this._ensureLoaded();
+    const map = new Map();
+    for (const m of this.items.values()) {
+      if (m.status !== 'active') continue;
+      if (!map.has(m.scopeKey)) map.set(m.scopeKey, []);
+      map.get(m.scopeKey).push(m);
+    }
+    return [...map.entries()].map(([scopeKey, items]) => ({
+      scopeKey,
+      count: items.length,
+      items: items
+        .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        .map(({ embedding: _emb, ...rest }) => rest)
+    }));
+  }
+
+  correctById({ id, scopeKey, newContent, type, importance } = {}) {
+    return this.correct({ scopeKey, idOrQuery: id, newContent, type, importance });
+  }
+
+  forgetById({ id, scopeKey } = {}) {
+    return this.forget({ scopeKey, idOrQuery: id });
   }
 
   correct({ scopeKey, idOrQuery = '', newContent = '', type, importance } = {}) {

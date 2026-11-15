@@ -11,6 +11,7 @@ import { CampaignStore } from '../campaigns.mjs';
 import { markBridgeConfigRead } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
+import { memoryStore } from '../core/memory.mjs';
 
 const bridgeActions = new TtlIdempotencyStore({ ttlMs: Number(process.env.BRIDGE_IDEMPOTENCY_TTL_MS || 10 * 60 * 1000) });
 const safeError = error => error?.code || (error?.name === 'TimeoutError' ? 'provider_timeout' : 'request_failed');
@@ -464,6 +465,69 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
       });
     } catch (err) {
       return json(res, 400, { ok: false, error: safeError(err) });
+    }
+  }
+
+  // API central de Memória Persistente da Lia (Etapa 2: gerenciamento pelo painel)
+  if (u.pathname === '/api/bridge/memories') {
+    if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
+
+    if (req.method === 'GET') {
+      const scopeKey = String(u.searchParams.get('scopeKey') || '').trim();
+      if (scopeKey) {
+        const items = memoryStore.list(scopeKey).map(({ embedding: _emb, ...rest }) => rest);
+        return json(res, 200, { ok: true, scopeKey, memories: items });
+      }
+      return json(res, 200, { ok: true, scopes: memoryStore.listAllScopes() });
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const scopeKey = String(body?.scopeKey || '').trim();
+        const result = await memoryStore.rememberWithEmbedding({
+          scopeKey,
+          type: body?.type || 'fact',
+          content: body?.content || '',
+          importance: body?.importance ?? 0.85,
+          confidence: 0.98,
+          source: 'panel'
+        });
+        if (!result.saved) return json(res, 400, { ok: false, error: result.reason || 'memory_rejected' });
+        const { embedding: _emb, ...cleanMem } = result.memory;
+        return json(res, 200, { ok: true, updated: Boolean(result.updated), memory: cleanMem });
+      } catch (err) {
+        return json(res, 400, { ok: false, error: safeError(err) });
+      }
+    }
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readBody(req);
+        const resPatch = memoryStore.correctById({
+          id: String(body?.id || ''),
+          scopeKey: String(body?.scopeKey || ''),
+          newContent: String(body?.content || ''),
+          type: body?.type,
+          importance: body?.importance
+        });
+        if (!resPatch.updated) return json(res, 400, { ok: false, error: resPatch.reason || 'not_found' });
+        const { embedding: _emb, ...cleanMem } = resPatch.memory;
+        return json(res, 200, { ok: true, memory: cleanMem });
+      } catch (err) {
+        return json(res, 400, { ok: false, error: safeError(err) });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      try {
+        const id = String(u.searchParams.get('id') || '').trim();
+        const scopeKey = String(u.searchParams.get('scopeKey') || '').trim();
+        const resDel = memoryStore.forgetById({ id, scopeKey });
+        return json(res, 200, { ok: Boolean(resDel.forgotten), count: resDel.count || 0 });
+      } catch (err) {
+        return json(res, 400, { ok: false, error: safeError(err) });
+      }
     }
   }
   return NOT_HANDLED;
