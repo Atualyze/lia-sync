@@ -688,7 +688,28 @@
                     <span class="field-hint">Separe por vírgula. Usado para identificar quando clientes ou o próprio gestor mencionam o responsável.</span>
                   </label>
                   <label>Fuso Horário Base da Operação
-                    <input id="admin-timezone" type="text" data-config="business.timezone" placeholder="America/Sao_Paulo" />
+                    <select id="admin-timezone" data-config="business.timezone">
+                      <option value="America/Sao_Paulo">Brasília / São Paulo (UTC-3)</option>
+                      <option value="America/Fortaleza">Fortaleza / Nordeste (UTC-3)</option>
+                      <option value="America/Recife">Recife (UTC-3)</option>
+                      <option value="America/Bahia">Salvador / Bahia (UTC-3)</option>
+                      <option value="America/Belem">Belém / Pará (UTC-3)</option>
+                      <option value="America/Manaus">Manaus / Amazonas (UTC-4)</option>
+                      <option value="America/Cuiaba">Cuiabá / Mato Grosso (UTC-4)</option>
+                      <option value="America/Campo_Grande">Campo Grande / MS (UTC-4)</option>
+                      <option value="America/Porto_Velho">Porto Velho / Rondônia (UTC-4)</option>
+                      <option value="America/Boa_Vista">Boa Vista / Roraima (UTC-4)</option>
+                      <option value="America/Rio_Branco">Rio Branco / Acre (UTC-5)</option>
+                      <option value="America/Noronha">Fernando de Noronha (UTC-2)</option>
+                      <option value="UTC">UTC (Tempo Universal)</option>
+                    </select>
+                  </label>
+                  <label>Uso de Emojis no Atendimento
+                    <select id="admin-style-emoji" data-config="style.emoji">
+                      <option value="leve">Leve (0-2 por mensagem, sem excessos)</option>
+                      <option value="normal">Moderado (amigável)</option>
+                      <option value="off">Desativado (sem emojis)</option>
+                    </select>
                   </label>
                   <label>Área de Atuação / Abrangência
                     <input id="admin-areas" type="text" data-config="business.areas" placeholder="Ex.: Atendimento Nacional / Digital" />
@@ -1006,7 +1027,21 @@
                     <input data-config="business.hoursConfig.end" type="time" step="60" />
                   </label>
                   <label>Fuso Horário do Expediente
-                    <input type="text" data-config="business.hoursConfig.timezone" maxlength="64" placeholder="America/Sao_Paulo" />
+                    <select data-config="business.hoursConfig.timezone">
+                      <option value="America/Sao_Paulo">Brasília / São Paulo (UTC-3)</option>
+                      <option value="America/Fortaleza">Fortaleza / Nordeste (UTC-3)</option>
+                      <option value="America/Recife">Recife (UTC-3)</option>
+                      <option value="America/Bahia">Salvador / Bahia (UTC-3)</option>
+                      <option value="America/Belem">Belém / Pará (UTC-3)</option>
+                      <option value="America/Manaus">Manaus / Amazonas (UTC-4)</option>
+                      <option value="America/Cuiaba">Cuiabá / Mato Grosso (UTC-4)</option>
+                      <option value="America/Campo_Grande">Campo Grande / MS (UTC-4)</option>
+                      <option value="America/Porto_Velho">Porto Velho / Rondônia (UTC-4)</option>
+                      <option value="America/Boa_Vista">Boa Vista / Roraima (UTC-4)</option>
+                      <option value="America/Rio_Branco">Rio Branco / Acre (UTC-5)</option>
+                      <option value="America/Noronha">Fernando de Noronha (UTC-2)</option>
+                      <option value="UTC">UTC (Tempo Universal)</option>
+                    </select>
                   </label>
                   <label>Descrição Textual do Horário (exibida em resumos)
                     <input type="text" data-config="business.hours" placeholder="Seg a Sex, 08h às 18h" />

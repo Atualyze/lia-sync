@@ -620,6 +620,39 @@ export async function handleClientMessage({
                   }
                 }
               }
+              if (tc.name === 'consultar_dados_brasil') {
+                if (toolRes?.success) {
+                  if (toolRes.cep && !toolRes.cnpj && !toolRes.feriados) {
+                    toolReplyOverride = [
+                      `📍 *Endereço encontrado (CEP ${toolRes.cep}):*`,
+                      toolRes.logradouro ? `• *Logradouro:* ${toolRes.logradouro}${toolRes.complemento ? ` (${toolRes.complemento})` : ''}` : '',
+                      toolRes.bairro ? `• *Bairro:* ${toolRes.bairro}` : '',
+                      (toolRes.cidade || toolRes.uf) ? `• *Cidade/UF:* ${[toolRes.cidade, toolRes.uf].filter(Boolean).join('/')}` : '',
+                      toolRes.ddd ? `• *DDD:* ${toolRes.ddd}` : ''
+                    ].filter(Boolean).join('\n');
+                  } else if (toolRes.cnpj) {
+                    toolReplyOverride = [
+                      `🏢 *Dados do CNPJ ${toolRes.cnpj}:*`,
+                      toolRes.razaoSocial ? `• *Razão Social:* ${toolRes.razaoSocial}` : '',
+                      toolRes.nomeFantasia ? `• *Nome Fantasia:* ${toolRes.nomeFantasia}` : '',
+                      toolRes.situacaoCadastral ? `• *Situação:* ${toolRes.situacaoCadastral}` : '',
+                      toolRes.cnaePrincipal ? `• *Atividade Principal:* ${toolRes.cnaePrincipal}` : '',
+                      (toolRes.cidade || toolRes.uf) ? `• *Localização:* ${[toolRes.logradouro, toolRes.bairro, [toolRes.cidade, toolRes.uf].filter(Boolean).join('/')].filter(Boolean).join(' - ')}` : ''
+                    ].filter(Boolean).join('\n');
+                  } else if (Array.isArray(toolRes.feriados)) {
+                    if (toolRes.dataConsultada) {
+                      toolReplyOverride = toolRes.eFeriadoNacional
+                        ? `📅 Sim, *${toolRes.dataConsultada}* é feriado nacional: *${toolRes.feriado?.name}* (${toolRes.feriado?.weekday || ''}).`
+                        : `📅 Não consta feriado nacional em *${toolRes.dataConsultada}*.`;
+                    } else {
+                      const list = toolRes.feriados.slice(0, 15).map(f => `• *${f.date}* - ${f.name}`).join('\n');
+                      toolReplyOverride = `📅 *Feriados Nacionais de ${toolRes.ano}:*\n\n${list}`;
+                    }
+                  }
+                } else if (toolRes?.message) {
+                  toolReplyOverride = toolRes.message;
+                }
+              }
               if (toolRes?.handoffRequested) {
                 result.handoff = true;
                 result.handoff_reason = toolRes.motivo || `Transferência via tool ${tc.name}`;
@@ -704,6 +737,11 @@ export async function handleClientMessage({
           ? 'Nao consegui responder com seguranca. Vou encaminhar sua duvida para a equipe.'
           : toolFiltered.text;
         safeReplyText = finalReply;
+      }
+
+      if (botConfig?.style?.emoji === 'off' && safeReplyText) {
+        safeReplyText = String(safeReplyText).replace(/\p{Extended_Pictographic}/gu, '').replace(/\uFE0F/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+        finalReply = safeReplyText;
       }
 
       const cleanReplyForHint = String(finalReply || '').replace(/[*_~`]/g, '');

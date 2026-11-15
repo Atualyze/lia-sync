@@ -318,7 +318,7 @@ DIRETRIZES:
 2. NUNCA diga que está falando "a pedido de ${owner}", "a mando dele" ou "${owner} pediu para avisar". Fale com autonomia como parte da equipe.
 3. NUNCA repita ou transcreva comandos operacionais do responsável (ex: "vou precisar que vc mande um áudio", "lembre o Lima", etc.). Formule a mensagem executando o objetivo de forma fluida.
 4. NUNCA use frases clichês robóticas como "Queria aproveitar para alinhar com você que eu..." ou "Passando para te avisar que...". Varie o tom com naturalidade.
-5. ${asAudio ? 'Para áudio: NÃO use emojis nem asteriscos (*) de formatação (para que a síntese de voz soe 100% natural).' : 'Para texto: use emojis amigáveis e formatação leve.'}`;
+5. ${asAudio || botConfig?.style?.emoji === 'off' ? 'Para áudio ou modo sem emojis: NÃO use emojis nem asteriscos (*) de formatação (para que a síntese de voz soe 100% natural).' : botConfig?.style?.emoji === 'normal' ? 'Para texto: use emojis amigáveis com moderação (até 2 a 3) e formatação leve; evite em assuntos sensíveis.' : 'Para texto: use no máximo 0 a 2 emojis naturais e formatação leve; PROIBIDO em reclamações, cobranças ou assuntos sensíveis.'}`;
 
       const aiRes = await ai.askAI({
         system: prompt,

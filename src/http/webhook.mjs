@@ -4,6 +4,7 @@ import { config } from '../config.mjs';
 import { parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, sendText } from '../whatsapp.mjs';
 import { resolveIdentity, isOwnerContact, escapeRegExp, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { broadcastBridgeEvent } from './bridge.mjs';
+import { handleInboundOptOut } from '../prospecting/optout.mjs';
 
 export function stableIdlessEventKey(item, event) {
   const timestamp = item.eventTimestamp;
@@ -24,7 +25,7 @@ export function stableIdlessEventKey(item, event) {
 }
 
 // Webhooks do WhatsApp/Evolution. O ledger guarda apenas hash da chave, tipo e estado.
-export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore }) {
+export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
   if (req.method !== 'POST' || !['/webhook', '/webhook/evolution'].includes(u.pathname)) return NOT_HANDLED;
   if (!(webhookAuthorize ? await webhookAuthorize(req) : authorized(req))) return json(res, 401, { error: 'unauthorized' });
 
@@ -190,6 +191,21 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       });
       await finish('processed');
       return;
+    }
+
+    if (item.text && (campaignStore || prospecting)) {
+      const optOut = await handleInboundOptOut({
+        phone: item.phone,
+        jid: item.jid || item.phone,
+        text: item.text,
+        campaignStore,
+        prospectStore: prospecting?.leadStore || null,
+        send: sendText
+      });
+      if (optOut.matched) {
+        await finish('processed', 'opt_out');
+        return;
+      }
     }
 
     broadcastBridgeEvent('whatsapp_message', {

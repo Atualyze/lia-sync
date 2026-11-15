@@ -572,8 +572,9 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
           if (!reminderStore) return recordSelfTurn(filterReply('Módulo de lembretes não inicializado no momento.', { isCopilot: true }).text);
           const list = reminderStore.listActive();
           if (!list.length) return recordSelfTurn(filterReply(`${owner}, você não tem nenhum lembrete pendente no momento! Tudo em dia por aqui. ✨`, { isCopilot: true }).text);
+          const tz = botConfig?.business?.hoursConfig?.timezone || botConfig?.business?.timezone || 'America/Sao_Paulo';
           const lines = list.map((r, i) => {
-            const dataStr = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(r.dueAt));
+            const dataStr = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: tz }).format(new Date(r.dueAt));
             return `${i + 1}. *${r.text}*\n   📅 *Data/Hora:* ${dataStr}${r.clientName ? `\n   👤 *Contato:* ${r.clientName}` : ''}`;
           }).join('\n\n');
           return recordSelfTurn(filterReply(`📋 *Seus lembretes pendentes:*\n\n${lines}`, { isCopilot: true }).text);

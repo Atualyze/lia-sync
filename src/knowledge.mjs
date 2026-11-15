@@ -80,6 +80,21 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   });
   const memorySection = buildMemoryPromptSection(activeMemories);
 
+  function buildEmojiGuideline(cfg, isOwner = false) {
+    const mode = cfg?.style?.emoji || 'leve';
+    if (mode === 'off') {
+      return '- NÃO use emojis nas respostas.';
+    }
+    if (mode === 'normal') {
+      return isOwner
+        ? '- Use emojis úteis e moderados como marcadores visuais (status, horários, tópicos) para leitura rápida.'
+        : '- Use emojis amigáveis com moderação (até 2 a 3 por mensagem), acompanhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, falhas ou assuntos sensíveis.';
+    }
+    return isOwner
+      ? '- Use no máximo 1 a 2 emojis úteis por mensagem apenas como marcadores visuais (status, horários, tópicos).'
+      : '- Use no máximo 0 a 2 emojis por mensagem em pontos naturais (saudação, confirmação ou despedida), espelhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, erros ou assuntos sensíveis.';
+  }
+
   if (copilotMode) {
     const allKbs = listKnowledgeBasesSync();
     const kbCopilotSection = allKbs.length > 0
@@ -108,7 +123,7 @@ DIRETRIZES DE FORMATAÇÃO VISUAL (WHATSAPP):
 - Separe blocos de pensamento com parágrafos curtos e quebra de linha dupla (\\n\\n).
 - Destaque dados operacionais, status, nomes, contatos e métricas em *negrito* do WhatsApp (ex: *Operacional*, *5 lembretes*, *wa.me/...*).
 - Use marcadores ("• ") organizados em linhas separadas para listas de itens, tarefas ou relatórios.
-- Use emojis úteis e elegantes (🚀, 📊, 🟢, ⏰, 👥, ✨, 📱) para facilitar a leitura rápida na correria do dia a dia.
+${buildEmojiGuideline(botConfig, true)}
 - PROIBIDO responder em texto corrido: toda resposta deve ter negritos em dados-chave, bullets para listas e quebras de linha dupla entre blocos.
 
 CAPACIDADES DO COPILOTO:
@@ -210,7 +225,7 @@ DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
    - Divida as mensagens em parágrafos curtos (1 a 2 frases por parágrafo), sempre separados por quebra de linha dupla (\\n\\n).
    - Destaque palavras-chave, serviços e pontos centrais em *negrito* do WhatsApp (ex: *${owner}*, *orçamento*, *desenvolvimento*).
    - Quando listar opções ou etapas, use marcadores limpos com bullet point ("• ") em linhas separadas.
-   - Use emojis acolhedores no início ou término de frases para tornar o diálogo visualmente convidativo (ex: 😊, ✨, 📲, 👍, ⏳).
+   ${buildEmojiGuideline(botConfig, false)}
 2. APRESENTAÇÃO E CONTINUIDADE:
    ${alreadyIntroduced ? `A conversa JÁ ESTÁ EM ANDAMENTO e você já se apresentou. NUNCA repita "Sou a ${botName}..." ou saudações de primeiro contato. Responda diretamente ao assunto com fluidez.` : 'Como é a primeira mensagem, faça uma saudação simpática e acolhedora, apresentando-se brevemente.'}
 3. POSTURA INTELIGENTE E MENOS MODELADA:

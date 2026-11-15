@@ -25,6 +25,7 @@ import { OperationsStore } from './operations.mjs';
 import { AIBudgetGate } from './ai/budget.mjs';
 import { WebhookEventStore } from './webhook-events.mjs';
 import { SectorProjection } from './sectors.mjs';
+import { createProspecting } from './prospecting/index.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -186,6 +187,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
   const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
   setOutboundSuppressionCheck(phone => campaignStore.isSuppressed(phone));
+  const prospecting = createProspecting({
+    client: supabaseRuntime.client,
+    sender: sendText,
+    campaignStore,
+    sessionStore: store,
+    adminConfig
+  });
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
 
   const app = createRouter({
@@ -207,9 +215,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     operationsStore,
     webhookEventStore,
     aiBudgetGate: budgetGate,
-    sectorProjection
+    sectorProjection,
+    prospecting
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -236,7 +245,7 @@ if (isDirectRun) {
     enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
-  }).catch(e => console.error('[maintenance]', e.message));
+  }).then(() => app.prospecting?.tick()).catch(e => console.error('[maintenance]', e.message));
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   const stop = async () => {
     clearInterval(maintenanceTimer);

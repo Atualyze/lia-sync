@@ -28,6 +28,15 @@ export function normalizeBotConfig(raw = {}) {
       source.voice.deliveryMode = 'audio_and_text';
     }
   }
+  if (source.business?.hoursConfig?.timezone && typeof source.business.hoursConfig.timezone === 'string') {
+    const tz = source.business.hoursConfig.timezone.trim();
+    if (tz) {
+      source.business.timezone = tz;
+      if (!source.integrations) source.integrations = {};
+      if (!source.integrations.googleCalendar) source.integrations.googleCalendar = {};
+      source.integrations.googleCalendar.timezone = tz;
+    }
+  }
   return merge(DEFAULT_BOT_CONFIG, source);
 }
 
@@ -133,6 +142,9 @@ export const DEFAULT_BOT_CONFIG = {
     alertDestination: 'same_as_bot', // 'same_as_bot' | 'custom'
     phone: '',
     enabled: true
+  },
+  style: {
+    emoji: 'leve' // 'off' | 'leve' | 'normal'
   }
 };
 
@@ -204,7 +216,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
     if (!Number.isInteger(calendar.defaultEventDurationMinutes) || calendar.defaultEventDurationMinutes < 5 || calendar.defaultEventDurationMinutes > 480) errors.push('A duração padrão de eventos deve estar entre 5 e 480 minutos.');
     if (typeof calendar.showMockSlotsWhenUnavailable !== 'boolean') errors.push('A exibição de horários simulados deve ser verdadeiro/falso.');
   }
-  const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
+  const allowedProviders = new Set(['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare']);
   const validNonNegativeAmount = amount => (typeof amount === 'number' || typeof amount === 'string') && String(amount).trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) >= 0;
   if (value.ai?.pricingRates !== undefined && (!Array.isArray(value.ai.pricingRates) || value.ai.pricingRates.length > 100 || value.ai.pricingRates.some(rate => !allowedProviders.has(rate?.provider) || typeof rate?.model !== 'string' || !rate.model.trim() || !validNonNegativeAmount(rate.inputUsdPerMillion) || !validNonNegativeAmount(rate.outputUsdPerMillion)))) errors.push('Tarifas precisam ser uma lista válida por provedor/modelo e valores USD por milhão de tokens.');
   if (value.ai?.monthlyBudgets !== undefined && (!Array.isArray(value.ai.monthlyBudgets) || value.ai.monthlyBudgets.length > 100 || value.ai.monthlyBudgets.some(budget => !Number.isFinite(Number(budget?.amountUsd)) || Number(budget.amountUsd) <= 0 || (budget.provider && !allowedProviders.has(budget.provider)) || (budget.model !== undefined && typeof budget.model !== 'string')))) errors.push('Limites mensais precisam ser valores USD positivos com provedor/modelo opcionais.');
@@ -217,6 +229,9 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   }
   const hoursErrors = validateHoursConfig(value.business?.hoursConfig);
   errors.push(...hoursErrors);
+  if (value.style?.emoji !== undefined && !['off', 'leve', 'normal'].includes(value.style.emoji)) {
+    errors.push('Estilo de emojis inválido. Use off, leve ou normal.');
+  }
   return errors;
 };
 
