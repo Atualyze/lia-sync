@@ -65,8 +65,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     const humanCfg = adminConfig.active.human || {};
     if (humanCfg.enabled === false) return '';
     if (humanCfg.alertDestination === 'same_as_bot') {
-      const botPhone = cachedInstanceOwner || config.humanPhone || '';
-      return String(botPhone).replace(/\D/g, '');
+      return String(cachedInstanceOwner || '').replace(/\D/g, '');
     }
     const cfgPhone = String(humanCfg.phone || '').replace(/\D/g, '');
     const raw = cfgPhone || cachedInstanceOwner || config.humanPhone || '';
