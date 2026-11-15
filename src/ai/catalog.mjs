@@ -5,8 +5,14 @@ const CACHE_TTL_MS = 60_000;
 const cache = new Map();
 
 function applyFreeFilter(provider, value, freeOnly) {
-  if (provider !== 'openrouter' || !freeOnly) return value;
-  return { ...value, models: value.models.filter(model => model.id.endsWith(':free') || model.id === 'openrouter/free') };
+  if (!freeOnly) return value;
+  if (provider === 'openrouter') {
+    return { ...value, models: value.models.filter(model => model.id.endsWith(':free') || model.id === 'openrouter/free') };
+  }
+  if (provider === 'cloudflare') {
+    return { ...value, models: value.models.filter(model => model.requireWorkersPaid !== true) };
+  }
+  return value;
 }
 
 function providerConfig(provider) {
@@ -42,13 +48,17 @@ function normalizeModel(provider, model) {
   if (!id || id.length > 200) return null;
   if (provider !== 'gemini' && /(?:embedding|embed-|text-embedding|whisper|transcri|moderation|dall-e|tts|text-to-speech|rerank|reranker)/i.test(id)) return null;
   if (provider === 'gemini' && Array.isArray(model.supportedGenerationMethods) && !model.supportedGenerationMethods.includes('generateContent')) return null;
+  const requireWorkersPaid = provider === 'cloudflare' && Array.isArray(model.properties)
+    ? model.properties.some(prop => prop?.property_id === 'require_workers_paid' && String(prop?.value).toLowerCase() === 'true')
+    : false;
   return {
     id,
     name: String(model.displayName || model.name || model.id || id).replace(/^models\//, '').slice(0, 200),
     provider,
     ownedBy: String(model.owned_by || model.provider || '').slice(0, 100),
     contextWindow: Number(model.context_length || model.contextWindow || model.inputTokenLimit) || null,
-    capabilities: Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods.slice(0, 20) : []
+    capabilities: Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods.slice(0, 20) : [],
+    ...(provider === 'cloudflare' ? { requireWorkersPaid } : {})
   };
 }
 
