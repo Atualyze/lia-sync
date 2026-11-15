@@ -1132,7 +1132,7 @@ async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError }
   try {
     const res = await api('/api/dashboard/tts', {
       method: 'POST',
-      body: { text: clean, voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName }
+      body: JSON.stringify({ text: clean, voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName })
     });
     if (res?.ok && res.audioBase64) {
       const src = `data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`;
