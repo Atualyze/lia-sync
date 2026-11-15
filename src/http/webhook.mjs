@@ -75,7 +75,8 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
         for (const entry of entries) {
           const rawJid = typeof entry === 'string' ? entry : (entry?.id || entry?.remoteJid || item.jid || item.phone || '');
           const cleanJid = String(rawJid || '').trim();
-          const targetPhone = /@lid$/i.test(cleanJid) ? cleanJid : cleanJid.replace(/@.*$/, '').replace(/\D/g, '');
+          const candidateKey = /@lid$/i.test(cleanJid) ? cleanJid : cleanJid.replace(/@.*$/, '').replace(/\D/g, '');
+          const targetPhone = (await store.resolveConversationKey?.(candidateKey)) || candidateKey;
           if (targetPhone) {
             await store.softDeleteConversation?.({ key: targetPhone, source: 'whatsapp', archive: archiveMode });
             broadcastBridgeEvent('whatsapp_sync', { action: 'chat_deleted', phone: targetPhone, archived: archiveMode, timestamp: Date.now() });
@@ -104,7 +105,9 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       }
       if (['CHATSUPDATE', 'CHATS_UPDATE'].includes(rawEvent)) {
         const rawData = Array.isArray(payload?.data) ? payload.data[0] : payload?.data;
-        const targetPhone = String(rawData?.id || rawData?.remoteJid || item.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
+        const cleanJid = String(rawData?.id || rawData?.remoteJid || item.jid || item.phone || '').trim();
+        const candidateKey = /@lid$/i.test(cleanJid) ? cleanJid : cleanJid.replace(/@.*$/, '').replace(/\D/g, '');
+        const targetPhone = (await store.resolveConversationKey?.(candidateKey)) || candidateKey;
         if (targetPhone && typeof rawData?.archive === 'boolean') {
           if (rawData.archive) await store.archive?.(targetPhone, 'arquivado_no_whatsapp');
           broadcastBridgeEvent('whatsapp_sync', { action: 'chat_archived', phone: targetPhone, archived: rawData.archive, timestamp: Date.now() });
@@ -118,6 +121,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       await finish('ignored', 'unsupported_event');
       return;
     }
+    if (item.jid && item.phone) store.rememberLid?.(item.jid, item.phone);
 
     const isOwnerSelf = (jid = '', phone = '') => {
       const options = { humanPhone: getHumanPhone(), cachedOwner: getCachedInstanceOwner(), identity };

@@ -103,6 +103,7 @@ function rowToSession(row, messages = []) {
     clientName: resolvedName,
     contactName: resolvedName,
     pushName: c.push_name || '',
+    jid: meta.jid || undefined,
     supportModeEnabled: Boolean(meta.supportModeEnabled),
     knowledgeBaseId: meta.knowledgeBaseId || null,
     contactRole: meta.contactRole || null,
@@ -187,6 +188,7 @@ function sessionToConversation(key, session, contactId) {
     metadata: {
       runtime: 'node',
       role: 'lia-assistant',
+      jid: session.jid || null,
       supportModeEnabled: Boolean(session.supportModeEnabled),
       knowledgeBaseId: session.knowledgeBaseId || null,
       contactRole: session.contactRole || null,
@@ -217,6 +219,19 @@ export class SupabaseSessionStore extends SessionStore {
     this.lastRefreshAt = 0;
     this.initialSyncDone = false;
     this.lastRetentionSweepAt = 0;
+    this.lidMap = new Map();
+  }
+
+  rememberLid(jid, phone) {
+    const cleanJid = String(jid || '').trim();
+    const cleanPhone = normalizePhone(phone);
+    if (!/@lid$/i.test(cleanJid) || !cleanPhone || /@lid$/i.test(cleanPhone)) return;
+    this.lidMap.set(cleanJid, cleanPhone);
+    const existing = this.sessions?.[cleanPhone];
+    if (existing && existing.jid !== cleanJid) {
+      existing.jid = cleanJid;
+      this.markDirty?.();
+    }
   }
 
   async purgeArchives() {
@@ -535,9 +550,27 @@ export class SupabaseSessionStore extends SessionStore {
     }
   }
 
+  async resolveConversationKey(key) {
+    const raw = String(key || '').trim();
+    if (!raw) return '';
+    if (/@lid$/i.test(raw)) {
+      if (this.lidMap?.has(raw)) return this.lidMap.get(raw);
+      for (const [k, s] of Object.entries(this.sessions || {})) {
+        if (s?.jid === raw || s?.lid === raw) return k;
+      }
+      if (this.client?.enabled) {
+        try {
+          const rows = await this.client.select('conversations', `select=external_key&metadata->>jid=eq.${encodeURIComponent(raw)}&deleted_at=is.null&limit=1`);
+          if (rows?.[0]?.external_key) return rows[0].external_key;
+        } catch {}
+      }
+    }
+    return normalizePhone(raw);
+  }
+
   async archive(phone, reason = '') {
-    const key = normalizePhone(phone);
-    const result = await super.archive(phone, reason);
+    const key = await this.resolveConversationKey(phone);
+    const result = await super.archive(key, reason);
     if (this.client?.enabled && result) {
       try {
         const externalId = key.replace(/^sim:/, '');
@@ -557,7 +590,7 @@ export class SupabaseSessionStore extends SessionStore {
   }
 
   async softDeleteConversation({ key, source = 'dashboard', archive = true } = {}) {
-    const cleanKey = normalizePhone(key);
+    const cleanKey = await this.resolveConversationKey(key);
     if (!cleanKey) return false;
     delete this.sessions?.[cleanKey];
     this.markDirty?.();
