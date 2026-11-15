@@ -100,8 +100,9 @@ export async function call(provider, {
       'gemini-3.8-flash': 'gemini-2.5-flash',
       'gemini-3.5-flash-lite': 'gemini-2.5-flash-lite'
     };
-    const candidateModels = (fixedModel
-      ? [fixedModel, LEGACY_GEMINI_EQUIVALENT[fixedModel]].filter(Boolean)
+    const geminiFixed = fixedModel && String(fixedModel).startsWith('gemini-') ? fixedModel : null;
+    const candidateModels = (geminiFixed
+      ? [geminiFixed, LEGACY_GEMINI_EQUIVALENT[geminiFixed]].filter(Boolean)
       : [
           preferredModel || legacyModel,
           LEGACY_GEMINI_EQUIVALENT[preferredModel || legacyModel],
@@ -109,7 +110,8 @@ export async function call(provider, {
           LEGACY_GEMINI_EQUIVALENT[runtime.model],
           ...(runtime.fallbackModels.length
             ? runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')).slice(0, 3)
-            : ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])
+            : []),
+          'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
         ]
     )
       .filter(Boolean)
@@ -190,7 +192,7 @@ export async function call(provider, {
     const cfDefault = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
     const model = fixedModel || preferredModel || legacyModel || cfDefault;
     const sameProviderFallbacks = provider === runtime.provider ? fallbackModelsForProvider(runtime, provider) : [];
-    const candidateModels = [...new Set([model, ...sameProviderFallbacks].filter(c => typeof c === 'string' && c.trim()))].slice(0, 4);
+    const candidateModels = [...new Set([model, ...sameProviderFallbacks, cfDefault].filter(c => typeof c === 'string' && c.trim()))].slice(0, 4);
     const headers = { 'content-type': 'application/json', Authorization: `Bearer ${config.cloudflareApiToken}` };
     let lastError = null;
     for (const candidateModel of candidateModels) {
@@ -362,8 +364,8 @@ export async function askAI(args) {
           userText: args?.userText || '',
           maxOutputTokens: aiConfig.maxOutputTokens
         },
-        fixedModel: provider === 'gemini' ? fixedModel : providerModel,
-        preferredModel: provider === 'gemini' ? preferredModel : null
+        fixedModel: provider === 'gemini' ? (fixedModel?.startsWith('gemini-') ? fixedModel : null) : providerModel,
+        preferredModel: provider === 'gemini' ? (preferredModel?.startsWith('gemini-') ? preferredModel : (providerDefaultModel('gemini', aiConfig, null) || 'gemini-3.8-flash')) : null
       });
       if (res?.raw) {
         failures.set(provider, 0);
