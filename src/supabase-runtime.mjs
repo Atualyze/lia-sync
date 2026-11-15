@@ -491,7 +491,7 @@ export class SupabaseSessionStore extends SessionStore {
         }
       })();
     }
-    await Promise.all([local, this._remoteFlushPromise]);
+    await this._remoteFlushPromise;
   }
 
   async _flushRemoteOnce() {
