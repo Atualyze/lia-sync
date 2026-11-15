@@ -2736,16 +2736,7 @@ async function renderOverview(opts = {}) {
       $('#ov-kpi-bridge-sub').textContent = `${Number(sec?.count || 0)} setor(es) projetados pelo Chatwoot`;
     }
 
-    healthEl.innerHTML = health?.readiness?.checks?.length
-      ? health.readiness.checks.map(item => `
-          <div class="ops-row">
-            <div>
-              <strong>${esc(item.name || 'dependência')}</strong>
-              ${item.reason ? `<div class="ops-muted">${esc(item.reason)}</div>` : ''}
-            </div>
-            <span class="status-text ${item.status === 'ok' || item.status === 'ready' ? 'ok' : item.status === 'not_configured' || item.status === 'disabled' ? 'warn' : 'err'}">${esc(item.status || 'desconhecido')}</span>
-          </div>`).join('')
-      : `<div class="ops-row"><strong>Lia Sync</strong><span class="status-text ${health?.liveness?.status === 'alive' ? 'ok' : 'err'}">${health?.liveness?.status === 'alive' ? 'viva' : 'sem resposta'}</span></div>`;
+    healthEl.innerHTML = '';
 
     const cost = metrics?.estimatedCost;
     if (costsEl) {
