@@ -1250,11 +1250,11 @@
                   <label>Dias de Aquecimento Gradual (0–90)
                     <input type="number" data-config="prospecting.warmupDays" min="0" max="90" step="1" />
                   </label>
-                  <label>Início da Janela (HH:MM)
-                    <input type="text" data-config="prospecting.windowStart" placeholder="09:00" maxlength="5" />
+                  <label>Início da Janela (Hora)
+                    <input type="time" data-config="prospecting.windowStart" />
                   </label>
-                  <label>Fim da Janela (HH:MM)
-                    <input type="text" data-config="prospecting.windowEnd" placeholder="18:00" maxlength="5" />
+                  <label>Fim da Janela (Hora)
+                    <input type="time" data-config="prospecting.windowEnd" />
                   </label>
                   <label class="wide">Template Padrão de Primeiro Contato
                     <textarea data-config="prospecting.defaultTemplate" rows="3" maxlength="600" placeholder="Olá {{nome}}, tudo bem? ... Se preferir não receber mensagens, responda SAIR."></textarea>
@@ -1273,6 +1273,12 @@
                   </label>
                   <label>Base de Consentimento (LGPD)
                     <input id="prospect-list-consent" type="text" placeholder="Ex.: Cadastro evento / Legítimo interesse" maxlength="160" />
+                  </label>
+                  <label>Início Programado (opcional)
+                    <input id="prospect-list-start" type="datetime-local" />
+                  </label>
+                  <label>Término Programado (opcional)
+                    <input id="prospect-list-end" type="datetime-local" />
                   </label>
                   <label>Carregar Arquivo (.csv ou .json)
                     <input id="prospect-file-input" type="file" accept=".csv,.json,.txt" />

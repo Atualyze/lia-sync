@@ -3,7 +3,7 @@ import { normalizePhone } from '../sessions.mjs';
 
 /**
  * Store for prospecting lists, leads, and events.
- * Uses Supabase when configured, or an in-memory store for isolated unit tests.
+ * Uses Lia Sync's SupabaseRestClient when enabled, or an in-memory store for isolated unit tests.
  */
 export class ProspectLeadStore {
   constructor({ client = null } = {}) {
@@ -15,9 +15,16 @@ export class ProspectLeadStore {
     };
   }
 
-  async createList({ name, source = 'csv', segment = '', consentBasis = '', dailyCap = 20, status = 'paused' }) {
+  get remoteEnabled() {
+    return Boolean(this.client?.enabled && typeof this.client?.request === 'function');
+  }
+
+  async createList({ name, source = 'csv', segment = '', consentBasis = '', dailyCap = 20, status = 'paused', startAt = null, endAt = null }) {
     const now = new Date().toISOString();
-    if (!this.client) {
+    const startIso = startAt ? new Date(startAt).toISOString() : null;
+    const endIso = endAt ? new Date(endAt).toISOString() : null;
+
+    if (!this.remoteEnabled) {
       const id = crypto.randomUUID();
       const list = {
         id,
@@ -27,6 +34,8 @@ export class ProspectLeadStore {
         consent_basis: consentBasis,
         status,
         daily_cap: dailyCap,
+        start_at: startIso,
+        end_at: endIso,
         warmup_started_at: status === 'active' ? now : null,
         created_at: now,
         updated_at: now
@@ -34,27 +43,29 @@ export class ProspectLeadStore {
       this.mem.lists.set(id, list);
       return list;
     }
-    const { data, error } = await this.client
-      .from('prospect_lists')
-      .insert({
+
+    const rows = await this.client.request('prospect_lists', {
+      method: 'POST',
+      body: {
         name,
         source,
         segment,
         consent_basis: consentBasis,
         status,
         daily_cap: dailyCap,
+        start_at: startIso,
+        end_at: endIso,
         warmup_started_at: status === 'active' ? now : null
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+      },
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? rows[0] : rows;
   }
 
   async addLeads(listId, leads = []) {
     if (!leads.length) return [];
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       const inserted = [];
       for (const item of leads) {
         const phone = normalizePhone(item.phone);
@@ -92,19 +103,27 @@ export class ProspectLeadStore {
       stage: 0,
       next_action_at: now
     }));
-    const { data, error } = await this.client
-      .from('prospect_leads')
-      .upsert(payload, { onConflict: 'list_id,phone', ignoreDuplicates: true })
-      .select();
-    if (error) throw error;
-    return data || [];
+    const rows = await this.client.request('prospect_leads', {
+      method: 'POST',
+      query: 'on_conflict=list_id,phone',
+      body: payload,
+      prefer: 'resolution=ignore-duplicates,return=representation'
+    });
+    return Array.isArray(rows) ? rows : [];
   }
 
   async listDueLeads({ limit = 10, now = new Date() } = {}) {
     const nowIso = now.toISOString();
-    if (!this.client) {
-      const activeLists = new Set(
-        [...this.mem.lists.values()].filter(l => l.status === 'active').map(l => l.id)
+    const isListWithinDates = list => {
+      if (!list || list.status !== 'active') return false;
+      if (list.start_at && new Date(list.start_at) > now) return false;
+      if (list.end_at && new Date(list.end_at) < now) return false;
+      return true;
+    };
+
+    if (!this.remoteEnabled) {
+      const activeLists = new Map(
+        [...this.mem.lists.values()].filter(isListWithinDates).map(l => [l.id, l])
       );
       return [...this.mem.leads.values()]
         .filter(l =>
@@ -114,26 +133,25 @@ export class ProspectLeadStore {
           && (!l.next_action_at || l.next_action_at <= nowIso)
         )
         .slice(0, limit)
-        .map(l => ({ ...l, list: this.mem.lists.get(l.list_id) }));
+        .map(l => ({ ...l, list: activeLists.get(l.list_id) }));
     }
 
-    const { data, error } = await this.client
-      .from('prospect_leads')
-      .select('*, list:prospect_lists!inner(*)')
-      .in('status', ['new', 'queued'])
-      .is('claim_token', null)
-      .eq('list.status', 'active')
-      .lte('next_action_at', nowIso)
-      .order('next_action_at', { ascending: true })
-      .limit(limit);
-    if (error) throw error;
-    return data || [];
+    const lists = await this.client.select('prospect_lists', 'select=*&status=eq.active');
+    const eligibleLists = new Map((lists || []).filter(isListWithinDates).map(l => [l.id, l]));
+    if (!eligibleLists.size) return [];
+
+    const listIds = [...eligibleLists.keys()].map(id => `"${id}"`).join(',');
+    const leads = await this.client.select(
+      'prospect_leads',
+      `select=*&list_id=in.(${listIds})&status=in.(new,queued)&claim_token=is.null&next_action_at=lte.${encodeURIComponent(nowIso)}&order=next_action_at.asc&limit=${limit}`
+    );
+    return (leads || []).map(l => ({ ...l, list: eligibleLists.get(l.list_id) }));
   }
 
   async claimLead(leadId) {
     const token = crypto.randomUUID();
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       const lead = this.mem.leads.get(leadId);
       if (!lead || lead.claim_token || !['new', 'queued'].includes(lead.status)) return null;
       lead.claim_token = token;
@@ -143,77 +161,73 @@ export class ProspectLeadStore {
       return { ...lead };
     }
 
-    const { data, error } = await this.client
-      .from('prospect_leads')
-      .update({ claim_token: token, claimed_at: now, status: 'queued', updated_at: now })
-      .eq('id', leadId)
-      .is('claim_token', null)
-      .in('status', ['new', 'queued'])
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
+    const rows = await this.client.request('prospect_leads', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=is.null&status=in.(new,queued)`,
+      body: { claim_token: token, claimed_at: now, status: 'queued', updated_at: now },
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
   }
 
   async releaseClaim(leadId, claimToken, updates = {}) {
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       const lead = this.mem.leads.get(leadId);
       if (!lead || lead.claim_token !== claimToken) return null;
       Object.assign(lead, updates, { claim_token: null, claimed_at: null, updated_at: now });
       return { ...lead };
     }
-    const { data, error } = await this.client
-      .from('prospect_leads')
-      .update({ ...updates, claim_token: null, claimed_at: null, updated_at: now })
-      .eq('id', leadId)
-      .eq('claim_token', claimToken)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
+
+    const rows = await this.client.request('prospect_leads', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=eq.${encodeURIComponent(claimToken)}`,
+      body: { ...updates, claim_token: null, claimed_at: null, updated_at: now },
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
   }
 
   async countSentToday({ listId = null, sinceIso } = {}) {
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       return this.mem.events.filter(e =>
         e.event_type === 'sent'
         && (!listId || e.list_id === listId)
         && (!sinceIso || e.created_at >= sinceIso)
       ).length;
     }
-    let query = this.client
-      .from('prospect_events')
-      .select('id', { count: 'exact', head: true })
-      .eq('event_type', 'sent')
-      .gte('created_at', sinceIso);
-    if (listId) query = query.eq('list_id', listId);
-    const { count, error } = await query;
-    if (error) throw error;
-    return count || 0;
+
+    const parts = ['select=id', 'event_type=eq.sent'];
+    if (sinceIso) parts.push(`created_at=gte.${encodeURIComponent(sinceIso)}`);
+    if (listId) parts.push(`list_id=eq.${encodeURIComponent(listId)}`);
+    const rows = await this.client.select('prospect_events', parts.join('&'));
+    return Array.isArray(rows) ? rows.length : 0;
   }
 
   async recordEvent({ listId = null, leadId = null, phone, eventType, stage = 0, detail = {} }) {
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       const ev = { id: crypto.randomUUID(), list_id: listId, lead_id: leadId, phone, event_type: eventType, stage, detail, created_at: now };
       this.mem.events.push(ev);
       return ev;
     }
-    const { data, error } = await this.client
-      .from('prospect_events')
-      .insert({ list_id: listId, lead_id: leadId, phone, event_type: eventType, stage, detail })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+
+    await this.client.insert('prospect_events', {
+      list_id: listId,
+      lead_id: leadId,
+      phone,
+      event_type: eventType,
+      stage,
+      detail
+    });
+    return { list_id: listId, lead_id: leadId, phone, event_type: eventType, stage, detail };
   }
 
   async markOptedOutByPhone(phone) {
     const normalized = normalizePhone(phone);
     if (!normalized) return 0;
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       let updated = 0;
       for (const lead of this.mem.leads.values()) {
         if (lead.phone === normalized && !['opted_out', 'stopped'].includes(lead.status)) {
@@ -229,25 +243,25 @@ export class ProspectLeadStore {
       }
       return updated;
     }
-    const { data, error } = await this.client
-      .from('prospect_leads')
-      .update({ status: 'opted_out', claim_token: null, next_action_at: null, updated_at: now })
-      .eq('phone', normalized)
-      .not('status', 'in', '("opted_out","stopped")')
-      .select('id, list_id');
-    if (error) throw error;
-    for (const row of data || []) {
+
+    const rows = await this.client.request('prospect_leads', {
+      method: 'PATCH',
+      query: `phone=eq.${encodeURIComponent(normalized)}&status=not.in.(opted_out,stopped)`,
+      body: { status: 'opted_out', claim_token: null, next_action_at: null, updated_at: now },
+      prefer: 'return=representation'
+    });
+    for (const row of rows || []) {
       await this.recordEvent({ listId: row.list_id, leadId: row.id, phone: normalized, eventType: 'optout' });
     }
-    return (data || []).length;
+    return Array.isArray(rows) ? rows.length : 0;
   }
 
   async setListStatus(listId, status) {
-    if (!['active', 'paused', 'completed'].includes(status)) {
+    if (!['active', 'paused', 'stopped', 'completed'].includes(status)) {
       throw new Error('Status de lista inválido.');
     }
     const now = new Date().toISOString();
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       const list = this.mem.lists.get(listId);
       if (!list) return null;
       list.status = status;
@@ -257,12 +271,9 @@ export class ProspectLeadStore {
       list.updated_at = now;
       return { ...list };
     }
-    const { data: existing, error: fetchErr } = await this.client
-      .from('prospect_lists')
-      .select('id, warmup_started_at')
-      .eq('id', listId)
-      .maybeSingle();
-    if (fetchErr) throw fetchErr;
+
+    const existingRows = await this.client.select('prospect_lists', `select=id,warmup_started_at&id=eq.${encodeURIComponent(listId)}&limit=1`);
+    const existing = existingRows?.[0];
     if (!existing) return null;
 
     const patch = {
@@ -270,18 +281,17 @@ export class ProspectLeadStore {
       updated_at: now,
       ...(status === 'active' && !existing.warmup_started_at ? { warmup_started_at: now } : {})
     };
-    const { data, error } = await this.client
-      .from('prospect_lists')
-      .update(patch)
-      .eq('id', listId)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    const rows = await this.client.request('prospect_lists', {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(listId)}`,
+      body: patch,
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? (rows[0] || null) : null;
   }
 
   async listListsWithStats({ limit = 30 } = {}) {
-    if (!this.client) {
+    if (!this.remoteEnabled) {
       return [...this.mem.lists.values()]
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, limit)
@@ -301,19 +311,11 @@ export class ProspectLeadStore {
         });
     }
 
-    const { data: lists, error } = await this.client
-      .from('prospect_lists')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    if (error) throw error;
+    const lists = await this.client.select('prospect_lists', `select=*&order=created_at.desc&limit=${limit}`);
     if (!lists?.length) return [];
 
-    const { data: leads, error: leadsErr } = await this.client
-      .from('prospect_leads')
-      .select('list_id, status')
-      .in('list_id', lists.map(l => l.id));
-    if (leadsErr) throw leadsErr;
+    const listIds = lists.map(l => `"${l.id}"`).join(',');
+    const leads = await this.client.select('prospect_leads', `select=list_id,status&list_id=in.(${listIds})`);
 
     const byList = new Map();
     for (const row of leads || []) {

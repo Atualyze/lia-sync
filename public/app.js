@@ -4015,24 +4015,32 @@ document.addEventListener('visibilitychange', () => {
       }
       container.innerHTML = lists.map((l) => {
         const s = l.stats || {};
-        const isActive = l.status === 'active';
+        const status = l.status || 'paused';
+        const statusLabel = status === 'active' ? 'Ativa' : status === 'stopped' ? 'Parada' : status === 'completed' ? 'Concluída' : 'Pausada';
+        const pillClass = status === 'active' ? 'mint' : status === 'stopped' ? 'err' : 'amber';
+        const scheduleInfo = [
+          l.start_at ? `Início: ${new Date(l.start_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '',
+          l.end_at ? `Fim: ${new Date(l.end_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''
+        ].filter(Boolean).join(' · ');
         return `
           <div class="ops-item" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
             <div>
               <strong>${esc(l.name)}</strong>
-              <span class="pill mini ${isActive ? 'mint' : 'amber'}" style="margin-left:8px;">${isActive ? 'Ativa' : 'Pausada'}</span>
+              <span class="pill mini ${pillClass}" style="margin-left:8px;">${statusLabel}</span>
               <div class="field-hint" style="margin-top:4px;">
-                Segmento: ${esc(l.segment || '—')} · Total: ${s.total || 0} · Novos: ${s.new || 0} · Contatados: ${s.contacted || 0} · Opt-out: ${s.opted_out || 0}
+                Segmento: ${esc(l.segment || '—')} · Total: ${s.total || 0} · Novos: ${s.new || 0} · Contatados: ${s.contacted || 0} · Opt-out: ${s.opted_out || 0}${scheduleInfo ? ` · ${esc(scheduleInfo)}` : ''}
               </div>
             </div>
-            <button type="button" class="admin-ghost-btn btn-sm prospect-toggle-btn" data-list-id="${esc(l.id)}" data-next-status="${isActive ? 'paused' : 'active'}">
-              ${isActive ? 'Pausar' : 'Ativar'}
-            </button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="active" ${status === 'active' ? 'disabled' : ''}>Iniciar</button>
+              <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="paused" ${status === 'paused' ? 'disabled' : ''}>Pausar</button>
+              <button type="button" class="admin-ghost-btn btn-sm prospect-status-btn" data-list-id="${esc(l.id)}" data-next-status="stopped" ${status === 'stopped' ? 'disabled' : ''}>Parar</button>
+            </div>
           </div>
         `;
       }).join('');
 
-      container.querySelectorAll('.prospect-toggle-btn').forEach((btn) => {
+      container.querySelectorAll('.prospect-status-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const listId = btn.dataset.listId;
           const nextStatus = btn.dataset.nextStatus;
@@ -4070,6 +4078,8 @@ document.addEventListener('visibilitychange', () => {
     const name = document.getElementById('prospect-list-name')?.value?.trim() || '';
     const segment = document.getElementById('prospect-list-segment')?.value?.trim() || '';
     const consentBasis = document.getElementById('prospect-list-consent')?.value?.trim() || '';
+    const startRaw = document.getElementById('prospect-list-start')?.value || '';
+    const endRaw = document.getElementById('prospect-list-end')?.value || '';
     const raw = leadsText?.value?.trim() || '';
     if (!name || !raw) {
       setStatus('Informe o nome da lista e cole ou carregue um CSV/JSON.', true);
@@ -4080,7 +4090,14 @@ document.addEventListener('visibilitychange', () => {
     try {
       const res = await api('/api/dashboard/prospecting/lists', {
         method: 'POST',
-        body: JSON.stringify({ name, segment, consentBasis, leadsText: raw })
+        body: JSON.stringify({
+          name,
+          segment,
+          consentBasis,
+          startAt: startRaw ? new Date(startRaw).toISOString() : null,
+          endAt: endRaw ? new Date(endRaw).toISOString() : null,
+          leadsText: raw
+        })
       });
       setStatus(`Lista importada: ${res.importedCount} lead(s) válidos, ${res.rejectedCount} rejeitado(s).`);
       if (leadsText) leadsText.value = '';

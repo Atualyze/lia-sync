@@ -7,8 +7,10 @@ CREATE TABLE IF NOT EXISTS prospect_lists (
   source TEXT NOT NULL DEFAULT 'csv',
   segment TEXT NOT NULL DEFAULT '',
   consent_basis TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'paused', -- paused | active | completed
+  status TEXT NOT NULL DEFAULT 'paused', -- paused | active | stopped | completed
   daily_cap INTEGER NOT NULL DEFAULT 20,
+  start_at TIMESTAMPTZ,
+  end_at TIMESTAMPTZ,
   warmup_started_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
