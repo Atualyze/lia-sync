@@ -2,6 +2,7 @@ import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
 import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
+import { buildPersonalityPrompt } from './core/personality.mjs';
 import {
   buildGreetingMessage,
   buildAtendimentoMessage,
@@ -91,6 +92,8 @@ REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
     return `Você é a ${botName}, assistente pessoal e copiloto executiva${companySuffix(companyName)}.
 Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
 Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
+
+${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}
 
 DIRETRIZES DE FORMATAÇÃO VISUAL (WHATSAPP):
 - NUNCA envie blocos densos ou paredes de texto contínuo.
@@ -189,6 +192,8 @@ Contrato de saída JSON obrigatório:
 
   return `Você é a ${botName}, assistente pessoal e executiva${companySuffix(companyName)}.
 Você conversa pelo WhatsApp com clientes e parceiros de forma humana, calorosa, inteligente, prestativa e bem distribuída visualmente no celular.
+
+${buildPersonalityPrompt({ botName, isOwner: false, botConfig })}
 
 DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
 1. ESTRUTURA VISUAL E DISTRIBUIÇÃO:

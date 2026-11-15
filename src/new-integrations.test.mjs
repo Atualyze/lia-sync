@@ -916,3 +916,30 @@ test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora s
   });
   assert.equal(sent.length, 1);
 });
+
+test('Lia Personality Engine injeta identidade compacta, adapta temperatura e detecta vicios roboticos', async () => {
+  const { buildPersonalityPrompt, resolveAdaptiveTemperature, evaluateNaturalnessReply } = await import('./core/personality.mjs');
+  const { buildSystemPrompt } = await import('./knowledge.mjs');
+
+  const block = buildPersonalityPrompt({ botName: 'Lia', botConfig: { personality: { tone: 'objetivo e cordial' } } });
+  assert.ok(block.includes('[PERSONALIDADE CONVERSACIONAL — LIA]'));
+  assert.ok(block.includes('objetivo e cordial'));
+  assert.ok(block.length < 1300, 'Camada de personalidade deve ser compacta para economizar tokens');
+
+  assert.equal(resolveAdaptiveTemperature({ hasTools: true }), 0.25);
+  assert.equal(resolveAdaptiveTemperature({ isOwner: true }), 0.35);
+  assert.equal(resolveAdaptiveTemperature({ isJsonResponse: true }), 0.58);
+  assert.equal(resolveAdaptiveTemperature({}), 0.62);
+
+  const clientPrompt = buildSystemPrompt({ session: { phone: '5511948273615', history: [] }, botConfig: {} });
+  const copilotPrompt = buildSystemPrompt({ session: { phone: '5511948273615', history: [] }, isOwner: true, botConfig: {} });
+  assert.ok(clientPrompt.includes('[PERSONALIDADE CONVERSACIONAL'));
+  assert.ok(copilotPrompt.includes('[PERSONALIDADE CONVERSACIONAL'));
+
+  assert.equal(evaluateNaturalnessReply('Aqui trabalhamos com Pix e cartão! Qual plano faz mais sentido para você?').ok, true);
+  const bad = evaluateNaturalnessReply('Claro! Posso te ajudar.\n• A\n• B\n• C\n• D\nQual você quer? E qual seu nome? Posso ajudar em algo mais?');
+  assert.equal(bad.ok, false);
+  assert.ok(bad.issues.includes('cliche_opener'));
+  assert.ok(bad.issues.includes('robotic_closer'));
+  assert.ok(bad.issues.some((i) => i.startsWith('too_many_questions:')));
+});

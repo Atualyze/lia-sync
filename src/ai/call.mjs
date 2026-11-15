@@ -6,6 +6,7 @@ import { resolveAIConfig, providers, available, providerDefaultModel, fallbackMo
 import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail, parseAIResponse } from './parsing.mjs';
 import { shouldEnableGoogleSearch } from './search.mjs';
 import { getEnabledTools, getGeminiToolDeclarations } from '../tools/index.mjs';
+import { resolveAdaptiveTemperature } from '../core/personality.mjs';
 
 function openAIToolSchema(schema = {}) {
   const result = { ...schema };
@@ -64,11 +65,18 @@ export async function call(provider, {
   budgetContext = {},
   enableSearch,
   toolDeclarations = [],
-  routingDecision = null
+  routingDecision = null,
+  temperature
 }) {
   if (!available(provider) || opened.get(provider) > Date.now()) return null;
   const runtime = resolveAIConfig({ ai: aiConfig });
   const nativeTools = Array.isArray(toolDeclarations) ? toolDeclarations : [];
+  const adaptiveTemperature = resolveAdaptiveTemperature({
+    explicitTemperature: temperature,
+    hasTools: nativeTools.length > 0,
+    isJsonResponse: true,
+    isOwner: routingDecision?.tier === 'pro'
+  });
   const toolCatalogPrompt = nativeTools.length
     ? `\n\n[CATÁLOGO DE FERRAMENTAS ATIVAS (PREENCHA "tool_calls" NO JSON QUANDO NECESSÁRIO)]\n` +
       nativeTools.map(t => {
@@ -117,7 +125,7 @@ export async function call(provider, {
         const modelSignal = AbortSignal.timeout(perModelTimeout);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
         const genConfig = {
-          temperature: 0.2,
+          temperature: adaptiveTemperature,
           maxOutputTokens: runtime.maxOutputTokens,
           responseMimeType: 'application/json',
           responseSchema
@@ -190,7 +198,7 @@ export async function call(provider, {
       const body = {
         messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
         max_tokens: runtime.maxOutputTokens || config.aiMaxOutputTokens,
-        temperature: 0.2,
+        temperature: adaptiveTemperature,
         ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })) } : {})
       };
       try {
@@ -258,7 +266,7 @@ export async function call(provider, {
     const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
     const body = provider === 'openrouter'
       ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system: effectiveSystem, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
-      : { model: candidateModel, temperature: 0.2, max_tokens: config.aiMaxOutputTokens, messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }], response_format: { type: 'json_object' }, ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {}) };
+      : { model: candidateModel, temperature: adaptiveTemperature, max_tokens: config.aiMaxOutputTokens, messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }], response_format: { type: 'json_object' }, ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {}) };
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
