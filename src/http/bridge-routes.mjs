@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { json, readBody, authorized, formatPhoneNumber, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
@@ -12,6 +13,8 @@ import { markBridgeConfigRead } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
 import { memoryStore } from '../core/memory.mjs';
+import { checkReadiness } from './readiness.mjs';
+import { getIntegrations } from './operations.mjs';
 
 const bridgeActions = new TtlIdempotencyStore({ ttlMs: Number(process.env.BRIDGE_IDEMPOTENCY_TTL_MS || 10 * 60 * 1000) });
 const safeError = error => error?.code || (error?.name === 'TimeoutError' ? 'provider_timeout' : 'request_failed');
@@ -124,7 +127,7 @@ async function handleSectorProjection({ req, res, sectorProjection }) {
 }
 
 // Rotas /api/bridge/* (inclui o stream SSE de eventos).
-export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection = new SectorProjection() }) {
+export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection = new SectorProjection(), webhookEventStore }) {
   if (u.pathname === '/api/bridge/v1/config') {
     if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
     return handlePublishedConfigRead({ req, res, adminConfig });
@@ -529,6 +532,44 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         return json(res, 400, { ok: false, error: safeError(err) });
       }
     }
+  }
+
+  // Monitor real do servidor, saúde da instância Evolution e ledger sanitizado de webhooks
+  if (req.method === 'GET' && u.pathname === '/api/bridge/system') {
+    if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
+    const mem = process.memoryUsage();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = Math.max(0, totalMem - freeMem);
+    const loadAvg = os.loadavg();
+    const [readiness, integrations] = await Promise.all([
+      checkReadiness().catch(() => ({ ok: false, status: 'unavailable', checks: [] })),
+      getIntegrations(webhookEventStore, sectorProjection, adminConfig).catch(() => null),
+    ]);
+    return json(res, 200, {
+      ok: true,
+      collectedAt: new Date().toISOString(),
+      process: {
+        rssMb: Math.round(mem.rss / 1048576),
+        heapUsedMb: Math.round(mem.heapUsed / 1048576),
+        heapTotalMb: Math.round(mem.heapTotal / 1048576),
+        uptimeSec: Math.round(process.uptime()),
+        nodeVersion: process.version,
+        platform: `${os.platform()} ${os.arch()}`,
+      },
+      host: {
+        totalMemMb: Math.round(totalMem / 1048576),
+        freeMemMb: Math.round(freeMem / 1048576),
+        usedMemPct: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
+        loadAvg1m: Number((loadAvg[0] || 0).toFixed(2)),
+        cpuCount: os.cpus().length || 1,
+      },
+      readiness,
+      evolution: integrations?.evolution || null,
+      webhook: integrations?.webhook || null,
+      providers: integrations?.providers || [],
+      supabase: integrations?.supabase || null,
+    });
   }
   return NOT_HANDLED;
 }

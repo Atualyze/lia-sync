@@ -86,7 +86,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f });
     if (dashboardResult !== NOT_HANDLED) return dashboardResult;
-    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection });
+    const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection, webhookEventStore });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
     const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI });
     if (settingsResult !== NOT_HANDLED) return settingsResult;

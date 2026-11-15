@@ -104,7 +104,7 @@ function safeHost(value = '') {
   try { return new URL(value).host; } catch { return null; }
 }
 
-async function getIntegrations(webhookEventStore, sectorProjection, adminConfig) {
+export async function getIntegrations(webhookEventStore, sectorProjection, adminConfig) {
   let webhookHistory = { configured: false, events: [] };
   try { webhookHistory = await webhookEventStore?.list(50) || webhookHistory; } catch { webhookHistory = { configured: false, events: [] }; }
   const circuitBreakers = getCircuitBreakers();
