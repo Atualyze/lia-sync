@@ -80,13 +80,22 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
         await finish('processed', 'chat_deleted_sync');
         return;
       }
-      if (['MESSAGESDELETE', 'MESSAGES_DELETE'].includes(rawEvent)) {
+      if (['MESSAGESDELETE', 'MESSAGES_DELETE', 'MESSAGESUPDATE', 'MESSAGES_UPDATE'].includes(rawEvent)) {
+        const isUpdate = ['MESSAGESUPDATE', 'MESSAGES_UPDATE'].includes(rawEvent);
+        const isRevoke = !isUpdate || payload?.data?.messageStubType === 'REVOKE' || payload?.data?.update?.messageStubType === 'REVOKE' || payload?.data?.status === 'DELETED';
         const deletedId = payload?.data?.key?.id || payload?.data?.id || messageId;
-        if (deletedId) {
+        if (isRevoke && deletedId) {
           await store.softDeleteMessage?.({ externalId: deletedId, source: 'whatsapp', archive: archiveMode });
           broadcastBridgeEvent('whatsapp_sync', { action: 'message_deleted', messageId: deletedId, archived: archiveMode, timestamp: Date.now() });
         }
-        await finish('processed', 'message_deleted_sync');
+        await finish('processed', isRevoke ? 'message_deleted_sync' : 'message_update_ignored');
+        return;
+      }
+      const protoRevoke = payload?.data?.message?.protocolMessage;
+      if (isMessageUpsert(item.event) && protoRevoke && (protoRevoke.type === 0 || protoRevoke.type === 'REVOKE') && protoRevoke.key?.id) {
+        await store.softDeleteMessage?.({ externalId: protoRevoke.key.id, source: 'whatsapp', archive: archiveMode });
+        broadcastBridgeEvent('whatsapp_sync', { action: 'message_deleted', messageId: protoRevoke.key.id, archived: archiveMode, timestamp: Date.now() });
+        await finish('processed', 'protocol_revoke_sync');
         return;
       }
       if (['CHATSUPDATE', 'CHATS_UPDATE'].includes(rawEvent)) {
