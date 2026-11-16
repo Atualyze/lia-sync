@@ -83,14 +83,6 @@ export function formatPhoneNumber(raw = '') {
   return raw;
 }
 
-/**
- * Compatibilidade: mantém o nome antigo apontando para a checagem neutra.
- * Prefira `isOwnerContact(target, { humanPhone, cachedOwner, identity })`.
- */
-export function isTauanContact(target = '', humanPhone = '', cachedOwner = '') {
-  return isOwnerContact(target, { humanPhone, cachedOwner });
-}
-
 export { isOwnerContact, OWNER_SELF_KEY };
 
 export class SessionStore {

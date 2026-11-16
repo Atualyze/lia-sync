@@ -120,7 +120,6 @@ export function detectarCapacidadesExigidas({
  * @param {string} [params.system] - System prompt do turno.
  * @param {Array} [params.history] - Histórico recente de mensagens.
  * @param {boolean} [params.isOwner] - Se o interlocutor é o próprio responsável (Copiloto).
- * @param {boolean} [params.isTauan] - Alias legado de `isOwner`, mantido por compatibilidade.
  * @param {boolean} [params.isSuperAgent] - Se o modo Super Agente com Tool Calling está ativo.
  * @param {boolean} [params.hasAttachments] - Se há anexo multimodal no turno.
  * @param {string} [params.configuredModel] - Modelo padrão publicado no painel.
@@ -132,13 +131,12 @@ export function decidirModeloPorContexto({
   system = '',
   history = [],
   isOwner = false,
-  isTauan = false,
   isSuperAgent = false,
   hasAttachments = false,
   configuredModel = 'gemini-3.8-flash',
   autoRoutingEnabled = true
 } = {}) {
-  const ownerMode = Boolean(isOwner || isTauan);
+  const ownerMode = Boolean(isOwner);
   const clean = String(userText || '').replace(/<\/?mensagem_do_cliente>/gi, '').trim();
   const lower = clean.toLowerCase();
   const capabilities = detectarCapacidadesExigidas({

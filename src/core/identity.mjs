@@ -8,14 +8,12 @@ import { BUSINESS } from '../config.mjs';
  * fallback neutro para que o mesmo código rode em qualquer operação.
  */
 
-export const OWNER_SELF_KEY = 'tauan_self';
+export const OWNER_SELF_KEY = 'owner_self';
 
 /**
- * Chaves internas aceitas pelo bridge/Chatwoot. `tauan_self` é o identificador
- * legado mantido por compatibilidade; os demais são aliases neutros.
+ * Chaves internas aceitas pelo bridge/Chatwoot para o chat do responsável/Copiloto.
  */
 export const OWNER_SELF_ALIASES = Object.freeze([
-  'tauan_self',
   'owner_self',
   'conv_lia_copilot',
   'contact_lia_copilot'
@@ -112,7 +110,7 @@ export function buildOwnerNamePattern(identity = {}) {
 
 /**
  * Detecta pedidos explícitos para falar com o responsável humano.
- * Menções casuais ("o Tauan me indicou") não devem disparar transbordo.
+ * Menções casuais ("o responsável me indicou") não devem disparar transbordo.
  */
 export function isTalkToOwnerRequest(text = '', identity = {}) {
   const resolved = identity.responsible === undefined ? resolveIdentity(identity) : identity;
@@ -130,7 +128,7 @@ export function isTalkToOwnerRequest(text = '', identity = {}) {
 /**
  * Reconhece o contato do responsável (chat interno) por chave, nome ou telefone.
  *
- * Compatível com a assinatura antiga `isTauanContact(target, humanPhone, cachedOwner)`.
+ * Verifica se o alvo é o próprio responsável / chat interno.
  *
  * @param {string} target
  * @param {string|object} options telefone humano (formato antigo) ou

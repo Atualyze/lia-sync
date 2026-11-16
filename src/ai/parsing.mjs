@@ -182,9 +182,9 @@ export function parseAIResponse(raw) {
     }
     return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
   }
-  const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'falar_com_tauan', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
+  const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
-  const isHandoff = o.handoff === true || o.intent === 'falar_com_responsavel' || o.intent === 'falar_com_tauan' || o.intent === 'humano';
+  const isHandoff = o.handoff === true || o.intent === 'falar_com_responsavel' || o.intent === 'humano';
   const rem = o.reminder && typeof o.reminder === 'object' && o.reminder.text ? o.reminder : null;
   const cleanToolCalls = Array.isArray(o.tool_calls)
     ? o.tool_calls

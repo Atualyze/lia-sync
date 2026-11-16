@@ -29,17 +29,17 @@ test('model-router: roteia comandos de ferramentas e super agente para flash', (
   assert.equal(r2.model, 'gemini-3.8-flash');
 });
 
-test('model-router: roteia análises estratégicas do Copiloto do Tauan para pro', () => {
+test('model-router: roteia análises estratégicas do Copiloto do responsável para pro', () => {
   const r1 = decidirModeloPorContexto({
     userText: 'Lia, faça uma análise profunda e consolide o relatório estratégico de vendas do mês',
-    isTauan: true
+    isOwner: true
   });
   assert.equal(r1.model, 'gemini-pro-latest');
   assert.equal(r1.tier, 'pro');
 
   const r2 = decidirModeloPorContexto({
     userText: 'Lia, qual a situação da fila agora?',
-    isTauan: true
+    isOwner: true
   });
   assert.equal(r2.model, 'gemini-3.8-flash'); // Modelo configurado padrão para operacão simples
 });

@@ -67,15 +67,14 @@ export async function call(provider, {
   toolDeclarations = [],
   routingDecision = null,
   temperature,
-  isOwner,
-  isTauan = false
+  isOwner
 }) {
   if (!available(provider) || opened.get(provider) > Date.now()) return null;
   const runtime = resolveAIConfig({ ai: aiConfig });
   const nativeTools = Array.isArray(toolDeclarations) ? toolDeclarations : [];
   const resolvedIsOwner = typeof isOwner === 'boolean'
-    ? (isOwner || isTauan === true)
-    : (isTauan === true || routingDecision?.tier === 'pro');
+    ? isOwner
+    : (routingDecision?.tier === 'pro');
   const adaptiveTemperature = resolveAdaptiveTemperature({
     explicitTemperature: temperature,
     hasTools: nativeTools.length > 0,
@@ -324,7 +323,7 @@ export async function askAI(args) {
     userText: args?.userText,
     system: args?.system,
     history: args?.history,
-    isOwner: args?.isOwner === true || args?.isTauan === true,
+    isOwner: args?.isOwner === true,
     isSuperAgent: args?.botConfig?.ai?.agentMode === 'super_agente' || args?.botConfig?.ai?.enableToolCalling === true,
     configuredModel: aiConfig.model,
     autoRoutingEnabled: isAutoRouting
@@ -335,7 +334,7 @@ export async function askAI(args) {
   const preferredModel = decision.tier === 'custom' ? null : decision.model;
 
   const deadline = Number.isFinite(args?.deadline) ? args.deadline : Date.now() + 35000;
-  const actor = args?.isOwner === true || args?.isTauan === true ? 'owner' : 'client';
+  const actor = args?.isOwner === true ? 'owner' : 'client';
   const isSynthesisTurn = /\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\]/.test(String(args?.system || ''));
   const explicitDisableTools = args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
   const toolMode = !isSynthesisTurn && (actor === 'owner' || !explicitDisableTools);

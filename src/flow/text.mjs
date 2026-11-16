@@ -1,5 +1,6 @@
 import { normalize } from '../safety.mjs';
 import { resolveIdentity, escapeRegExp, isTalkToOwnerRequest } from '../core/identity.mjs';
+export { isTalkToOwnerRequest };
 
 
 export function collectedValid(collected = {}) {
@@ -23,15 +24,7 @@ export function isHumanRequest(text = '', identity = {}) {
   return /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(raw) ||
          /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(n) ||
          /\b(?:falar|chamar|quero)\s+(?:com\s+)?(?:a\s+|o\s+)?(?:dra|dr|doutora|doutor)\.?\s+\w+/i.test(n) ||
-         isTalkToTauanRequest(text, identity);
-}
-
-
-/**
- * Identifica se a pessoa quer falar diretamente com o responsável ou com alguém humano
- */
-export function isTalkToTauanRequest(text = '', identity = {}) {
-  return isTalkToOwnerRequest(text, identity);
+         isTalkToOwnerRequest(text, identity);
 }
 
 /**

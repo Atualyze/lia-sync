@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFlow, isTalkToTauanRequest } from './flow.mjs';
+import { createFlow, isTalkToOwnerRequest } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
 
 function createMockStore() {
@@ -208,21 +208,21 @@ test('Conversa interna: respostas de IA passam por filterReply', async () => {
 test('Cliente: menção casual ao Tauan não dispara handoff robótico prematuro', async () => {
   // Teste da regex isTalkToTauanRequest com a identidade configurada no painel
   const identity = { identity: { botName: 'Lia', responsible: 'Tauan', companyName: 'Atualyze' } };
-  assert.equal(isTalkToTauanRequest('O Tauan me indicou o trabalho de vocês', identity), false);
-  assert.equal(isTalkToTauanRequest('Conheci o Tauan na faculdade', identity), false);
-  assert.equal(isTalkToTauanRequest('Bom dia, tudo bem?', identity), false);
+  assert.equal(isTalkToOwnerRequest('O Tauan me indicou o trabalho de vocês', identity), false);
+  assert.equal(isTalkToOwnerRequest('Conheci o Tauan na faculdade', identity), false);
+  assert.equal(isTalkToOwnerRequest('Bom dia, tudo bem?', identity), false);
 
   // Casos que DEVEM disparar transferência expressa:
-  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan', identity), true);
-  assert.equal(isTalkToTauanRequest('Pode me passar pro Tauan?', identity), true);
-  assert.equal(isTalkToTauanRequest('falar com humano'), true);
-  assert.equal(isTalkToTauanRequest('chamar atendente'), true);
-  assert.equal(isTalkToTauanRequest('opcao 2'), true);
-  assert.equal(isTalkToTauanRequest('2'), true);
+  assert.equal(isTalkToOwnerRequest('Quero falar com o Tauan', identity), true);
+  assert.equal(isTalkToOwnerRequest('Pode me passar pro Tauan?', identity), true);
+  assert.equal(isTalkToOwnerRequest('falar com humano'), true);
+  assert.equal(isTalkToOwnerRequest('chamar atendente'), true);
+  assert.equal(isTalkToOwnerRequest('opcao 2'), true);
+  assert.equal(isTalkToOwnerRequest('2'), true);
 
   // Sem identidade configurada, o fallback é neutro: "Tauan" deixa de ser o responsável.
-  assert.equal(isTalkToTauanRequest('Quero falar com o Tauan'), false);
-  assert.equal(isTalkToTauanRequest('Quero falar com o responsável'), true);
+  assert.equal(isTalkToOwnerRequest('Quero falar com o Tauan'), false);
+  assert.equal(isTalkToOwnerRequest('Quero falar com o responsável'), true);
 });
 
 test('Áudio personalizado: Lia NUNCA envia o comando literal, gera prévia amigável e pede confirmação antes de enviar', async () => {
@@ -487,12 +487,12 @@ test('Copiloto: gerar PDF pergunta as informações antes e gera após a respost
     }
   });
 
-  const ask = await flow.process({ phone: 'tauan_self', text: 'Lia, gerar pdf' });
+  const ask = await flow.process({ phone: 'owner_self', text: 'Lia, gerar pdf' });
 
   assert.equal(sentDocs.length, 0, 'Não deve gerar PDF antes de perguntar');
   assert.match(ask, /quais informa/i, 'Deve perguntar quais informações usar');
 
-  const reply = await flow.process({ phone: 'tauan_self', text: 'dados do sistema' });
+  const reply = await flow.process({ phone: 'owner_self', text: 'dados do sistema' });
 
   assert.equal(sentDocs.length, 1, 'O PDF deve ser enviado como documento');
   assert.equal(sentDocs[0].phone, '5588921694598');
@@ -514,16 +514,16 @@ test('Copiloto: orçamento sem detalhes pergunta; com detalhes gera direto', asy
     }
   });
 
-  const ask = await flow.process({ phone: 'tauan_self', text: 'gerar orçamento' });
+  const ask = await flow.process({ phone: 'owner_self', text: 'gerar orçamento' });
   assert.equal(sentDocs.length, 0, 'Orçamento sem detalhes não gera direto');
   assert.match(ask, /orçamento/i);
   assert.match(ask, /valores/i);
 
-  const content = await flow.process({ phone: 'tauan_self', text: 'Implantação de chatbot com IA, 2 atendentes, prazo de 30 dias, valor R$ 4.500,00' });
+  const content = await flow.process({ phone: 'owner_self', text: 'Implantação de chatbot com IA, 2 atendentes, prazo de 30 dias, valor R$ 4.500,00' });
   assert.equal(sentDocs.length, 1, 'Resposta com os detalhes deve gerar o PDF');
   assert.match(content, /gerado e enviado/i);
 
-  const direct = await flow.process({ phone: 'tauan_self', text: 'gerar orçamento: manutenção mensal do sistema, 10 horas, R$ 2.000,00, prazo 5 dias' });
+  const direct = await flow.process({ phone: 'owner_self', text: 'gerar orçamento: manutenção mensal do sistema, 10 horas, R$ 2.000,00, prazo 5 dias' });
   assert.equal(sentDocs.length, 2, 'Pedido já com valores gera direto');
   assert.match(direct, /gerado e enviado/i);
 });
@@ -644,7 +644,7 @@ test('Copiloto do Tauan (isTauan=true): tem acesso completo aos dossiês das bas
   });
 
   const reply = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'O que vc sabe sobre o clubinho homevet?'
   });
 
@@ -685,7 +685,7 @@ test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e 
   });
 
   const reply = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'Lia, me explique em áudio como exporto o relatório em html'
   });
 
@@ -704,7 +704,7 @@ test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e 
   assert.doesNotMatch(reply, /Prévia do áudio personalizado para você/i);
 
   // 4. lastAudioBase64 deve ter sido salvo na sessão do Tauan para o Chatwoot
-  const sTauan = store.get('tauan_self');
+  const sTauan = store.get('owner_self');
   assert.equal(sTauan.lastAudioBase64, 'AUDIO_BASE64_SIMULADO');
 });
 
@@ -736,7 +736,7 @@ test('Humanização e Eliminação de Clichês: Lia humaniza perguntas, avisos e
     text: 'cancela'
   });
   assert.match(cancelRes, /Envio cancelado com sucesso/i);
-  const sSelf = store.get('tauan_self');
+  const sSelf = store.get('owner_self');
   assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve ser falsy após cancelar');
   assert.ok(!sSelf.pendingRecipient, 'pendingRecipient deve ser falsy após cancelar');
   assert.ok(!sSelf.pendingAsAudio, 'pendingAsAudio deve ser falsy após cancelar');
@@ -783,7 +783,7 @@ test('Copiloto: Pedido de áudio no chat interno gera fala natural como assisten
   });
 
   const reply = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'Lia, me mande um áudio no chat interno perguntando se o cliente vai querer a proposta'
   });
 
@@ -794,7 +794,7 @@ test('Copiloto: Pedido de áudio no chat interno gera fala natural como assisten
   assert.doesNotMatch(synthesizedText, /Queria aproveitar para alinhar com você que/i);
   assert.match(synthesizedText, /Passando para saber se/i);
 
-  const sSelf = store.get('tauan_self');
+  const sSelf = store.get('owner_self');
   assert.equal(sSelf.lastAudioBase64, 'AUDIO_COPILOTO_BASE64');
   assert.equal(sSelf.pendingRecipient, null);
 });
@@ -833,7 +833,7 @@ test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre 
     text: 'cancela'
   });
   assert.match(cancel, /Envio cancelado com sucesso/i);
-  const sSelf = store.get('tauan_self');
+  const sSelf = store.get('owner_self');
   assert.ok(!sSelf.pendingAudioConfirmation, 'pendingAudioConfirmation deve ser falsy');
 
   // 4. Nova mensagem com "Perfeito, ..." NÃO confirma nem reativa o cancelado
@@ -871,7 +871,7 @@ test('Fluxo completo: cancelamento de áudio, troca para texto e proteção cont
 
   // Turno 1: Tauan pede áudio
   const p1 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'preciso que envie um áudio para 88998340085 sobre o status operacional do sistema'
   });
   assert.match(p1, /Prévia do áudio personalizado/i);
@@ -879,7 +879,7 @@ test('Fluxo completo: cancelamento de áudio, troca para texto e proteção cont
 
   // Turno 2: Tauan cancela dizendo 'não'
   const p2 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'não'
   });
   assert.match(p2, /Envio cancelado com sucesso/i);
@@ -887,14 +887,14 @@ test('Fluxo completo: cancelamento de áudio, troca para texto e proteção cont
 
   // Turno 3: Tauan cumprimenta
   const p3 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'oi'
   });
   assert.match(p3, /100% operacional/i);
 
   // Turno 4: Tauan diz 'que envie um texto'
   const p4 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'que envie um texto'
   });
 
@@ -943,7 +943,7 @@ test('Copiloto analisa documento PDF/imagem e preserva contexto do documento em 
 
   // Turno 1: Envio do arquivo Pasta1.pdf pelo painel
   const r1 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'Arquivo enviado: Pasta1.pdf',
     attachments: [{
       fileName: 'Pasta1.pdf',
@@ -956,7 +956,7 @@ test('Copiloto analisa documento PDF/imagem e preserva contexto do documento em 
 
   // Turno 2: Pergunta de acompanhamento sobre o documento sem reenviar o anexo
   const r2 = await flow.process({
-    phone: 'tauan_self',
+    phone: 'owner_self',
     text: 'Qual é o valor total e o cliente desse documento?'
   });
   assert.match(capturedSystem, /ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO/);

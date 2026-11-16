@@ -14,24 +14,8 @@ const compact = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 const ownerLabel = (identity, fallback = 'nossa equipe') => identity.responsible || fallback;
 
 /**
- * Textos exatos das versões anteriores (identidade fixa "Lia/Tauan/Atualyze").
- * Servem apenas para reconhecer overrides antigos que ainda estão no padrão e
- * podem ser regenerados com a identidade atual. Nunca são exibidos.
+ * Mensagens padrão neutras e dinâmicas, sempre derivadas da identidade publicada no painel.
  */
-const LEGACY_IDENTITY = Object.freeze({
-  botName: 'Lia',
-  responsible: 'Tauan',
-  companyName: 'Atualyze'
-});
-
-const LEGACY_DEFAULTS = Object.freeze({
-  greeting: 'Oi! Tudo bem? 😊\n\nSou a *Lia*, assistente pessoal do *Tauan*.\n\nPor aqui posso:\n• Esclarecer dúvidas rápidas e adiantar seu atendimento\n• Conectar você diretamente com o Tauan\n\nComo prefere seguir?',
-  atendimento: 'Nosso atendimento automatizado ainda está sendo preparado com muito carinho! ☕✨\n\nEnquanto isso, eu posso:\n• *Anotar o seu recado* com os detalhes da sua necessidade\n• *Te colocar direto em contato* com o Tauan agora mesmo\n\nQuer falar direto com ele?',
-  talkToOwner: 'Combinado! 👍\n\nJá passei o aviso para o *Tauan* com o resumo do que conversamos até aqui. 📲\n\nEle já vai te responder diretamente por este chat. Só um instante! ⏳',
-  services: 'Por aqui posso:\n• Esclarecer dúvidas gerais\n• Anotar recados e solicitações\n• Te transferir direto para o *Tauan*\n\nComo posso te ajudar agora?',
-  policies: 'Nosso horário padrão de atendimento é:\n📅 *segunda a sexta, das 09h às 18h*.\n\nCaso mande mensagem fora desse período, pode deixar seu recado que o *Tauan* te responde assim que visualizar!',
-  payment: 'Questões sobre *valores, propostas e formas de pagamento* são alinhadas diretamente com o *Tauan*.\n\nQuer que eu já avise ele agora para vocês conversarem?'
-});
 
 export function buildGreetingMessage(identityInput = {}) {
   const identity = resolveIdentity(identityInput);
@@ -84,7 +68,7 @@ const BUILDERS = {
 const MESSAGE_KEYS = {
   greeting: ['greeting'],
   atendimento: ['atendimento', 'atendimentoEmProgresso', 'plans'],
-  talkToOwner: ['talkToOwner', 'talkToTauan'],
+  talkToOwner: ['talkToOwner'],
   services: ['services', 'recommendedServices'],
   policies: ['policies'],
   payment: ['payment']
@@ -93,15 +77,13 @@ const MESSAGE_KEYS = {
 function isKnownDefault(value, kind, identity) {
   const candidate = compact(value);
   if (!candidate) return false;
-  if (compact(LEGACY_DEFAULTS[kind]) === candidate) return true;
-  return [identity, NEUTRAL_IDENTITY, LEGACY_IDENTITY].some(reference =>
+  return [identity, NEUTRAL_IDENTITY].some(reference =>
     compact(BUILDERS[kind](reference)) === candidate
   );
 }
 
 /**
  * Resolve todas as mensagens padrão com overrides do painel.
- * Chaves legadas (`talkToTauan`, `plans`) continuam aceitas.
  */
 export function resolveMessages(botConfig = {}) {
   const identity = resolveIdentity(botConfig);
@@ -117,7 +99,6 @@ export function resolveMessages(botConfig = {}) {
 
   result.plans = result.atendimento;
   result.services = result.services;
-  result.talkToTauan = result.talkToOwner;
   return result;
 }
 
@@ -153,4 +134,4 @@ export function isGeneratedMessage(value, kind, identityInput = {}) {
   return isKnownDefault(value, kind, resolveIdentity(identityInput));
 }
 
-export { LEGACY_IDENTITY, LEGACY_DEFAULTS };
+

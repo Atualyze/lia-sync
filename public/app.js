@@ -3953,7 +3953,10 @@ function startDashboard() {
 
     showToast({ title: 'Audition Neural', message: `Testando voz ${chosenVoice}...`, type: 'info' });
 
-    await playNeuralAudio('Olá! Eu sou a Lia, assistente virtual da Atualyze. Como posso ajudar você hoje?', {
+    const sampleBot = state.adminConfig?.draft?.identity?.assistantName || 'Lia';
+    const sampleCompany = state.adminConfig?.draft?.identity?.companyName || '';
+    const sampleIntro = sampleCompany ? `assistente virtual da ${sampleCompany}` : 'sua assistente virtual';
+    await playNeuralAudio(`Olá! Eu sou ${sampleBot}, ${sampleIntro}. Como posso ajudar você hoje?`, {
       voiceName: chosenVoice,
       onStart: (info) => {
         if (info?.isFallback) {

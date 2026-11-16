@@ -3,7 +3,7 @@ import { broadcastBridgeEvent } from './bridge.mjs';
 
 /**
  * Avalia ao reativar a Lia (human -> bot) se o cliente ficou sem resposta
- * e envia uma pergunta contextualizada para o chat interno (tauan_self).
+ * e envia uma pergunta contextualizada para o chat interno (owner_self).
  */
 export function notifyReactivationToInternalChat({ store, session, phone }) {
   if (!store || !session || !Array.isArray(session.history) || !session.history.length) {

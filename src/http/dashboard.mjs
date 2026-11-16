@@ -35,7 +35,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
       })
       .map(([key, s]) => {
         const rawPhone = s.phone || key.replace(/^sim:/, '');
-        const isCopilotSelf = rawPhone === 'tauan_self' || key === 'tauan_self';
+        const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(key);
         const phoneFormatted = isCopilotSelf ? 'Canal Interno Copiloto' : formatPhoneNumber(rawPhone);
         const clientName = (s.clientName || s.contactName || s.pushName || (isCopilotSelf ? 'Copiloto Interno (Gestor)' : '')).trim();
         const displayName = clientName || phoneFormatted;

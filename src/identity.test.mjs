@@ -14,7 +14,6 @@ import {
   resolveIdentity
 } from './core/identity.mjs';
 import {
-  LEGACY_DEFAULTS,
   buildGreetingMessage,
   buildFaqItems,
   isGeneratedMessage,
@@ -68,15 +67,15 @@ test('buildOwnerNamePattern reconhece nomes sem acento e termos neutros', () => 
   assert.ok(pattern.test('equipe'));
 });
 
-test('chaves internas do responsável mantêm compatibilidade com tauan_self', () => {
-  assert.equal(OWNER_SELF_KEY, 'tauan_self');
-  assert.ok(OWNER_SELF_ALIASES.includes('tauan_self'));
-  assert.ok(isOwnerKey('tauan_self'));
+test('chaves internas do responsável usam owner_self como padrão neutro', () => {
+  assert.equal(OWNER_SELF_KEY, 'owner_self');
+  assert.ok(OWNER_SELF_ALIASES.includes('owner_self'));
+  assert.ok(isOwnerKey('owner_self'));
   assert.ok(isOwnerKey('OWNER_SELF'));
   assert.ok(isOwnerKey('sim:owner_self'));
   assert.ok(isOwnerKey('conv_lia_copilot'));
   assert.ok(!isOwnerKey('5511999998888'));
-  assert.equal(normalizeOwnerKey(' sim:tauan_self '), 'tauan_self');
+  assert.equal(normalizeOwnerKey(' sim:owner_self '), 'owner_self');
 });
 
 test('isOwnerContact reconhece chave, nome configurado, apelido e telefone', () => {
@@ -127,25 +126,17 @@ test('resolveMessages regenera padrões e respeita override real do painel', () 
   const defaults = resolveMessages(configuredBot);
   assert.equal(defaults.greeting, buildGreetingMessage(configuredBot));
   assert.equal(defaults.plans, defaults.atendimento);
-  assert.equal(defaults.talkToTauan, defaults.talkToOwner);
 
   const custom = resolveMessages({
     ...configuredBot,
     messages: { greeting: 'Mensagem personalizada do painel.' }
   });
   assert.equal(custom.greeting, 'Mensagem personalizada do painel.');
-
-  const legacy = resolveMessages({
-    ...configuredBot,
-    messages: { greeting: LEGACY_DEFAULTS.greeting }
-  });
-  assert.equal(legacy.greeting, buildGreetingMessage(configuredBot));
 });
 
-test('isGeneratedMessage identifica texto padrão, legado e override', () => {
+test('isGeneratedMessage identifica texto padrão e override', () => {
   const identity = resolveIdentity(configuredBot);
   assert.ok(isGeneratedMessage(buildGreetingMessage(configuredBot), 'greeting', identity));
-  assert.ok(isGeneratedMessage(LEGACY_DEFAULTS.greeting, 'greeting', identity));
   assert.ok(!isGeneratedMessage('Texto feito à mão no painel.', 'greeting', identity));
   assert.equal(isGeneratedMessage('qualquer coisa', 'desconhecido', identity), false);
 });

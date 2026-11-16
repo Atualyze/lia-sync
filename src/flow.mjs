@@ -6,7 +6,7 @@ import { handleClientMessage } from './flow/client.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 
 export {
-  collectedValid, isHumanRequest, isTalkToTauanRequest, isAtendimentoOption,
+  collectedValid, isHumanRequest, isTalkToOwnerRequest, isAtendimentoOption,
   cleanForSpeech, escapeText, stripBotMention, stripCommandPrefix,
   buildFriendlyAudioScript, buildFriendlyMessage, humanizeContactMessage,
   applyAudioCorrection, extractDispatchIntent

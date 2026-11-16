@@ -56,8 +56,8 @@ export function findFaq(text = '') {
 /** Trecho "da Empresa" opcional, sem deixar espaços/artigos soltos. */
 const companySuffix = companyName => (companyName ? ` da ${companyName}` : '');
 
-export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], plans = [], botConfig = {}, isOwner = false, isTauan = false, telemetry = null } = {}) {
-  const copilotMode = isOwner === true || isTauan === true;
+export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], plans = [], botConfig = {}, isOwner = false, telemetry = null } = {}) {
+  const copilotMode = isOwner === true;
   const identity = resolveIdentity(botConfig);
   const business = botConfig.business || {};
   const messages = resolveMessages(botConfig);
@@ -209,7 +209,7 @@ Contrato de saída JSON obrigatório:
   const messagesBase = {
     greeting: messages.greeting,
     atendimentoEmProgresso: messages.atendimento,
-    talkToTauan: messages.talkToOwner,
+    talkToOwner: messages.talkToOwner,
     policies: messages.policies,
     payment: messages.payment
   };

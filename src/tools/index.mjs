@@ -24,7 +24,7 @@ export const TOOL_SETTINGS_SCHEMA = {
     { key: 'publicBaseUrl', label: 'URL Pública (para link /pix)', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' }
   ],
   checkout_infinitepay: [
-    { key: 'handle', label: 'InfiniteTag (Handle)', type: 'text', placeholder: 'Ex.: tauanpires (sem $)' },
+    { key: 'handle', label: 'InfiniteTag (Handle)', type: 'text', placeholder: 'Ex.: suaempresa (sem $)' },
     { key: 'apiKey', label: 'API Key (opcional)', type: 'password', placeholder: 'Chave para opções avançadas do Checkout' },
     { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://liasync.atualyze.com.br' },
     { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' }
