@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.0 — API pública v1, autoatendimento de integrações, RAG leve nas bases e White-Label 100%
+
+- **API Pública (`/api/v1/*`) e Painel de Integrações (`src/http/api-v1.mjs`, `src/http/integrations-store.mjs`, `src/http/admin.mjs`):** autoatendimento na aba **Integrações** para gerar/revogar Chaves de API (`lia_live_...` com escopos `read`, `write`, `ai`), gerenciar Webhooks de Saída (`message.received`, `handoff.triggered`, `lead.updated` assinados com HMAC-SHA256 e proteção SSRF) e consultar guia n8n.
+- **Busca inteligente nas bases de conhecimento (`src/knowledge-bases.mjs`, `src/knowledge.mjs`, `src/tools/consultar_base_conhecimento.mjs`):** leitura recursiva de subpastas (`autoconhecimento/`, `suporte_tecnico/`, `sales_intelligence/`, `biblioteca_juridica/`), ignorando `README.md`, com pontuação por título, subtítulos `##` e corpo do texto e extração apenas das seções relevantes.
+- **Reativação com checagem de vácuo e síntese do Copiloto (`src/http/reactivation-notice.mjs`, `src/flow/reactivation-reply.mjs`, `src/flow/owner.mjs`):** ao reativar a IA (`human -> bot`), avalia se o cliente ficou sem resposta e pergunta no chat interno, executando automaticamente a decisão do responsável (manter humano, concluir ou responder ao cliente); síntese genérica `[TOOL_RESULTS_JSON]` para todas as ferramentas do Copiloto.
+- **Presença WhatsApp antecipada e descarte de rascunho (`src/whatsapp.mjs`, `src/server.mjs`, `src/admin-config.mjs`):** envio antecipado não-bloqueante de `composing`/`recording` antes da IA responder, redução de atrasos artificiais e rota `POST /api/admin/config/discard` ligada ao botão **Cancelar** da barra flutuante.
+- **White-Label 100% (`src/core/identity.mjs`, `src/core/messages.mjs`, `public/app.js`):** remoção de referências pessoais fixas no código, adoção da chave neutra `owner_self` e textos/áudios gerados integralmente a partir da identidade publicada no painel.
+- **Validação:** `267` testes automatizados, `26` contratos de arquitetura e `137` módulos verificados.
+
 ## 2.4.0 — roteamento por capacidades, tool calling estruturado, voz WAV e visão multimodal
 
 - **Roteamento orientado a capacidades (`src/model-router.mjs`):** adicionados `MODEL_CAPABILITIES` e `detectarCapacidadesExigidas` (`fast_chat`, `tools`, `web_search`, `document_context`, `deep_reasoning`), impedindo que comandos curtos com ferramentas ou busca web caiam no tier `lite` e ajustando `thinkingBudget` dinamicamente (`0` para `lite`/`flash`, `1024` para `pro`).

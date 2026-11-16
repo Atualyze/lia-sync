@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 2.4
+Versão do Sistema: 2.5
 
 > **Finalidade:** Base exclusiva do Copiloto Executivo para autoconhecimento da Lia sobre o motor Lia Sync, capacidades, ferramentas ativas, painel de operações e limites operacionais. Nunca deve ser exposta a clientes externos.
 
@@ -60,6 +60,7 @@ Ela opera em **dois modos completamente distintos**:
 - **API Pública (`/api/v1/*`):** Permite integrar n8n, Make e sistemas externos com autenticação por **Chaves de API** (`lia_live_...`, geradas/revogadas na aba **Integrações** do painel com escopos `read`, `write` e `ai`).
 - **Webhooks de Saída:** Dispara eventos (`message.received`, `handoff.triggered`, `lead.updated`) assinados com HMAC-SHA256 (`x-lia-signature`) e proteção contra SSRF.
 - **Rascunho e Publicação:** Alterações no painel ficam em rascunho com opção de **Publicar** ou **Cancelar/Descartar** na barra flutuante antes de ir para produção.
+- **Bases de Conhecimento Inteligentes e White-Label 100%:** As bases em `data/knowledge-bases/` são indexadas recursivamente (ignorando `README.md`) com busca por relevância em título, subtítulos `##` e corpo do texto. Toda a identidade (nome da assistente, responsável, empresa e saudações) é lida dinamicamente do painel.
 
 ---
 

@@ -2,7 +2,15 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.4.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.5.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.5.0 — API Pública v1, Integrações no Painel, Bases Inteligentes e White-Label 100%
+
+- **API Pública `/api/v1/*` e Chaves/Webhooks no Painel:** geração de Chaves de API (`lia_live_...` com escopos `read`, `write`, `ai`), Webhooks de Saída com assinatura HMAC-SHA256 (`x-lia-signature`) e proteção SSRF, além de guia n8n integrado na aba **Integrações**. Consulte [`docs/release-2.5.0.md`](docs/release-2.5.0.md).
+- **Bases de Conhecimento com Busca por Conteúdo:** leitura recursiva de subpastas (`autoconhecimento/`, `suporte_tecnico/`, `sales_intelligence/`, `biblioteca_juridica/`), ignorando `README.md`, com pontuação por seções `##` e injeção enxuta de diretrizes e suporte.
+- **Reativação Inteligente e Síntese do Copiloto:** detecção automática de cliente sem resposta (*no vácuo*) ao reativar a IA, resolução automática pela resposta do responsável no chat interno e síntese genérica `[TOOL_RESULTS_JSON]` para todas as ferramentas do Copiloto.
+- **Presença WhatsApp e Rascunho:** indicador antecipado de `composing`/`recording` enquanto a IA processa e botão **Cancelar** na barra flutuante (`POST /api/admin/config/discard`).
+- **White-Label 100%:** remoção completa de referências pessoais fixas, chave interna neutra `owner_self` e identidade dinâmica em todo o motor e painel.
 
 ## Novidades da Versão 2.4.0 — Roteamento por Capacidades, Tool Calling Estruturado, Voz WAV e Visão Multimodal
 
