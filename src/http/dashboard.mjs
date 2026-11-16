@@ -35,7 +35,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
       })
       .map(([key, s]) => {
         const rawPhone = s.phone || key.replace(/^sim:/, '');
-        const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(key);
+        const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(key) || /^[a-z0-9_]+_self$/i.test(rawPhone);
         const phoneFormatted = isCopilotSelf ? 'Canal Interno Copiloto' : formatPhoneNumber(rawPhone);
         const clientName = (s.clientName || s.contactName || s.pushName || (isCopilotSelf ? 'Copiloto Interno (Gestor)' : '')).trim();
         const displayName = clientName || phoneFormatted;
@@ -130,13 +130,22 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     }
     const text = body.text.trim();
     if (isInternalChat) {
+      if (rawPhone !== OWNER_SELF_KEY && store.sessions?.[rawPhone]) {
+        const legacySess = store.sessions[rawPhone];
+        const targetSess = store.get(OWNER_SELF_KEY);
+        if (Array.isArray(legacySess?.history) && legacySess.history.length && (!Array.isArray(targetSess.history) || !targetSess.history.length)) {
+          targetSess.history = [...legacySess.history];
+        }
+        delete store.sessions[rawPhone];
+        store.markDirty();
+      }
       const answer = await store.enqueue(OWNER_SELF_KEY, () => f.process({
         phone: OWNER_SELF_KEY,
         text,
         origin: 'dashboard'
       }));
       await store.flush?.().catch(() => {});
-      return json(res, 200, { ok: true, sent: true, internal: true, answer: answer || null });
+      return json(res, 200, { ok: true, sent: true, internal: true, selectedPhone: OWNER_SELF_KEY, answer: answer || null });
     }
     const phone = rawPhone;
     const safeReplyTo = body.replyTo && typeof body.replyTo === 'object'

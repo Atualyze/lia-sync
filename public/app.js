@@ -3240,7 +3240,7 @@ async function sendChatMessage({ text, mediaType = 'text', fileName = '' } = {})
   clearReplyTo();
 
   try {
-    await api(endpoint, {
+    const res = await api(endpoint, {
       method: 'POST',
       body: JSON.stringify({
         phone: state.selected,
@@ -3250,6 +3250,7 @@ async function sendChatMessage({ text, mediaType = 'text', fileName = '' } = {})
         fileName
       })
     });
+    if (res?.selectedPhone) state.selected = res.selectedPhone;
     await refresh();
     if (state.view === 'metrics') renderMetrics();
   } catch (err) {
