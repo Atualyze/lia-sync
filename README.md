@@ -4,6 +4,8 @@ Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, int
 
 **Versão atual: 2.5.0** (pacote, metadata e documentação sincronizados).
 
+**Operação na VPS:** o projeto fica em `/home/ubuntu/lia-assistente` e é executado pelo serviço/contêiner Docker Compose `bot`/`lia-bot`. A pasta é o diretório ativo da aplicação, não um segundo bot. Repositório espelho: `/home/ubuntu/lia-sync-repo`.
+
 ## Novidades da Versão 2.5.0 — API Pública v1, Integrações no Painel, Bases Inteligentes e White-Label 100%
 
 - **API Pública `/api/v1/*` e Chaves/Webhooks no Painel:** geração de Chaves de API (`lia_live_...` com escopos `read`, `write`, `ai`), Webhooks de Saída com assinatura HMAC-SHA256 (`x-lia-signature`) e proteção SSRF, além de guia n8n integrado na aba **Integrações**. Consulte [`docs/release-2.5.0.md`](docs/release-2.5.0.md).

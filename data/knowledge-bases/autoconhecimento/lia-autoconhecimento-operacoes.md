@@ -1,7 +1,12 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 2.5
+Versão do Sistema: 2.5.0
+
+### Implantação na VPS
+- A aplicação ativa está em `/home/ubuntu/lia-assistente`; o serviço Compose `bot` cria o contêiner `lia-bot`.
+- `lia-assistente` é o diretório de arquivos/configuração, não uma segunda instância do bot. O repositório de espelho usado no deploy fica em `/home/ubuntu/lia-sync-repo`.
+- Para mudanças somente documentais/testes, não é necessário recriar ou reiniciar `lia-bot`; preservar `.env`, `data/` e `backups/` durante atualizações.
 
 > **Finalidade:** Base exclusiva do Copiloto Executivo para autoconhecimento da Lia sobre o motor Lia Sync, capacidades, ferramentas ativas, painel de operações e limites operacionais. Nunca deve ser exposta a clientes externos.
 

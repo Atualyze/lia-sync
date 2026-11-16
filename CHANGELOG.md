@@ -225,3 +225,10 @@ Foram adicionados hooks de autenticação injetável para testes e cobertura de 
 ## 0.3.3 — suporte a OpenRouter e modelos gratuitos
 
 Foi adicionado suporte ao provedor OpenRouter (`AI_PROVIDER=openrouter`), permitindo o uso de modelos de IA gratuitos (`google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.3-70b-instruct:free`, etc.) e pagos com chave unificada. O provedor integra-se nativamente à cadeia de resiliência e circuit breaker com fallback automático entre provedores (`gemini`, `openrouter`, `qwen`, `openai`).
+
+## 2.5.1 - Documentacao operacional e correcao de metadados
+
+- Documentado que /home/ubuntu/lia-assistente e o diretorio ativo e lia-bot e o container do servico Compose bot; o espelho fica em /home/ubuntu/lia-sync-repo.
+- Atualizada a base de autoconhecimento com os caminhos operacionais e a versao completa 2.5.0.
+- Corrigida a versao de metadata.json para corresponder a package.json (2.5.0).
+- Ajuste documental e de metadados; sem alteracao do comportamento do bot.
