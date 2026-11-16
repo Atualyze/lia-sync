@@ -219,6 +219,45 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     await store.flush?.().catch(() => {});
     return json(res, 200, { ok: true, human: session.human });
   }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/finish') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
+    const session = store.get(body.phone);
+    if (!session || !session.human) {
+      // Jǭ em modo bot (ou sessǜo inexistente): nada a concluir, aǜo duplicada Ǹ no-op.
+      return json(res, 200, { ok: true, alreadyBot: true });
+    }
+    // Devolve para o bot usando a mesma limpeza da rota /mode (handoffAt, notificações e lembretes),
+    // sem notificar reativação: aqui o atendimento está sendo concluído, não retomado.
+    session.human = false;
+    session.humanSource = null;
+    session.handoffAt = null;
+    session.handoffNotified = false;
+    session.handoffReminder1Sent = false;
+    session.handoffReminder60Sent = false;
+    session.inactivityClosed = false;
+    session.handoffReminderAt = null;
+    session.handoffReason = null;
+    const finishedAt = new Date().toISOString();
+    session.finishedAt = finishedAt;
+    session.finishReason = 'atendimento finalizado pelo painel';
+    // Limpa pending de reativação apontando para este contato e rascunho pendente da sessão, se houver.
+    const selfSession = store.get?.(OWNER_SELF_KEY);
+    if (selfSession?.pendingReactivation && String(selfSession.pendingReactivation.phone) === String(body.phone)) {
+      selfSession.pendingReactivation = null;
+      selfSession.updatedAt = finishedAt;
+      store.markDirty();
+    }
+    if (session.pendingDraft !== undefined) session.pendingDraft = null;
+    if (!Array.isArray(session.history)) session.history = [];
+    const note = 'Atendimento finalizado — Lia retomou o atendimento';
+    session.history.push({ role: 'assistant', content: note, systemNote: true, createdAt: finishedAt });
+    session.updatedAt = finishedAt;
+    store.markDirty();
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, human: false, alreadyBot: false, finishedAt });
+  }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/clear') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }

@@ -1397,6 +1397,7 @@ function updateChatScrollButton() {
 
 function renderChat({ forceRender = false } = {}) {
   const session = selectedSession();
+  syncFinishButton();
   if (!session) {
     state.lastSelectedPhone = null;
     state.lastRenderedChatSig = '';
@@ -2969,6 +2970,43 @@ async function refresh({ background = false } = {}) {
   }
 }
 
+function syncFinishButton() {
+  const btn = document.getElementById('chat-finish-btn');
+  if (!btn) return;
+  const sess = selectedSession();
+  // Regra: chat jǭ em modo bot => botҳo desabilitado (nada a concluir).
+  btn.disabled = !sess || !sess.human;
+  btn.title = sess && sess.human ? 'Concluir atendimento' : 'Atendimento jǭ em modo automǭtico';
+}
+
+async function finishSession() {
+  if (!state.selected) return;
+  const sess = selectedSession();
+  if (!sess || !sess.human) {
+    showToast({ title: 'Nada a Concluir', message: 'Esta conversa jǭ estǭ em modo automǭtico (Lia).', type: 'info' });
+    return;
+  }
+  const who = sess.displayName || sess.phoneFormatted || sess.phone;
+  // Confirmação simples, uma única vez, antes de qualquer ação.
+  if (!window.confirm(`Concluir o atendimento de ${who}? A Lia voltarǥ a responder automaticamente.`)) return;
+  const btn = document.getElementById('chat-finish-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api('/api/dashboard/finish', { method: 'POST', body: JSON.stringify({ phone: state.selected }) });
+    if (!result.ok) throw new Error(result.error || 'Falha ao concluir atendimento');
+    await refresh();
+    showToast({
+      title: 'Atendimento Conclu��do',
+      message: `O atendimento de ${who} foi finalizado e a Lia retomou o contato.`,
+      type: 'success'
+    });
+  } catch (err) {
+    showToast({ title: 'Falha ao Concluir', message: err.message, type: 'error' });
+  } finally {
+    syncFinishButton();
+  }
+}
+
 async function setMode(mode) {
   if (!state.selected) return;
   const toggleBtn = $('#toggle-mode');
@@ -3408,6 +3446,7 @@ function startDashboard() {
   };
   $('#chat-more-menu')?.addEventListener('click', openChatHeaderMenu);
   $('#chat-more-btn')?.addEventListener('click', openChatHeaderMenu);
+  $('#chat-finish-btn')?.addEventListener('click', finishSession);
 
   // Composer Attach (+) Integrated WhatsApp Panel
   $('#composer-attach-btn')?.addEventListener('click', (e) => {
