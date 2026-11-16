@@ -710,10 +710,11 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
       this.remoteError = this.remoteError || 'Leitura inicial do estado Supabase não foi confirmada.';
       return;
     }
+    const snapshot = { revision: this.revision, active: this.active, draft: this.draft, history: this.history.slice(), updatedAt: this.updatedAt };
     const remote = (async () => {
       try {
-        await this.client.upsert('bot_config_state', [{ id: true, revision: this.revision, active_config: this.active, draft_config: this.draft }], 'id');
-        const rawRows = this.history.filter(item => item.snapshot).map(item => ({ revision: item.revision, action: item.action === 'draft_updated' ? 'draft_updated' : item.action === 'rollback' ? 'rollback' : 'published', source_revision: item.sourceRevision || null, snapshot: item.snapshot }));
+        await this.client.upsert('bot_config_state', [{ id: true, revision: snapshot.revision, active_config: snapshot.active, draft_config: snapshot.draft, updated_at: snapshot.updatedAt || null }], 'id');
+        const rawRows = snapshot.history.filter(item => item.snapshot).map(item => ({ revision: item.revision, action: item.action === 'draft_updated' ? 'draft_updated' : item.action === 'rollback' ? 'rollback' : 'published', source_revision: item.sourceRevision || null, snapshot: item.snapshot }));
         const deduped = new Map();
         for (const r of rawRows) deduped.set(`${r.revision}:${r.action}`, r);
         const rows = [...deduped.values()];
@@ -721,7 +722,9 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
         this.persistence = 'supabase'; this.remoteError = null;
       } catch (error) { this.persistence = 'fallback'; this.remoteError = error.message; this.logger.warn?.(`[supabase] configuração não gravada; fallback local preservado: ${error.message}`); }
     })();
-    await Promise.all([local, remote]);
+    // Serializa o flush remoto na mesma ordem do local: upserts Supabase nunca correm fora de ordem.
+    this.remoteSaving = (this.remoteSaving || Promise.resolve()).catch(() => {}).then(() => remote);
+    await Promise.all([local, this.remoteSaving]);
   }
 }
 

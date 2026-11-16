@@ -2435,7 +2435,7 @@ async function saveAdminDraft(showMessage = false) {
   state.adminSaveInFlight = true;
   let result;
   try {
-    result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify(payload) });
+    result = await api('/api/admin/config/draft', { method: 'PATCH', body: JSON.stringify({ ...payload, baseRevision: state.adminConfig?.revision }) });
   } finally {
     state.adminSaveInFlight = false;
   }
@@ -2486,7 +2486,7 @@ async function publishAdminChanges() {
     if (state.adminConfig && state.adminFormDirty) {
       await saveAdminDraft();
     }
-    const result = await api('/api/admin/config/publish', { method: 'POST', body: '{}' });
+    const result = await api('/api/admin/config/publish', { method: 'POST', body: JSON.stringify({ baseRevision: state.adminConfig?.revision }) });
     if (!result.ok) throw new Error((result.errors || []).join(' '));
     state.adminConfig = result.snapshot;
     renderAdmin({ force: true });
@@ -3771,7 +3771,7 @@ function startDashboard() {
     if (!window.confirm(`Restaurar e publicar imediatamente a revisão v${rev}?`)) return;
     btn.disabled = true;
     try {
-      const result = await api('/api/admin/config/rollback', { method: 'POST', body: JSON.stringify({ revision: rev }) });
+      const result = await api('/api/admin/config/rollback', { method: 'POST', body: JSON.stringify({ revision: rev, baseRevision: state.adminConfig?.revision }) });
       if (!result.ok) throw new Error((result.errors || []).join(' '));
       state.adminConfig = result.snapshot;
       renderAdmin({ force: true });

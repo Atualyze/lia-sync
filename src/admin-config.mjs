@@ -349,7 +349,17 @@ export class AdminConfigStore {
     };
   }
 
-  async updateDraft(patch = {}, actor = 'dashboard') {
+  // Concorrência: `baseRevision` opcional — se enviado e diferente da revisão atual,
+  // a configuração mudou por outra sessão e a ação é rejeitada sem alterar estado.
+  _staleBaseRevision(baseRevision) {
+    if (baseRevision === undefined || baseRevision === null || baseRevision === '') return null;
+    if (Number(baseRevision) === Number(this.revision)) return null;
+    return ['config_alterada_por_outro_usuário: a configuração mudou no servidor. Recarregue e tente novamente.'];
+  }
+
+  async updateDraft(patch = {}, actor = 'dashboard', baseRevision = undefined) {
+    const stale = this._staleBaseRevision(baseRevision);
+    if (stale) return { ok: false, errors: stale };
     const previousDraft = clone(this.draft);
     const previousUpdatedAt = this.updatedAt;
     const previousHistory = clone(this.history);
@@ -376,7 +386,9 @@ export class AdminConfigStore {
     return { ok: true, snapshot: this.snapshot(), persistence: this.persistence || 'fallback', persistenceError: this.remoteError || null };
   }
 
-  async publish(actor = 'dashboard') {
+  async publish(actor = 'dashboard', baseRevision = undefined) {
+    const stale = this._staleBaseRevision(baseRevision);
+    if (stale) return { ok: false, errors: stale };
     if (!String(this.draft.ai?.activeModel || '').trim() && String(this.active.ai?.activeModel || '').trim()) {
       this.draft.ai.activeModel = this.active.ai.activeModel;
     }
@@ -388,11 +400,13 @@ export class AdminConfigStore {
     this.updatedAt = new Date(this.now()).toISOString();
     this.history.push({ revision: this.revision, action: 'published', actor, at: this.updatedAt, snapshot: clone(this.active) });
     this.history = this.history.slice(-30);
-    await this.flush();
-    if (this.client?.enabled && this.persistence !== 'supabase') {
+    try {
+      await this.flush();
+      if (this.client?.enabled && this.persistence !== 'supabase') throw new Error(this.remoteError || 'persistência indisponível');
+    } catch (error) {
       Object.assign(this, previous);
       await this.flush().catch(() => {});
-      return { ok: false, errors: [`Não foi possível confirmar a publicação no Supabase: ${this.remoteError || 'persistência indisponível'}`] };
+      return { ok: false, errors: [`Não foi possível confirmar a persistência da publicação: ${error.message}`] };
     }
     return { ok: true, snapshot: this.snapshot() };
   }
@@ -416,7 +430,9 @@ export class AdminConfigStore {
     return { ok: true, snapshot: this.snapshot() };
   }
 
-  async rollback(revision, actor = 'dashboard') {
+  async rollback(revision, actor = 'dashboard', baseRevision = undefined) {
+    const stale = this._staleBaseRevision(baseRevision);
+    if (stale) return { ok: false, errors: stale };
     const target = this.history.find(item => Number(item.revision) === Number(revision) && item.snapshot);
     if (!target) return { ok: false, errors: ['Versão não encontrada para rollback.'] };
     const previous = { active: clone(this.active), draft: clone(this.draft), revision: this.revision, updatedAt: this.updatedAt, history: clone(this.history) };
@@ -425,11 +441,13 @@ export class AdminConfigStore {
     this.revision += 1;
     this.updatedAt = new Date(this.now()).toISOString();
     this.history.push({ revision: this.revision, action: 'rollback', actor, at: this.updatedAt, sourceRevision: revision });
-    await this.flush();
-    if (this.client?.enabled && this.persistence !== 'supabase') {
+    try {
+      await this.flush();
+      if (this.client?.enabled && this.persistence !== 'supabase') throw new Error(this.remoteError || 'persistência indisponível');
+    } catch (error) {
       Object.assign(this, previous);
       await this.flush().catch(() => {});
-      return { ok: false, errors: [`Não foi possível confirmar o rollback no Supabase: ${this.remoteError || 'persistência indisponível'}`] };
+      return { ok: false, errors: [`Não foi possível confirmar a persistência do rollback: ${error.message}`] };
     }
     return { ok: true, snapshot: this.snapshot() };
   }
