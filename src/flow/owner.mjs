@@ -791,9 +791,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           isOwner: true,
           telemetry
         });
-        const sys = sSelf.lastAnalyzedDocument
+        const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nQuando precisar consultar dados, histórico, CRM, bases, planilhas ou executar qualquer ação, emita a chamada em "tool_calls" imediatamente. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
+        const sys = (sSelf.lastAnalyzedDocument
           ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
-          : baseSys;
+          : baseSys) + copilotToolRule;
 
         const result = await ai?.askAI?.({
           system: sys,
@@ -868,7 +869,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
 
           if (toolCallsToRun.length === 0) {
-            const claimedLookup = /(?:consultando|verificando|checando|buscando|olhando)\s+(?:o\s+)?(?:hist[oó]rico|dados|contato|conversa|crm)/i.test(rawRep);
+            const claimedLookup = /(?:consultando|verificando|checando|buscando|olhando|puxando)\s+(?:agora\s+)?(?:o\s+)?(?:cadastro|hist[oó]rico|dados|contato|conversa|crm)/i.test(rawRep);
             const rawDigits = cleanCommand.match(/\d{8,14}/)?.[0] || rawRep.match(/\d{8,14}/)?.[0] || '';
             if ((claimedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
               toolCallsToRun.push({
@@ -1215,6 +1216,23 @@ ${errMsg}`;
           if (r.sentViaWhatsApp) return recordSelfTurn(filterReply(`📁 *Arquivo enviado no WhatsApp:* ${r.fileName}`, { isCopilot: true }).text);
           const filesList = (r.files || []).slice(0, 8).map(f => `• *${f.name}* (\`${f.id}\`)`).join('\n');
           return recordSelfTurn(filterReply(`📁 *Arquivos no Google Drive:*\n\n${filesList || 'Nenhum arquivo encontrado.'}`, { isCopilot: true }).text);
+        }
+
+        if (toolOutputs.length > 0) {
+          const synthRes = await ai?.askAI?.({
+            system: `${sys}\n\n[TOOL_RESULTS_JSON]\nAs ferramentas solicitadas já foram executadas. Use EXCLUSIVAMENTE os resultados reais abaixo para responder ao responsável de forma direta, clara e completa (nunca diga "vou consultar" ou "só um instante").\n${JSON.stringify(toolOutputs)}\n[/TOOL_RESULTS_JSON]`,
+            history: recentHistory,
+            userText: cleanCommand,
+            botConfig,
+            isOwner: true,
+            deadline: aiDeadline
+          }).catch(() => null);
+          const synthReply = String(synthRes?.reply || '').trim();
+          if (synthReply) {
+            return recordSelfTurn(filterReply(synthReply, { isCopilot: true }).text);
+          }
+          const fallbackSummary = toolOutputs.map(t => `• *${t.tool}:* ${t.error ? `Erro (${t.error})` : JSON.stringify(t.result).slice(0, 600)}`).join('\n');
+          return recordSelfTurn(filterReply(`Resultado da consulta:\n\n${fallbackSummary}`, { isCopilot: true }).text);
         }
 
         let rawReply = result?.reply;
