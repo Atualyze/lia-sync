@@ -10,6 +10,7 @@ import {
   buildFriendlyMessage, humanizeContactMessage, applyAudioCorrection, extractDispatchIntent
 } from './text.mjs';
 import { createPdfDelivery } from './pdf.mjs';
+import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
@@ -43,6 +44,13 @@ export async function handleOwnerSession({
 
         // Envia o PDF gerado como documento real no WhatsApp (o texto de confirmação continua no chat)
         const deliverGeneratedPdf = createPdfDelivery({ whatsapp, rawItem, getHumanPhone, logger });
+
+        const reactivationReply = await handlePendingReactivationReply({
+          store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner
+        });
+        if (reactivationReply) {
+          return recordSelfTurn(filterReply(reactivationReply, { isCopilot: true }).text);
+        }
 
 
 

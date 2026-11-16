@@ -28,10 +28,18 @@ export function notifyReactivationToInternalChat({ store, session, phone }) {
         'Posso dar continuidade no processo de qualificação e dúvidas a partir daqui ou você prefere assumir algo mais?'
       ].join('\n');
 
+  const nowIso = new Date().toISOString();
   const selfSession = store.get?.(OWNER_SELF_KEY);
   if (selfSession && Array.isArray(selfSession.history)) {
-    selfSession.history.push({ role: 'model', text: message, createdAt: new Date().toISOString() });
-    selfSession.updatedAt = new Date().toISOString();
+    selfSession.history.push({ role: 'assistant', content: message, text: message, createdAt: nowIso });
+    selfSession.pendingReactivation = {
+      phone: String(phone || ''),
+      contactLabel,
+      unanswered,
+      snippet,
+      createdAt: nowIso
+    };
+    selfSession.updatedAt = nowIso;
     store.markDirty?.();
   }
 
