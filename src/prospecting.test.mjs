@@ -114,14 +114,74 @@ test('prospecting optout: detects opt-out, suppresses phone and marks lead opted
   assert.equal(due.length, 0);
 });
 
+const PROSPECT_TZ = 'America/Fortaleza';
+
+function fortalezaParts(date) {
+  const map = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: PROSPECT_TZ,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).formatToParts(date).map(part => [part.type, part.value]));
+  const hour = map.hour === '24' ? 0 : Number(map.hour);
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour,
+    minute: Number(map.minute),
+    second: Number(map.second)
+  };
+}
+
+function fortalezaLocalToDate(year, month, day, hour, minute) {
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const offsetAt = instant => {
+    const shown = fortalezaParts(new Date(instant));
+    return Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute, shown.second) - instant;
+  };
+  let utc = asUtc - offsetAt(asUtc);
+  utc = asUtc - offsetAt(utc);
+  return new Date(utc);
+}
+
+/** Tick clock on or after `from`, always inside Mon–Sat 09:00–18:00 Fortaleza. */
+function businessTickNow(from = new Date()) {
+  const start = new Date(from);
+  if (isWithinBusinessWindow({ now: start, timeZone: PROSPECT_TZ })) return start;
+  const local = fortalezaParts(start);
+  for (let add = 0; add < 8; add++) {
+    const day = new Date(Date.UTC(local.year, local.month - 1, local.day + add));
+    const candidate = fortalezaLocalToDate(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), 14, 0);
+    if (candidate.getTime() >= start.getTime() && isWithinBusinessWindow({ now: candidate, timeZone: PROSPECT_TZ })) {
+      return candidate;
+    }
+  }
+  throw new Error('no open prospecting window within 8 days');
+}
+
 test('prospecting guards & scheduler: blocks outside business hours or suppressed, sends when allowed', async () => {
   // Sunday in America/Fortaleza (2026-11-15T15:00:00Z is Sunday 12:00 BRT)
   const sundayNoon = new Date('2026-11-15T15:00:00.000Z');
-  assert.equal(isWithinBusinessWindow({ now: sundayNoon, timeZone: 'America/Fortaleza' }), false);
+  assert.equal(isWithinBusinessWindow({ now: sundayNoon, timeZone: PROSPECT_TZ }), false);
 
-  // Monday 14:00 BRT (2026-11-16T17:00:00Z)
+  // Monday 14:00 Fortaleza (2026-11-16T17:00:00Z) stays inside the window on any real clock.
   const mondayAfternoon = new Date('2026-11-16T17:00:00.000Z');
-  assert.equal(isWithinBusinessWindow({ now: mondayAfternoon, timeZone: 'America/Fortaleza' }), true);
+  assert.equal(isWithinBusinessWindow({ now: mondayAfternoon, timeZone: PROSPECT_TZ }), true);
+
+  // Outside the window, the tick moves forward to the next open 14:00 (never a fixed date that expires).
+  const saturdayNight = new Date('2026-11-14T22:30:00.000Z');
+  const advanced = businessTickNow(saturdayNight);
+  assert.ok(advanced.getTime() >= saturdayNight.getTime());
+  assert.equal(advanced.toISOString(), '2026-11-16T17:00:00.000Z');
+  assert.equal(isWithinBusinessWindow({ now: advanced, timeZone: PROSPECT_TZ }), true);
+  const earlyMonday = new Date('2026-11-16T10:00:00.000Z');
+  assert.equal(businessTickNow(earlyMonday).toISOString(), mondayAfternoon.toISOString());
+  assert.equal(businessTickNow(mondayAfternoon).toISOString(), mondayAfternoon.toISOString());
 
   const leadStore = new ProspectLeadStore();
   const list = await leadStore.createList({ name: 'Lista Teste', status: 'active', dailyCap: 10 });
@@ -129,6 +189,8 @@ test('prospecting guards & scheduler: blocks outside business hours or suppresse
     { phone: '5585999991111', name: 'Ana' },
     { phone: '5585988882222', name: 'Bruno' }
   ]);
+  const tickNow = businessTickNow(new Date());
+  assert.equal(isWithinBusinessWindow({ now: tickNow, timeZone: PROSPECT_TZ }), true);
 
   const campaignStore = {
     isSuppressed: async phone => phone === '5585999991111'
@@ -139,8 +201,8 @@ test('prospecting guards & scheduler: blocks outside business hours or suppresse
     leadStore,
     campaignStore,
     send: async (phone, text) => { sent.push({ phone, text }); },
-    now: mondayAfternoon,
-    config: { timeZone: 'America/Fortaleza' }
+    now: tickNow,
+    config: { timeZone: PROSPECT_TZ }
   });
 
   assert.equal(summary.sent, 1);
@@ -151,7 +213,7 @@ test('prospecting guards & scheduler: blocks outside business hours or suppresse
   // Fail-closed when suppression lookup throws
   const failingGuard = await evaluateProspectGuards({
     lead: { phone: '5585977773333' },
-    now: mondayAfternoon,
+    now: tickNow,
     campaignStore: { isSuppressed: async () => { throw new Error('db_down'); } }
   });
   assert.equal(failingGuard.allowed, false);
