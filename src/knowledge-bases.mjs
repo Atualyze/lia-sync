@@ -73,21 +73,56 @@ export async function ensureKbDir(dir = DEFAULT_KB_DIR) {
   await fs.mkdir(dir, { recursive: true });
 }
 
+function isKbDocument(fileName) {
+  const lower = String(fileName || '').toLowerCase();
+  if (lower === 'readme.md') return false;
+  return lower.endsWith('.md') || lower.endsWith('.txt');
+}
+
+async function walkKbFiles(rootDir, currentDir = rootDir, acc = []) {
+  const entries = await fs.readdir(currentDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      await walkKbFiles(rootDir, fullPath, acc);
+    } else if (entry.isFile() && isKbDocument(entry.name)) {
+      const relPath = path.relative(rootDir, fullPath);
+      const folder = path.dirname(relPath) === '.' ? '' : path.dirname(relPath).replace(/\\/g, '/');
+      acc.push({ fullPath, fileName: entry.name, relPath, folder });
+    }
+  }
+  return acc;
+}
+
+function walkKbFilesSync(rootDir, currentDir = rootDir, acc = []) {
+  const entries = fsSync.readdirSync(currentDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      walkKbFilesSync(rootDir, fullPath, acc);
+    } else if (entry.isFile() && isKbDocument(entry.name)) {
+      const relPath = path.relative(rootDir, fullPath);
+      const folder = path.dirname(relPath) === '.' ? '' : path.dirname(relPath).replace(/\\/g, '/');
+      acc.push({ fullPath, fileName: entry.name, relPath, folder });
+    }
+  }
+  return acc;
+}
+
 export async function listKnowledgeBases(dir = DEFAULT_KB_DIR) {
   try {
     await ensureKbDir(dir);
-    const files = await fs.readdir(dir);
+    const files = await walkKbFiles(dir);
     const bases = [];
-    for (const f of files) {
-      if (!f.endsWith('.md') && !f.endsWith('.txt')) continue;
-      const id = f.replace(/\.(md|txt)$/i, '');
-      const fullPath = path.join(dir, f);
+    for (const { fullPath, fileName, folder } of files) {
+      const id = fileName.replace(/\.(md|txt)$/i, '');
       const stat = await fs.stat(fullPath);
       const content = await fs.readFile(fullPath, 'utf-8');
       const meta = extractMetaFromMarkdown(id, content);
       bases.push({
         ...meta,
-        fileName: f,
+        folder,
+        fileName,
         sizeBytes: stat.size,
         updatedAt: stat.mtime.toISOString()
       });
@@ -106,12 +141,12 @@ export function listKnowledgeBasesSync(dir = DEFAULT_KB_DIR) {
       : (fsSync.existsSync(CWD_KB_DIR) ? CWD_KB_DIR : FALLBACK_KB_DIR);
     if (!fsSync.existsSync(targetDir)) return [];
 
-    const files = fsSync.readdirSync(targetDir).filter(f => f.endsWith('.md') || f.endsWith('.txt'));
+    const files = walkKbFilesSync(targetDir);
     const sigParts = [];
-    for (const f of files) {
+    for (const { fullPath, relPath } of files) {
       try {
-        const st = fsSync.statSync(path.join(targetDir, f));
-        sigParts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
+        const st = fsSync.statSync(fullPath);
+        sigParts.push(`${relPath}:${st.size}:${Math.floor(st.mtimeMs)}`);
       } catch {}
     }
     const signature = sigParts.join('|');
@@ -120,16 +155,16 @@ export function listKnowledgeBasesSync(dir = DEFAULT_KB_DIR) {
     }
 
     const items = [];
-    for (const f of files) {
+    for (const { fullPath, fileName, folder } of files) {
       try {
-        const id = f.replace(/\.(md|txt)$/i, '');
-        const fullPath = path.join(targetDir, f);
+        const id = fileName.replace(/\.(md|txt)$/i, '');
         const raw = fsSync.readFileSync(fullPath, 'utf-8');
         const content = sanitizeKbContent(raw);
         const meta = extractMetaFromMarkdown(id, content);
         items.push({
           ...meta,
-          fileName: f,
+          folder,
+          fileName,
           content
         });
       } catch {}
