@@ -30,6 +30,7 @@ export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, inte
     }
   }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/publish') { const result = await adminConfig.publish('dashboard'); return json(res, result.ok ? 200 : 400, result); }
+  if (req.method === 'POST' && u.pathname === '/api/admin/config/discard') { const result = await adminConfig.discardDraft('dashboard'); return json(res, result.ok ? 200 : 400, result); }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/rollback') { const body = await readBody(req); const result = await adminConfig.rollback(body.revision, 'dashboard'); return json(res, result.ok ? 200 : 400, result); }
 
   if (integrationsStore && u.pathname.startsWith('/api/admin/integrations/')) {

@@ -397,6 +397,25 @@ export class AdminConfigStore {
     return { ok: true, snapshot: this.snapshot() };
   }
 
+  async discardDraft(actor = 'dashboard') {
+    const previous = { draft: clone(this.draft), updatedAt: this.updatedAt, history: clone(this.history) };
+    this.draft = clone(this.active);
+    this.updatedAt = new Date(this.now()).toISOString();
+    this.history.push({ revision: this.revision, action: 'draft_discarded', actor, at: this.updatedAt });
+    this.history = this.history.slice(-30);
+    try {
+      await this.flush();
+      if (this.client?.enabled && this.persistence !== 'supabase') throw new Error(this.remoteError || 'Supabase não confirmou a gravação.');
+    } catch (error) {
+      this.draft = previous.draft;
+      this.updatedAt = previous.updatedAt;
+      this.history = previous.history;
+      await this.flush().catch(() => {});
+      return { ok: false, errors: [`Não foi possível descartar o rascunho: ${error.message}`] };
+    }
+    return { ok: true, snapshot: this.snapshot() };
+  }
+
   async rollback(revision, actor = 'dashboard') {
     const target = this.history.find(item => Number(item.revision) === Number(revision) && item.snapshot);
     if (!target) return { ok: false, errors: ['Versão não encontrada para rollback.'] };

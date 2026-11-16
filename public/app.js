@@ -2501,6 +2501,27 @@ async function publishAdminChanges() {
   }
 }
 
+async function discardAdminDraft() {
+  if (!state.adminConfig) return;
+  const cancelBtn = $('#global-cancel-btn');
+  setButtonLoading(cancelBtn, true, 'Cancelando…');
+  try {
+    const result = await api('/api/admin/config/discard', { method: 'POST', body: '{}' });
+    if (!result.ok) throw new Error((result.errors || []).join(' ') || 'Falha ao descartar rascunho.');
+    state.adminConfig = result.snapshot;
+    state.adminFormDirty = false;
+    renderAdmin({ force: true });
+    adminFeedback('Rascunho descartado. Configurações restauradas para a versão publicada.', 'success');
+    if (state.view === 'tools') await renderTools();
+    if (state.view === 'overview') await renderOverview();
+  } catch (error) {
+    adminFeedback(`Erro ao cancelar rascunho: ${error.message}`, 'error');
+    opsFeedback('tools-feedback', `Erro ao cancelar rascunho: ${error.message}`, 'error');
+  } finally {
+    setButtonLoading(cancelBtn, false);
+  }
+}
+
 const ROLE_LEVEL = { viewer: 0, operator: 1, admin: 2 };
 function syncModeSelectorVisibility() {
   const level = ROLE_LEVEL[state.role] ?? 0;
@@ -3693,6 +3714,7 @@ function startDashboard() {
 
   $('#admin-publish')?.addEventListener('click', publishAdminChanges);
   $('#global-publish-btn')?.addEventListener('click', publishAdminChanges);
+  $('#global-cancel-btn')?.addEventListener('click', discardAdminDraft);
 
   $('#admin-reset-draft')?.addEventListener('click', async () => {
     if (!state.adminConfig || !window.confirm('Descartar o rascunho e voltar à versão publicada?')) return;
