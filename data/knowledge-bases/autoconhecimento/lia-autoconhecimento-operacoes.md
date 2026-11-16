@@ -53,8 +53,13 @@ Ela opera em **dois modos completamente distintos**:
 - **Retomada:** Quando o responsável assume no painel ou responde manualmente, a Lia respeita o Modo Humano até ser reativada no painel (ou pelo próprio cliente, se a opção `allowClientResume` estiver habilitada).
 
 ### 2.6. Roteamento de Modelos, Fallback e Orçamento
-- O motor escolhe o modelo de IA conforme complexidade/contexto entre os provedores configurados (ex.: Gemini e OpenRouter).
+- O motor escolhe o modelo de IA conforme complexidade/contexto entre os provedores configurados (**Gemini**, **Cloudflare Workers AI** e **OpenRouter**).
 - Possui **fallback automático** entre modelos, *circuit breaker* contra instabilidades e **controle de orçamento mensal** (*budget gate*) que bloqueia chamadas caso um teto configurado seja atingido.
+
+### 2.7. API Pública, Webhooks de Saída e Painel
+- **API Pública (`/api/v1/*`):** Permite integrar n8n, Make e sistemas externos com autenticação por **Chaves de API** (`lia_live_...`, geradas/revogadas na aba **Integrações** do painel com escopos `read`, `write` e `ai`).
+- **Webhooks de Saída:** Dispara eventos (`message.received`, `handoff.triggered`, `lead.updated`) assinados com HMAC-SHA256 (`x-lia-signature`) e proteção contra SSRF.
+- **Rascunho e Publicação:** Alterações no painel ficam em rascunho com opção de **Publicar** ou **Cancelar/Descartar** na barra flutuante antes de ir para produção.
 
 ---
 
