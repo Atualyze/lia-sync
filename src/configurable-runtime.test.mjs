@@ -45,6 +45,7 @@ test('autosave com catálogo vazio não apaga o modelo ativo', async () => {
   const result = await store.updateDraft({ ai: { activeModel: '' } });
   assert.equal(result.ok, true);
   assert.equal(store.draft.ai.activeModel, model);
+  await store.updateDraft({ business: { greeting: 'autosave preserva modelo' } });
   assert.equal((await store.publish('test')).ok, true);
 });
 

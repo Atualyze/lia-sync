@@ -6,6 +6,21 @@ import path from 'node:path';
 import { AdminConfigStore, clone, normalizeBotConfig } from './admin-config.mjs';
 import { SupabaseAdminConfigStore } from './supabase-runtime.mjs';
 
+test('publish sem diferencas nao incrementa revisao nem cria historico', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-admin-publish-noop-'));
+  try {
+    const store = new AdminConfigStore(path.join(dir, 'bot-config.json'));
+    await store.load();
+    const before = { revision: store.revision, history: clone(store.history), updatedAt: store.updatedAt };
+    const result = await store.publish('test');
+    assert.equal(result.ok, false);
+    assert.equal(result.noChanges, true);
+    assert.equal(store.revision, before.revision);
+    assert.deepEqual(store.history, before.history);
+    assert.equal(store.updatedAt, before.updatedAt);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
 
 test('publish com falha de flush local reverte estado (revision, active, draft, history)', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-admin-publish-flush-'));
@@ -39,6 +54,7 @@ test('rollback com falha de flush local reverte estado anterior', async () => {
   try {
     const store = new AdminConfigStore(path.join(dir, 'bot-config.json'));
     await store.load();
+    await store.updateDraft({ business: { greeting: 'rollback setup' } });
     const published = await store.publish('test');
     assert.equal(published.ok, true);
     const before = { revision: store.revision, active: clone(store.active), history: clone(store.history) };
@@ -102,6 +118,7 @@ test('SupabaseAdminConfigStore persiste updated_at no upsert de bot_config_state
     });
     await store.load();
     writes.length = 0;
+    await store.updateDraft({ business: { greeting: 'updated at test' } });
     const result = await store.publish('test');
     assert.equal(result.ok, true);
     const stateRows = writes.filter(item => item.table === 'bot_config_state').flatMap(item => item.rows);

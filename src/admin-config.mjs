@@ -389,6 +389,9 @@ export class AdminConfigStore {
   async publish(actor = 'dashboard', baseRevision = undefined) {
     const stale = this._staleBaseRevision(baseRevision);
     if (stale) return { ok: false, errors: stale };
+    if (JSON.stringify(this.active) === JSON.stringify(this.draft)) {
+      return { ok: false, errors: ['Não há alterações no rascunho para publicar.'], noChanges: true, snapshot: this.snapshot() };
+    }
     if (!String(this.draft.ai?.activeModel || '').trim() && String(this.active.ai?.activeModel || '').trim()) {
       this.draft.ai.activeModel = this.active.ai.activeModel;
     }

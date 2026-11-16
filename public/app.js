@@ -2180,6 +2180,13 @@ function updateSectionDiffBadges() {
   });
 
   const hasAnyDiff = JSON.stringify(active) !== JSON.stringify(draft);
+  for (const selector of ['#admin-publish', '#global-publish-btn']) {
+    const button = $(selector);
+    if (button) {
+      button.disabled = !hasAnyDiff;
+      button.title = hasAnyDiff ? 'Publicar alterações do rascunho' : 'Não há alterações para publicar';
+    }
+  }
   $('#admin-draft-badge')?.classList.toggle('hidden', !hasAnyDiff);
   const globalBanner = $('#global-draft-banner');
   if (globalBanner && state.role === 'admin') {

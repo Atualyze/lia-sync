@@ -81,6 +81,7 @@ test('publish falha fechado quando há cliente Supabase habilitado mas persistê
     store.client = { enabled: true };
     store.persistence = 'local';
     store.remoteError = 'remote unavailable';
+    store.draft.business.greeting = 'Supabase persist test';
     const beforeRevision = store.revision;
     const result = await store.publish('test');
     assert.equal(result.ok, false);
@@ -97,6 +98,7 @@ test('rollback falha fechado e restaura a revisão ativa anterior quando Supabas
   try {
     const store = new AdminConfigStore(path.join(dir, 'bot-config.json'));
     await store.load();
+    store.draft.business.greeting = 'Rollback setup change';
     const published = await store.publish('test');
     assert.equal(published.ok, true);
     const beforeRevision = store.revision;
