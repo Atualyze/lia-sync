@@ -8,7 +8,7 @@ import { splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
-import { sendText, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
+import { sendText, sendPresence, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -157,6 +157,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const deliver = (job) => store.enqueue(job.phone, async () => {
     const wasHuman = Boolean(store.get(job.phone)?.human);
     void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
+    if (!wasHuman) {
+      void sendPresence(deliveryTarget(job, getHumanPhone()), job.mediaType === 'audio' ? 'recording' : 'composing', 4000);
+    }
     const answer = await f.process({ ...job, messageId: job.keyId || '' });
     if (!wasHuman && store.get(job.phone)?.human) {
       void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
@@ -164,7 +167,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     if (!answer) return null;
     const parts = splitReply(formatOutgoingMessage(answer));
     for (let i = 0; i < parts.length; i++) {
-      if (i) await new Promise(resolve => setTimeout(resolve, 1000));
+      if (i) await new Promise(resolve => setTimeout(resolve, 600));
       await sendText(deliveryTarget(job, getHumanPhone()), parts[i]);
       broadcastBridgeEvent('bot_reply', {
         phone: job.phone,

@@ -173,6 +173,18 @@ export async function getMediaBase64(item) {
   }
 }
 
+export async function sendPresence(jid, presence = 'composing', delay = 1200) {
+  if (!jid || !config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return;
+  try {
+    await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+      signal: AbortSignal.timeout(Math.min(2500, providerTimeoutMs())),
+      body: JSON.stringify({ number: jid, presence, delay })
+    });
+  } catch {}
+}
+
 export async function sendText(jid, text, { retry = 2, onSent } = {}) {
   await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
@@ -180,14 +192,9 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
-      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        signal: AbortSignal.timeout(providerTimeoutMs()),
-        body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
-      }).catch(() => {});
+      void sendPresence(jid, 'composing', 900);
 
-      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, text, delay: Math.min(3000, 400 + 25 * text.length) }, 'text', jid);
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, text, delay: Math.min(1200, 250 + 10 * text.length) }, 'text', jid);
       j && remember(id);
       onSent?.(id);
       return j;
@@ -207,12 +214,7 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
-      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        signal: AbortSignal.timeout(providerTimeoutMs()),
-        body: JSON.stringify({ number: jid, presence: 'composing', delay: 500 })
-      }).catch(() => {});
+      void sendPresence(jid, 'composing', 900);
 
       const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, mediatype: 'document', mimetype, fileName, media: cleanB64, ...(caption ? { caption } : {}) }, 'document', jid);
       j && remember(id);
@@ -234,12 +236,7 @@ export async function sendImage(jid, { dataUrl, base64, mimetype = 'image/png', 
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
-      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        signal: AbortSignal.timeout(providerTimeoutMs()),
-        body: JSON.stringify({ number: jid, presence: 'composing', delay: 400 })
-      }).catch(() => {});
+      void sendPresence(jid, 'composing', 900);
 
       const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendMedia/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, mediatype: 'image', mimetype, media: cleanB64, ...(caption ? { caption } : {}) }, 'image', jid);
       j && remember(id);
@@ -260,12 +257,7 @@ export async function sendWhatsAppAudio(jid, audioBase64, { retry = 0, onSent } 
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
-      await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
-        signal: AbortSignal.timeout(providerTimeoutMs()),
-        body: JSON.stringify({ number: jid, presence: 'recording', delay: 500 })
-      }).catch(() => {});
+      void sendPresence(jid, 'recording', 1200);
 
       const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendWhatsAppAudio/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, audio: cleanB64, encoding: true }, 'audio', jid);
       j && remember(id);
