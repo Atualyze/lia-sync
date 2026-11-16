@@ -124,7 +124,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     const rawPhone = String(body.phone || '').trim();
-    const isInternalChat = isOwnerKey(rawPhone);
+    const isInternalChat = isOwnerKey(rawPhone) || /^[a-z0-9_]+_self$/i.test(rawPhone);
     if ((!isInternalChat && !validPhone(rawPhone)) || typeof body.text !== 'string' || !body.text.trim()) {
       return json(res, 400, { error: 'phone_and_text_required' });
     }
