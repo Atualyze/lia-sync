@@ -874,7 +874,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             if ((claimedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
               toolCallsToRun.push({
                 name: 'consultar_contato_ou_lead',
-                args: { query: rawDigits }
+                args: { phone: rawDigits }
               });
             }
           }
