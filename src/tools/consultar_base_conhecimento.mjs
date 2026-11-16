@@ -36,9 +36,22 @@ export const toolConsultarBaseConhecimento = {
 
       const rawFaq = (context.botConfig?.knowledge?.faq || FAQ || []).filter(item => item?.enabled !== false);
       const answer = findFaqInItems(termo, rawFaq);
-      return answer
-        ? { found: true, termo, resposta: answer }
-        : { found: false, termo, mensagem: 'Nenhum item espec\u00edfico encontrado na base.' };
+      if (answer) {
+        return { found: true, termo, resposta: answer };
+      }
+      if (!session.knowledgeBaseId) {
+        const matchedClientKb = findMatchingKnowledgeBaseSync(termo, undefined, { includeCopilotOnly: false, maxChars: 6000 });
+        if (matchedClientKb?.content) {
+          return {
+            found: true,
+            termo,
+            base: matchedClientKb.title,
+            versao: matchedClientKb.version,
+            resposta: matchedClientKb.content
+          };
+        }
+      }
+      return { found: false, termo, mensagem: 'Nenhum item espec\u00edfico encontrado na base.' };
     }
 
     const matchedKb = findMatchingKnowledgeBaseSync(termo, undefined, { includeCopilotOnly: true });

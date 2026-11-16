@@ -200,33 +200,152 @@ export function getKnowledgeBaseContentSync(id, dir = DEFAULT_KB_DIR) {
   return null;
 }
 
-export function findMatchingKnowledgeBaseSync(queryText = '', dir = DEFAULT_KB_DIR, { includeCopilotOnly = false } = {}) {
-  const norm = String(queryText || '')
+const SEARCH_STOPWORDS = new Set([
+  'para', 'como', 'mais', 'com', 'sem', 'por', 'que', 'uma', 'uns', 'umas',
+  'das', 'dos', 'isso', 'isto', 'aqui', 'sobre', 'voce', 'voces', 'cliente',
+  'clientes', 'atendimento', 'sistema', 'lia', 'pode', 'quer', 'quero',
+  'esta', 'estao', 'esse', 'essa', 'muito', 'tudo', 'onde', 'qual', 'quais',
+  'quando', 'porque', 'fazer', 'manual', 'conhecimento', 'suporte',
+  'operacional', 'base', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite'
+]);
+
+function normalizeSearchText(text = '') {
+  return String(text || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-  if (!norm || norm.length < 3) return null;
+}
 
-  const all = listKnowledgeBasesSync(dir);
-  for (const kb of all) {
-    if (kb.copilotOnly && !includeCopilotOnly) continue;
-    const idTokens = kb.id
-      .toLowerCase()
-      .split(/[-_]+/)
-      .filter(t => t.length >= 4);
-    const titleTokens = kb.title
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .split(/[^a-z0-9]+/)
-      .filter(t => t.length >= 4 && !['manual', 'conhecimento', 'suporte', 'operacional', 'sistema', 'base'].includes(t));
+function extractQueryTokens(text = '') {
+  const norm = normalizeSearchText(text);
+  const parts = norm.split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !SEARCH_STOPWORDS.has(t));
+  return [...new Set(parts)];
+}
 
-    const tokens = [...new Set([...idTokens, ...titleTokens])];
-    if (tokens.some(token => norm.includes(token))) {
-      return kb;
+function splitMarkdownSections(content = '') {
+  const lines = String(content || '').split(/\r?\n/);
+  const sections = [];
+  let currentHeading = '';
+  let currentBody = [];
+  for (const line of lines) {
+    if (/^##\s+/.test(line)) {
+      if (currentHeading || currentBody.length) {
+        const bodyText = currentBody.join('\n').trim();
+        sections.push({
+          heading: currentHeading,
+          body: bodyText,
+          normHeading: normalizeSearchText(currentHeading),
+          normBody: normalizeSearchText(bodyText)
+        });
+      }
+      currentHeading = line.replace(/^##\s+/, '').trim();
+      currentBody = [];
+    } else {
+      currentBody.push(line);
     }
   }
-  return null;
+  if (currentHeading || currentBody.length) {
+    const bodyText = currentBody.join('\n').trim();
+    sections.push({
+      heading: currentHeading,
+      body: bodyText,
+      normHeading: normalizeSearchText(currentHeading),
+      normBody: normalizeSearchText(bodyText)
+    });
+  }
+  return sections;
+}
+
+function scoreKbRelevance(kb, queryTokens) {
+  if (!queryTokens.length) return null;
+  const idAndTitleNorm = normalizeSearchText(`${kb.id.replace(/[-_]+/g, ' ')} ${kb.title}`);
+  const sections = splitMarkdownSections(kb.content);
+  const fullBodyNorm = normalizeSearchText(kb.content);
+
+  let docScore = 0;
+  let distinctMatches = 0;
+  let hasTitleMatch = false;
+
+  for (const token of queryTokens) {
+    if (token.length >= 4 && idAndTitleNorm.includes(token)) {
+      docScore += 8;
+      distinctMatches++;
+      hasTitleMatch = true;
+    } else if (sections.some(sec => sec.normHeading && sec.normHeading.includes(token))) {
+      docScore += 5;
+      distinctMatches++;
+    } else if (fullBodyNorm.includes(token)) {
+      docScore += 2.5;
+      distinctMatches++;
+    }
+  }
+
+  if (!hasTitleMatch && (distinctMatches < 2 || docScore < 7.5)) return null;
+
+  const scoredSections = [];
+  for (const sec of sections) {
+    let secScore = 0;
+    for (const token of queryTokens) {
+      if (sec.normHeading && sec.normHeading.includes(token)) secScore += 5;
+      else if (sec.normBody && sec.normBody.includes(token)) secScore += 2.5;
+    }
+    if (secScore > 0) scoredSections.push({ ...sec, score: secScore });
+  }
+
+  scoredSections.sort((a, b) => b.score - a.score);
+  return { kb, score: docScore, scoredSections };
+}
+
+function buildRelevantSnippet(kb, scoredSections, maxChars = 3600) {
+  if (!maxChars || maxChars <= 0) return kb.content;
+  const header = `# ${kb.title}\n\n`;
+  if (!scoredSections.length) return kb.content.slice(0, maxChars);
+  let out = header;
+  for (const sec of scoredSections.slice(0, 3)) {
+    const block = `${sec.heading ? `## ${sec.heading}\n` : ''}${sec.body}\n\n`;
+    if (out.length + block.length > maxChars && out.length > header.length) break;
+    out += block;
+  }
+  return out.slice(0, maxChars).trim();
+}
+
+export function findMatchingKnowledgeBaseSync(
+  queryText = '',
+  dir = DEFAULT_KB_DIR,
+  { includeCopilotOnly = false, excludeFolders = null, onlyFolders = null, maxChars = 0 } = {}
+) {
+  const queryTokens = extractQueryTokens(queryText);
+  if (!queryTokens.length) return null;
+
+  const all = listKnowledgeBasesSync(dir);
+  let best = null;
+  for (const kb of all) {
+    if (kb.copilotOnly && !includeCopilotOnly) continue;
+    const folder = String(kb.folder || '');
+    if (Array.isArray(onlyFolders) && !onlyFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
+    if (Array.isArray(excludeFolders) && excludeFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
+
+    const match = scoreKbRelevance(kb, queryTokens);
+    if (match && (!best || match.score > best.score)) {
+      best = match;
+    }
+  }
+  if (!best) return null;
+  if (maxChars > 0) {
+    return {
+      ...best.kb,
+      content: buildRelevantSnippet(best.kb, best.scoredSections, maxChars)
+    };
+  }
+  return best.kb;
+}
+
+export function findGuidanceKnowledgeSync(queryText = '', dir = DEFAULT_KB_DIR, { maxChars = 3000 } = {}) {
+  return findMatchingKnowledgeBaseSync(queryText, dir, {
+    includeCopilotOnly: false,
+    onlyFolders: ['sales_intelligence', 'biblioteca_juridica'],
+    maxChars
+  });
 }
 
 export async function saveKnowledgeBase({ id, title, content }, dir = DEFAULT_KB_DIR) {

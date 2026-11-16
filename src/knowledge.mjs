@@ -1,6 +1,6 @@
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
-import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync } from './knowledge-bases.mjs';
+import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
 import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
@@ -268,7 +268,8 @@ ${(() => {
     const isSupportContact = Boolean(session.supportModeEnabled);
     const kbId = session.knowledgeBaseId || '';
     const recentChatText = (session.history || []).slice(-4).map(h => h?.content || '').join(' ');
-    const kbData = (kbId ? getKnowledgeBaseContentSync(kbId) : null) || findMatchingKnowledgeBaseSync(recentChatText);
+    const kbData = (kbId ? getKnowledgeBaseContentSync(kbId) : null) || findMatchingKnowledgeBaseSync(recentChatText, undefined, { excludeFolders: ['sales_intelligence', 'biblioteca_juridica'], maxChars: 12000 });
+    const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
     const notes = (session.contactNotes || '').trim();
     const roleLabel = session.contactRole === 'partner_team'
       ? 'Parceiro / Equipe Técnica do Projeto'
@@ -276,7 +277,7 @@ ${(() => {
         ? 'Cliente Final / Simulação de Suporte do Sistema'
         : 'Cliente / Responsável do Projeto em Atendimento';
 
-    if (!isSupportContact && !kbData && !notes) return '';
+    if (!isSupportContact && !kbData && !guidanceKb && !notes) return '';
 
     let ctxBlock = `\n8. CONTEXTO ESPECIAL DESTE CONTATO (CONFIGURAÇÃO SELECIONADA NO PAINEL):`;
     if (isSupportContact) {
@@ -292,6 +293,9 @@ ${(() => {
      2. FOCO PRÁTICO NO CRM (/admin) + LANDING PAGE: Sempre explique na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/botão* e *como usar passo a passo*.
      3. DADOS TÉCNICOS DE USO SIM, CÓDIGO INTERNO JAMAIS: Você pode explicar o funcionamento técnico operacional (ex: botão "Sincronizar com Asaas" na aba de Pedidos, Dossiê "Funil 360", colunas do Kanban, regras de cobrança mensal/anual, planos e valores), mas é TERMINANTEMENTE PROIBIDA de citar caminhos de backend, rotas de API (/api/...), nomes de tabelas do banco de dados ou arquivos de código interno.
      4. NOTIFICAÇÃO IMEDIATA AO RESPONSÁVEL / EQUIPE: Caso o cliente peça algo técnico específico (código, servidor, manutenção, alteração no sistema) ou pergunte algo que NÃO esteja documentado na base abaixo, NÃO invente: avise na resposta que já notificou *${owner}* para verificar essa questão específica e marque obrigatoriamente "handoff": true, "intent": "falar_com_responsavel", "handoff_reason": "Dúvida específica/técnica encaminhada ao responsável".\n\n[BASE DE CONHECIMENTO OFICIAL DO SISTEMA: ${kbData.title} (v${kbData.version})]\n${kbData.content.slice(0, 32000)}`;
+    }
+    if (guidanceKb && guidanceKb.content) {
+      ctxBlock += `\n\n[DIRETRIZES DE CONDUÇÃO E CONFORMIDADE: ${guidanceKb.title}]\nUse como referência de postura, empatia, quebra de objeções e conformidade legal. NUNCA trate exemplos ilustrativos deste guia como preços ou condições reais da empresa (use sempre o FAQ oficial para dados reais).\n${guidanceKb.content}`;
     }
     return ctxBlock;
   })()}
