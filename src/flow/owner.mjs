@@ -866,6 +866,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               });
             }
           }
+
+          if (toolCallsToRun.length === 0) {
+            const claimedLookup = /(?:consultando|verificando|checando|buscando|olhando)\s+(?:o\s+)?(?:hist[oó]rico|dados|contato|conversa|crm)/i.test(rawRep);
+            const rawDigits = cleanCommand.match(/\d{8,14}/)?.[0] || rawRep.match(/\d{8,14}/)?.[0] || '';
+            if ((claimedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
+              toolCallsToRun.push({
+                name: 'consultar_contato_ou_lead',
+                args: { query: rawDigits }
+              });
+            }
+          }
         }
 
         if (toolCallsToRun.length > 0) {
