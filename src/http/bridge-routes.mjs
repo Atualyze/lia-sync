@@ -13,6 +13,7 @@ import { markBridgeConfigRead } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
 import { memoryStore } from '../core/memory.mjs';
+import { notifyReactivationToInternalChat } from './reactivation-notice.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { getIntegrations } from './operations.mjs';
 
@@ -227,6 +228,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     if (!digits || !['human', 'bot'].includes(body.mode)) return json(res, 400, { ok: false, error: 'invalid_mode_or_phone' });
     try {
       const session = store.get(digits);
+      const wasHuman = Boolean(session.human);
       const isHuman = body.mode === 'human';
       session.human = isHuman;
       session.humanSource = isHuman ? 'dashboard' : 'resume';
@@ -239,6 +241,9 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         session.handoffReminder1Sent = false;
         session.handoffReminder60Sent = false;
         session.inactivityClosed = false;
+        if (wasHuman) {
+          notifyReactivationToInternalChat({ store, session, phone: digits });
+        }
       }
       session.handoffReminderAt = null;
       session.updatedAt = new Date().toISOString();

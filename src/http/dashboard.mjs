@@ -8,6 +8,7 @@ import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { readVpsMetrics } from '../vps-monitor.mjs';
+import { notifyReactivationToInternalChat } from './reactivation-notice.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f }) {
@@ -174,6 +175,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!validPhone(body.phone) || !['human', 'bot'].includes(body.mode)) return json(res, 400, { error: 'invalid_mode_or_phone' });
     const session = store.get(body.phone);
+    const wasHuman = Boolean(session.human);
     const isHuman = body.mode === 'human';
     session.human = isHuman;
     session.humanSource = isHuman ? 'dashboard' : null;
@@ -186,6 +188,9 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       session.handoffReminder1Sent = false;
       session.handoffReminder60Sent = false;
       session.inactivityClosed = false;
+      if (wasHuman) {
+        notifyReactivationToInternalChat({ store, session, phone: body.phone });
+      }
     }
     session.handoffReminderAt = null;
     session.updatedAt = new Date().toISOString();

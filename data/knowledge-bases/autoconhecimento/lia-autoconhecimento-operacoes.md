@@ -50,7 +50,7 @@ Ela opera em **dois modos completamente distintos**:
 - **Filtro de saída:** Bloqueia promessas indevidas, preços inventados fora do catálogo/FAQ e orientações clínicas/sensíveis não autorizadas.
 - **Anti-frustração e anti-repetição:** Se o sentimento for `frustrado` ou o cliente repetir a mesma solicitação seguidas vezes, a Lia aciona a transferência para atendimento humano automaticamente.
 - **Warm Transfer:** Ao transferir para humano, o alerta enviado ao responsável já leva **nome, WhatsApp, motivo, Setor, Sentimento e Resumo do contexto**, além dos últimos turnos — para o cliente não precisar repetir tudo.
-- **Retomada:** Quando o responsável assume no painel ou responde manualmente, a Lia respeita o Modo Humano até ser reativada no painel (ou pelo próprio cliente, se a opção `allowClientResume` estiver habilitada).
+- **Retomada:** Quando o responsável assume no painel ou responde manualmente, a Lia respeita o Modo Humano até ser reativada no painel (ou pelo próprio cliente, se a opção `allowClientResume` estiver habilitada). Ao ser reativada, a Lia verifica se a última mensagem do cliente ficou sem resposta (no vácuo) ou se já foi respondida pelo admin e pergunta no chat interno se o responsável vai resolver ou se ela pode dar continuidade à qualificação e dúvidas.
 
 ### 2.6. Roteamento de Modelos, Fallback e Orçamento
 - O motor escolhe o modelo de IA conforme complexidade/contexto entre os provedores configurados (**Gemini**, **Cloudflare Workers AI** e **OpenRouter**).
