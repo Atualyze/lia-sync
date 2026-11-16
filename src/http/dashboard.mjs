@@ -9,6 +9,7 @@ import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigid
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { readVpsMetrics } from '../vps-monitor.mjs';
 import { notifyReactivationToInternalChat } from './reactivation-notice.mjs';
+import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f }) {
@@ -122,11 +123,22 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
   if (req.method === 'POST' && u.pathname === '/api/dashboard/send') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
-    if (!validPhone(body.phone) || typeof body.text !== 'string' || !body.text.trim()) {
+    const rawPhone = String(body.phone || '').trim();
+    const isInternalChat = isOwnerKey(rawPhone);
+    if ((!isInternalChat && !validPhone(rawPhone)) || typeof body.text !== 'string' || !body.text.trim()) {
       return json(res, 400, { error: 'phone_and_text_required' });
     }
-    const phone = String(body.phone).trim();
     const text = body.text.trim();
+    if (isInternalChat) {
+      const answer = await store.enqueue(OWNER_SELF_KEY, () => f.process({
+        phone: OWNER_SELF_KEY,
+        text,
+        origin: 'dashboard'
+      }));
+      await store.flush?.().catch(() => {});
+      return json(res, 200, { ok: true, sent: true, internal: true, answer: answer || null });
+    }
+    const phone = rawPhone;
     const safeReplyTo = body.replyTo && typeof body.replyTo === 'object'
       ? {
           sender: String(body.replyTo.sender || 'Contato').slice(0, 60),
