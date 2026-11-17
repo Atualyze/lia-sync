@@ -516,6 +516,28 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   );
   assert.equal(checked.success, true);
   assert.equal(checked.paid, true);
+
+  // Webhook para pedido sem handle não marca como pago nem envia mensagem
+  orderStore.recordOrder({
+    orderNsu: 'LIA-NO-HANDLE-TEST',
+    handle: '',
+    phone: '5585999992222',
+    amountCents: 5000,
+    description: 'Sem handle'
+  });
+  const noHandleRes = await processInfinitePayWebhook({
+    payload: {
+      order_nsu: 'LIA-NO-HANDLE-TEST',
+      transaction_nsu: 'tx-no-handle',
+      paid_amount: 5000
+    },
+    orderStore,
+    sendText: async (phone, text) => sentMessages.push({ phone, text })
+  });
+  assert.equal(noHandleRes.status, 200);
+  await noHandleRes.backgroundTask;
+  assert.equal(orderStore.getOrder('LIA-NO-HANDLE-TEST').status, 'pending');
+  assert.equal(sentMessages.length, 2);
 });
 
 test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que InfinitePay exige valor fixo se gerar_cobranca_pix estiver desativado', async () => {

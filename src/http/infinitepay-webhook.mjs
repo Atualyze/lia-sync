@@ -1,5 +1,5 @@
 import { readBody, json, NOT_HANDLED } from './utils.mjs';
-import { infinitePayOrders, checkInfinitePayPayment } from '../tools/checkout_infinitepay.mjs';
+import { infinitePayOrders, checkInfinitePayPayment, normalizeHandle } from '../tools/checkout_infinitepay.mjs';
 import { sendText as defaultSendText } from '../whatsapp.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 
@@ -36,17 +36,20 @@ export async function processInfinitePayWebhook({
 
   const verifyAndNotify = async () => {
     try {
-      if (order.handle) {
-        const check = await checkPayment({
-          handle: order.handle,
-          orderNsu,
-          transactionNsu,
-          slug
-        });
-        if (!check?.paid) {
-          logger?.warn?.(`[infinitepay] Webhook recebido para ${orderNsu}, mas payment_check retornou paid=false.`);
-          return;
-        }
+      const cleanHandle = normalizeHandle(order?.handle);
+      if (!cleanHandle) {
+        logger?.warn?.(`[infinitepay] Webhook recebido para ${orderNsu}, mas pedido não possui handle para verificação.`);
+        return;
+      }
+      const check = await checkPayment({
+        handle: cleanHandle,
+        orderNsu,
+        transactionNsu,
+        slug
+      });
+      if (!check?.paid) {
+        logger?.warn?.(`[infinitepay] Webhook recebido para ${orderNsu}, mas payment_check retornou paid=false.`);
+        return;
       }
 
       const updated = orderStore.markPaid(orderNsu, {

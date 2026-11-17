@@ -80,7 +80,8 @@ export class InfinitePayOrderStore {
 export const infinitePayOrders = new InfinitePayOrderStore();
 
 export function normalizeHandle(raw) {
-  return String(raw || '').trim().replace(/^\$+/, '');
+  if (typeof raw !== 'string') return '';
+  return raw.trim().replace(/^\$+/, '');
 }
 
 export async function createInfinitePayLink({

@@ -24,10 +24,21 @@ export function stableIdlessEventKey(item, event) {
   return `fingerprint:${crypto.createHash('sha256').update(material).digest('hex')}`;
 }
 
+export async function isWebhookAuthorized(req, webhookAuthorize) {
+  try {
+    const result = typeof webhookAuthorize === 'function'
+      ? await webhookAuthorize(req)
+      : authorized(req);
+    return typeof result === 'object' && result !== null ? result.ok === true : result === true;
+  } catch {
+    return false;
+  }
+}
+
 // Webhooks do WhatsApp/Evolution. O ledger guarda apenas hash da chave, tipo e estado.
 export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
   if (req.method !== 'POST' || !['/webhook', '/webhook/evolution'].includes(u.pathname)) return NOT_HANDLED;
-  if (!(webhookAuthorize ? await webhookAuthorize(req) : authorized(req))) return json(res, 401, { error: 'unauthorized' });
+  if (!await isWebhookAuthorized(req, webhookAuthorize)) return json(res, 401, { error: 'unauthorized' });
 
   let payload;
   try { payload = await readBody(req); }

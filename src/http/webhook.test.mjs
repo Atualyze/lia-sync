@@ -37,3 +37,20 @@ test('handleWebhookRoutes retorna 401 quando webhookAuthorize rejeita', async ()
   assert.equal(statusCode, 401);
   assert.ok(body.includes('unauthorized') || body.length > 0);
 });
+
+test('handleWebhookRoutes retorna 401 quando webhookAuthorize retorna { ok: false }', async () => {
+  let statusCode = 0;
+  let body = '';
+  const res = {
+    writeHead(code) { statusCode = code; },
+    end(chunk) { body = String(chunk || ''); }
+  };
+  await handleWebhookRoutes({
+    req: { method: 'POST', url: '/webhook/evolution', headers: {} },
+    res,
+    u: new URL('http://localhost/webhook/evolution'),
+    webhookAuthorize: () => ({ ok: false })
+  });
+  assert.equal(statusCode, 401);
+  assert.ok(body.includes('unauthorized'));
+});
