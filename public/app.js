@@ -955,14 +955,23 @@ async function initAuth() {
 
 function showLogin() {
   $('#login-screen').classList.remove('hidden');
-  $('#dashboard-shell').classList.add('hidden');
+  const shell = $('#dashboard-shell');
+  const mobileNav = $('#mobile-bottom-nav');
+  shell?.classList.add('hidden');
+  shell?.setAttribute('aria-hidden', 'true');
+  mobileNav?.classList.add('hidden');
+  mobileNav?.setAttribute('aria-hidden', 'true');
   setupLoginModifierDetection();
   checkLoginLockout();
 }
-
 function showDashboard() {
   $('#login-screen').classList.add('hidden');
-  $('#dashboard-shell').classList.remove('hidden');
+  const shell = $('#dashboard-shell');
+  const mobileNav = $('#mobile-bottom-nav');
+  shell?.classList.remove('hidden');
+  shell?.setAttribute('aria-hidden', 'false');
+  mobileNav?.classList.remove('hidden');
+  mobileNav?.setAttribute('aria-hidden', 'false');
   if (!state.initialized) {
     state.initialized = true;
     startDashboard();

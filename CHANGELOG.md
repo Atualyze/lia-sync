@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.2 — Correção do estado inicial de autenticação
+- **Dashboard sem flash pré-login:** shell protegido e navegação inferior mobile começam ocultos até `getSession()` resolver; login, logout e expiração sincronizam visibilidade e `aria-hidden` para desktop e mobile.
+- **Validação:** adicionados testes de regressão para o estado inicial e as transições de autenticação.
+
 ## 2.5.1 — Hardening de prospecção, privacidade e confiabilidade
 - **Hardening de prospecção e privacidade:** RLS e privilégios service-role-only nas tabelas de leads, opt-out contextual para não interceptar clientes ativos, confirmação enviada antes da supressão, claims órfãos recuperáveis, retries com backoff, pausa entre envios, trava contra ticks concorrentes, fila com janela de varredura, contagem paginada no fuso local, cadências por etapas e persistência pós-envio que não transforma sucesso em falha.
 - **Retenção e observabilidade:** guards passaram a consultar sessões sem criá-las, templates não inventam nomes vazios, logs usam telefone mais fortemente mascarado, a formatação de atividade respeita o fuso configurado e o schema consolidado acompanha a migration de prospecção.
