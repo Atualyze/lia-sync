@@ -31,7 +31,9 @@ export const config = Object.freeze({
   dataFile: path.resolve(process.env.DATA_FILE || './data/sessions.json'),
   maxHistory: num('MAX_HISTORY_MESSAGES', 12),
   maxInputChars: num('MAX_INPUT_CHARS', 2000),
-  debounceMs: num('MESSAGE_DEBOUNCE_MS', 3000),
+  // Aguarda apenas o suficiente para juntar mensagens enviadas em sequência,
+  // sem acrescentar 3 s de latência a toda conversa.
+  debounceMs: num('MESSAGE_DEBOUNCE_MS', 1200),
   rateLimitMax: num('RATE_LIMIT_MAX', 20),
   rateLimitWindowMs: num('RATE_LIMIT_WINDOW_MIN', 10) * 60000,
   sessionTtlMs: num('SESSION_TTL_DAYS', 30) * 86400000,
