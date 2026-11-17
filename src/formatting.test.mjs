@@ -35,6 +35,8 @@ test('Formatação: System Prompt instrui leitura natural no WhatsApp', () => {
   assert.match(prompt, /DIRETRIZES DE FORMATAÇÃO E LEITURA/);
   assert.match(prompt, /FORMATAÇÃO NATURAL/);
   assert.match(prompt, /negrito/);
+  assert.match(prompt, /parágrafos curtos separados por uma linha em branco/);
+  assert.match(prompt, /NÃO use "-" como marcador/);
 });
 
 test('Formatação: formatOutgoingMessage destaca rótulos e distribui parágrafos', () => {
@@ -55,4 +57,13 @@ test('Formatação: formatOutgoingMessage é idempotente e preserva bullets', ()
   const once = formatOutgoingMessage(input);
   assert.equal(once, formatOutgoingMessage(once), 'Aplicar duas vezes não deve alterar');
   assert.match(once, /• item um/);
+});
+
+test('Formatação: converte quebras escapadas e divide resposta curta em bloco corrido', () => {
+  const escaped = formatOutgoingMessage('Olá!\\n\\nTudo bem?\\n- Posso ajudar com seu cadastro.');
+  assert.equal(escaped, 'Olá!\n\nTudo bem?\n• Posso ajudar com seu cadastro.');
+
+  const compact = formatOutgoingMessage('Olá! Posso consultar seu cadastro. Em seguida, encaminho a solicitação para a equipe responsável. Assim que eu tiver um retorno, aviso você por aqui.');
+  assert.match(compact, /\n\n/, 'Resposta com várias ideias deve ter parágrafos separados');
+  assert.ok(!compact.includes(' - '), 'Não deve usar hífen como marcador visual');
 });

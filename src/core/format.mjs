@@ -30,17 +30,22 @@ function splitLongParagraphs(text = '') {
     .split('\n')
     .map(line => {
       const flat = line.trim();
-      // linha densa e sem formatação → divide em blocos de ~2 frases
-      if (flat.length <= 320 || flat.includes('*') || flat.includes('•')) return line;
+      // Linha densa e sem formatação: o WhatsApp precisa de respiro mesmo
+      // quando a IA devolve uma resposta curta em um único bloco.
+      if (flat.length <= 120 || flat.includes('*') || flat.includes('•')) return line;
       const sentences = flat.match(/[^.!?]+[.!?]+["')\]]?\s*/g) || [flat];
+      if (sentences.length < 2) return line;
       const blocks = [];
       let current = '';
+      let sentenceCount = 0;
       for (const sentence of sentences) {
-        if (current && (current.length + sentence.length) > 220) {
+        if (current && ((current.length + sentence.length) > 220 || sentenceCount >= 2)) {
           blocks.push(current.trim());
           current = sentence.trim();
+          sentenceCount = 1;
         } else {
           current = current ? `${current} ${sentence.trim()}` : sentence.trim();
+          sentenceCount += 1;
         }
       }
       if (current) blocks.push(current.trim());
@@ -58,6 +63,12 @@ function normalizeBullets(text = '') {
 
 export function formatOutgoingMessage(text = '') {
   let out = String(text || '')
+    // Alguns provedores devolvem a string do JSON sem desserializar os \\n.
+    // Converta somente sequências escapadas de quebra, sem tocar em URLs ou
+    // barras legítimas do conteúdo.
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
     .replace(/\*\*(.*?)\*\*/gs, '*$1*')
     .replace(/__(.*?)__/gs, '*$1*')
     .replace(/^\s*#{1,6}\s?(.+)$/gm, '*$1*')

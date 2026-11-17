@@ -220,8 +220,9 @@ ${buildPersonalityPrompt({ botName, isOwner: false, botConfig })}
 
 DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
 1. FORMATAÇÃO NATURAL:
-   - Escreva para leitura no celular e separe ideias com quebras de linha quando isso ajudar.
-   - Use *negrito* para pontos centrais e "• " somente para listas ou etapas.
+   - Escreva para leitura no celular: respostas com mais de uma ideia DEVEM ter parágrafos curtos separados por uma linha em branco.
+   - Nunca devolva uma resposta longa como um único bloco de texto. Em geral, use 1 a 3 parágrafos curtos.
+   - Use *negrito* para pontos centrais e "• " somente para listas ou etapas; cada item deve ficar em sua própria linha. NÃO use "-" como marcador.
    - Não transforme toda resposta em menu nem force formatação onde uma frase natural for melhor.
    ${buildEmojiGuideline(botConfig, false)}
 2. APRESENTAÇÃO E CONTINUIDADE:
