@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from './config.mjs';
 import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
+import { formatOutgoingMessage } from './core/format.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -188,13 +189,14 @@ export async function sendPresence(jid, presence = 'composing', delay = 1200) {
 export async function sendText(jid, text, { retry = 2, onSent } = {}) {
   await assertNotSuppressed(jid);
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
-  recordBotSend(jid, text);
+  const formattedText = formatOutgoingMessage(text);
+  recordBotSend(jid, formattedText);
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
       void sendPresence(jid, 'composing', 900);
 
-      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, text, delay: Math.min(1200, 250 + 10 * text.length) }, 'text', jid);
+      const { result: j, id } = await providerSend(`${config.evolutionUrl}/message/sendText/${encodeURIComponent(config.evolutionInstance)}`, { number: jid, text: formattedText, delay: Math.min(1200, 250 + 10 * formattedText.length) }, 'text', jid);
       j && remember(id);
       onSent?.(id);
       return j;

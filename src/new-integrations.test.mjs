@@ -847,28 +847,9 @@ test('Seleção de voz respeita voiceName explícito sobre botConfig, thinkingBu
   }
 });
 
-test('atualizar_dados_crm e permitido no modo cliente e salva etiquetas em session.tags', async () => {
-  const { executeToolCall, isClientToolAllowed } = await import('./tools/index.mjs');
-  assert.equal(isClientToolAllowed('atualizar_dados_crm'), true);
-
-  const session = { phone: '5511999998888', tags: ['comercial'] };
-  const store = { dirty: false, markDirty() { this.dirty = true; } };
-  const res = await executeToolCall(
-    'atualizar_dados_crm',
-    {
-      interesse: 'Site + CRM',
-      estagio: 'proposta',
-      observacoes: 'Pediu orcamento para 2 unidades',
-      etiquetas: ['Orçamento', 'Site Profissional', 'comercial']
-    },
-    { actor: 'client', session, store }
-  );
-
-  assert.equal(res.success, true);
-  assert.equal(session.productInterest, 'Site + CRM');
-  assert.equal(session.dealStage, 'proposta');
-  assert.deepEqual(session.tags, ['comercial', 'orçamento', 'site-profissional']);
-  assert.equal(store.dirty, true);
+test('atualizar_dados_crm fica restrito ao Copiloto', async () => {
+  const { isClientToolAllowed } = await import('./tools/index.mjs');
+  assert.equal(isClientToolAllowed('atualizar_dados_crm'), false);
 });
 
 test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora se ja pago', async () => {

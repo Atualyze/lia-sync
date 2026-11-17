@@ -1,6 +1,6 @@
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
-import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
+import { getKnowledgeBaseContentSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
 import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
@@ -119,12 +119,11 @@ Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação.
 ${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}${memorySection}
 
 DIRETRIZES DE FORMATAÇÃO VISUAL (WHATSAPP):
-- NUNCA envie blocos densos ou paredes de texto contínuo.
-- Separe blocos de pensamento com parágrafos curtos e quebra de linha dupla (\\n\\n).
-- Destaque dados operacionais, status, nomes, contatos e métricas em *negrito* do WhatsApp (ex: *Operacional*, *5 lembretes*, *wa.me/...*).
-- Use marcadores ("• ") organizados em linhas separadas para listas de itens, tarefas ou relatórios.
+- Priorize leitura natural no celular, usando parágrafos curtos quando houver mais de uma ideia.
+- Use *negrito* somente para dados realmente importantes, como valores confirmados, status, nomes ou próximos passos.
+- Use "• " apenas quando houver uma lista de itens, tarefas ou etapas.
 ${buildEmojiGuideline(botConfig, true)}
-- PROIBIDO responder em texto corrido: toda resposta deve ter negritos em dados-chave, bullets para listas e quebras de linha dupla entre blocos.
+- Não force bullets, negritos ou emojis quando uma resposta simples for mais natural.
 
 CAPACIDADES DO COPILOTO:
 1. STATUS DO SISTEMA: Quando ele perguntar por status, resumo, saúde da API, modelos, erros ou latência, monte um resumo estruturado, elegante e claro usando a telemetria abaixo.
@@ -220,11 +219,10 @@ Você conversa pelo WhatsApp com clientes e parceiros de forma humana, calorosa,
 ${buildPersonalityPrompt({ botName, isOwner: false, botConfig })}
 
 DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
-1. ESTRUTURA VISUAL E DISTRIBUIÇÃO:
-   - NUNCA envie blocos densos ou paredes de texto contínuo.
-   - Divida as mensagens em parágrafos curtos (1 a 2 frases por parágrafo), sempre separados por quebra de linha dupla (\\n\\n).
-   - Destaque palavras-chave, serviços e pontos centrais em *negrito* do WhatsApp (ex: *${owner}*, *orçamento*, *desenvolvimento*).
-   - Quando listar opções ou etapas, use marcadores limpos com bullet point ("• ") em linhas separadas.
+1. FORMATAÇÃO NATURAL:
+   - Escreva para leitura no celular e separe ideias com quebras de linha quando isso ajudar.
+   - Use *negrito* para pontos centrais e "• " somente para listas ou etapas.
+   - Não transforme toda resposta em menu nem force formatação onde uma frase natural for melhor.
    ${buildEmojiGuideline(botConfig, false)}
 2. APRESENTAÇÃO E CONTINUIDADE:
    ${alreadyIntroduced ? `A conversa JÁ ESTÁ EM ANDAMENTO e você já se apresentou. NUNCA repita "Sou a ${botName}..." ou saudações de primeiro contato. Responda diretamente ao assunto com fluidez.` : 'Como é a primeira mensagem, faça uma saudação simpática e acolhedora, apresentando-se brevemente.'}
@@ -262,17 +260,22 @@ ${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a we
    - Você é TERMINANTEMENTE PROIBIDA de inventar, supor ou chutar números de telefone (como 9999-8888, 99999-9999, ou qualquer número fictício).
    - Se o cliente perguntar um telefone que você não possui no FAQ oficial ou pedir para falar com outra pessoa/setor, NUNCA crie números. Diga que o atendimento e os esclarecimentos continuam diretamente por este canal oficial do WhatsApp e que ${owner} já foi notificado.
 7. CONTRATO JSON:
-   Sempre retorne JSON válido: {"reply": "sua resposta com espaçamento duplo \\\\n\\\\n e negritos", "intent": "falar_com_responsavel|atendimento|duvida|saudacao|lembrete|outro", "sector": "comercial|suporte|financeiro|responsavel|null", "sentiment": "positivo|neutro|confuso|frustrado|urgente", "context_summary": "resumo em 1 frase do contexto e pendência atual", "red_flags": false, "handoff": false, "handoff_reason": "", "tool_calls": null, "reminder": null}.
+   Sempre retorne JSON válido: {"reply": "resposta natural pronta para WhatsApp", "intent": "falar_com_responsavel|atendimento|duvida|saudacao|lembrete|outro", "sector": "comercial|suporte|financeiro|responsavel|null", "sentiment": "positivo|neutro|confuso|frustrado|urgente", "context_summary": "resumo em 1 frase do contexto e pendência atual", "conversation_state": {"objective": "", "need": "", "next_step": "", "confirmed": []}, "red_flags": false, "handoff": false, "handoff_reason": "", "tool_calls": null, "reminder": null}.
    - MÍDIAS ANALISADAS (IMAGEM/PDF): Se a mensagem do cliente trouxer "[Imagem analisada]" ou "[Documento ... analisado]", responda diretamente à dúvida ou solicitação usando o resumo visual/textual e o histórico, só ativando "handoff": true se realmente exigir ação manual de ${owner}.
 ${(() => {
     const isSupportContact = Boolean(session.supportModeEnabled);
     const kbId = session.knowledgeBaseId || '';
+    const knowledgeQuery = session.lastUserText || session.contextSummary || '';
     const recentChatText = (session.history || []).slice(-4).map(h => h?.content || '').join(' ');
     // Sem knowledgeBaseId explícito, NÃO há fallback por palavra-chave: dossiês de
     // clientes distintos convivem no mesmo diretório, e um match por tokens pode
     // injetar a base de um cliente no atendimento de outro. A orientação genérica
     // continua via findGuidanceKnowledgeSync (pastas dedicadas).
-    const kbData = kbId ? getKnowledgeBaseContentSync(kbId) : null;
+    const kbData = kbId
+      ? (isSupportContact
+        ? getRelevantKnowledgeBaseContentSync(kbId, knowledgeQuery, undefined, { maxChars: 6500 })
+        : getKnowledgeBaseContentSync(kbId))
+      : null;
     const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
     const notes = (session.contactNotes || '').trim();
     const roleLabel = session.contactRole === 'partner_team'
@@ -292,11 +295,11 @@ ${(() => {
       ctxBlock += `\n   - OBSERVAÇÕES INDIVIDUAIS DO CONTATO: ${notes}`;
     }
     if (kbData && kbData.content) {
-      ctxBlock += `\n   - REGRAS DE SUPORTE DA BASE DE CONHECIMENTO (${kbData.title}):
-     1. RESPOSTA ENXUTA E DIRETA (SEM TEXTÃO): Não explique demais nem despeje todo o manual de uma vez! Responda apenas o ponto perguntado em 2 a 4 parágrafos curtos ou tópicos objetivos.
+      ctxBlock += `\n   - REPERTÓRIO DE CONHECIMENTO DA BASE (${kbData.title}):
+     1. RESPOSTA ENXUTA E DIRETA (SEM TEXTÃO): Não explique demais nem despeje todo o manual de uma vez! Responda apenas o ponto necessário, com o tamanho natural para a pergunta.
      2. FOCO PRÁTICO NO CRM (/admin) + LANDING PAGE: Sempre explique na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/botão* e *como usar passo a passo*.
      3. DADOS TÉCNICOS DE USO SIM, CÓDIGO INTERNO JAMAIS: Você pode explicar o funcionamento técnico operacional (ex: botão "Sincronizar com Asaas" na aba de Pedidos, Dossiê "Funil 360", colunas do Kanban, regras de cobrança mensal/anual, planos e valores), mas é TERMINANTEMENTE PROIBIDA de citar caminhos de backend, rotas de API (/api/...), nomes de tabelas do banco de dados ou arquivos de código interno.
-     4. NOTIFICAÇÃO IMEDIATA AO RESPONSÁVEL / EQUIPE: Caso o cliente peça algo técnico específico (código, servidor, manutenção, alteração no sistema) ou pergunte algo que NÃO esteja documentado na base abaixo, NÃO invente: avise na resposta que já notificou *${owner}* para verificar essa questão específica e marque obrigatoriamente "handoff": true, "intent": "falar_com_responsavel", "handoff_reason": "Dúvida específica/técnica encaminhada ao responsável".\n\n[BASE DE CONHECIMENTO OFICIAL DO SISTEMA: ${kbData.title} (v${kbData.version})]\n${kbData.content.slice(0, 32000)}`;
+     4. USE O CONHECIMENTO PARA COMPREENDER E CONDUZIR: Não copie o manual, não cite a base e não transforme exemplos em regras. Se faltar um dado real, consulte a ferramenta adequada ou faça uma pergunta curta.\n     5. NOTIFICAÇÃO AO RESPONSÁVEL / EQUIPE: Só encaminhe quando houver necessidade de ação humana, dúvida técnica interna ou ausência de informação necessária. Não transfira apenas porque uma frase não apareceu literalmente na base.\n\n[REFERÊNCIA RELEVANTE DA BASE OFICIAL: ${kbData.title} (v${kbData.version})]\n${kbData.content}`;
     }
     if (guidanceKb && guidanceKb.content) {
       ctxBlock += `\n\n[DIRETRIZES DE CONDUÇÃO E CONFORMIDADE: ${guidanceKb.title}]\nUse como referência de postura, empatia, quebra de objeções e conformidade legal. NUNCA trate exemplos ilustrativos deste guia como preços ou condições reais da empresa (use sempre o FAQ oficial para dados reais).\n${guidanceKb.content}`;
@@ -305,7 +308,7 @@ ${(() => {
   })()}
 
 [HORÁRIO LOCAL] ${local}${memorySection}
-[CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
+  [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
 }

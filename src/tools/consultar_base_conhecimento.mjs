@@ -1,5 +1,5 @@
 import { FAQ, findFaqInItems } from '../knowledge.mjs';
-import { findMatchingKnowledgeBaseSync, listKnowledgeBasesSync } from '../knowledge-bases.mjs';
+import { findMatchingKnowledgeBaseSync, findGuidanceKnowledgeSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync } from '../knowledge-bases.mjs';
 
 /**
  * Tool: consultar_base_conhecimento
@@ -25,12 +25,13 @@ export const toolConsultarBaseConhecimento = {
         ? listKnowledgeBasesSync().find(kb => kb.id === session.knowledgeBaseId && !kb.copilotOnly)
         : null;
       if (assignedKb?.content) {
+        const relevant = getRelevantKnowledgeBaseContentSync(assignedKb.id, termo, undefined, { maxChars: 6500 });
         return {
           found: true,
           termo,
           base: assignedKb.title,
           versao: assignedKb.version,
-          resposta: assignedKb.content.slice(0, 12000)
+          resposta: relevant?.content || assignedKb.content.slice(0, 1800)
         };
       }
 
@@ -40,14 +41,14 @@ export const toolConsultarBaseConhecimento = {
         return { found: true, termo, resposta: answer };
       }
       if (!session.knowledgeBaseId) {
-        const matchedClientKb = findMatchingKnowledgeBaseSync(termo, undefined, { includeCopilotOnly: false, maxChars: 6000 });
-        if (matchedClientKb?.content) {
+        const guidance = findGuidanceKnowledgeSync(termo, undefined, { maxChars: 3000 });
+        if (guidance?.content) {
           return {
             found: true,
             termo,
-            base: matchedClientKb.title,
-            versao: matchedClientKb.version,
-            resposta: matchedClientKb.content
+            base: guidance.title,
+            versao: guidance.version,
+            resposta: guidance.content
           };
         }
       }

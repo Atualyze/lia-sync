@@ -609,16 +609,16 @@ test('Contexto selecionável do Contato: injeta suporte ativo, observações e B
   assert.doesNotMatch(promptsByPhone.normal, /CONTEXTO ESPECIAL DESTE CONTATO/);
   assert.doesNotMatch(promptsByPhone.normal, /CLUBINHO HOMEVET/);
 
-  // 2. Contato configurado RECEBE suporte ativo, observações e o manual completo do Clubinho HomeVet
+  // 2. Contato configurado RECEBE suporte ativo, observações e somente o trecho relevante
   assert.match(promptsByPhone.clubinho, /CONTEXTO ESPECIAL DESTE CONTATO/);
   assert.match(promptsByPhone.clubinho, /FAZ PARTE DO ATENDIMENTO\/SUPORTE ATIVO/);
   assert.match(promptsByPhone.clubinho, /Fundadora do Clubinho HomeVet em Teresina/);
   assert.match(promptsByPhone.clubinho, /CLUBINHO HOMEVET/i);
-  assert.match(promptsByPhone.clubinho, /Plano Sênior \/ Filhote \(Cães\)/i);
-  assert.match(promptsByPhone.clubinho, /Testar conexão Asaas/i);
-  assert.match(promptsByPhone.clubinho, /Relatório Completo Web \(`\.HTML`\)/i);
+  assert.match(promptsByPhone.clubinho, /Seletor de Planos Interativo/i);
+  assert.match(promptsByPhone.clubinho, /integrado ao Asaas/i);
+  assert.doesNotMatch(promptsByPhone.clubinho, /Relatório Completo Web \(`\.HTML`\)/i);
   assert.match(promptsByPhone.clubinho, /FOCO PRÁTICO NO CRM \(\/admin\) \+ LANDING PAGE/i);
-  assert.match(promptsByPhone.clubinho, /NOTIFICAÇÃO IMEDIATA AO RESPONSÁVEL/i);
+  assert.match(promptsByPhone.clubinho, /USE O CONHECIMENTO PARA COMPREENDER E CONDUZIR/i);
   assert.doesNotMatch(promptsByPhone.clubinho, /POST \/api\/payments\/checkout/i);
 });
 
@@ -992,5 +992,3 @@ test('enviar_mensagem_contato resolve contato via SupabaseRestClient.select(cont
   assert.equal(res.success, true);
   assert.equal(sentTo?.phone, '5588999112233');
 });
-
-

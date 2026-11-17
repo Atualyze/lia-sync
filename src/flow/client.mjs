@@ -417,6 +417,17 @@ export async function handleClientMessage({
         if (result.sentiment === 'frustrado') addSessionTags(['frustrado']);
       }
       if (result?.context_summary) s.contextSummary = result.context_summary;
+      if (result?.conversation_state && typeof result.conversation_state === 'object') {
+        const state = result.conversation_state;
+        s.conversationState = {
+          objective: String(state.objective || '').trim().slice(0, 240),
+          need: String(state.need || '').trim().slice(0, 240),
+          next_step: String(state.next_step || '').trim().slice(0, 240),
+          confirmed: Array.isArray(state.confirmed)
+            ? state.confirmed.map(item => String(item || '').trim()).filter(Boolean).slice(0, 8)
+            : []
+        };
+      }
       if (result && (result.sentiment === 'frustrado' || (s.repeatCount || 0) >= 2)) {
         result.handoff = true;
         result.handoff_reason = result.handoff_reason || (

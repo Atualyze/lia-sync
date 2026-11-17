@@ -160,6 +160,7 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
   let text = String(reply || '')
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
+    .replace(/\s*—\s*/g, ' - ')
     .replace(/(?<!:)\/\/[^\n]*/g, '')
     .replace(/\*\*(.*?)\*\*/gs, '*$1*')
     .replace(/__(.*?)__/gs, '*$1*')

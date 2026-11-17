@@ -61,6 +61,7 @@ export function formatOutgoingMessage(text = '') {
     .replace(/\*\*(.*?)\*\*/gs, '*$1*')
     .replace(/__(.*?)__/gs, '*$1*')
     .replace(/^\s*#{1,6}\s?(.+)$/gm, '*$1*')
+    .replace(/\s*—\s*/g, ' - ')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n');
 

@@ -30,12 +30,11 @@ test('Formatação: Mensagens padrão possuem quebras de linha e destaques visua
   assert.match(talkToOwner, /\*Equipe de Atendimento\*/);
 });
 
-test('Formatação: System Prompt instrui distribuição visual com quebras e negritos', () => {
+test('Formatação: System Prompt instrui leitura natural no WhatsApp', () => {
   const prompt = buildSystemPrompt({ session: { history: [] } });
   assert.match(prompt, /DIRETRIZES DE FORMATAÇÃO E LEITURA/);
-  assert.match(prompt, /parágrafos curtos/);
-  assert.match(prompt, /quebra de linha dupla/);
-  assert.match(prompt, /\*negrito\*/);
+  assert.match(prompt, /FORMATAÇÃO NATURAL/);
+  assert.match(prompt, /negrito/);
 });
 
 test('Formatação: formatOutgoingMessage destaca rótulos e distribui parágrafos', () => {

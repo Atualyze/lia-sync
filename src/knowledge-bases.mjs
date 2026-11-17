@@ -200,6 +200,22 @@ export function getKnowledgeBaseContentSync(id, dir = DEFAULT_KB_DIR) {
   return null;
 }
 
+export function getRelevantKnowledgeBaseContentSync(
+  id,
+  queryText = '',
+  dir = DEFAULT_KB_DIR,
+  { maxChars = 6500 } = {}
+) {
+  const kb = getKnowledgeBaseContentSync(id, dir);
+  if (!kb) return null;
+  const queryTokens = extractQueryTokens(queryText);
+  const match = queryTokens.length ? scoreKbRelevance(kb, queryTokens) : null;
+  const content = match
+    ? buildRelevantSnippet(kb, match.scoredSections, maxChars)
+    : `${kb.content.slice(0, Math.min(1800, maxChars)).trim()}\n\n[Demais seções disponíveis na base vinculada; consulte somente se necessário.]`;
+  return { ...kb, content };
+}
+
 const SEARCH_STOPWORDS = new Set([
   'para', 'como', 'mais', 'com', 'sem', 'por', 'que', 'uma', 'uns', 'umas',
   'das', 'dos', 'isso', 'isto', 'aqui', 'sobre', 'voce', 'voces', 'cliente',

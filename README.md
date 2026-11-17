@@ -2,7 +2,15 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.5.1** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.6.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.6.0 - Conhecimento contextual e conversa natural
+
+- **Conhecimento como repertório de raciocínio:** bases vinculadas agora entregam somente os trechos relevantes ao assunto atual, sem despejar manuais inteiros na conversa.
+- **Contexto estruturado:** a Lia preserva objetivo, necessidade, próximo passo e informações confirmadas para interpretar referências curtas e conduzir o atendimento sem repetir perguntas.
+- **Segurança entre clientes:** clientes sem base vinculada não recebem dossiês de outros clientes por coincidência lexical; alteração direta de CRM fica restrita ao Copiloto.
+- **Formatação adaptativa:** WhatsApp e chat interno continuam usando negrito, bullets e parágrafos quando ajudam a leitura, sem transformar toda resposta em um template. A saída remove travessões longos.
+- **Validação:** 302 testes automatizados, incluindo regressões de contexto, isolamento de bases, ferramentas e formatação.
 
 ## Novidades da Versão 2.5.1 — Hardening de prospecção e privacidade
 

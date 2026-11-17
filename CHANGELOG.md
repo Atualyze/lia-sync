@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0 - Conhecimento contextual e conversa natural
+- **Contexto de conhecimento:** recuperação de trechos relevantes da base vinculada por assunto, com orientação para usar o conteúdo como repertório e não como texto pronto.
+- **Memória conversacional:** persistência estruturada de objetivo, necessidade, próximo passo e confirmações para melhorar referências curtas e continuidade.
+- **Isolamento e ferramentas:** clientes sem base vinculada não recebem dossiês de outros clientes e não podem alterar CRM diretamente.
+- **WhatsApp:** formatação adaptativa preserva negrito, bullets e parágrafos úteis, remove travessão longo e reduz respostas engessadas.
+- **Validação:** regressões de conhecimento, segurança de escopo, naturalidade e formatação.
+
 ## 2.5.2 — Correção do estado inicial de autenticação
 - **Dashboard sem flash pré-login:** shell protegido e navegação inferior mobile começam ocultos até `getSession()` resolver; login, logout e expiração sincronizam visibilidade e `aria-hidden` para desktop e mobile.
 - **Validação:** adicionados testes de regressão para o estado inicial e as transições de autenticação.
