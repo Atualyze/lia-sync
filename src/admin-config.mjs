@@ -211,9 +211,11 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
     'pt-BR-FranciscaNeural',
     'pt-BR-ThalitaNeural',
     'pt-BR-AntonioNeural',
-    'piper-pt-BR-faber',
-    'piper-pt-BR-edresson'
   ]);
+  // Vozes legadas Piper (offline) não são mais suportadas: mapear para voz Gemini segura (Aoede).
+  if (typeof value.voice?.voiceName === 'string' && value.voice.voiceName.startsWith('piper-')) {
+    value.voice.voiceName = 'Aoede';
+  }
   if (!supportedVoices.has(value.voice?.voiceName)) errors.push('Selecione uma voz suportada.');
   if (typeof value.voice?.tone !== 'string' || value.voice.tone.length > 500) errors.push('O tom da voz deve ter até 500 caracteres.');
   if (typeof value.voice?.autoVoiceOnAudio !== 'boolean') errors.push('A resposta automática em áudio deve ser verdadeiro/falso.');

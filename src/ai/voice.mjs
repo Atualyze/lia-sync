@@ -1,9 +1,3 @@
-import fs from 'node:fs/promises';
-import fsSync from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { config } from '../config.mjs';
 
 const TRANSCRIBE_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
@@ -96,113 +90,10 @@ export function pcm16ToWavBase64(rawBase64, sampleRate = 24000, numChannels = 1,
 }
 
 /**
- * Detecta a disponibilidade do motor neural offline Piper ONNX no servidor/VPS.
+ * Status do runtime de voz. Síntese 100% Gemini API; sem motores offline desde a remoção do Piper.
  */
 export function getVoiceRuntimeStatus() {
-  const baseDirs = [
-    process.env.PIPER_DATA_DIR,
-    '/app/data/piper',
-    path.resolve(process.cwd(), 'data/piper')
-  ].filter(Boolean);
-
-  for (const dir of baseDirs) {
-    const binPath = path.join(dir, 'piper', 'piper');
-    const faberModel = path.join(dir, 'pt_BR-faber-medium.onnx');
-    const edressonModel = path.join(dir, 'pt_BR-edresson-low.onnx');
-    const hasBin = fsSync.existsSync(binPath);
-    const models = [];
-    if (fsSync.existsSync(faberModel)) models.push('piper-pt-BR-faber');
-    if (fsSync.existsSync(edressonModel)) models.push('piper-pt-BR-edresson');
-    if (hasBin && models.length > 0) {
-      return {
-        offlineAvailable: true,
-        engine: 'piper-onnx-x86_64',
-        baseDir: dir,
-        binPath,
-        models
-      };
-    }
-  }
-
-  return {
-    offlineAvailable: false,
-    engine: 'gemini-neural-pt-br',
-    baseDir: null,
-    binPath: null,
-    models: []
-  };
-}
-
-/**
- * Executa síntese de voz neural 100% offline na CPU da VPS via Piper ONNX.
- */
-async function synthesizeWithPiperOffline(cleanText, { voiceName = 'piper-pt-BR-faber', speed = 1.0, timeoutMs = 25000 } = {}) {
-  const status = getVoiceRuntimeStatus();
-  if (!status.offlineAvailable || !status.binPath || !status.baseDir) return null;
-
-  const preferLow = voiceName === 'piper-pt-BR-edresson';
-  const primaryFile = preferLow ? 'pt_BR-edresson-low.onnx' : 'pt_BR-faber-medium.onnx';
-  const fallbackFile = preferLow ? 'pt_BR-faber-medium.onnx' : 'pt_BR-edresson-low.onnx';
-  let modelPath = path.join(status.baseDir, primaryFile);
-  if (!fsSync.existsSync(modelPath)) {
-    modelPath = path.join(status.baseDir, fallbackFile);
-  }
-  if (!fsSync.existsSync(modelPath)) return null;
-
-  const tmpWav = path.join(os.tmpdir(), `lia-piper-${crypto.randomUUID()}.wav`);
-  const safeSpeed = Math.max(0.75, Math.min(1.35, Number(speed) || 1.0));
-  const lengthScale = (1 / safeSpeed).toFixed(3);
-
-  try {
-    await new Promise((resolve, reject) => {
-      const child = spawn(
-        status.binPath,
-        ['--model', modelPath, '--output_file', tmpWav, '--length_scale', String(lengthScale)],
-        {
-          cwd: path.dirname(status.binPath),
-          env: {
-            ...process.env,
-            LD_LIBRARY_PATH: `${path.dirname(status.binPath)}:${process.env.LD_LIBRARY_PATH || ''}`
-          },
-          stdio: ['pipe', 'ignore', 'pipe']
-        }
-      );
-
-      let stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('piper_offline_timeout'));
-      }, timeoutMs);
-
-      child.stderr.on('data', chunk => { stderr += String(chunk); });
-      child.on('error', err => {
-        clearTimeout(timer);
-        reject(err);
-      });
-      child.on('close', code => {
-        clearTimeout(timer);
-        if (code === 0) resolve();
-        else reject(new Error(`piper_exit_${code}: ${stderr.slice(0, 140)}`));
-      });
-
-      child.stdin.write(`${cleanText}\n`);
-      child.stdin.end();
-    });
-
-    const wavBuf = await fs.readFile(tmpWav);
-    if (!wavBuf || wavBuf.length < 100) return null;
-    return {
-      base64: wavBuf.toString('base64'),
-      mimeType: 'audio/wav',
-      voiceName: voiceName.startsWith('piper-') ? voiceName : 'piper-pt-BR-faber',
-      engine: 'piper-offline'
-    };
-  } catch (err) {
-    console.warn('[ai] synthesizeWithPiperOffline aviso:', err.message);
-    return null;
-  } finally {
-    await fs.rm(tmpWav, { force: true }).catch(() => {});
-  }
+  return { offlineAvailable: false, engine: 'gemini-neural-pt-br', models: [] };
 }
 
 async function transcribeWithGroqWhisper(cleanB64, cleanMime, timeoutMs = 45000) {
@@ -295,14 +186,7 @@ export async function synthesizeVoice(text, { voiceName = '', botConfig = {} } =
   const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
   const cleanText = prepareSpeechText(text, maxChars);
   if (!cleanText) return null;
-
-  // 1. Se o usuário selecionou explicitamente uma voz neural offline Piper ONNX na VPS
-  if (selectedVoice.startsWith('piper-')) {
-    const offlineAudio = await synthesizeWithPiperOffline(cleanText, { voiceName: selectedVoice, speed, timeoutMs });
-    if (offlineAudio) return offlineAudio;
-  }
-
-  // 2. Motor Neural Gemini 2.5 com trava estrita de identidade vocal PT-BR (sem troca de modelo acústico)
+  // Motor Neural Gemini 2.5 com trava estrita de identidade vocal PT-BR (sem troca de modelo acústico)
   if (config.geminiKey) {
     const geminiVoice = GEMINI_VOICE_MAP[selectedVoice] || 'Aoede';
     // Usa exclusivamente o checkpoint primário para nunca alternar timbre entre mensagens
@@ -362,14 +246,5 @@ export async function synthesizeVoice(text, { voiceName = '', botConfig = {} } =
       console.warn(`[ai] synthesizeVoice (${primaryTtsModel}) erro:`, err.message);
     }
   }
-
-  // 3. Fallback Neural Offline Automático (Piper ONNX na VPS) caso a nuvem falhe ou atinja cota
-  const fallbackOffline = await synthesizeWithPiperOffline(cleanText, {
-    voiceName: 'piper-pt-BR-faber',
-    speed,
-    timeoutMs
-  });
-  if (fallbackOffline) return fallbackOffline;
-
   return null;
 }
