@@ -42,6 +42,42 @@ function rawWithToolCalls(text, calls) {
   });
 }
 
+function compactText(value, maxChars) {
+  const text = String(value || '');
+  if (text.length <= maxChars) return text;
+  const headChars = Math.floor(maxChars * 0.7);
+  const tailChars = Math.max(0, maxChars - headChars);
+  return `${text.slice(0, headChars)}\n[contexto reduzido por limite do provedor]\n${tailChars ? text.slice(-tailChars) : ''}`;
+}
+
+function compactCloudflareHistory(history = []) {
+  const normalized = normalizeHistory(history);
+  const recent = normalized.slice(-8).map(item => ({
+    role: item.role,
+    content: compactText(item.content, 1400)
+  }));
+  while (recent.length && recent[0].role !== 'user') recent.shift();
+  return recent;
+}
+
+function buildCloudflareBody({ system, history, userText, nativeTools, runtime, temperature, compact = false }) {
+  const messages = [
+    { role: 'system', content: compact ? compactText(system, 8000) : system },
+    ...(compact ? compactCloudflareHistory(history) : normalizeHistory(history)),
+    { role: 'user', content: compact ? compactText(userText, 3000) : userText }
+  ];
+  return {
+    messages,
+    max_tokens: runtime.maxOutputTokens || config.aiMaxOutputTokens,
+    temperature,
+    // Ferramentas também podem ser a maior parte de um payload. Na tentativa
+    // compacta o catálogo já está no system prompt, então não o repetimos.
+    ...(!compact && nativeTools.length ? {
+      tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } }))
+    } : {})
+  };
+}
+
 async function reserveModelBudget(budgetGate, context, provider, model) {
   if (!budgetGate) return null;
   const permit = await budgetGate.acquire({ ...context, provider, model });
@@ -201,15 +237,17 @@ export async function call(provider, {
       if (remainingMs <= 100) break;
       const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
       const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.cloudflareAccountId)}/ai/run/${candidateModel}`;
-      const body = {
-        messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
-        max_tokens: runtime.maxOutputTokens || config.aiMaxOutputTokens,
-        temperature: adaptiveTemperature,
-        ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })) } : {})
-      };
+      const body = buildCloudflareBody({ system: effectiveSystem, history, userText, nativeTools, runtime, temperature: adaptiveTemperature });
       try {
         permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
         let response = await fetch(cfUrl, { method: 'POST', headers, signal, body: JSON.stringify(body) });
+        // Cloudflare responds 413 when the combined system prompt, history or
+        // tool catalog is too large. Retry the same model once with a compact
+        // context before consuming another model/provider fallback.
+        if (response.status === 413) {
+          const compactBody = buildCloudflareBody({ system: effectiveSystem, history, userText, nativeTools, runtime, temperature: adaptiveTemperature, compact: true });
+          response = await fetch(cfUrl, { method: 'POST', headers, signal, body: JSON.stringify(compactBody) });
+        }
         if (!response.ok && (response.status === 400 || response.status === 404) && nativeTools.length > 0 && body.tools) {
           const fallbackBody = { ...body };
           delete fallbackBody.tools;
@@ -243,7 +281,7 @@ export async function call(provider, {
         }
         lastError = error;
         if (error.budgetDenied) continue;
-        if (!/\b(400|404|408|409|425|429|5\d\d)\b/.test(error.message)) throw error;
+        if (!/\b(400|404|408|409|413|425|429|5\d\d)\b/.test(error.message)) throw error;
       }
     }
     throw lastError || Error('cloudflare deadline_exceeded');

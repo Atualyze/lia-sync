@@ -38,6 +38,9 @@ test('falha transitória volta para a fila com backoff', async () => {
   const leadStore = new ProspectLeadStore();
   const list = await leadStore.createList({ name: 'Retry', status: 'active', dailyCap: 10 });
   const [lead] = await leadStore.addLeads(list.id, [{ phone: '5585999992222', name: 'Bia' }]);
+  // O lead é criado com o relógio real; alinhe-o ao relógio simulado do teste
+  // para que ele esteja vencido e entre na fila de forma determinística.
+  leadStore.mem.leads.get(lead.id).next_action_at = NOW.toISOString();
   const summary = await runProspectingTick({ enabled: true, leadStore, campaignStore: openCampaign, now: NOW, send: async () => { throw new Error('timeout'); }, config: { timeZone: 'America/Fortaleza', minDelayMs: 0, maxDelayMs: 0, retryBaseMinutes: 15, maxAttempts: 3 } });
   assert.equal(summary.failed, 1);
   assert.equal(leadStore.mem.leads.get(lead.id).status, 'queued');
