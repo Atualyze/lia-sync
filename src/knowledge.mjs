@@ -87,12 +87,12 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     }
     if (mode === 'normal') {
       return isOwner
-        ? '- Use emojis úteis e moderados como marcadores visuais (status, horários, tópicos) para leitura rápida.'
-        : '- Use emojis amigáveis com moderação (até 2 a 3 por mensagem), acompanhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, falhas ou assuntos sensíveis.';
+        ? '- Use 1 a 2 emojis úteis e moderados como marcadores visuais (status, horários, tópicos) para leitura rápida.'
+        : '- Use 1 a 3 emojis amigáveis por mensagem em pontos naturais, acompanhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, falhas ou assuntos sensíveis.';
     }
     return isOwner
-      ? '- Use no máximo 1 a 2 emojis úteis por mensagem apenas como marcadores visuais (status, horários, tópicos).'
-      : '- Use no máximo 0 a 2 emojis por mensagem em pontos naturais (saudação, confirmação ou despedida), espelhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, erros ou assuntos sensíveis.';
+      ? '- Use 1 emoji útil por mensagem, apenas como marcador visual discreto (status, horário, tópico ou confirmação).'
+      : '- Use 1 emoji natural por mensagem em uma saudação, confirmação ou despedida, espelhando o tom do cliente. PROIBIDO usar emojis em reclamações, cobranças, urgências, erros ou assuntos sensíveis.';
   }
 
   if (copilotMode) {

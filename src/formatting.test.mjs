@@ -39,6 +39,14 @@ test('Formatação: System Prompt instrui leitura natural no WhatsApp', () => {
   assert.match(prompt, /NÃO use "-" como marcador/);
 });
 
+test('Formatação: modos ativos de emoji orientam uso efetivo sem ignorar assuntos sensíveis', () => {
+  const leve = buildSystemPrompt({ session: { history: [] }, botConfig: { style: { emoji: 'leve' } } });
+  const normal = buildSystemPrompt({ session: { history: [] }, botConfig: { style: { emoji: 'normal' } } });
+  assert.match(leve, /Use 1 emoji natural/);
+  assert.match(normal, /Use 1 a 3 emojis amigáveis/);
+  assert.match(normal, /PROIBIDO usar emojis em reclamações/);
+});
+
 test('Formatação: formatOutgoingMessage destaca rótulos e distribui parágrafos', () => {
   const out = formatOutgoingMessage(
     'Conexão WhatsApp: conectado\nAtendimentos em andamento: 6\n' +
