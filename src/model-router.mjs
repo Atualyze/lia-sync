@@ -9,8 +9,16 @@
  */
 
 export const MODEL_CAPABILITIES = Object.freeze({
+  'gemini-3.1-flash-lite': {
+    resolvedModel: 'gemini-3.1-flash-lite',
+    tier: 'lite',
+    supportsTools: true,
+    supportsWebSearch: false,
+    supportsVision: true,
+    defaultThinkingBudget: 0
+  },
   'gemini-3.5-flash-lite': {
-    resolvedModel: 'gemini-2.5-flash-lite',
+    resolvedModel: 'gemini-3.5-flash-lite',
     tier: 'lite',
     supportsTools: true,
     supportsWebSearch: false,
@@ -194,8 +202,8 @@ export function decidirModeloPorContexto({
 
   if (!needsFullFlashCapabilities && capabilities.includes('fast_chat')) {
     return {
-      model: 'gemini-3.5-flash-lite',
-      resolvedModel: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.1-flash-lite',
+      resolvedModel: 'gemini-3.1-flash-lite',
       tier: 'lite',
       capabilities,
       thinkingBudget: 0,
@@ -226,4 +234,3 @@ export function decidirModeloPorContexto({
     reason: 'Atendimento Conversacional Padrão com Thinking'
   };
 }
-

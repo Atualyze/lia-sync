@@ -133,7 +133,8 @@ export async function call(provider, {
     // Modelo preferido: tenta o roteado e depois a cadeia padrão
     const LEGACY_GEMINI_EQUIVALENT = {
       'gemini-3.8-flash': 'gemini-2.5-flash',
-      'gemini-3.5-flash-lite': 'gemini-2.5-flash-lite'
+      'gemini-3.5-flash-lite': 'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite': 'gemini-3.1-flash-lite'
     };
     const geminiFixed = fixedModel && String(fixedModel).startsWith('gemini-') ? fixedModel : null;
     const candidateModels = (geminiFixed
@@ -146,7 +147,7 @@ export async function call(provider, {
           ...(runtime.fallbackModels.length
             ? runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')).slice(0, 3)
             : []),
-          'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
+          'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash'
         ]
     )
       .filter(Boolean)

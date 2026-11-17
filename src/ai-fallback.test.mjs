@@ -76,7 +76,7 @@ test('fallback: flash-lite com 503 cai para flash subsequente', async (t) => {
   assert.ok(r);
   assert.equal(r.reply, 'Olá, tudo bem? Como posso te ajudar?');
   assert.ok(calls.length >= 2, 'Deveria tentar o primeiro e cair para o segundo modelo');
-  assert.match(calls[0].url, /gemini-3\.5-flash-lite/);
+  assert.match(calls[0].url, /gemini-3\.1-flash-lite/);
   assert.match(calls[1].url, /gemini/);
 });
 
@@ -258,4 +258,3 @@ test('OpenRouter percorre fallbackModels em 503 e faz downgrade gracioso de tool
   assert.equal(calls[2].body.model, 'google/gemma-4-26b-a4b:free');
   assert.equal(calls[2].body.tools, undefined);
 });
-
