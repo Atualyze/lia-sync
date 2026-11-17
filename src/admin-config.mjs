@@ -208,9 +208,6 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
     'Puck',
     'Charon',
     'Fenrir',
-    'pt-BR-FranciscaNeural',
-    'pt-BR-ThalitaNeural',
-    'pt-BR-AntonioNeural',
   ]);
   // Vozes legadas Piper (offline) não são mais suportadas: mapear para voz Gemini segura (Aoede).
   if (typeof value.voice?.voiceName === 'string' && value.voice.voiceName.startsWith('piper-')) {

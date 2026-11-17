@@ -2218,6 +2218,10 @@ function renderAdmin({ force = false } = {}) {
   if (draft.voice && !draft.voice.deliveryMode) {
     draft.voice.deliveryMode = draft.voice.sendTranscriptionWithAudio === false ? 'audio_only' : 'audio_and_text';
   }
+  if (draft.voice && (!['Aoede', 'Kore', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir'].includes(draft.voice.voiceName))) {
+    draft.voice.voiceName = 'Aoede';
+    if (!state.adminFormDirty && state.adminConfig?.draft?.voice) state.adminConfig.draft.voice.voiceName = 'Aoede';
+  }
   document.querySelectorAll('[data-config]').forEach(input => {
     const value = adminGet(draft, input.dataset.config);
     if (input.type === 'checkbox') input.checked = Boolean(value);
