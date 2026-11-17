@@ -9,7 +9,7 @@ import { SupabaseSessionStore } from './supabase-runtime.mjs';
 test('normalizePhone e mask formatam numeros brasileiros corretamente', () => {
   assert.equal(normalizePhone('+55 (11) 99999-8888'), '5511999998888');
   assert.equal(normalizePhone('sim:5511999998888'), 'sim:5511999998888');
-  assert.equal(mask('5511999998888'), '551199***8888');
+  assert.equal(mask('5511999998888'), '551***88');
 });
 
 test('SessionStore cria, persiste e recarrega sessao com flush()', async () => {

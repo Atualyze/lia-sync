@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'; import path from 'node:path';
 import { OWNER_SELF_KEY, isOwnerKey, isOwnerContact, normalizeOwnerKey } from './core/identity.mjs';
-const mask = (p='') => { const s=String(p); return s.length>7 ? `${s.slice(0,6)}***${s.slice(-4)}` : '***'; };
+const mask = (p='') => { const s=String(p); return s.length > 5 ? `${s.slice(0,3)}***${s.slice(-2)}` : '***'; };
 export function normalizePhone(raw = '') {
   let p = String(raw || '').trim();
   const isSim = p.startsWith('sim:');
@@ -124,10 +124,10 @@ export class SessionStore {
     const cutoff = this.now() - this.ttlMs;
     let removed = 0;
     for (const [key, s] of Object.entries(this.sessions)) {
-      const active = new Date(s.lastUserAt || s.updatedAt || 0).getTime();
+      const active = new Date(s.lastUserAt || (Array.isArray(s.history) ? s.updatedAt : s.createdAt || 0)).getTime();
       const human = Boolean(s.human) && this.now() - active < 7 * 86400000;
       const held = Boolean(s.legalHold || s.legal_hold || s.metadata?.legalHold || s.metadata?.legal_hold);
-      if (active && active < cutoff && !human && !held) {
+      if (active < cutoff && !human && !held) {
         delete this.sessions[key];
         removed++;
       }

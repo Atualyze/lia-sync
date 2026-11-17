@@ -262,6 +262,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
         text: item.text,
         campaignStore,
         prospectStore: prospecting?.leadStore || null,
+        sessionStore: store,
         send: sendText
       });
       if (optOut.matched) {

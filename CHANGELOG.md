@@ -1,6 +1,11 @@
 # Changelog
 
+## 2.5.1 — Hardening de prospecção, privacidade e confiabilidade
+- **Hardening de prospecção e privacidade:** RLS e privilégios service-role-only nas tabelas de leads, opt-out contextual para não interceptar clientes ativos, confirmação enviada antes da supressão, claims órfãos recuperáveis, retries com backoff, pausa entre envios, trava contra ticks concorrentes, fila com janela de varredura, contagem paginada no fuso local, cadências por etapas e persistência pós-envio que não transforma sucesso em falha.
+- **Retenção e observabilidade:** guards passaram a consultar sessões sem criá-las, templates não inventam nomes vazios, logs usam telefone mais fortemente mascarado, a formatação de atividade respeita o fuso configurado e o schema consolidado acompanha a migration de prospecção.
+
 ## 2.5.0 — API pública v1, autoatendimento de integrações, RAG leve nas bases e White-Label 100%
+
 
 - **API Pública (`/api/v1/*`) e Painel de Integrações (`src/http/api-v1.mjs`, `src/http/integrations-store.mjs`, `src/http/admin.mjs`):** autoatendimento na aba **Integrações** para gerar/revogar Chaves de API (`lia_live_...` com escopos `read`, `write`, `ai`), gerenciar Webhooks de Saída (`message.received`, `handoff.triggered`, `lead.updated` assinados com HMAC-SHA256 e proteção SSRF) e consultar guia n8n.
 - **Busca inteligente nas bases de conhecimento (`src/knowledge-bases.mjs`, `src/knowledge.mjs`, `src/tools/consultar_base_conhecimento.mjs`):** leitura recursiva de subpastas (`autoconhecimento/`, `suporte_tecnico/`, `sales_intelligence/`, `biblioteca_juridica/`), ignorando `README.md`, com pontuação por título, subtítulos `##` e corpo do texto e extração apenas das seções relevantes.
@@ -225,10 +230,3 @@ Foram adicionados hooks de autenticação injetável para testes e cobertura de 
 ## 0.3.3 — suporte a OpenRouter e modelos gratuitos
 
 Foi adicionado suporte ao provedor OpenRouter (`AI_PROVIDER=openrouter`), permitindo o uso de modelos de IA gratuitos (`google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.3-70b-instruct:free`, etc.) e pagos com chave unificada. O provedor integra-se nativamente à cadeia de resiliência e circuit breaker com fallback automático entre provedores (`gemini`, `openrouter`, `qwen`, `openai`).
-
-## 2.5.1 - Documentacao operacional e correcao de metadados
-
-- Documentado que /home/ubuntu/lia-assistente e o diretorio ativo e lia-bot e o container do servico Compose bot; o espelho fica em /home/ubuntu/lia-sync-repo.
-- Atualizada a base de autoconhecimento com os caminhos operacionais e a versao completa 2.5.0.
-- Corrigida a versao de metadata.json para corresponder a package.json (2.5.0).
-- Ajuste documental e de metadados; sem alteracao do comportamento do bot.

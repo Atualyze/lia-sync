@@ -1,7 +1,7 @@
 {
   "name": "Lia Sync",
-  "version": "2.5.0",
-  "description": "Assistente operacional via WhatsApp com catálogo de modelos por provedor, fallbacks configuráveis, orçamento de IA distribuído, follow-up confiável, regras determinísticas de segurança e dashboard administrativo.",
+  "version": "2.5.1",
+  "description": "Assistente operacional via WhatsApp com catálogo de modelos por provedor, fallbacks configuráveis, orçamento de IA distribuído, prospecção segura com opt-out contextual, follow-up confiável, regras determinísticas de segurança e dashboard administrativo.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

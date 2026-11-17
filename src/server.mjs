@@ -274,9 +274,12 @@ if (isDirectRun) {
       return false;
     }
   };
+  let maintenanceRunning = false;
   const maintenance = async () => {
-    if (!await claimMaintenanceLease()) return;
-    return processMaintenance({
+    if (maintenanceRunning || !await claimMaintenanceLease()) return;
+    maintenanceRunning = true;
+    try {
+      await processMaintenance({
       store,
       send: sendText,
       notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
@@ -290,7 +293,11 @@ if (isDirectRun) {
       enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
-    }).then(() => app.prospecting?.tick()).catch(e => console.error('[maintenance]', e.message));
+      }).catch(e => console.error('[maintenance]', e.message));
+      return await app.prospecting?.tick();
+    } finally {
+      maintenanceRunning = false;
+    }
   };
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   const stop = async () => {

@@ -15,15 +15,28 @@ export function getLocalClock(now = new Date(), timeZone = 'America/Sao_Paulo') 
     minute: '2-digit',
     hour12: false
   }).formatToParts(now);
-
   const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
   const hour = Number(map.hour === '24' ? 0 : map.hour);
   const minute = Number(map.minute);
   return {
-    weekday: map.weekday, // Sun, Mon, ...
+    weekday: map.weekday,
     minutes: hour * 60 + minute,
     dateKey: `${map.year}-${map.month}-${map.day}`
   };
+}
+
+/** Retorna o instante UTC correspondente à meia-noite do dia local. */
+export function localDayStartIso(now = new Date(), timeZone = 'America/Sao_Paulo') {
+  const { dateKey } = getLocalClock(now, timeZone);
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const guess = Date.UTC(year, month - 1, day);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(new Date(guess));
+  const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  const shown = Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), Number(map.hour === '24' ? 0 : map.hour), Number(map.minute), Number(map.second));
+  return new Date(guess - (shown - guess)).toISOString();
 }
 
 export function isWithinBusinessWindow({ now = new Date(), timeZone = 'America/Sao_Paulo', windowStart = '09:00', windowEnd = '18:00' } = {}) {
@@ -43,10 +56,7 @@ export function computeWarmupDailyCap({ baseCap = 20, warmupStartedAt = null, wa
   return Math.max(1, Math.round(cap * ratio));
 }
 
-/**
- * Evaluates all prospecting safety guards in strict order before sending.
- * Fail-closed on suppression lookup failure.
- */
+/** Avalia guards sem criar uma sessão vazia para cada lead. */
 export async function evaluateProspectGuards({
   lead,
   list = {},
@@ -56,43 +66,34 @@ export async function evaluateProspectGuards({
   leadStore = null,
   config = {}
 } = {}) {
-  // 1. Suppression check (fail-closed)
-  if (!campaignStore?.isSuppressed) {
-    return { allowed: false, reason: 'suppression_unavailable' };
-  }
+  if (!campaignStore?.isSuppressed) return { allowed: false, reason: 'suppression_unavailable' };
   try {
-    const suppressed = await campaignStore.isSuppressed(lead.phone);
-    if (suppressed) return { allowed: false, reason: 'suppressed' };
+    if (await campaignStore.isSuppressed(lead.phone)) return { allowed: false, reason: 'suppressed' };
   } catch {
     return { allowed: false, reason: 'suppression_check_failed' };
   }
 
-  // 2. Existing client / active session check — never bypassed.
-  const existingSession = sessionStore?.get?.(lead.phone);
-  if (existingSession && ((existingSession.history && existingSession.history.length > 0) || existingSession.human)) {
-    return { allowed: false, reason: 'existing_session' };
+  try {
+    const hasSession = typeof sessionStore?.has === 'function' ? sessionStore.has(lead.phone) : false;
+    const existingSession = hasSession && sessionStore.get(lead.phone);
+    if (existingSession && ((existingSession.history?.length || 0) > 0 || existingSession.human)) {
+      return { allowed: false, reason: 'existing_session' };
+    }
+  } catch {
+    return { allowed: false, reason: 'session_check_failed' };
   }
 
-  // 3. Business hours in configured timezone (no Sunday) — never bypassed.
   const timeZone = config.timeZone || 'America/Sao_Paulo';
   if (!isWithinBusinessWindow({ now, timeZone, windowStart: config.windowStart || '09:00', windowEnd: config.windowEnd || '18:00' })) {
     return { allowed: false, reason: 'outside_business_hours' };
   }
 
-  // 4. Cooldown per lead (default 48h)
   const cooldownHours = config.minCooldownHours ?? 48;
   if (lead.last_contacted_at) {
     const hoursSince = (now.getTime() - new Date(lead.last_contacted_at).getTime()) / 3600000;
-    if (hoursSince < cooldownHours) {
-      return { allowed: false, reason: 'lead_cooldown' };
-    }
+    if (hoursSince < cooldownHours) return { allowed: false, reason: 'lead_cooldown' };
   }
 
-  // 5. Daily cap with gradual warmup.
-  //    Esta checagem serve para bloquear cedo e, no dryRun, mostrar exatamente o
-  //    que o envio real faria. A reserva autoritativa da vaga acontece junto do
-  //    claim do lead (claimLeadWithinCap), reavaliando o cap imediatamente antes
-  //    de reservar — entre estes dois passos outra réplica pode consumir a cota.
   const effectiveCap = computeWarmupDailyCap({
     baseCap: list.daily_cap ?? config.dailyCap ?? 20,
     warmupStartedAt: list.warmup_started_at,
@@ -100,13 +101,12 @@ export async function evaluateProspectGuards({
     now
   });
   if (leadStore?.countSentToday) {
-    const startOfDay = new Date(now);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const sentToday = await leadStore.countSentToday({ listId: list.id || null, sinceIso: startOfDay.toISOString() });
-    if (sentToday >= effectiveCap) {
-      return { allowed: false, reason: 'daily_cap_reached' };
-    }
+    const sentToday = await leadStore.countSentToday({
+      listId: list.id || null,
+      sinceIso: localDayStartIso(now, timeZone),
+      timeZone
+    });
+    if (sentToday >= effectiveCap) return { allowed: false, reason: 'daily_cap_reached' };
   }
-
   return { allowed: true, effectiveCap };
 }

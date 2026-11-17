@@ -2,7 +2,14 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.5.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.5.1** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.5.1 — Hardening de prospecção e privacidade
+
+- RLS service-role-only nas tabelas `prospect_*`, com schema consolidado regenerado.
+- Opt-out contextual, confirmação não bloqueada, retries com backoff, claims órfãos recuperáveis e pausa anti-ban entre envios.
+- Scheduler protegido contra sobreposição, contagem diária no fuso local, fila sem head-of-line blocking e cadências por etapas.
+- 296 testes automatizados, 26 contratos de arquitetura e 142 módulos verificados.
 
 **Operação na VPS:** o projeto fica em `/home/ubuntu/lia-assistente` e é executado pelo serviço/contêiner Docker Compose `bot`/`lia-bot`. A pasta é o diretório ativo da aplicação, não um segundo bot. Repositório espelho: `/home/ubuntu/lia-sync-repo`.
 
@@ -193,6 +200,9 @@ supabase/migrations/20261113152048_follow_up_atomic_claim.sql
 supabase/migrations/20261113153840_atomic_ai_budgets.sql
 supabase/migrations/20261113154223_ai_budget_effective_model.sql
 supabase/migrations/20261114072000_runtime_projections.sql
+supabase/migrations/20261115_prospecting.sql
+supabase/migrations/20261115_sync_archive.sql
+supabase/migrations/20261116000000_review_hardening.sql
 supabase/seed.sql  # opcional, somente desenvolvimento/teste
 ```
 

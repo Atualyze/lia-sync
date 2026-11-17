@@ -6,6 +6,7 @@ import { handleInboundOptOut, isOptOutMessage } from './optout.mjs';
 
 export function createProspecting({ client = null, sender, campaignStore, sessionStore = null, adminConfig = null, env = process.env } = {}) {
   const leadStore = new ProspectLeadStore({ client });
+  let activeTick = null;
 
   const isEnabled = () => {
     if (adminConfig?.active?.prospecting?.enabled !== undefined) {
@@ -23,6 +24,10 @@ export function createProspecting({ client = null, sender, campaignStore, sessio
       warmupDays: Number(ui.warmupDays ?? env.PROSPECTING_WARMUP_DAYS ?? 21),
       windowStart: ui.windowStart || envWindow[0] || '09:00',
       windowEnd: ui.windowEnd || envWindow[1] || '18:00',
+      minDelayMs: Number(ui.minDelayMs ?? env.PROSPECTING_MIN_DELAY_MS ?? 20000),
+      maxDelayMs: Number(ui.maxDelayMs ?? env.PROSPECTING_MAX_DELAY_MS ?? 90000),
+      maxAttempts: Number(ui.maxAttempts ?? env.PROSPECTING_MAX_ATTEMPTS ?? 3),
+      retryBaseMinutes: Number(ui.retryBaseMinutes ?? env.PROSPECTING_RETRY_BASE_MINUTES ?? 15),
       defaultTemplate: ui.defaultTemplate || undefined
     };
   };
@@ -31,10 +36,11 @@ export function createProspecting({ client = null, sender, campaignStore, sessio
     get enabled() { return isEnabled(); },
     leadStore,
     importLeads: importProspectLeads,
-    handleInboundOptOut: params => handleInboundOptOut({ ...params, campaignStore, prospectStore: leadStore, send: sender }),
+    handleInboundOptOut: params => handleInboundOptOut({ ...params, campaignStore, prospectStore: leadStore, sessionStore, send: sender }),
     tick: (opts = {}) => {
+      if (activeTick) return activeTick.then(() => ({ skipped: true, reason: 'already_running', sent: 0, blocked: 0, failed: 0, previewed: 0, details: [] }));
       const cfg = { ...getRuntimeConfig(), ...(opts.config || {}) };
-      return runProspectingTick({
+      activeTick = runProspectingTick({
         enabled: opts.enabled ?? isEnabled(),
         leadStore,
         campaignStore,
@@ -43,7 +49,8 @@ export function createProspecting({ client = null, sender, campaignStore, sessio
         template: cfg.defaultTemplate,
         ...opts,
         config: cfg
-      });
+      }).finally(() => { activeTick = null; });
+      return activeTick;
     }
   };
 }

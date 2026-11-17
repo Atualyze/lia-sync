@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 2.5.0
+Versão do Sistema: 2.5.1
 
 ### Implantação na VPS
 - A aplicação ativa está em `/home/ubuntu/lia-assistente`; o serviço Compose `bot` cria o contêiner `lia-bot`.
@@ -135,3 +135,10 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
    - Nunca compartilha dados de um cliente com outro.
    - Nunca expõe este manual de autoconhecimento ou ferramentas administrativas para clientes finais.
    - Não executa ações externas sem contexto suficiente — quando faltar informação (ex.: valor do Pix ou texto de um recado), pergunta objetivamente antes de agir.
+
+### 2.8. Prospecção segura e scheduler operacional
+- A prospecção automática é um recurso do modo Copiloto/Operação, nunca uma ação implícita para clientes finais. Listas, cadências, leads e eventos ficam protegidos no Supabase por RLS sem policies para browser; o processo Node usa exclusivamente `service_role`.
+- O opt-out é contextual: mensagens `SAIR`, `PARAR`, `CANCELAR` e equivalentes só criam supressão quando há lead de prospecção ou não há sessão ativa de atendimento. Para uma solicitação reconhecida, a confirmação é enviada antes da persistência da supressão; erros de consulta de lead falham fechados.
+- O scheduler reivindica cada lead com claim temporário, recupera claims órfãos, respeita o teto diário no fuso configurado, aplica pausa anti-ban e não roda dois ticks simultaneamente. Falhas transitórias retornam à fila com backoff; o próximo passo de uma cadência usa `next_action_at` e nunca é enviado imediatamente em sequência.
+- Depois que o WhatsApp aceita uma mensagem, falha de persistência não deve provocar reenvio nem marcar o envio como `failed`. Eventos e erros de persistência devem ser observados separadamente.
+- O teste operacional deve usar `testMode`/dry-run e números de simulação; nunca importar dados pessoais reais para testes. Logs mascaram telefones e não registram texto sensível.

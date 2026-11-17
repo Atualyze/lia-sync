@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { normalizePhone } from '../sessions.mjs';
+import { localDayStartIso } from './guards.mjs';
 
 /** Tempo máximo que uma reserva de lead pode ficar sem conclusão antes de ser recuperada. */
 export const CLAIM_LEASE_MS = 15 * 60 * 1000;
@@ -150,7 +151,7 @@ export class ProspectLeadStore {
       method: 'PATCH',
       query: [
         'claim_token=not.is.null',
-        `status=in.(new,queued)`,
+        `status=in.(new,queued,failed)`,
         `or=(claimed_at.is.null,claimed_at.lt.${encodeURIComponent(cutoffIso)})`
       ].join('&'),
       body: { claim_token: null, claimed_at: null, updated_at: nowIso },
@@ -159,7 +160,7 @@ export class ProspectLeadStore {
     return Array.isArray(rows) ? rows.length : 0;
   }
 
-  async listDueLeads({ limit = 10, now = new Date() } = {}) {
+  async listDueLeads({ limit = 10, scanLimit = Math.max(limit * 5, limit), now = new Date() } = {}) {
     const nowIso = now.toISOString();
     const isListWithinDates = list => {
       if (!list || list.status !== 'active') return false;
@@ -178,12 +179,12 @@ export class ProspectLeadStore {
       return [...this.mem.leads.values()]
         .filter(l =>
           activeLists.has(l.list_id)
-          && ['new', 'queued'].includes(l.status)
+          && ['new', 'queued', 'failed'].includes(l.status)
           && !l.claim_token
           && !l.claimed_at
           && (!l.next_action_at || l.next_action_at <= nowIso)
         )
-        .slice(0, limit)
+        .slice(0, scanLimit)
         .map(l => ({ ...l, list: activeLists.get(l.list_id) }));
     }
 
@@ -192,9 +193,14 @@ export class ProspectLeadStore {
     if (!eligibleLists.size) return [];
 
     const listIds = [...eligibleLists.keys()].map(id => `"${id}"`).join(',');
+    const cadences = await this.client.select('prospect_cadences', `select=list_id,steps&list_id=in.(${listIds})&order=created_at.asc&limit=1000`);
+    for (const cadence of cadences || []) {
+      const list = eligibleLists.get(cadence.list_id);
+      if (list && !list.cadence) list.cadence = { steps: Array.isArray(cadence.steps) ? cadence.steps : [] };
+    }
     const leads = await this.client.select(
       'prospect_leads',
-      `select=*&list_id=in.(${listIds})&status=in.(new,queued)&claim_token=is.null&claimed_at=is.null&next_action_at=lte.${encodeURIComponent(nowIso)}&order=next_action_at.asc&limit=${limit}`
+      `select=*&list_id=in.(${listIds})&status=in.(new,queued,failed)&claim_token=is.null&claimed_at=is.null&next_action_at=lte.${encodeURIComponent(nowIso)}&order=next_action_at.asc&limit=${scanLimit}`
     );
     return (leads || []).map(l => ({ ...l, list: eligibleLists.get(l.list_id) }));
   }
@@ -208,7 +214,7 @@ export class ProspectLeadStore {
     const nowIso = now.toISOString();
     if (!this.remoteEnabled) {
       const lead = this.mem.leads.get(leadId);
-      if (!lead || lead.claim_token || lead.claimed_at || !['new', 'queued'].includes(lead.status)) return null;
+      if (!lead || lead.claim_token || lead.claimed_at || !['new', 'queued', 'failed'].includes(lead.status)) return null;
       lead.claim_token = token;
       lead.claimed_at = nowIso;
       lead.status = 'queued';
@@ -218,7 +224,7 @@ export class ProspectLeadStore {
 
     const rows = await this.client.request('prospect_leads', {
       method: 'PATCH',
-      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=is.null&claimed_at=is.null&status=in.(new,queued)`,
+      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=is.null&claimed_at=is.null&status=in.(new,queued,failed)`,
       body: { claim_token: token, claimed_at: nowIso, status: 'queued', updated_at: nowIso },
       prefer: 'return=representation'
     });
@@ -237,11 +243,9 @@ export class ProspectLeadStore {
    * aqui para não ampliar o contrato desta migration. Enquanto isso, o overshoot
    * máximo é o número de réplicas concorrentes no mesmo instante.
    */
-  async claimLeadWithinCap(leadId, { dailyCap = null, listId = null, now = new Date() } = {}) {
+  async claimLeadWithinCap(leadId, { dailyCap = null, listId = null, now = new Date(), timeZone = 'America/Sao_Paulo' } = {}) {
     if (Number.isFinite(dailyCap) && dailyCap > 0) {
-      const startOfDay = new Date(now);
-      startOfDay.setUTCHours(0, 0, 0, 0);
-      const sentToday = await this.countSentToday({ listId, sinceIso: startOfDay.toISOString() });
+      const sentToday = await this.countSentToday({ listId, sinceIso: localDayStartIso(now, timeZone) });
       if (sentToday >= dailyCap) return { claimed: null, blocked: 'daily_cap_reached' };
     }
     const claimed = await this.claimLead(leadId, { now });
@@ -303,8 +307,13 @@ export class ProspectLeadStore {
     const parts = ['select=id', 'event_type=eq.sent'];
     if (sinceIso) parts.push(`created_at=gte.${encodeURIComponent(sinceIso)}`);
     if (listId) parts.push(`list_id=eq.${encodeURIComponent(listId)}`);
-    const rows = await this.client.select('prospect_events', parts.join('&'));
-    return Array.isArray(rows) ? rows.length : 0;
+    let total = 0;
+    for (let offset = 0; ; offset += 1000) {
+      const rows = await this.client.select('prospect_events', `${parts.join('&')}&order=created_at.asc&limit=1000&offset=${offset}`);
+      const size = Array.isArray(rows) ? rows.length : 0;
+      total += size;
+      if (size < 1000) return total;
+    }
   }
 
   async recordEvent({ listId = null, leadId = null, phone, eventType, stage = 0, detail = {} }) {
@@ -324,6 +333,14 @@ export class ProspectLeadStore {
       detail
     });
     return { list_id: listId, lead_id: leadId, phone, event_type: eventType, stage, detail };
+  }
+
+  async hasLeadByPhone(phone) {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return false;
+    if (!this.remoteEnabled) return [...this.mem.leads.values()].some(lead => lead.phone === normalized && !['stopped', 'opted_out'].includes(lead.status));
+    const rows = await this.client.select('prospect_leads', `select=id&phone=eq.${encodeURIComponent(normalized)}&status=not.in.(stopped,opted_out)&limit=1`);
+    return Array.isArray(rows) && rows.length > 0;
   }
 
   async markOptedOutByPhone(phone) {
@@ -419,7 +436,12 @@ export class ProspectLeadStore {
     if (!lists?.length) return [];
 
     const listIds = lists.map(l => `"${l.id}"`).join(',');
-    const leads = await this.client.select('prospect_leads', `select=list_id,status&list_id=in.(${listIds})`);
+    const leads = [];
+    for (let offset = 0; ; offset += 1000) {
+      const page = await this.client.select('prospect_leads', `select=list_id,status&list_id=in.(${listIds})&limit=1000&offset=${offset}`);
+      leads.push(...(page || []));
+      if (!Array.isArray(page) || page.length < 1000) break;
+    }
 
     const byList = new Map();
     for (const row of leads || []) {

@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS prospect_leads (
 
 CREATE INDEX IF NOT EXISTS idx_prospect_leads_due
   ON prospect_leads (status, next_action_at)
-  WHERE status IN ('new', 'queued', 'contacted');
+  WHERE status IN ('new', 'queued', 'failed', 'contacted');
 
 CREATE INDEX IF NOT EXISTS idx_prospect_leads_phone
   ON prospect_leads (phone);
@@ -62,3 +62,13 @@ CREATE TABLE IF NOT EXISTS prospect_events (
 
 CREATE INDEX IF NOT EXISTS idx_prospect_events_list_created
   ON prospect_events (list_id, created_at DESC);
+
+-- Estas tabelas contêm dados pessoais de leads. O dashboard usa apenas o
+-- service_role no backend; a chave publicável nunca deve acessar o REST delas.
+ALTER TABLE prospect_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospect_cadences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospect_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospect_events ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE prospect_lists, prospect_cadences, prospect_leads, prospect_events FROM anon, authenticated;
+GRANT ALL ON TABLE prospect_lists, prospect_cadences, prospect_leads, prospect_events TO service_role;

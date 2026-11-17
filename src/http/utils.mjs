@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.mjs';
 import { isOwnerKey } from '../core/identity.mjs';
+import { formatPhoneNumber as formatPhoneNumberCanonical } from '../sessions.mjs';
 
 // Sentinela usada pelos handlers de rota: qualquer branch que atende a request
 // retorna algo (frequentemente `undefined`); só o fallback sem match retorna isto.
@@ -23,37 +24,24 @@ export function json(res, status, body, origin = '') { res.writeHead(status, { '
 
 export function authorized(req, token = config.webhookToken) { if (!token) return config.allowInsecureWebhook; const a = Buffer.from(String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')); const b = Buffer.from(token); return a.length === b.length && timingSafeEqual(a, b); }
 export async function readBody(req, max = 256 * 1024) { let size = 0; const parts = []; for await (const chunk of req) { size += chunk.length; if (size > max) { const e = Error('payload too large'); e.statusCode = 413; throw e; } parts.push(chunk); } try { return JSON.parse(Buffer.concat(parts).toString() || '{}'); } catch { const e = Error('invalid json'); e.statusCode = 400; throw e; } }
-export function formatPhoneNumber(raw = '') {
-  const digits = String(raw).replace(/\D/g, '');
-  if (!digits) return raw;
-  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
-    const ddd = digits.slice(2, 4);
-    const num = digits.slice(4);
-    if (num.length === 9) return `+55 (${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`;
-    if (num.length === 8) return `+55 (${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
-  }
-  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `+${digits}`;
-}
-
+export const formatPhoneNumber = formatPhoneNumberCanonical;
 export function formatActivityTime(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
-  if (isNaN(d.getTime())) return '';
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
-
-  const timeStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
-  if (isToday) return timeStr;
-  if (isYesterday) return `Ontem ${timeStr}`;
-  const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
-  return `${dateStr} ${timeStr}`;
+  if (Number.isNaN(d.getTime())) return '';
+  const timeZone = config.businessTimeZone || 'America/Sao_Paulo';
+  const parts = value => Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(value).map(p => [p.type, p.value]));
+  const target = parts(d);
+  const current = parts(new Date());
+  const targetKey = `${target.year}-${target.month}-${target.day}`;
+  const currentKey = `${current.year}-${current.month}-${current.day}`;
+  const yesterday = new Date(Date.UTC(Number(current.year), Number(current.month) - 1, Number(current.day) - 1));
+  const yesterdayParts = parts(yesterday);
+  const timeStr = `${target.hour === '24' ? '00' : target.hour}:${target.minute}`;
+  if (targetKey === currentKey) return timeStr;
+  if (targetKey === `${yesterdayParts.year}-${yesterdayParts.month}-${yesterdayParts.day}`) return `Ontem ${timeStr}`;
+  return `${target.day}/${target.month} ${timeStr}`;
 }
-
 export function deliveryTarget(job, defaultPhone = '') {
   if (isOwnerKey(job?.phone) || isOwnerKey(job?.jid)) {
     const rawJid = String(job?.jid || '');
