@@ -112,8 +112,13 @@ export async function handleProspectingRoutes({ req, res, u, prospecting }) {
     if (req.method === 'POST' && u.pathname === '/api/dashboard/prospecting/tick') {
       const body = await readBody(req).catch(() => ({}));
       const testMode = Boolean(body?.testMode);
-      const summary = await prospecting.tick(testMode ? { enabled: true, config: { testMode: true } } : {});
-      return json(res, 200, { ok: true, testMode, summary });
+      // "Testar Agora" é pré-visualização: `dryRun` avalia os guards e devolve a
+      // mensagem que seria enviada, sem chamar `send`, sem reservar lead e sem
+      // gravar evento. Nunca dispara WhatsApp real.
+      const summary = testMode
+        ? await prospecting.tick({ enabled: true, dryRun: true })
+        : await prospecting.tick({});
+      return json(res, 200, { ok: true, testMode, dryRun: Boolean(summary?.dryRun), summary });
     }
 
     return NOT_HANDLED;

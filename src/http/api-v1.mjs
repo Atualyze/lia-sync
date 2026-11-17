@@ -3,8 +3,16 @@ import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
 import { sendText } from '../whatsapp.mjs';
+import { filterReply } from '../safety.mjs';
+import { getAllowedPrices } from '../faq.mjs';
 
 const VALID_DEAL_STAGES = new Set(['lead', 'qualificado', 'agendado', 'proposta', 'ganho', 'perdido']);
+
+// O `system` prompt publicado é a fonte canônica; sobrescrita pelo chamador é
+// exceção explícita de operação, nunca o padrão.
+const allowCustomSystem = () => process.env.LIA_API_ALLOW_CUSTOM_SYSTEM === 'true';
+
+const nowIso = () => new Date().toISOString();
 
 function extractApiKey(req) {
   const headerKey = String(req.headers['x-api-key'] || '').trim();
@@ -75,7 +83,18 @@ function buildOpenApiSpec() {
       },
       '/messages/send': { post: { summary: 'Envia mensagem WhatsApp respeitando supressão' } },
       '/leads': { post: { summary: 'Registra lead no CRM e opcionalmente envia saudação no WhatsApp' } },
-      '/ai/ask': { post: { summary: 'Consulta direta ao motor de IA da Lia' } }
+      '/ai/ask': {
+        post: {
+          summary: 'Consulta direta ao motor de IA da Lia',
+          description: [
+            'A resposta é higienizada por `filterReply` antes de ser devolvida.',
+            'Quando o filtro bloqueia o conteúdo (ex.: preço não autorizado), a resposta é `200` com `reply` vazio,',
+            '`blocked: true` e a lista de `violations`; o texto bloqueado nunca é devolvido.',
+            'O `system` prompt publicado no painel é a fonte canônica: o campo `system` do corpo é ignorado,',
+            'salvo quando a instância habilita `LIA_API_ALLOW_CUSTOM_SYSTEM=true`.'
+          ].join(' ')
+        }
+      }
     }
   };
 }
@@ -95,7 +114,11 @@ function sanitizeContact(phone, session) {
     humanMode: Boolean(session.human),
     updatedAt: session.updatedAt || null,
     lastMessages: Array.isArray(session.history)
-      ? session.history.slice(-20).map(m => ({ role: m.role, text: m.text, timestamp: m.timestamp || null }))
+      ? session.history.slice(-20).map(m => ({
+          role: m.role,
+          text: String(m.content ?? ''),
+          timestamp: m.createdAt ?? null
+        }))
       : []
   };
 }
@@ -161,12 +184,15 @@ export function createApiV1Handler({
 
     const contactMatch = subPath.match(/^\/contacts\/([^/]+)$/);
     if (contactMatch) {
-      const phone = parsePhone(decodeURIComponent(contactMatch[1]));
+      let rawPhone;
+      try { rawPhone = decodeURIComponent(contactMatch[1]); } catch { return json(res, 400, { ok: false, error: 'invalid_phone' }); }
+      const phone = parsePhone(rawPhone);
       if (!phone) return json(res, 400, { ok: false, error: 'invalid_phone' });
 
       if (req.method === 'GET') {
         await store.refresh?.();
-        const session = store.get?.(phone);
+        if (!store.has(phone)) return json(res, 404, { ok: false, error: 'contact_not_found' });
+        const session = store.get(phone);
         if (!session) return json(res, 404, { ok: false, error: 'contact_not_found' });
         return json(res, 200, { ok: true, contact: sanitizeContact(phone, session) });
       }
@@ -178,8 +204,7 @@ export function createApiV1Handler({
         if (body.dealStage !== undefined && body.dealStage !== null && !VALID_DEAL_STAGES.has(String(body.dealStage))) {
           return json(res, 400, { ok: false, error: 'invalid_deal_stage', allowed: [...VALID_DEAL_STAGES] });
         }
-        const session = store.ensure?.(phone) || store.get?.(phone);
-        if (!session) return json(res, 500, { ok: false, error: 'session_store_unavailable' });
+        const session = store.ensure(phone);
         if (typeof body.name === 'string' && body.name.trim()) session.clientName = body.name.trim().slice(0, 120);
         if (typeof body.clientName === 'string' && body.clientName.trim()) session.clientName = body.clientName.trim().slice(0, 120);
         if (body.dealStage !== undefined) session.dealStage = body.dealStage ? String(body.dealStage) : null;
@@ -187,7 +212,7 @@ export function createApiV1Handler({
         if (typeof body.notes === 'string') session.contactNotes = body.notes.trim().slice(0, 1000);
         if (typeof body.contactNotes === 'string') session.contactNotes = body.contactNotes.trim().slice(0, 1000);
         if (typeof body.humanMode === 'boolean') session.human = body.humanMode;
-        session.updatedAt = Date.now();
+        session.updatedAt = nowIso();
         store.markDirty?.();
         await store.flush?.();
         const contact = sanitizeContact(phone, session);
@@ -205,7 +230,7 @@ export function createApiV1Handler({
       if (!message || message.length > 4000) return json(res, 400, { ok: false, error: 'invalid_message' });
       try {
         const result = await sendMessage(phone, message);
-        store.append?.(phone, { role: 'model', text: message, timestamp: Date.now() });
+        store.append(phone, { role: 'assistant', content: message });
         await store.flush?.();
         return json(res, 200, { ok: true, phone, result: result || { sent: true } });
       } catch (err) {
@@ -221,8 +246,7 @@ export function createApiV1Handler({
       const phone = parsePhone(body?.phone);
       if (!phone) return json(res, 400, { ok: false, error: 'invalid_phone' });
 
-      const session = store.ensure?.(phone) || store.get?.(phone);
-      if (!session) return json(res, 500, { ok: false, error: 'session_store_unavailable' });
+      const session = store.ensure(phone);
 
       const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 120) : '';
       const interest = typeof body?.interest === 'string' ? body.interest.trim().slice(0, 200) : '';
@@ -236,7 +260,7 @@ export function createApiV1Handler({
       if (noteParts.length) {
         session.contactNotes = [session.contactNotes, noteParts.join(' · ')].filter(Boolean).join('\n').slice(0, 1000);
       }
-      session.updatedAt = Date.now();
+      session.updatedAt = nowIso();
       store.markDirty?.();
 
       let delivery = null;
@@ -245,7 +269,7 @@ export function createApiV1Handler({
         const greeting = customText || `Olá${name ? `, ${name}` : ''}! Recebemos seu contato${interest ? ` sobre ${interest}` : ''}. Como posso te ajudar agora?`;
         try {
           delivery = await sendMessage(phone, greeting);
-          store.append?.(phone, { role: 'model', text: greeting, timestamp: Date.now() });
+          store.append(phone, { role: 'assistant', content: greeting });
         } catch (err) {
           await store.flush?.();
           const msg = err?.message || 'send_failed';
@@ -270,9 +294,12 @@ export function createApiV1Handler({
       if (typeof aiFn !== 'function') return json(res, 503, { ok: false, error: 'ai_unavailable' });
 
       const aiCfg = runtimeAI ? runtimeAI() : {};
-      const system = typeof body?.system === 'string' && body.system.trim()
+      // O `system` publicado no painel é a fonte canônica. Sobrescrita pelo chamador
+      // só existe com habilitação explícita da instância.
+      const publishedSystem = adminConfig?.active?.identity?.systemPrompt || 'Você é a Lia, assistente virtual. Responda em português de forma clara e objetiva.';
+      const system = allowCustomSystem() && typeof body?.system === 'string' && body.system.trim()
         ? body.system.trim().slice(0, 4000)
-        : (adminConfig?.active?.identity?.systemPrompt || 'Você é a Lia, assistente virtual da Atualyze. Responda em português de forma clara e objetiva.');
+        : publishedSystem;
       const history = Array.isArray(body?.history) ? body.history.slice(-12) : [];
 
       try {
@@ -285,9 +312,21 @@ export function createApiV1Handler({
           userText: prompt,
           maxTokens: Number.isFinite(Number(body?.maxTokens)) ? Math.min(2048, Math.max(64, Number(body.maxTokens))) : undefined
         });
+        const filtered = filterReply(result?.text || '', { allowedPrices: getAllowedPrices(), strictPrices: true });
+        if (filtered.blocked) {
+          return json(res, 200, {
+            ok: true,
+            reply: '',
+            blocked: true,
+            violations: filtered.violations,
+            provider: result?.provider || aiCfg.provider || null,
+            model: result?.model || aiCfg.model || null
+          });
+        }
         return json(res, 200, {
           ok: true,
-          reply: result?.text || '',
+          reply: filtered.text || '',
+          blocked: false,
           provider: result?.provider || aiCfg.provider || null,
           model: result?.model || aiCfg.model || null
         });

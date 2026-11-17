@@ -18,13 +18,24 @@ export function collectedValid(collected = {}) {
 
 export function isHumanRequest(text = '', identity = {}) {
   const raw = String(text || '');
-  if (/atendimento pessoal|quanto custa/i.test(raw)) return false;
   const n = normalize(raw);
-  if (/atendimento pessoal/i.test(n)) return false;
-  return /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(raw) ||
-         /\b(atendente|pessoa|humano|falar com um atendente|passa para uma pessoa)\b/i.test(n) ||
-         /\b(?:falar|chamar|quero)\s+(?:com\s+)?(?:a\s+|o\s+)?(?:dra|dr|doutora|doutor)\.?\s+\w+/i.test(n) ||
-         isTalkToOwnerRequest(text, identity);
+  if (!n) return false;
+
+  if (/^(?:humano|atendente|pessoa)$/.test(n)) return true;
+  if (/\b(?:quero|preciso|gostaria|pode|poderia|falar|chamar|conversar)\b.{0,40}\b(?:pessoalmente|presencialmente)\b/.test(n)) return true;
+
+  // Dúvida de preço continua sendo dúvida, não pedido de transferência.
+  if (/\bquanto\s+custa\b/.test(n)) return false;
+
+  // Exige verbo de pedido + alvo: substantivo isolado ("o atendente já me respondeu")
+  // não pode disparar handoff.
+  const verbs = '(?:falar|chamar|chame|chama|quero|queria|preciso|gostaria|pode|poderia|conversar|conversa|passa|passar|transfere|transferir|encaminha|encaminhar|conecta|conectar|avisa|avisar)';
+  const connectors = '(?:para\\s+|pra\\s+|pro\\s+|ao\\s+)?(?:com\\s+)?(?:o\\s+|a\\s+|um[a]?\\s+)?';
+  const targets = '(?:atendentes?|humanos?|pessoas?|atendimento|responsaveis?|equipe|suporte|dono|diretoria|diretor)';
+  if (new RegExp(`${verbs}\\s+${connectors}${targets}\\b`, 'i').test(n)) return true;
+  if (new RegExp(`\\b(?:falar|chamar|quero|preciso|gostaria)\\s+(?:com\\s+)?(?:a\\s+|o\\s+)?(?:dra|dr|doutora|doutor)\\.?\\s+\\w+`, 'i').test(n)) return true;
+
+  return isTalkToOwnerRequest(raw, identity);
 }
 
 /**

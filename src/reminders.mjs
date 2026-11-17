@@ -1,22 +1,48 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+/**
+ * Lembretes do Copiloto.
+ *
+ * Persistência: arquivo JSON local (fonte de verdade de uma réplica) + espelho
+ * opcional no Supabase. Duas garantias que a revisão exigiu:
+ *
+ *  1. Escrita atômica (`.tmp` + `rename`): uma interrupção no meio do write não
+ *     corrompe o arquivo. Antes o `fs.writeFile` direto podia truncar o JSON e o
+ *     `load()` seguinte descartava TODOS os lembretes.
+ *  2. `load()` nunca zera a lista por erro de parse: o arquivo é preservado, o
+ *     erro é registrado e a lista anterior em memória permanece. Só ENOENT
+ *     (arquivo inexistente) resulta em lista vazia.
+ */
 export class ReminderStore {
-  constructor(filePath = './data/reminders.json', { client = null, logger = console } = {}) {
+  constructor(filePath = './data/reminders.json', { client = null, logger = console, now = () => Date.now() } = {}) {
     this.filePath = filePath;
     this.client = client;
     this.logger = logger;
+    this.now = now;
     this.reminders = [];
     this.loaded = false;
+    this.writing = null;
   }
 
   async load() {
     try {
       const data = await fs.readFile(this.filePath, 'utf8');
-      this.reminders = JSON.parse(data);
-      if (!Array.isArray(this.reminders)) this.reminders = [];
-    } catch {
-      this.reminders = [];
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        this.reminders = parsed;
+      } else {
+        // JSON válido mas de formato inesperado: não destrói o arquivo nem a memória.
+        this.logger.error?.('[reminders] arquivo de lembretes não contém uma lista; mantendo estado anterior');
+      }
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        // Primeira execução: lista vazia é o estado correto.
+        this.reminders = [];
+      } else {
+        // Parse inválido, permissão, I/O: preserva o arquivo e a lista anterior.
+        this.logger.error?.(`[reminders] não foi possível ler ${path.basename(this.filePath)}; mantendo lembretes anteriores: ${error?.message || error?.code || 'erro desconhecido'}`);
+      }
     }
 
     if (this.client?.enabled) {
@@ -34,7 +60,7 @@ export class ReminderStore {
               clientName: row.client_name || '',
               createdBy: row.created_by || 'contato',
               status: row.status || 'pending',
-              createdAt: row.created_at || new Date().toISOString()
+              createdAt: row.created_at || new Date(this.now()).toISOString()
             });
           }
           this.reminders = Array.from(map.values());
@@ -48,9 +74,21 @@ export class ReminderStore {
     return this.reminders;
   }
 
+  /** Serializa as gravações locais na ordem em que foram pedidas. */
   async save() {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.reminders, null, 2), 'utf8');
+    const write = async () => {
+      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const tmp = `${this.filePath}.${process.pid}.${Math.random().toString(36).slice(2, 10)}.tmp`;
+      try {
+        await fs.writeFile(tmp, JSON.stringify(this.reminders, null, 2), 'utf8');
+        await fs.rename(tmp, this.filePath);
+      } catch (error) {
+        await fs.rm(tmp, { force: true }).catch(() => {});
+        throw error;
+      }
+    };
+    this.writing = (this.writing || Promise.resolve()).catch(() => {}).then(write);
+    return this.writing;
   }
 
   async add({ text, dueAt, phone = '', clientName = '', createdBy = 'contato' }) {
@@ -61,18 +99,18 @@ export class ReminderStore {
     } catch {}
 
     if (!dueIso) {
-      dueIso = new Date(Date.now() + 3600000).toISOString();
+      dueIso = new Date(this.now() + 3600000).toISOString();
     }
 
     const item = {
-      id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `rem_${this.now()}_${Math.random().toString(36).slice(2, 7)}`,
       text: String(text).trim(),
       dueAt: dueIso,
       phone,
       clientName,
       createdBy,
       status: 'pending',
-      createdAt: new Date().toISOString()
+      createdAt: new Date(this.now()).toISOString()
     };
     this.reminders.push(item);
     try {
@@ -100,25 +138,41 @@ export class ReminderStore {
     return item;
   }
 
-  getPendingDue(now = Date.now()) {
+  getPendingDue(now = this.now()) {
     return this.reminders.filter(r => r.status === 'pending' && new Date(r.dueAt).getTime() <= now);
   }
 
+  /**
+   * Marca o lembrete como enviado e persiste (local e remoto).
+   *
+   * Retorna uma Promise aguardável que propaga a falha de persistência: quem faz
+   * `await` recebe o erro. Chamadores legados que não aguardam (o loop de
+   * manutenção ainda chama sem `await`) não geram `unhandledRejection`, porque um
+   * handler é anexado à mesma Promise — o erro continua visível para quem aguarda.
+   */
   markSent(id) {
-    const item = this.reminders.find(r => r.id === id);
-    if (item) {
-      item.status = 'sent';
-      item.sentAt = new Date().toISOString();
-      this.save().catch(() => {});
+    const promise = this._markSent(id);
+    promise.catch(() => {});
+    return promise;
+  }
 
-      if (this.client?.enabled) {
-        this.client.request('reminders', {
-          method: 'PATCH',
-          query: `id=eq.${encodeURIComponent(id)}`,
-          body: { status: 'sent', sent_at: item.sentAt }
-        }).catch(err => this.logger.warn?.(`[reminders] Erro ao atualizar status no Supabase: ${err.message}`));
-      }
+  async _markSent(id) {
+    const item = this.reminders.find(r => r.id === id);
+    if (!item) return false;
+
+    item.status = 'sent';
+    item.sentAt = new Date(this.now()).toISOString();
+    await this.save();
+
+    if (this.client?.enabled) {
+      await this.client.request('reminders', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(id)}`,
+        body: { status: 'sent', sent_at: item.sentAt }
+      });
     }
+
+    return true;
   }
 
   listActive() {

@@ -16,18 +16,61 @@ import { createApiV1Handler } from './api-v1.mjs';
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
 const ROLE_RANK = { viewer: 0, operator: 1, admin: 2 };
-function requiredRole(pathname, method) {
-  if (pathname.startsWith('/api/admin/') || pathname === '/api/dashboard/users' || pathname.startsWith('/api/dashboard/users/') || pathname === '/api/dashboard/audit') return 'admin';
-  if (method === 'POST' && /^\/api\/dashboard\/campaigns\/[0-9a-f-]{36}\/execute$/i.test(pathname)) return 'admin';
-  if (pathname === '/api/dashboard/suppressions' && method === 'DELETE') return 'admin';
-  if (pathname.startsWith('/api/dashboard/prospecting') && method !== 'GET') return 'admin';
-  if (pathname.startsWith('/api/dashboard/prospecting') && method === 'GET') return 'operator';
-  if (pathname === '/api/dashboard/tools' && method !== 'GET') return 'admin';
-  if (pathname === '/api/dashboard/metrics/reset') return 'admin';
-  if (['/api/dashboard/state', '/api/dashboard/send', '/api/dashboard/simulate', '/api/dashboard/mode', '/api/dashboard/clear', '/api/dashboard/operations', '/api/dashboard/tts'].includes(pathname)) return 'operator';
-  if (pathname.startsWith('/api/dashboard/campaigns') || pathname.startsWith('/api/dashboard/suppressions')) return 'operator';
-  if (pathname === '/api/dashboard/ping-ai') return 'operator';
-  return 'viewer';
+
+// Matriz explícita de papel mínimo por rota do painel.
+// A primeira regra que casar vence; regras são avaliadas na ordem declarada,
+// então padrões específicos (ex.: campaigns/:id/execute) vêm antes dos prefixos.
+// `path` casa exato, `prefix` casa o segmento e seus filhos, `pattern` casa regex.
+const DASHBOARD_ROLE_RULES = Object.freeze([
+  // Leitura de contexto próprio e catálogos públicos do painel.
+  { method: 'GET', path: '/api/dashboard/session', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/config', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/models', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/agent-structure', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/voice-status', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/health-summary', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/integrations', role: 'viewer' },
+  { method: 'GET', path: '/api/dashboard/tools', role: 'viewer' },
+  // Leitura operacional sensível: exige operator.
+  { method: 'GET', path: '/api/dashboard/state', role: 'operator' },
+  { method: 'GET', path: '/api/dashboard/metrics', role: 'operator' },
+  { method: 'GET', path: '/api/dashboard/operations', role: 'operator' },
+  { method: 'GET', prefix: '/api/dashboard/prospecting', role: 'operator' },
+  // Administração: usuários, auditoria, inventário do host e reset de métricas.
+  { prefix: '/api/dashboard/users', role: 'admin' },
+  { path: '/api/dashboard/audit', role: 'admin' },
+  { method: 'GET', path: '/api/dashboard/vps-monitor', role: 'admin' },
+  { method: 'POST', path: '/api/dashboard/metrics/reset', role: 'admin' },
+  { method: 'PATCH', path: '/api/dashboard/tools', role: 'admin' },
+  { method: 'DELETE', path: '/api/dashboard/suppressions', role: 'admin' },
+  { method: 'POST', pattern: /^\/api\/dashboard\/campaigns\/[0-9a-f-]{36}\/execute$/i, role: 'admin' },
+  { prefix: '/api/dashboard/prospecting', role: 'admin' },
+  // Escrita operacional do atendimento: exige operator.
+  { method: 'POST', path: '/api/dashboard/simulate', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/send', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/mode', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/finish', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/clear', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/tts', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/ping-ai', role: 'operator' },
+  { method: 'POST', path: '/api/dashboard/suppressions', role: 'operator' },
+  { prefix: '/api/dashboard/campaigns', role: 'operator' }
+]);
+
+function matchesRule(rule, pathname, method) {
+  if (rule.method && rule.method !== method) return false;
+  if (rule.pattern) return rule.pattern.test(pathname);
+  if (rule.path) return rule.path === pathname;
+  if (rule.prefix) return pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`);
+  return false;
+}
+
+// Rota não declarada na matriz falha fechada em `admin`, nunca em `viewer`.
+export function requiredRole(pathname, method) {
+  if (pathname.startsWith('/api/admin/')) return 'admin';
+  if (!pathname.startsWith('/api/dashboard/')) return 'viewer';
+  const rule = DASHBOARD_ROLE_RULES.find(candidate => matchesRule(candidate, pathname, method));
+  return rule ? rule.role : 'admin';
 }
 
 export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {

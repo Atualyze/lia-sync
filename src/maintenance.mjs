@@ -1,6 +1,8 @@
 import { normalizePhone, isValidRealMobilePhone, isOwnerContact } from './sessions.mjs';
 import { isOwnerKey, resolveIdentity } from './core/identity.mjs';
 import { checkInfinitePayPayment } from './tools/checkout_infinitepay.mjs';
+import { filterReply } from './safety.mjs';
+import { getAllowedPrices } from './faq.mjs';
 
 const followUpLocks = new WeakMap();
 
@@ -152,8 +154,15 @@ export async function processMaintenance({
           ? `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu avaliar a proposta ou se ficou com alguma dúvida sobre valores e prazos. Se quiser ajustar algo no projeto ou falar direto com *${owner}*, fico à disposição! ✨`
           : `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com *${owner}*, fico à disposição! ✨`;
 
+        let safeFollowUpMessage = null;
         try {
           if (typeof send !== 'function') throw Object.assign(new Error('followup_sender_unavailable'), { beforeSend: true });
+          // Texto gerado por configuração também passa pelo filtro: nenhum envio
+          // de manutenção chega ao cliente sem filterReply.
+          const followUpFiltered = filterReply(followUpMessage, { allowedPrices: getAllowedPrices(), strictPrices: true });
+          safeFollowUpMessage = followUpFiltered.blocked || !followUpFiltered.text
+            ? `${greeting} Passando para saber se ficou alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar com *${owner}*, fico à disposição!`
+            : followUpFiltered.text;
           if (store.client?.enabled) {
             claimToken = await store.claimFollowUp(key, claimAt, 900);
             if (typeof claimToken !== 'string' || !claimToken.trim()) { locks.delete(key); continue; }
@@ -173,12 +182,12 @@ export async function processMaintenance({
           continue;
         }
         try {
-          await send(session.phone, followUpMessage);
+          await send(session.phone, safeFollowUpMessage);
           const sentAt = new Date(current).toISOString();
           session.followUpSentAt = sentAt;
           session.followUpClaimedAt = null;
           session.followUpClaimToken = null;
-          session.history.push({ role: 'assistant', content: followUpMessage, createdAt: new Date(current).toISOString() });
+          session.history.push({ role: 'assistant', content: safeFollowUpMessage, createdAt: new Date(current).toISOString() });
           store.markDirty();
           if (claimToken) {
             const completed = await store.completeFollowUp(key, claimToken, sentAt);
@@ -249,12 +258,23 @@ export async function processMaintenance({
         }
         if (!alreadyPaid) {
           session.pendingCheckout.recoverySentAt = new Date(current).toISOString();
-          const valorFmt = session.pendingCheckout.amountCents
-            ? ` de *R$ ${(Number(session.pendingCheckout.amountCents) / 100).toFixed(2).replace('.', ',')}*`
+          const amountCents = Number(session.pendingCheckout.amountCents) || 0;
+          const valorFmt = amountCents
+            ? ` de *R$ ${(amountCents / 100).toFixed(2).replace('.', ',')}*`
             : '';
-          const recMsg = `Oi! Passando só para lembrar que seu link de pagamento${valorFmt} ainda está disponível caso queira concluir:\n\n${session.pendingCheckout.checkoutUrl}\n\nSe já tiver pago ou precisar de alguma ajuda, é só me avisar por aqui! 😊`;
+          const recMsgRaw = `Oi! Passando só para lembrar que seu link de pagamento${valorFmt} ainda está disponível caso queira concluir:\n\n${session.pendingCheckout.checkoutUrl}\n\nSe já tiver pago ou precisar de alguma ajuda, é só me avisar por aqui! 😊`;
+          // O valor do próprio checkout é permitido por definição; nada além dele passa.
+          const recFiltered = filterReply(recMsgRaw, {
+            allowedPrices: new Set([
+              ...(amountCents ? [(amountCents / 100).toFixed(2), String(amountCents / 100).replace('.', ',')] : []),
+              ...getAllowedPrices()
+            ]),
+            strictPrices: true
+          });
+          const recMsg = recFiltered.blocked || !recFiltered.text ? '' : recFiltered.text;
           store.markDirty();
           try {
+            if (!recMsg) throw new Error('checkout_recovery_blocked_by_filter');
             await send?.(session.phone, recMsg);
             session.history = [...(session.history || []), { role: 'assistant', content: recMsg }].slice(-12);
             store.markDirty();

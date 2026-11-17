@@ -4,6 +4,13 @@ import { AdminConfigStore, DEFAULT_BOT_CONFIG, merge, normalizeBotConfig } from 
 
 const jsonClone = value => JSON.parse(JSON.stringify(value));
 const iso = value => value ? new Date(value).toISOString() : null;
+// Logs não podem conter telefone completo (regra do projeto).
+const maskKey = value => {
+  const raw = String(value || '');
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 6) return raw ? '***' : '';
+  return `${raw.startsWith('sim:') ? 'sim:' : ''}${digits.slice(0, 4)}***${digits.slice(-2)}`;
+};
 
 export class SupabaseRestClient {
   constructor({ url, key, logger = console, timeoutMs = Number(process.env.SUPABASE_REQUEST_TIMEOUT_MS) || 12000 } = {}) {
@@ -181,10 +188,14 @@ function sessionToConversation(key, session, contactId) {
     last_bot_at: date(session.lastBotAt),
     follow_up_count: Number(session.followUpCount || 0),
     follow_up_sent_at: date(session.followUpSentAt),
-    follow_up_claimed_at: date(session.followUpClaimedAt),
-    follow_up_claim_token: session.followUpClaimToken || null,
+    // follow_up_claimed_at / follow_up_claim_token são de propriedade do banco (RPC
+    // claim/complete/release). Gravá-los aqui reintroduziria o estado local de outra
+    // réplica e derrubaria a claim ativa, causando envio duplicado de follow-up.
     archived_at: date(session.archivedAt),
     archive_reason: session.archiveReason || null,
+    // legal_hold é coluna dedicada: o flush só ELEVA o hold, nunca o limpa,
+    // para que a retenção não apague dado sob hold por causa de estado local velho.
+    ...(session.legalHold ? { legal_hold: true } : {}),
     metadata: {
       runtime: 'node',
       role: 'lia-assistant',
@@ -200,11 +211,8 @@ function sessionToConversation(key, session, contactId) {
       audioPreference: session.audioPreference || null,
       askedAudioPreference: Boolean(session.askedAudioPreference),
       followUpCount: Number(session.followUpCount || 0),
-      followUpSentAt: date(session.followUpSentAt),
-      followUpClaimedAt: date(session.followUpClaimedAt),
-      legalHold: Boolean(session.legalHold || session.metadata?.legalHold),
-      legal_hold: Boolean(session.legal_hold || session.metadata?.legal_hold)
-    }
+      followUpSentAt: date(session.followUpSentAt)
+    },
   };
 }
 
@@ -240,14 +248,36 @@ export class SupabaseSessionStore extends SessionStore {
     this.lastRetentionSweepAt = this.now();
     const cutoff = new Date(this.now() - this.ttlMs).toISOString();
     try {
-      const rows = await this.client.select('conversations', `select=id,status,archived_at,metadata&status=eq.archived&archived_at=lt.${encodeURIComponent(cutoff)}&limit=500`);
-      for (const row of rows || []) {
+      // 1) Archives expirados (status=archived + archived_at < TTL).
+      const archivedRows = await this.client.select(
+        'conversations',
+        `select=id,status,archived_at,deleted_at,metadata&status=eq.archived&archived_at=lt.${encodeURIComponent(cutoff)}&limit=500`
+      );
+      for (const row of archivedRows || []) {
         const metadata = row.metadata || {};
         if (!row.id || row.status === 'closed' || metadata.legalHold || metadata.legal_hold) continue;
         const filters = new URLSearchParams({
           id: `eq.${row.id}`,
           status: 'eq.archived',
           archived_at: `lt.${cutoff}`,
+          'metadata->>legalHold': 'not.is.true',
+          'metadata->>legal_hold': 'not.is.true'
+        });
+        await this.client.request('conversations', { method: 'DELETE', query: filters.toString() });
+      }
+      // 2) Soft-deletes expirados: TTL também propaga a exclusão física de
+      // conversas com deleted_at antigo (painel/WhatsApp), sem legal hold.
+      const deletedRows = await this.client.select(
+        'conversations',
+        `select=id,status,deleted_at,metadata&deleted_at=lt.${encodeURIComponent(cutoff)}&limit=500`
+      );
+      for (const row of deletedRows || []) {
+        const metadata = row.metadata || {};
+        if (!row.id || row.status === 'closed' || metadata.legalHold || metadata.legal_hold) continue;
+        if (!row.deleted_at) continue;
+        const filters = new URLSearchParams({
+          id: `eq.${row.id}`,
+          deleted_at: `lt.${cutoff}`,
           'metadata->>legalHold': 'not.is.true',
           'metadata->>legal_hold': 'not.is.true'
         });
@@ -437,7 +467,7 @@ export class SupabaseSessionStore extends SessionStore {
         return remoteSession;
       }
     } catch (err) {
-      this.logger.warn?.(`[supabase] falha ao sincronizar sessão pontual de ${key}: ${err.message}`);
+      this.logger.warn?.(`[supabase] falha ao sincronizar sessão pontual de ${maskKey(key)}: ${err.message}`);
     }
     return s;
   }
@@ -476,7 +506,10 @@ export class SupabaseSessionStore extends SessionStore {
   }
 
   async flush() {
-    if (!this.client?.enabled) return super.flush();
+    // O snapshot local é SEMPRE gravado: ele é o fallback real quando o Supabase
+    // está indisponível, não um arquivo que fica congelado desde o boot.
+    const local = super.flush();
+    if (!this.client?.enabled) return local;
     this.dirty = false;
     this._remoteFlushDirty = true;
     if (!this._remoteFlushPromise) {
@@ -491,7 +524,7 @@ export class SupabaseSessionStore extends SessionStore {
         }
       })();
     }
-    await this._remoteFlushPromise;
+    await Promise.all([local, this._remoteFlushPromise]);
   }
 
   async _flushRemoteOnce() {
@@ -499,17 +532,22 @@ export class SupabaseSessionStore extends SessionStore {
       for (const [key, session] of Object.entries(this.sessions)) {
         const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}`;
         if (session._conversationId && session._flushedSig === sig) continue;
-        const externalId = key.replace(/^sim:/, '');
+        const isSimulation = key.startsWith('sim:');
+        const externalId = isSimulation ? key : key.replace(/^sim:/, '');
         const resolvedName = session.clientName || session.contactName || session.pushName || null;
-        const contacts = await this.client.upsert('contacts', [{
-          channel: 'whatsapp',
-          external_id: externalId,
-          phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
-          display_name: resolvedName,
-          push_name: session.pushName || resolvedName,
-          last_seen_at: session.lastUserAt || new Date().toISOString()
-        }], 'channel,external_id');
-        const contactId = contacts?.[0]?.id;
+        // Sessões simuladas nunca tocam no cadastro real de contatos (namespace isolado).
+        let contactId = null;
+        if (!isSimulation) {
+          const contacts = await this.client.upsert('contacts', [{
+            channel: 'whatsapp',
+            external_id: externalId,
+            phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
+            display_name: resolvedName,
+            push_name: session.pushName || resolvedName,
+            last_seen_at: session.lastUserAt || new Date().toISOString()
+          }], 'channel,external_id');
+          contactId = contacts?.[0]?.id;
+        }
         const conversations = await this.client.upsert('conversations', [sessionToConversation(key, session, contactId)], 'external_key');
         const conversationId = conversations?.[0]?.id || session._conversationId;
         if (!conversationId) continue;
@@ -551,7 +589,7 @@ export class SupabaseSessionStore extends SessionStore {
     } catch (error) {
       this.persistence = 'fallback';
       this.remoteError = error.message;
-      this.logger.warn?.(`[supabase] gravação indisponível; fallback local preservado: ${error.message}`);
+      this.logger.warn?.(`[supabase] gravação remota indisponível; snapshot local atualizado (fallback ativo): ${error.message}`);
     }
   }
 
@@ -578,17 +616,22 @@ export class SupabaseSessionStore extends SessionStore {
     const result = await super.archive(key, reason);
     if (this.client?.enabled && result) {
       try {
+        const isSimulation = key.startsWith('sim:');
         const externalId = key.replace(/^sim:/, '');
         const resolvedName = result.clientName || result.contactName || result.pushName || null;
-        const contacts = await this.client.upsert('contacts', [{
-          channel: 'whatsapp',
-          external_id: externalId,
-          phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
-          display_name: resolvedName,
-          push_name: result.pushName || resolvedName
-        }], 'channel,external_id');
+        let contactId = null;
+        if (!isSimulation) {
+          const contacts = await this.client.upsert('contacts', [{
+            channel: 'whatsapp',
+            external_id: externalId,
+            phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
+            display_name: resolvedName,
+            push_name: result.pushName || resolvedName
+          }], 'channel,external_id');
+          contactId = contacts?.[0]?.id;
+        }
         const archived = { ...result, archivedAt: new Date().toISOString(), archiveReason: reason };
-        await this.client.upsert('conversations', [sessionToConversation(key, archived, contacts?.[0]?.id)], 'external_key');
+        await this.client.upsert('conversations', [sessionToConversation(key, archived, contactId)], 'external_key');
       } catch (error) { this.remoteError = error.message; this.logger.warn?.(`[supabase] arquivamento remoto indisponível; cópia local preservada: ${error.message}`); }
     }
     return result;
@@ -701,6 +744,28 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
     return this;
   }
 
+  // Concorrência entre réplicas: quando o Supabase é a fonte ativa, `baseRevision`
+  // também é comparado com a revisão remota atual, para que um dashboard conectado
+  // a outra réplica não sobrescreva silenciosamente mudanças recentes. Em falha de
+  // leitura, cai para a comparação local (comportamento anterior).
+  async _staleBaseRevision(baseRevision) {
+    if (baseRevision === undefined || baseRevision === null || baseRevision === '') return null;
+    let remoteRevision = null;
+    if (this.client?.enabled && this.persistence === 'supabase') {
+      try {
+        const state = (await this.client.select('bot_config_state', 'select=revision&id=eq.true&limit=1'))?.[0];
+        if (state && state.revision !== null && state.revision !== undefined) remoteRevision = Number(state.revision);
+      } catch (error) {
+        this.logger?.warn?.(`[supabase] revisão remota indisponível para baseRevision; usando local: ${error.message}`);
+      }
+    }
+    // O remoto, quando legível, é autoritativo: a revisão local pode estar
+    // atrasada em relação a outra réplica. Sem leitura remota, comparação local.
+    const authoritative = Number.isFinite(remoteRevision) ? remoteRevision : Number(this.revision);
+    if (Number(baseRevision) === authoritative) return null;
+    return ['config_alterada_por_outro_usuário: a configuração mudou no servidor. Recarregue e tente novamente.'];
+  }
+
   async flush() {
     const local = super.flush();
     if (!this.client?.enabled) return local;
@@ -710,8 +775,7 @@ export class SupabaseAdminConfigStore extends AdminConfigStore {
       this.remoteError = this.remoteError || 'Leitura inicial do estado Supabase não foi confirmada.';
       return;
     }
-    const snapshot = { revision: this.revision, active: this.active, draft: this.draft, history: this.history.slice(), updatedAt: this.updatedAt };
-    const remote = (async () => {
+    const snapshot = { revision: this.revision, active: this.active, draft: this.draft, history: this.history.slice(), updatedAt: this.updatedAt };    const remote = (async () => {
       try {
         await this.client.upsert('bot_config_state', [{ id: true, revision: snapshot.revision, active_config: snapshot.active, draft_config: snapshot.draft, updated_at: snapshot.updatedAt || null }], 'id');
         const rawRows = snapshot.history.filter(item => item.snapshot).map(item => ({ revision: item.revision, action: item.action === 'draft_updated' ? 'draft_updated' : item.action === 'rollback' ? 'rollback' : 'published', source_revision: item.sourceRevision || null, snapshot: item.snapshot }));

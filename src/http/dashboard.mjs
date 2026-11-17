@@ -155,7 +155,24 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
           index: Number.isFinite(Number(body.replyTo.index)) ? Number(body.replyTo.index) : null
         }
       : null;
-    const session = store.get(phone);
+    let sent = false;
+    let sendError = null;
+    const outboundText = safeReplyTo
+      ? `> _"${safeReplyTo.content.replace(/\s+/g, ' ').slice(0, 100)}"_\n\n${text}`
+      : text;
+    try {
+      await sendText(phone, outboundText);
+      sent = true;
+    } catch (err) {
+      sendError = err?.message || 'send_failed';
+      console.error('[dashboard/send] falha ao enviar WhatsApp:', sendError);
+    }
+    if (!sent) {
+      // Entrega não confirmada: não cria sessão, não registra histórico e não
+      // muda o modo da conversa.
+      return json(res, 502, { ok: false, sent: false, error: sendError, selectedPhone: phone });
+    }
+    const session = store.ensure(phone);
     session.human = true;
     session.humanSource = 'dashboard';
     session.handoffAt = new Date().toISOString();
@@ -171,20 +188,8 @@ export async function handleDashboardRoutes({ req, res, u, store, f }) {
     session.lastBotAt = new Date().toISOString();
     session.updatedAt = new Date().toISOString();
     store.markDirty();
-    let sent = false;
-    let sendError = null;
-    const outboundText = safeReplyTo
-      ? `> _"${safeReplyTo.content.replace(/\s+/g, ' ').slice(0, 100)}"_\n\n${text}`
-      : text;
-    try {
-      await sendText(phone, outboundText);
-      sent = true;
-    } catch (err) {
-      sendError = err.message;
-      console.error('[dashboard/send] falha ao enviar WhatsApp:', err.message);
-    }
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, sent, error: sendError });
+    return json(res, 200, { ok: true, sent: true, selectedPhone: phone });
   }
   return NOT_HANDLED;
 }
@@ -265,18 +270,27 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     const simulation = body.mode === 'simulation' || body.simulation === true;
     if (!simulation && !(body.confirm === true && typeof body.reason === 'string' && body.reason.trim())) return json(res, 400, { error: 'confirm_and_reason_required' });
     if (simulation) {
-      await store.archive(`sim:${body.phone}`, body.reason || 'simulação encerrada');
+      const archived = await store.archive(`sim:${body.phone}`, body.reason || 'simulação encerrada');
+      if (!archived) return json(res, 404, { ok: false, error: 'conversation_not_found' });
     } else {
       const syncCfg = adminConfig?.active?.sync || {};
-      if (syncCfg.whatsappSyncEnabled) {
-        await store.softDeleteConversation?.({
-          key: body.phone,
-          source: 'dashboard',
-          archive: syncCfg.archiveDeletedMessages !== false
-        });
+      if (syncCfg.whatsappSyncEnabled && typeof store.softDeleteConversation === 'function') {
+        let removed = false;
+        try {
+          removed = await store.softDeleteConversation({
+            key: body.phone,
+            source: 'dashboard',
+            archive: syncCfg.archiveDeletedMessages !== false
+          });
+        } catch {
+          removed = false;
+        }
+        // Só confirma a exclusão quando o store remoto confirmou de fato.
+        if (!removed) return json(res, 502, { ok: false, error: 'delete_failed' });
         await deleteChatForSync({ jid: body.phone }).catch(() => {});
       } else {
-        await store.archive(body.phone, body.reason);
+        const archived = await store.archive(body.phone, body.reason);
+        if (!archived) return json(res, 404, { ok: false, error: 'conversation_not_found' });
       }
     }
     return json(res, 200, { ok: true });

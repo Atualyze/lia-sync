@@ -2222,12 +2222,29 @@ function renderAdmin({ force = false } = {}) {
     draft.voice.voiceName = 'Aoede';
     if (!state.adminFormDirty && state.adminConfig?.draft?.voice) state.adminConfig.draft.voice.voiceName = 'Aoede';
   }
+  // O autosave chama renderAdmin() enquanto o usuário digita: não sobrescreve o
+  // campo focado (o valor dele já foi lido para o rascunho) e preserva a seleção,
+  // senão o cursor salta para o fim a cada pausa. Cargas explícitas (force) e
+  // publish/discard continuam reescrevendo todos os campos.
+  const focusedInput = document.activeElement;
+  const preserveFocus = !force && Boolean(focusedInput) && focusedInput.matches?.('[data-config]');
+  const savedSelection = preserveFocus && typeof focusedInput.selectionStart === 'number'
+    ? { start: focusedInput.selectionStart, end: focusedInput.selectionEnd, direction: focusedInput.selectionDirection || 'none' }
+    : null;
   document.querySelectorAll('[data-config]').forEach(input => {
+    if (preserveFocus && input === focusedInput) return;
     const value = adminGet(draft, input.dataset.config);
     if (input.type === 'checkbox') input.checked = Boolean(value);
     else if (input.dataset.config === 'identity.aliases') input.value = Array.isArray(value) ? value.join(', ') : (value ?? '');
     else input.value = value ?? '';
   });
+  if (savedSelection && document.activeElement === focusedInput) {
+    try {
+      focusedInput.setSelectionRange(savedSelection.start, savedSelection.end, savedSelection.direction);
+    } catch {
+      // inputs sem suporte a seleção (number, email, date) — nada a restaurar
+    }
+  }
   renderActiveModelLabel();
   updateHumanDestinationVisibility();
   loadProviderModels();
@@ -2985,21 +3002,21 @@ function syncFinishButton() {
   const btn = document.getElementById('chat-finish-btn');
   if (!btn) return;
   const sess = selectedSession();
-  // Regra: chat jǭ em modo bot => botҳo desabilitado (nada a concluir).
+  // Regra: chat já em modo bot => botão desabilitado (nada a concluir).
   btn.disabled = !sess || !sess.human;
-  btn.title = sess && sess.human ? 'Concluir atendimento' : 'Atendimento jǭ em modo automǭtico';
+  btn.title = sess && sess.human ? 'Concluir atendimento' : 'Atendimento já em modo automático';
 }
 
 async function finishSession() {
   if (!state.selected) return;
   const sess = selectedSession();
   if (!sess || !sess.human) {
-    showToast({ title: 'Nada a Concluir', message: 'Esta conversa jǭ estǭ em modo automǭtico (Lia).', type: 'info' });
+    showToast({ title: 'Nada a Concluir', message: 'Esta conversa já está em modo automático (Lia).', type: 'info' });
     return;
   }
   const who = sess.displayName || sess.phoneFormatted || sess.phone;
   // Confirmação simples, uma única vez, antes de qualquer ação.
-  if (!window.confirm(`Concluir o atendimento de ${who}? A Lia voltarǥ a responder automaticamente.`)) return;
+  if (!window.confirm(`Concluir o atendimento de ${who}? A Lia voltará a responder automaticamente.`)) return;
   const btn = document.getElementById('chat-finish-btn');
   if (btn) btn.disabled = true;
   try {
@@ -3007,7 +3024,7 @@ async function finishSession() {
     if (!result.ok) throw new Error(result.error || 'Falha ao concluir atendimento');
     await refresh();
     showToast({
-      title: 'Atendimento Conclu��do',
+      title: 'Atendimento Concluído',
       message: `O atendimento de ${who} foi finalizado e a Lia retomou o contato.`,
       type: 'success'
     });
@@ -3853,24 +3870,58 @@ function startDashboard() {
     const defaultPhone = '55119' + Math.floor(10000000 + Math.random() * 90000000);
     const modal = document.createElement('div');
     modal.className = 'sim-modal-overlay';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'sim-modal-title');
     modal.innerHTML = `
       <div class="sim-modal-card">
-        <h3>Nova Simulação Isolada</h3>
+        <h3 id="sim-modal-title">Nova Simulação Isolada</h3>
         <p class="ops-muted" style="margin-bottom:14px;">Inicie uma sessão de teste para validar prompts, ferramentas e multimídia sem acionar o WhatsApp real.</p>
-        <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Identificador Numérico da Sessão</label>
-        <input id="modal-sim-phone" type="text" value="${defaultPhone}" inputmode="numeric" />
+        <label for="modal-sim-phone" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Identificador Numérico da Sessão</label>
+        <input id="modal-sim-phone" type="text" value="${esc(defaultPhone)}" inputmode="numeric" />
         <div class="sim-modal-actions">
           <button type="button" class="sim-modal-cancel">Cancelar</button>
           <button type="button" class="sim-modal-confirm btn-primary">Iniciar Simulação</button>
         </div>
       </div>
     `;
+    const previouslyFocused = document.activeElement;
     document.body.appendChild(modal);
     const input = modal.querySelector('#modal-sim-phone');
     input.focus();
     input.select();
 
-    const closeModal = () => modal.remove();
+    const focusables = () => [...modal.querySelectorAll('button, input, [href], select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(el => !el.disabled && el.offsetParent !== null);
+
+    const closeModal = () => {
+      document.removeEventListener('keydown', onKeydown, true);
+      modal.remove();
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
+    };
+
+    function onKeydown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      // Trap básico: mantém o foco do teclado dentro do diálogo.
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeydown, true);
+
     modal.querySelector('.sim-modal-cancel').onclick = closeModal;
     modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
@@ -4611,7 +4662,15 @@ async function loadApiIntegrationsPanel() {
         : '<tr><td colspan="6" class="table-empty">Nenhuma chave gerada pelo painel.</td></tr>';
     }
   } catch (err) {
-    console.warn('[api-integrations]', err?.message || err);
+    const detail = err?.message || String(err);
+    console.warn('[api-integrations]', detail);
+    // Falha de leitura precisa ser visível: sem isso as tabelas mostravam
+    // "nenhum cadastrado" e o admin podia recriar webhooks/chaves já existentes.
+    const whBody = $('#outbound-webhooks-list');
+    if (whBody) whBody.innerHTML = `<tr><td colspan="6" class="table-empty">Não foi possível carregar os webhooks de saída. ${esc(detail)}</td></tr>`;
+    const keysBody = $('#api-keys-list');
+    if (keysBody) keysBody.innerHTML = `<tr><td colspan="6" class="table-empty">Não foi possível carregar as chaves de API. ${esc(detail)}</td></tr>`;
+    opsFeedback('integrations-feedback', `Falha ao carregar chaves e webhooks: ${detail}`, 'error');
   }
 }
 

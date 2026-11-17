@@ -25,7 +25,7 @@
     <form id="login-form" class="login-card" novalidate>
       <div class="login-header">
         <div class="login-brand">
-          <img src="/dashboard/logo.webp" alt="Lia Sync" class="login-logo-img" width="46" height="46" onerror="this.onerror=null;this.src='/dashboard/logo.png'" />
+          <picture class="logo-picture"><source srcset="/dashboard/logo.webp" type="image/webp" /><img src="/dashboard/logo.png" alt="Lia Sync" class="login-logo-img" width="46" height="46" /></picture>
           <div class="login-brand-meta">
             <strong>Lia Sync</strong>
             <span>Console Operacional</span>
@@ -91,11 +91,11 @@
       <div class="sidebar-header">
         <div class="brand">
           <div class="brand-mark brand-mark-img">
-            <img src="/dashboard/logo.webp" alt="Lia Sync" class="brand-logo-img" width="28" height="28" onerror="this.onerror=null;this.src='/dashboard/logo.png'" />
+            <picture class="logo-picture"><source srcset="/dashboard/logo.webp" type="image/webp" /><img src="/dashboard/logo.png" alt="Lia Sync" class="brand-logo-img" width="28" height="28" /></picture>
           </div>
           <div class="brand-copy">
             <strong>Lia Sync</strong>
-            <span id="sidebar-version-label">Console v2.4.0</span>
+            <span id="sidebar-version-label">Console v2.5.0</span>
           </div>
         </div>
         <button type="button" class="icon-btn mobile-only" id="sidebar-close-mobile" title="Fechar menu" aria-label="Fechar menu">
@@ -118,7 +118,7 @@
               <span class="nav-label">Monitoramento</span>
               <b id="metrics-status-badge" class="badge-mini ok">ok</b>
             </button>
-            <button class="nav-item" data-view="vps" title="Monitor VPS (Somente Leitura)">
+            <button class="nav-item" data-view="vps" data-role="admin" title="Monitor VPS (Somente Leitura)">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
               <span class="nav-label">Monitor VPS</span>
               <b id="vps-status-badge" class="badge-mini ok">ok</b>
@@ -439,7 +439,7 @@
                   </a>
                 </div>
                 <div class="chat-head-actions">
-                  <button type="button" class="icon-btn" id="chat-finish-btn" title="Concluir atendimento" aria-label="Concluir atendimento e devolver para a Lia">
+                  <button type="button" class="icon-btn" id="chat-finish-btn" data-role="operator" title="Concluir atendimento" aria-label="Concluir atendimento e devolver para a Lia">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                   </button>
                   <button type="button" class="icon-btn" id="chat-more-menu" title="Menu de ações da conversa" aria-label="Menu da conversa">
@@ -1572,7 +1572,7 @@
       <!-- ====================================================================
            VIEW 5B: MONITOR VPS (SOMENTE LEITURA)
            ==================================================================== -->
-      <section id="vps-view" class="view">
+      <section id="vps-view" class="view" data-role="admin">
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="admin-hero-copy">

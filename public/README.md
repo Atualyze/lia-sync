@@ -1,6 +1,6 @@
 # Console Operacional Lia Sync (`public/`)
 
-Versão do motor e interface: **2.4.0**. A arquitetura completa do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Versão do motor e interface: **2.5.0**. A arquitetura completa do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Acesse em `/dashboard` (ex.: `https://liasync.atualyze.com.br/dashboard`). O console opera como um **Web App reativo 100% integrado**, servido pelo próprio processo da Lia Sync com autenticação Supabase JWT + Turnstile e controle de acesso por papéis (`admin`, `operator`, `viewer`).
 

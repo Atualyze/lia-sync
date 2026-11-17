@@ -68,39 +68,46 @@ export function createFlow({
 
   const isOwnerSender = (p = '') => isOwnerContact(p, { humanPhone: getHumanPhone(), identity: identityNow() });
 
+  // Namespaces nunca se misturam: sessões simuladas não são clientes reais.
+  const isSimulationSession = (key = '', session = null) =>
+    String(key).startsWith('sim:') ||
+    session?.origin === 'simulation' ||
+    String(session?.phone || '').startsWith('sim:');
+
   const getWaitingList = () => {
-    return Object.values(store.sessions || {}).filter(s =>
-      s && s.human && !s.archivedAt && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
-    ).sort((a, b) => {
+    return Object.entries(store.sessions || {}).filter(([key, s]) =>
+      s && !isSimulationSession(key, s) && s.human && !s.archivedAt && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
+    ).map(([, session]) => session).sort((a, b) => {
       const tA = a.handoffAt ? new Date(a.handoffAt).getTime() : 0;
       const tB = b.handoffAt ? new Date(b.handoffAt).getTime() : 0;
       return tA - tB;
     });
   };
 
-  const findSessionByTarget = (targetStr = '') => {
+  const findSessionByTarget = (targetStr = '', { origin = 'real' } = {}) => {
     const raw = String(targetStr || '').trim();
     if (!raw) return null;
 
+    const wantsSimulation = origin === 'simulation';
     const waiting = getWaitingList();
 
-    // 1. Índice numérico da fila (ex: "1", "2")
-    if (/^\d{1,2}$/.test(raw)) {
+    // 1. Índice numérico da fila (ex: "1", "2") — a fila contém apenas clientes reais.
+    if (!wantsSimulation && /^\d{1,2}$/.test(raw)) {
       const idx = parseInt(raw, 10) - 1;
       if (waiting[idx]) return waiting[idx];
     }
 
-    const all = Object.values(store.sessions || {}).filter(s =>
-      s && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
-    );
+    const all = Object.entries(store.sessions || {}).filter(([key, s]) =>
+      s && isSimulationSession(key, s) === wantsSimulation && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
+    ).map(([, session]) => session);
 
     // 2. Por dígitos (telefone): exato primeiro, ou sufixo único (sem criar sessão fantasma)
     const digits = raw.replace(/\D/g, '');
     if (digits.length >= 8) {
       const exactDigit = all.find((s) => String(s.phone || '').replace(/\D/g, '') === digits);
       if (exactDigit) return exactDigit;
-      if (store.sessions[digits]) return store.sessions[digits];
-      if (store.sessions[`sim:${digits}`]) return store.sessions[`sim:${digits}`];
+      const explicitKey = wantsSimulation ? `sim:${digits}` : digits;
+      if (store.sessions[explicitKey]) return store.sessions[explicitKey];
       const suffixMatches = all.filter((s) => {
         const sDigits = String(s.phone || '').replace(/\D/g, '');
         return sDigits.endsWith(digits) || digits.endsWith(sDigits);

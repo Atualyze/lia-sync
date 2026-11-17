@@ -166,3 +166,54 @@ test('flush remoto do Supabase é serializado: upserts não correm fora de ordem
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('baseRevision é comparada com a revisão remota do Supabase (concorrência entre réplicas)', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-admin-baserev-remote-'));
+  try {
+    // Réplica "A" grava a revisão 5 no Supabase; a réplica local carrega esse estado.
+    let remoteRevision = 5;
+    const stateRow = () => ({ revision: remoteRevision, active_config: { business: { greeting: 'remota' } }, draft_config: null, updated_at: new Date().toISOString() });
+    const store = new SupabaseAdminConfigStore(path.join(dir, 'bot-config.json'), {
+      client: {
+        enabled: true,
+        async select(table) { return table === 'bot_config_state' ? [stateRow()] : []; },
+        async upsert() {}
+      },
+      logger: { warn() {} }
+    });
+    await store.load();
+    assert.equal(store.persistence, 'supabase');
+    assert.equal(store.revision, 5);
+
+    // Réplica "A" publica e a revisão remota vai a 6; local continua 5.
+    remoteRevision = 6;
+    // baseRevision=5 (igual à local) é rejeitada porque o remoto já avançou.
+    const staleLocal = await store.publish('test', 5);
+    assert.equal(staleLocal.ok, false);
+    assert.match(staleLocal.errors.join(' '), /config_alterada_por_outro_usuário/i);
+
+    // baseRevision=6 (remota atual) passa na checagem de concorrência.
+    store.draft.business.greeting = 'mudança local';
+    const fresh = await store.publish('test', 6);
+    assert.equal(fresh.ok, true);
+
+    // Falha de leitura remota: cai para a comparação local (retrocompatível).
+    const failingStore = new SupabaseAdminConfigStore(path.join(dir, 'bot-config-fallback.json'), {
+      client: {
+        enabled: true,
+        async select(table) {
+          if (table === 'bot_config_state') throw new Error('supabase offline');
+          return [];
+        },
+        async upsert() {}
+      },
+      logger: { warn() {} }
+    });
+    await failingStore.load();
+    // Leitura remota falhou: a checagem cai para a comparação local.
+    assert.equal(await failingStore._staleBaseRevision(failingStore.revision), null);
+    assert.ok(await failingStore._staleBaseRevision(failingStore.revision + 1));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

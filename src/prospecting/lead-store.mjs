@@ -1,13 +1,23 @@
 import crypto from 'node:crypto';
 import { normalizePhone } from '../sessions.mjs';
 
+/** Tempo máximo que uma reserva de lead pode ficar sem conclusão antes de ser recuperada. */
+export const CLAIM_LEASE_MS = 15 * 60 * 1000;
+
 /**
  * Store for prospecting lists, leads, and events.
  * Uses Lia Sync's SupabaseRestClient when enabled, or an in-memory store for isolated unit tests.
+ *
+ * Reserva de leads (claim): `claimLead` é atômico por filtro (`claim_token is null`
+ * + `claimed_at is null` + status elegível) e devolve `null` quando perde a corrida.
+ * Reservas órfãs — worker que morreu entre o claim e o `releaseClaim` — são
+ * recuperadas por `releaseStaleClaims`, que devolve o lead para a fila depois do
+ * lease (mesmo padrão do `claim_follow_up`).
  */
 export class ProspectLeadStore {
-  constructor({ client = null } = {}) {
+  constructor({ client = null, claimLeaseMs = CLAIM_LEASE_MS } = {}) {
     this.client = client;
+    this.claimLeaseMs = Math.max(60_000, Number(claimLeaseMs) || CLAIM_LEASE_MS);
     this.mem = {
       lists: new Map(),
       leads: new Map(),
@@ -112,6 +122,43 @@ export class ProspectLeadStore {
     return Array.isArray(rows) ? rows : [];
   }
 
+  /**
+   * Libera reservas órfãs mais antigas que o lease, devolvendo o lead à fila.
+   * Sem isso, um worker que morre entre `claimLead` e `releaseClaim` deixa o lead
+   * preso em `queued` com `claim_token` para sempre.
+   */
+  async releaseStaleClaims({ leaseMs = this.claimLeaseMs, now = new Date() } = {}) {
+    const cutoffMs = now.getTime() - Math.max(60_000, Number(leaseMs) || this.claimLeaseMs);
+    const cutoffIso = new Date(cutoffMs).toISOString();
+    const nowIso = now.toISOString();
+
+    if (!this.remoteEnabled) {
+      let released = 0;
+      for (const lead of this.mem.leads.values()) {
+        if (!lead.claim_token) continue;
+        const claimedMs = lead.claimed_at ? new Date(lead.claimed_at).getTime() : Number.NaN;
+        if (Number.isFinite(claimedMs) && claimedMs >= cutoffMs) continue;
+        lead.claim_token = null;
+        lead.claimed_at = null;
+        lead.updated_at = nowIso;
+        released += 1;
+      }
+      return released;
+    }
+
+    const rows = await this.client.request('prospect_leads', {
+      method: 'PATCH',
+      query: [
+        'claim_token=not.is.null',
+        `status=in.(new,queued)`,
+        `or=(claimed_at.is.null,claimed_at.lt.${encodeURIComponent(cutoffIso)})`
+      ].join('&'),
+      body: { claim_token: null, claimed_at: null, updated_at: nowIso },
+      prefer: 'return=representation'
+    });
+    return Array.isArray(rows) ? rows.length : 0;
+  }
+
   async listDueLeads({ limit = 10, now = new Date() } = {}) {
     const nowIso = now.toISOString();
     const isListWithinDates = list => {
@@ -120,6 +167,9 @@ export class ProspectLeadStore {
       if (list.end_at && new Date(list.end_at) < now) return false;
       return true;
     };
+
+    // Recupera reservas órfãs antes de montar a fila (lease expirado).
+    await this.releaseStaleClaims({ now });
 
     if (!this.remoteEnabled) {
       const activeLists = new Map(
@@ -130,6 +180,7 @@ export class ProspectLeadStore {
           activeLists.has(l.list_id)
           && ['new', 'queued'].includes(l.status)
           && !l.claim_token
+          && !l.claimed_at
           && (!l.next_action_at || l.next_action_at <= nowIso)
         )
         .slice(0, limit)
@@ -143,31 +194,58 @@ export class ProspectLeadStore {
     const listIds = [...eligibleLists.keys()].map(id => `"${id}"`).join(',');
     const leads = await this.client.select(
       'prospect_leads',
-      `select=*&list_id=in.(${listIds})&status=in.(new,queued)&claim_token=is.null&next_action_at=lte.${encodeURIComponent(nowIso)}&order=next_action_at.asc&limit=${limit}`
+      `select=*&list_id=in.(${listIds})&status=in.(new,queued)&claim_token=is.null&claimed_at=is.null&next_action_at=lte.${encodeURIComponent(nowIso)}&order=next_action_at.asc&limit=${limit}`
     );
     return (leads || []).map(l => ({ ...l, list: eligibleLists.get(l.list_id) }));
   }
 
-  async claimLead(leadId) {
+  /**
+   * Reserva atômica do lead. Devolve o lead reservado ou `null` quando outra
+   * execução venceu a corrida ou o lead não está mais elegível.
+   */
+  async claimLead(leadId, { now = new Date() } = {}) {
     const token = crypto.randomUUID();
-    const now = new Date().toISOString();
+    const nowIso = now.toISOString();
     if (!this.remoteEnabled) {
       const lead = this.mem.leads.get(leadId);
-      if (!lead || lead.claim_token || !['new', 'queued'].includes(lead.status)) return null;
+      if (!lead || lead.claim_token || lead.claimed_at || !['new', 'queued'].includes(lead.status)) return null;
       lead.claim_token = token;
-      lead.claimed_at = now;
+      lead.claimed_at = nowIso;
       lead.status = 'queued';
-      lead.updated_at = now;
+      lead.updated_at = nowIso;
       return { ...lead };
     }
 
     const rows = await this.client.request('prospect_leads', {
       method: 'PATCH',
-      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=is.null&status=in.(new,queued)`,
-      body: { claim_token: token, claimed_at: now, status: 'queued', updated_at: now },
+      query: `id=eq.${encodeURIComponent(leadId)}&claim_token=is.null&claimed_at=is.null&status=in.(new,queued)`,
+      body: { claim_token: token, claimed_at: nowIso, status: 'queued', updated_at: nowIso },
       prefer: 'return=representation'
     });
     return Array.isArray(rows) ? (rows[0] || null) : null;
+  }
+
+  /**
+   * Reserva o lead reavaliando o cap diário imediatamente antes do claim, para que
+   * o cap e a reserva aconteçam no mesmo passo lógico (o scheduler não faz mais
+   * "checa cap" e depois "reserva" em fases separadas).
+   *
+   * Limite conhecido: a contagem (`countSentToday`) e o claim são duas operações
+   * HTTP, então duas réplicas ainda podem consumir a mesma última vaga do cap em
+   * uma janela de milissegundos. Fechar isso por completo exige uma RPC que conte
+   * e reserve na mesma transação (ex.: `claim_prospect_lead(...)`); não foi criada
+   * aqui para não ampliar o contrato desta migration. Enquanto isso, o overshoot
+   * máximo é o número de réplicas concorrentes no mesmo instante.
+   */
+  async claimLeadWithinCap(leadId, { dailyCap = null, listId = null, now = new Date() } = {}) {
+    if (Number.isFinite(dailyCap) && dailyCap > 0) {
+      const startOfDay = new Date(now);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const sentToday = await this.countSentToday({ listId, sinceIso: startOfDay.toISOString() });
+      if (sentToday >= dailyCap) return { claimed: null, blocked: 'daily_cap_reached' };
+    }
+    const claimed = await this.claimLead(leadId, { now });
+    return { claimed: claimed || null, blocked: claimed ? null : 'claim_lost' };
   }
 
   async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
@@ -208,31 +286,6 @@ export class ProspectLeadStore {
       method: 'PATCH',
       query: `id=eq.${encodeURIComponent(leadId)}&claim_token=eq.${encodeURIComponent(claimToken)}`,
       body: { ...updates, claim_token: null, claimed_at: null, updated_at: now },
-      prefer: 'return=representation'
-    });
-    return Array.isArray(rows) ? (rows[0] || null) : null;
-  }
-
-  async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
-    const now = new Date().toISOString();
-    const patch = { updated_at: now };
-    if (name !== undefined) patch.name = String(name).trim();
-    if (segment !== undefined) patch.segment = String(segment).trim();
-    if (dailyCap !== undefined) patch.daily_cap = Math.max(1, Math.min(500, Number(dailyCap) || 20));
-    if (startAt !== undefined) patch.start_at = startAt ? new Date(startAt).toISOString() : null;
-    if (endAt !== undefined) patch.end_at = endAt ? new Date(endAt).toISOString() : null;
-
-    if (!this.remoteEnabled) {
-      const list = this.mem.lists.get(listId);
-      if (!list) return null;
-      Object.assign(list, patch);
-      return { ...list };
-    }
-
-    const rows = await this.client.request('prospect_lists', {
-      method: 'PATCH',
-      query: `id=eq.${encodeURIComponent(listId)}`,
-      body: patch,
       prefer: 'return=representation'
     });
     return Array.isArray(rows) ? (rows[0] || null) : null;
@@ -283,6 +336,7 @@ export class ProspectLeadStore {
         if (lead.phone === normalized && !['opted_out', 'stopped'].includes(lead.status)) {
           lead.status = 'opted_out';
           lead.claim_token = null;
+          lead.claimed_at = null;
           lead.next_action_at = null;
           lead.updated_at = now;
           updated += 1;
@@ -297,7 +351,7 @@ export class ProspectLeadStore {
     const rows = await this.client.request('prospect_leads', {
       method: 'PATCH',
       query: `phone=eq.${encodeURIComponent(normalized)}&status=not.in.(opted_out,stopped)`,
-      body: { status: 'opted_out', claim_token: null, next_action_at: null, updated_at: now },
+      body: { status: 'opted_out', claim_token: null, claimed_at: null, next_action_at: null, updated_at: now },
       prefer: 'return=representation'
     });
     for (const row of rows || []) {
@@ -331,31 +385,6 @@ export class ProspectLeadStore {
       updated_at: now,
       ...(status === 'active' && !existing.warmup_started_at ? { warmup_started_at: now } : {})
     };
-    const rows = await this.client.request('prospect_lists', {
-      method: 'PATCH',
-      query: `id=eq.${encodeURIComponent(listId)}`,
-      body: patch,
-      prefer: 'return=representation'
-    });
-    return Array.isArray(rows) ? (rows[0] || null) : null;
-  }
-
-  async updateList(listId, { name, segment, dailyCap, startAt, endAt } = {}) {
-    const now = new Date().toISOString();
-    const patch = { updated_at: now };
-    if (name !== undefined) patch.name = String(name).trim();
-    if (segment !== undefined) patch.segment = String(segment).trim();
-    if (dailyCap !== undefined) patch.daily_cap = Math.max(1, Math.min(500, Number(dailyCap) || 20));
-    if (startAt !== undefined) patch.start_at = startAt ? new Date(startAt).toISOString() : null;
-    if (endAt !== undefined) patch.end_at = endAt ? new Date(endAt).toISOString() : null;
-
-    if (!this.remoteEnabled) {
-      const list = this.mem.lists.get(listId);
-      if (!list) return null;
-      Object.assign(list, patch);
-      return { ...list };
-    }
-
     const rows = await this.client.request('prospect_lists', {
       method: 'PATCH',
       query: `id=eq.${encodeURIComponent(listId)}`,

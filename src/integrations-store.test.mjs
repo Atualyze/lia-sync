@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { IntegrationsStore, isSafeWebhookUrl } from './http/integrations-store.mjs';
+import { assertWebhookHostIsPublic, IntegrationsStore, isSafeWebhookUrl } from './http/integrations-store.mjs';
 import { createApiV1Handler } from './http/api-v1.mjs';
 
 function makeTmpFile() {
@@ -111,6 +112,75 @@ test('isSafeWebhookUrl & IntegrationsStore: blocks SSRF and private network URLs
       () => store.createWebhook({ name: 'Local SSRF', url: 'https://127.0.0.1/hook', events: ['message.received'] }),
       /invalid_webhook_url/
     );
+  } finally {
+    await fs.rm(file, { force: true });
+  }
+});
+
+test('IntegrationsStore: rejects mixed private DNS answers and pins the checked public address', async () => {
+  const file = makeTmpFile();
+  const publicAddress = { address: '93.184.216.34', family: 4 };
+  let resolvedAddress = null;
+  const requestImpl = (options, onResponse) => {
+    const request = new EventEmitter();
+    request.end = () => {
+      options.lookup(options.hostname, { family: 4 }, (error, address, family) => {
+        assert.ifError(error);
+        resolvedAddress = { address, family };
+      });
+      const response = new EventEmitter();
+      response.statusCode = 202;
+      response.resume = () => {};
+      queueMicrotask(() => {
+        onResponse(response);
+        response.emit('end');
+      });
+    };
+    return request;
+  };
+
+  try {
+    const store = new IntegrationsStore({
+      file,
+      allowHttpLocal: false,
+      dnsLookup: async () => [publicAddress],
+      requestImpl
+    });
+    const hook = { url: 'https://hooks.example.com/path', secret: 'secret' };
+    const result = await store._sendToWebhook(hook, 'webhook.test', {});
+    assert.deepEqual(result, { ok: true, status: 202, error: null });
+    assert.deepEqual(resolvedAddress, publicAddress);
+
+    const unsafe = await assertWebhookHostIsPublic('https://hooks.example.com/path', {
+      lookup: async () => [publicAddress, { address: '192.168.1.10', family: 4 }]
+    });
+    assert.deepEqual(unsafe, { ok: false, error: 'unsafe_webhook_host' });
+
+    for (const address of ['::1', 'fc00::1', 'fe80::1', '2001:db8::1', '3fff::1', '192.0.2.1', '198.18.0.1']) {
+      const family = address.includes(':') ? 6 : 4;
+      const result = await assertWebhookHostIsPublic('https://hooks.example.com/path', {
+        lookup: async () => [{ address, family }]
+      });
+      assert.deepEqual(result, { ok: false, error: 'unsafe_webhook_host' }, address);
+    }
+
+    const globalIpv6 = await assertWebhookHostIsPublic('https://hooks.example.com/path', {
+      lookup: async () => [{ address: '2606:4700:4700::1111', family: 6 }]
+    });
+    assert.deepEqual(globalIpv6, { ok: true });
+
+    const blockedStore = new IntegrationsStore({
+      file,
+      allowHttpLocal: false,
+      dnsLookup: async () => [{ address: '127.0.0.1', family: 4 }],
+      requestImpl: () => assert.fail('must not send to a private DNS result')
+    });
+    const blocked = await blockedStore._sendToWebhook(
+      { url: 'https://hooks.example.com/path', secret: 'secret' },
+      'webhook.test',
+      {}
+    );
+    assert.deepEqual(blocked, { ok: false, status: 0, error: 'unsafe_webhook_host' });
   } finally {
     await fs.rm(file, { force: true });
   }

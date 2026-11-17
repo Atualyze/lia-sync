@@ -1,6 +1,6 @@
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
-import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findMatchingKnowledgeBaseSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
+import { getKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
 import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
@@ -268,7 +268,11 @@ ${(() => {
     const isSupportContact = Boolean(session.supportModeEnabled);
     const kbId = session.knowledgeBaseId || '';
     const recentChatText = (session.history || []).slice(-4).map(h => h?.content || '').join(' ');
-    const kbData = (kbId ? getKnowledgeBaseContentSync(kbId) : null) || findMatchingKnowledgeBaseSync(recentChatText, undefined, { excludeFolders: ['sales_intelligence', 'biblioteca_juridica'], maxChars: 12000 });
+    // Sem knowledgeBaseId explícito, NÃO há fallback por palavra-chave: dossiês de
+    // clientes distintos convivem no mesmo diretório, e um match por tokens pode
+    // injetar a base de um cliente no atendimento de outro. A orientação genérica
+    // continua via findGuidanceKnowledgeSync (pastas dedicadas).
+    const kbData = kbId ? getKnowledgeBaseContentSync(kbId) : null;
     const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
     const notes = (session.contactNotes || '').trim();
     const roleLabel = session.contactRole === 'partner_team'

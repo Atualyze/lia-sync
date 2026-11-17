@@ -9,8 +9,33 @@ function resolveMetricsPath() {
   if (process.env.VPS_METRICS_PATH) {
     return process.env.VPS_METRICS_PATH;
   }
-  const dataDir = config.dataDir || path.resolve(process.cwd(), 'data');
+  // `config.dataFile` é o caminho canônico do estado local (não existe `dataDir`).
+  const dataDir = path.dirname(config.dataFile);
   return path.join(dataDir, 'vps-metrics.json');
+}
+
+/**
+ * O coletor do host pode registrar a linha de comando inteira de cada processo,
+ * e argumentos frequentemente carregam segredos. Expõe apenas o executável.
+ */
+function sanitizeCommand(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  const executable = text.split(/\s+/)[0] || '';
+  const basename = executable.split(/[\\/]/).pop() || executable;
+  return basename.replace(/[^\w.@+-]/g, '').slice(0, 80);
+}
+
+function sanitizeMetrics(metrics) {
+  if (!metrics || typeof metrics !== 'object' || !Array.isArray(metrics.processes)) return metrics;
+  return {
+    ...metrics,
+    processes: metrics.processes.map(info => (
+      info && typeof info === 'object'
+        ? { ...info, command: sanitizeCommand(info.command ?? info.cmd ?? '') }
+        : info
+    ))
+  };
 }
 
 function buildLocalFallback() {
@@ -87,7 +112,7 @@ export async function readVpsMetrics() {
       source: 'host-collector',
       stale: ageMs > STALE_THRESHOLD_MS,
       age_seconds: Math.round(ageMs / 1000),
-      metrics,
+      metrics: sanitizeMetrics(metrics),
     };
   } catch (err) {
     if (err?.code === 'ENOENT') {

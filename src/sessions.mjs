@@ -150,12 +150,29 @@ export class SessionStore {
     return k;
   }
 
-  get(phone, origin = 'real') {
+  // Chave de sessão derivada do telefone/origem (mesma regra de `get`, sem efeito colateral).
+  sessionKey(phone, origin = 'real') {
     const norm = normalizePhone(phone);
     const isSim = origin === 'simulation' || norm.startsWith('sim:');
     const cleanPhone = norm.replace(/^sim:/, '');
     const key = isSim ? `sim:${cleanPhone}` : cleanPhone;
     this.validateKey(key);
+    return key;
+  }
+
+  /**
+   * Consulta somente-leitura: informa se a sessão existe sem criá-la.
+   * Usado por rotas que precisam distinguir "não existe" de "existe e vazia".
+   */
+  has(phone, origin = 'real') {
+    const key = this.sessionKey(phone, origin);
+    return Object.prototype.hasOwnProperty.call(this.sessions, key) && Boolean(this.sessions[key]);
+  }
+
+  get(phone, origin = 'real') {
+    const key = this.sessionKey(phone, origin);
+    const isSim = key.startsWith('sim:');
+    const cleanPhone = key.replace(/^sim:/, '');
     return (this.sessions[key] ||= {
       phone: cleanPhone,
       origin: isSim ? 'simulation' : 'real',
@@ -163,6 +180,37 @@ export class SessionStore {
       human: false,
       updatedAt: new Date(this.now()).toISOString(),
     });
+  }
+
+  /**
+   * Cria a sessão se ainda não existir e devolve a sessão.
+   * Mesma semântica de criação de `get`, exposta com nome explícito de escrita.
+   */
+  ensure(phone, origin = 'real') {
+    return this.get(phone, origin);
+  }
+
+  /**
+   * Empurra uma mensagem no histórico normalizando `{ role, content, createdAt }`.
+   * Aceita as formas legadas `text`/`timestamp` e o papel `model` (convertido para
+   * `assistant`) para que o histórico tenha um único formato canônico.
+   */
+  append(phone, message = {}, origin = 'real') {
+    const session = this.get(phone, origin);
+    const role = message?.role === 'model' ? 'assistant' : (message?.role || 'assistant');
+    const entry = {
+      role,
+      content: String(message?.content ?? message?.text ?? ''),
+      createdAt: message?.createdAt || message?.timestamp || new Date(this.now()).toISOString()
+    };
+    for (const [key, value] of Object.entries(message || {})) {
+      if (['role', 'content', 'text', 'createdAt', 'timestamp'].includes(key)) continue;
+      entry[key] = value;
+    }
+    if (!Array.isArray(session.history)) session.history = [];
+    session.history.push(entry);
+    this.markDirty();
+    return entry;
   }
 
   touch(s) {

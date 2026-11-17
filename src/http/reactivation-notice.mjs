@@ -13,7 +13,7 @@ export function notifyReactivationToInternalChat({ store, session, phone }) {
   const lastMsg = session.history[session.history.length - 1];
   const unanswered = lastMsg?.role === 'user';
   const contactLabel = session.clientName ? `${session.clientName} (${phone})` : String(phone || 'contato');
-  const rawSnippet = String(lastMsg?.text || '').replace(/\s+/g, ' ').trim();
+  const rawSnippet = String(lastMsg?.content || '').replace(/\s+/g, ' ').trim();
   const snippet = rawSnippet.length > 110 ? `${rawSnippet.slice(0, 110)}…` : rawSnippet;
 
   const message = unanswered
@@ -31,7 +31,7 @@ export function notifyReactivationToInternalChat({ store, session, phone }) {
   const nowIso = new Date().toISOString();
   const selfSession = store.get?.(OWNER_SELF_KEY);
   if (selfSession && Array.isArray(selfSession.history)) {
-    selfSession.history.push({ role: 'assistant', content: message, text: message, createdAt: nowIso });
+    selfSession.history.push({ role: 'assistant', content: message, createdAt: nowIso });
     selfSession.pendingReactivation = {
       phone: String(phone || ''),
       contactLabel,

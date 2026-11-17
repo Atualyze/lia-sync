@@ -9,6 +9,9 @@ import { askAI } from '../ai.mjs';
 import { validPhone } from '../dashboard.mjs';
 
 // Rotas /api/admin/config/* e /api/admin/integrations/*.
+function safeDecodePathSegment(value) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
 export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore }) {
   if (req.method === 'GET' && u.pathname === '/api/admin/config') return json(res, 200, { ...adminConfig.snapshot(), persistence: adminConfig.persistence || 'fallback', persistenceError: adminConfig.remoteError || null });
   if (req.method === 'PATCH' && u.pathname === '/api/admin/config/draft') { const body = await readBody(req); const { baseRevision, ...patch } = body.patch || body; const result = await adminConfig.updateDraft(patch, 'dashboard', baseRevision); return json(res, result.ok ? 200 : 400, result); }
@@ -53,7 +56,7 @@ export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, inte
     }
     const revokeMatch = u.pathname.match(/^\/api\/admin\/integrations\/keys\/([^/]+)$/);
     if (req.method === 'DELETE' && revokeMatch) {
-      const revoked = await integrationsStore.revokeApiKey(decodeURIComponent(revokeMatch[1]));
+      const revoked = await integrationsStore.revokeApiKey(safeDecodePathSegment(revokeMatch[1]));
       if (!revoked) return json(res, 404, { ok: false, error: 'api_key_not_found' });
       return json(res, 200, { ok: true, key: revoked });
     }
@@ -68,13 +71,13 @@ export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, inte
     }
     const testHookMatch = u.pathname.match(/^\/api\/admin\/integrations\/webhooks\/([^/]+)\/test$/);
     if (req.method === 'POST' && testHookMatch) {
-      const result = await integrationsStore.testWebhook(decodeURIComponent(testHookMatch[1]));
+      const result = await integrationsStore.testWebhook(safeDecodePathSegment(testHookMatch[1]));
       if (!result) return json(res, 404, { ok: false, error: 'webhook_not_found' });
       return json(res, result.ok ? 200 : 502, result);
     }
     const hookMatch = u.pathname.match(/^\/api\/admin\/integrations\/webhooks\/([^/]+)$/);
     if (hookMatch) {
-      const id = decodeURIComponent(hookMatch[1]);
+      const id = safeDecodePathSegment(hookMatch[1]);
       if (req.method === 'PATCH') {
         const body = await readBody(req);
         const updated = await integrationsStore.toggleWebhook(id, body?.enabled);

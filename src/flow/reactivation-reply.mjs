@@ -1,6 +1,8 @@
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { filterReply } from '../safety.mjs';
 import { formatOutgoingMessage } from '../core/format.mjs';
+import { resolveIdentity } from '../core/identity.mjs';
+import { getAllowedPrices } from '../faq.mjs';
 
 const PENDING_TTL_MS = 30 * 60 * 1000;
 const LOW_CONFIDENCE = 0.6;
@@ -37,8 +39,10 @@ function normalizeIntent(value) {
 async function classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget, now }) {
   if (!ai || typeof ai.askAI !== 'function') return null;
 
+  const identity = resolveIdentity(botConfig || {});
+  const assistantName = identity.botName || 'assistente';
   const recentMessages = Array.isArray(sTarget?.history)
-    ? sTarget.history.slice(-8).map(m => `${m.role === 'user' ? 'Admin/Cliente' : 'Lia'}: ${String(m.text || '').slice(0, 200)}`).join('\n')
+    ? sTarget.history.slice(-8).map(m => `${m.role === 'user' ? 'Admin/Cliente' : assistantName}: ${String(m.content || '').slice(0, 200)}`).join('\n')
     : '';
 
   const context = [
@@ -252,15 +256,19 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
     isOwner: false
   }).catch(() => null);
 
-  const rawReply = aiResult?.text || aiResult?.reply || 'Oi! Passando por aqui para saber se ficou alguma dúvida ou se posso te ajudar a continuar seu atendimento por aqui.';
-  const finalReply = formatOutgoingMessage(filterReply(rawReply).text || rawReply);
+  const fallbackReply = 'Oi! Passando por aqui para saber se ficou alguma dúvida ou se posso te ajudar a continuar seu atendimento por aqui.';
+  const rawReply = aiResult?.text || aiResult?.reply || fallbackReply;
+  const filteredReply = filterReply(rawReply, { allowedPrices: getAllowedPrices(), strictPrices: true });
+  // Nunca entregar texto cru quando o filtro bloqueia: usa mensagem neutra de segurança.
+  const finalReply = formatOutgoingMessage(filteredReply.blocked || !filteredReply.text ? fallbackReply : filteredReply.text);
 
   if (whatsapp?.sendText) {
     await whatsapp.sendText(targetJid, finalReply);
   }
   sTarget.history ??= [];
-  sTarget.history.push({ role: 'model', text: finalReply, createdAt: nowIso });
+  sTarget.history.push({ role: 'assistant', content: finalReply, createdAt: nowIso });
   sTarget.lastBotAt = nowIso;
+  sTarget.awaitingReply = true;
   store.markDirty?.();
   await store.flush?.();
 

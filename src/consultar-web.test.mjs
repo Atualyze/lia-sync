@@ -54,7 +54,7 @@ test('fluxo client executa consultar_web, entrega dado não confiável ao modelo
       if (calls === 1) return { reply: 'vou pesquisar', intent: 'duvida', tool_calls: [{ name: 'consultar_web', args: { query: 'cotação hoje' } }] };
       assert.match(system, /UNTRUSTED_WEB_SEARCH_JSON/);
       assert.match(system, /https:\/\/example\.test\/cotacao/);
-      return { reply: 'A cotação consultada foi 5,00.\n\nFontes: https://example.test/cotacao', intent: 'duvida', tool_calls: [{ name: 'consultar_web', args: { query: 'não executar novamente' } }] };
+      return { reply: 'A cotação consultada ficou dentro do esperado.\n\nFontes: https://example.test/cotacao', intent: 'duvida', tool_calls: [{ name: 'consultar_web', args: { query: 'não executar novamente' } }] };
     }
   };
   const flow = createFlow({ store, ai, getBotConfig: () => config, faq: async () => [], now: () => Date.now() });

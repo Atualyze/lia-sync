@@ -48,6 +48,19 @@ function fakeClient() {
         matched.forEach(row => Object.assign(row, body));
         return prefer.includes('representation') ? matched.map(row => ({ ...row })) : null;
       }
+      if (method === 'POST') {
+        // Semântica PostgREST `resolution=ignore-duplicates,return=representation`:
+        // conflito de chave única devolve linha vazia (sem inserir).
+        const incoming = Array.isArray(body) ? body : [body];
+        const inserted = [];
+        for (const item of incoming) {
+          if (table === 'idempotency_keys' && rows[table].some(old => old.scope === item.scope && old.key === item.key)) continue;
+          const row = { ...item };
+          rows[table].push(row);
+          inserted.push(row);
+        }
+        return prefer.includes('representation') ? inserted.map(row => ({ ...row })) : null;
+      }
       return null;
     }
   };

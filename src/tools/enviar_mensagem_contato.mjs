@@ -1,5 +1,7 @@
 import { sendText, sendWhatsAppAudio } from '../whatsapp.mjs';
 import { isOwnerKey } from '../core/identity.mjs';
+import { filterReply, normalize } from '../safety.mjs';
+import { getAllowedPrices } from '../faq.mjs';
 
 /**
  * Tool: enviar_mensagem_contato
@@ -58,13 +60,38 @@ export const toolEnviarMensagemContato = {
       return { success: false, error: 'Por favor, informe o conteúdo da mensagem que deseja enviar para ' + rawRec + '.' };
     }
 
+    // Nenhum texto gerado sai sem o filtro de segurança: preço não confirmado bloqueia o envio.
+    const filtered = filterReply(cleanMsg, {
+      allowedPrices: getAllowedPrices(),
+      isCopilot: isOwnerKey(context.phone),
+      strictPrices: true
+    });
+    if (filtered.blocked) {
+      return {
+        success: false,
+        error: 'A mensagem tem conteúdo que não pode ser enviado com segurança (valor ou informação não confirmada). Ajuste o texto e tente novamente.'
+      };
+    }
+    const safeMsg = filtered.text || cleanMsg;
+
     let targetPhone = '';
     let targetName = '';
+    const wantedName = normalize(rawRec);
 
+    // Chaves de simulação nunca viram telefone real.
+    if (/^sim:/i.test(rawRec)) {
+      return { success: false, error: 'Contatos de simulação não recebem mensagens reais. Informe o número do contato.' };
+    }
+
+    const isLid = /@lid$/i.test(rawRec);
     const digits = rawRec.replace(/\D/g, '');
 
-    // Se tiver 8 ou mais dígitos, trata diretamente como telefone
-    if (digits.length >= 8) {
+    if (isLid) {
+      // JID real do WhatsApp: preservar o identificador completo para o envio.
+      targetPhone = rawRec;
+      targetName = rawRec;
+    } else if (digits.length >= 8) {
+      // Se tiver 8 ou mais dígitos, trata diretamente como telefone
       if (digits.startsWith('55')) {
         targetPhone = digits;
       } else if (digits.length === 10 || digits.length === 11) {
@@ -75,48 +102,64 @@ export const toolEnviarMensagemContato = {
       targetName = rawRec;
     }
 
-    // Se for nome ou se precisamos resolver o nome para telefone
+    // Resolução por nome: apenas match exato normalizado, em sessões de cliente reais.
     const store = context.store;
-    if (store && (!targetPhone || digits.length < 8)) {
-      const recLower = rawRec.toLowerCase();
-      const sessions = Object.values(store.sessions || {});
-      for (const s of sessions) {
-        if (!s || !s.phone || isOwnerKey(s.phone)) continue;
-        const name = (s.clientName || s.pushName || s.contactName || '').toLowerCase();
-        if (name && (name.includes(recLower) || recLower.includes(name))) {
-          targetPhone = String(s.phone).replace(/@.*$/, '').replace(/\D/g, '');
-          targetName = s.clientName || s.pushName || s.contactName || targetPhone;
-          break;
-        }
+    if (!targetPhone && store && wantedName) {
+      const candidates = new Map();
+      for (const [key, s] of Object.entries(store.sessions || {})) {
+        if (!s || !s.phone) continue;
+        const keyText = String(key);
+        const phoneText = String(s.phone);
+        if (keyText.startsWith('sim:') || phoneText.startsWith('sim:') || s.origin === 'simulation') continue;
+        if (/@lid$/i.test(keyText) || /@lid$/i.test(phoneText)) continue;
+        if (isOwnerKey(keyText) || isOwnerKey(phoneText)) continue;
+        const name = normalize(s.clientName || s.pushName || s.contactName || '');
+        if (!name || name !== wantedName) continue;
+        const phoneDigits = phoneText.replace(/@.*$/, '').replace(/\D/g, '');
+        if (phoneDigits.length < 8) continue;
+        if (!candidates.has(phoneDigits)) candidates.set(phoneDigits, s);
+      }
+      if (candidates.size > 1) {
+        return { success: false, error: `Encontrei mais de um contato com o nome "${rawRec}". Por favor informe o número com DDD para o envio.` };
+      }
+      if (candidates.size === 1) {
+        const [phoneDigits, session] = candidates.entries().next().value;
+        targetPhone = phoneDigits;
+        targetName = session.clientName || session.pushName || session.contactName || phoneDigits;
       }
     }
 
-    // Se ainda não encontrou e temos Supabase no client do store (REST client próprio ou SDK)
-    if (!targetPhone && store?.client) {
+    // Fallback remoto no CRM: também exige nome exato (sem substring).
+    if (!targetPhone && store?.client && wantedName) {
       try {
+        let rows = [];
         if (typeof store.client.select === 'function' && store.client.enabled !== false) {
-          const safePattern = encodeURIComponent(`*${rawRec.replace(/[*%,()]/g, '')}*`);
-          const rows = await store.client.select(
+          rows = await store.client.select(
             'contacts',
-            `select=phone,display_name,push_name&or=(display_name.ilike.${safePattern},push_name.ilike.${safePattern})&limit=1`
-          );
-          if (Array.isArray(rows) && rows[0]?.phone) {
-            targetPhone = String(rows[0].phone).replace(/\D/g, '');
-            targetName = rows[0].display_name || rows[0].push_name || targetPhone;
-          }
-        } else if (typeof store.client.from === 'function') {
+            'select=phone,display_name,push_name&limit=5'
+          ) || [];
+        }
+        if (!rows.length && typeof store.client.from === 'function') {
           const { data } = await store.client
             .from('contacts')
             .select('phone, name, display_name, push_name')
-            .ilike('name', '%' + rawRec + '%')
-            .limit(1);
-          if (data && data[0]?.phone) {
-            targetPhone = String(data[0].phone).replace(/\D/g, '');
-            targetName = data[0].name || data[0].display_name || targetPhone;
-          }
+            .limit(5);
+          rows = data || [];
+        }
+        const matched = rows.filter(row => [row?.display_name, row?.push_name, row?.name]
+          .some(name => normalize(name) === wantedName));
+        const phones = new Set(matched.map(row => String(row.phone || '').replace(/\D/g, '')).filter(p => p.length >= 8));
+        if (phones.size > 1) {
+          return { success: false, error: `Encontrei mais de um contato com o nome "${rawRec}". Por favor informe o número com DDD para o envio.` };
+        }
+        if (phones.size === 1) {
+          const [phoneDigits] = phones;
+          const row = matched.find(item => String(item.phone || '').replace(/\D/g, '') === phoneDigits);
+          targetPhone = phoneDigits;
+          targetName = row?.display_name || row?.push_name || row?.name || phoneDigits;
         }
       } catch (err) {
-        // ignora
+        // ignora: sem CRM disponível, segue para a validação abaixo
       }
     }
 

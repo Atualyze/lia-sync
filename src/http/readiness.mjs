@@ -3,16 +3,52 @@ import { getCircuitBreakers } from '../ai.mjs';
 
 const DEFAULT_TIMEOUT_MS = 1500;
 
-function withTimeout(promise, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return Promise.resolve(promise(controller.signal)).finally(() => clearTimeout(timer));
+async function probeEvolution(timeoutMs, fetchImpl) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(`${config.evolutionUrl}/`, {
+        headers: config.evolutionKey ? { apikey: config.evolutionKey } : {},
+        signal: controller.signal
+      });
+      // A própria API da Evolution responde 401/403/404 quando o endpoint raiz
+      // não é exposto; isso prova que o serviço está de pé.
+      return { ok: response.ok || response.status === 401 || response.status === 403 || response.status === 404, status: response.status };
+    } finally { clearTimeout(timer); }
+  } catch (error) {
+    return { ok: false, reason: error?.name === 'AbortError' ? 'timeout' : 'unreachable' };
+  }
 }
 
-async function probeHttp(url, headers, timeoutMs) {
+/**
+ * Prova que a credencial de servidor do Supabase é válida e que o schema responde.
+ * Uma consulta autenticada real: 401/403 significam credencial recusada, nunca
+ * "pronto". Aceita somente 2xx.
+ */
+async function probeSupabase(timeoutMs, fetchImpl) {
+  if (!config.supabaseUrl) return { ok: false, reason: 'not_configured' };
+  if (!config.supabaseServiceRoleKey) return { ok: false, reason: 'credentials_missing' };
+  const url = `${config.supabaseUrl}/rest/v1/bot_config_state?select=id&limit=1`;
   try {
-    const response = await withTimeout(signal => fetch(url, { method: 'GET', headers, signal }), timeoutMs);
-    return { ok: response.ok || response.status === 401 || response.status === 403 || response.status === 404, status: response.status };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          apikey: config.supabaseServiceRoleKey,
+          Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+          accept: 'application/json'
+        },
+        signal: controller.signal
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, status: response.status, reason: 'credentials_rejected' };
+      }
+      if (!response.ok) return { ok: false, status: response.status, reason: `http_${response.status}` };
+      return { ok: true, status: response.status };
+    } finally { clearTimeout(timer); }
   } catch (error) {
     return { ok: false, reason: error?.name === 'AbortError' ? 'timeout' : 'unreachable' };
   }
@@ -29,31 +65,13 @@ export async function checkReadiness({ timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl
   // Evolution is an essential dependency whenever its integration is configured.
   if (config.evolutionUrl || config.evolutionInstance || config.evolutionKey) {
     required.push('evolution');
-    const result = await (async () => {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetchImpl(`${config.evolutionUrl}/`, { headers: config.evolutionKey ? { apikey: config.evolutionKey } : {}, signal: controller.signal });
-          return { ok: response.ok || response.status === 401 || response.status === 403 || response.status === 404, status: response.status };
-        } finally { clearTimeout(timer); }
-      } catch (error) { return { ok: false, reason: error?.name === 'AbortError' ? 'timeout' : 'unreachable' }; }
-    })();
+    const result = await probeEvolution(timeoutMs, fetchImpl);
     checks.push(maskedDependency('evolution', result.ok ? 'ready' : 'unavailable', result));
   }
 
   if (config.supabaseRuntimeEnabled && (config.supabaseUrl || config.supabaseServiceRoleKey)) {
     required.push('supabase');
-    const result = await (async () => {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetchImpl(`${config.supabaseUrl}/rest/v1/`, { headers: config.supabaseServiceRoleKey ? { apikey: config.supabaseServiceRoleKey, Authorization: `Bearer ${config.supabaseServiceRoleKey}` } : {}, signal: controller.signal });
-          return { ok: response.ok || response.status === 401 || response.status === 403 || response.status === 404, status: response.status };
-        } finally { clearTimeout(timer); }
-      } catch (error) { return { ok: false, reason: error?.name === 'AbortError' ? 'timeout' : 'unreachable' }; }
-    })();
+    const result = await probeSupabase(timeoutMs, fetchImpl);
     checks.push(maskedDependency('supabase', result.ok ? 'ready' : 'unavailable', result));
   }
 

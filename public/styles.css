@@ -770,6 +770,10 @@ span.tech-term:hover,
   background: transparent;
   border: none;
 }
+/* O <picture> existe apenas para o fallback webp -> png sem handler inline,
+   que a CSP estrita bloqueia. display: contents mantém o <img> como o item
+   de flex do layout original (.login-brand e .brand-mark). */
+.logo-picture { display: contents; }
 .brand-logo-img {
   width: 32px;
   height: 32px;

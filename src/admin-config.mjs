@@ -350,14 +350,15 @@ export class AdminConfigStore {
 
   // Concorrência: `baseRevision` opcional — se enviado e diferente da revisão atual,
   // a configuração mudou por outra sessão e a ação é rejeitada sem alterar estado.
-  _staleBaseRevision(baseRevision) {
+  // Async para subclasses (Supabase) consultarem a revisão remota entre réplicas.
+  async _staleBaseRevision(baseRevision) {
     if (baseRevision === undefined || baseRevision === null || baseRevision === '') return null;
     if (Number(baseRevision) === Number(this.revision)) return null;
     return ['config_alterada_por_outro_usuário: a configuração mudou no servidor. Recarregue e tente novamente.'];
   }
 
   async updateDraft(patch = {}, actor = 'dashboard', baseRevision = undefined) {
-    const stale = this._staleBaseRevision(baseRevision);
+    const stale = await this._staleBaseRevision(baseRevision);
     if (stale) return { ok: false, errors: stale };
     const previousDraft = clone(this.draft);
     const previousUpdatedAt = this.updatedAt;
@@ -386,7 +387,7 @@ export class AdminConfigStore {
   }
 
   async publish(actor = 'dashboard', baseRevision = undefined) {
-    const stale = this._staleBaseRevision(baseRevision);
+    const stale = await this._staleBaseRevision(baseRevision);
     if (stale) return { ok: false, errors: stale };
     if (JSON.stringify(this.active) === JSON.stringify(this.draft)) {
       return { ok: false, errors: ['Não há alterações no rascunho para publicar.'], noChanges: true, snapshot: this.snapshot() };
@@ -433,7 +434,7 @@ export class AdminConfigStore {
   }
 
   async rollback(revision, actor = 'dashboard', baseRevision = undefined) {
-    const stale = this._staleBaseRevision(baseRevision);
+    const stale = await this._staleBaseRevision(baseRevision);
     if (stale) return { ok: false, errors: stale };
     const target = this.history.find(item => Number(item.revision) === Number(revision) && item.snapshot);
     if (!target) return { ok: false, errors: ['Versão não encontrada para rollback.'] };

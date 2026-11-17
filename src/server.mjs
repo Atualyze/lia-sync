@@ -1,10 +1,12 @@
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config, validateConfig } from './config.mjs';
 import { SessionStore } from './sessions.mjs';
 import { createFlow } from './flow.mjs';
-import { splitReply } from './safety.mjs';
+import { splitReply, filterReply } from './safety.mjs';
+import { setPricingSource, getAllowedPrices } from './faq.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
@@ -39,6 +41,8 @@ const defaultAdminConfig = supabaseRuntime.enabled ? new SupabaseAdminConfigStor
 export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl, readinessCheck } = {}) {
   await store.load();
   await adminConfig.load();
+  // Preços permitidos vêm exclusivamente da configuração publicada (regra do projeto).
+  setPricingSource(() => adminConfig.active);
   if (!store.client?.enabled) console.warn('[persistence] Supabase runtime desativado: configure SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; usando fallback local.');
   else if (store.remoteError || adminConfig.remoteError) console.warn(`[persistence] Supabase configurado, mas indisponível: ${store.remoteError || adminConfig.remoteError}`);
   else console.log('[persistence] Supabase runtime ativado e conectado com sucesso.');
@@ -165,7 +169,17 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
     }
     if (!answer) return null;
-    const parts = splitReply(formatOutgoingMessage(answer));
+    // Ponto único de saída: nenhuma resposta chega ao WhatsApp sem passar por filterReply.
+    const copilotTarget = isOwnerKey(job.phone);
+    const filteredReply = filterReply(String(answer), {
+      isCopilot: copilotTarget,
+      allowedPrices: copilotTarget ? new Set() : getAllowedPrices(),
+      strictPrices: !copilotTarget
+    });
+    const safeAnswer = filteredReply.blocked && !copilotTarget
+      ? 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.'
+      : filteredReply.text;
+    const parts = splitReply(formatOutgoingMessage(safeAnswer));
     for (let i = 0; i < parts.length; i++) {
       if (i) await new Promise(resolve => setTimeout(resolve, 600));
       await sendText(deliveryTarget(job, getHumanPhone()), parts[i]);
@@ -243,21 +257,41 @@ if (isDirectRun) {
   server.headersTimeout = 65000;
   server.keepAliveTimeout = 720000;
   server.listen(config.port, config.host, () => console.log(`Lia Sync escutando em ${config.host}:${config.port}`));
-  const maintenance = () => processMaintenance({
-    store,
-    send: sendText,
-    notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
-    reminderStore: app.reminderStore,
-    timeZone: config.businessTimeZone,
-    staleHours: config.inactivityStaleHours,
-    humanReminderMinutes: config.humanReminderMinutes,
-    humanAutoResumeHours: config.humanAutoResumeHours,
-    humanPhone: app.getHumanPhone(),
-    disableInactivityPings: true,
-    enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
+  // Multi-réplica: só a réplica que obtém o lease distribuído executa manutenção,
+  // garantindo um único envio de lembrete/follow-up/cobrança por vez.
+  const maintenanceOwner = `${os.hostname()}:${process.pid}`;
+  let leaseWarningLogged = false;
+  const claimMaintenanceLease = async () => {
+    if (!store.client?.enabled) return true;
+    try {
+      const claimed = await store.client.rpc('claim_maintenance_lease', { p_owner: maintenanceOwner, p_ttl_seconds: 300 });
+      return claimed === true;
+    } catch (error) {
+      if (!leaseWarningLogged) {
+        leaseWarningLogged = true;
+        console.error('[maintenance] lease distribuído indisponível; manutenção bloqueada até aplicar a migration:', error?.code || error?.name || 'lease_unavailable');
+      }
+      return false;
+    }
+  };
+  const maintenance = async () => {
+    if (!await claimMaintenanceLease()) return;
+    return processMaintenance({
+      store,
+      send: sendText,
+      notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
+      reminderStore: app.reminderStore,
+      timeZone: config.businessTimeZone,
+      staleHours: config.inactivityStaleHours,
+      humanReminderMinutes: config.humanReminderMinutes,
+      humanAutoResumeHours: config.humanAutoResumeHours,
+      humanPhone: app.getHumanPhone(),
+      disableInactivityPings: true,
+      enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
-  }).then(() => app.prospecting?.tick()).catch(e => console.error('[maintenance]', e.message));
+    }).then(() => app.prospecting?.tick()).catch(e => console.error('[maintenance]', e.message));
+  };
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   const stop = async () => {
     clearInterval(maintenanceTimer);

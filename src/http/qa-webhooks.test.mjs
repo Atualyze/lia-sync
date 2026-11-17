@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isWebhookAuthorized, handleWebhookRoutes } from './webhook.mjs';
-import { processInfinitePayWebhook } from './infinitepay-webhook.mjs';
+import {
+  processInfinitePayWebhook,
+  deriveVerifiedPaymentDetails,
+  isInfinitePayCallbackAuthorized,
+  handleInfinitePayWebhookRoute
+} from './infinitepay-webhook.mjs';
+import { NOT_HANDLED } from './utils.mjs';
 
 test('ADVERSARIAL isWebhookAuthorized: matriz de tipos e retornos de webhookAuthorize', async () => {
   const req = { headers: {} };
@@ -241,4 +247,122 @@ test('ADVERSARIAL processInfinitePayWebhook: quando checkPayment retorna paid:fa
     assert.equal(store.getOrder('ORDER-VALID').status, 'paid');
     assert.ok(sent.length >= 1);
   }
+});
+
+test('ADVERSARIAL InfinitePay: callback NÃO dita valor/método/comprovante — só payment_check + pedido', async () => {
+  class MockOrderStore {
+    constructor() { this.orders = new Map(); }
+    setOrder(nsu, order) { this.orders.set(nsu, { status: 'pending', ...order }); }
+    getOrder(nsu) { return this.orders.get(nsu) || null; }
+    markPaid(nsu, details = {}) {
+      const order = this.orders.get(nsu);
+      if (!order) return null;
+      Object.assign(order, details, { status: 'paid' });
+      return order;
+    }
+  }
+
+  {
+    const derived = deriveVerifiedPaymentDetails(
+      { amountCents: 1500 },
+      { paid: true, paidAmount: 1500, captureMethod: 'pix' }
+    );
+    assert.equal(derived.ok, true);
+    assert.equal(derived.paidAmountCents, 1500);
+    assert.equal(derived.captureMethod, 'pix');
+    assert.equal(derived.receiptUrl, '');
+  }
+
+  {
+    const mismatch = deriveVerifiedPaymentDetails(
+      { amountCents: 1500 },
+      { paid: true, paidAmount: 99999, captureMethod: 'credit_card' }
+    );
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.error, 'amount_mismatch');
+  }
+
+  {
+    const store = new MockOrderStore();
+    store.setOrder('ORDER-FAKE-META', {
+      orderNsu: 'ORDER-FAKE-META',
+      handle: 'valid-handle',
+      phone: '5511888777666',
+      amountCents: 1500
+    });
+    const sent = [];
+    const warnings = [];
+    const res = await processInfinitePayWebhook({
+      payload: {
+        order_nsu: 'ORDER-FAKE-META',
+        transaction_nsu: 'tx-attacker',
+        paid_amount: 999999,
+        amount: 999999,
+        capture_method: 'credit_card',
+        receipt_url: 'https://evil.example/fake-receipt'
+      },
+      orderStore: store,
+      checkPayment: async () => ({ paid: true, paidAmount: 1500, amount: 1500, captureMethod: 'pix' }),
+      sendText: async (phone, msg) => { sent.push({ phone, msg }); },
+      logger: { warn(msg) { warnings.push(String(msg)); }, error() {} }
+    });
+    assert.equal(res.status, 200);
+    await res.backgroundTask;
+    const saved = store.getOrder('ORDER-FAKE-META');
+    assert.equal(saved.status, 'paid');
+    assert.equal(saved.paidAmountCents, 1500);
+    assert.equal(saved.captureMethod, 'pix');
+    assert.equal(saved.receiptUrl, '');
+    assert.ok(sent.length >= 1);
+    assert.ok(sent.every(({ msg }) => !/evil\.example|fake-receipt|Cartão/i.test(msg)));
+    assert.ok(sent.every(({ msg }) => /R\$ 15,00/.test(msg) && /Pix/i.test(msg)));
+  }
+
+  {
+    const store = new MockOrderStore();
+    store.setOrder('ORDER-MISMATCH', {
+      orderNsu: 'ORDER-MISMATCH',
+      handle: 'valid-handle',
+      phone: '5511888777666',
+      amountCents: 1500
+    });
+    let sendCalled = false;
+    const warnings = [];
+    const res = await processInfinitePayWebhook({
+      payload: { order_nsu: 'ORDER-MISMATCH', paid_amount: 1500, receipt_url: 'https://evil.example/r' },
+      orderStore: store,
+      checkPayment: async () => ({ paid: true, paidAmount: 2000, captureMethod: 'pix' }),
+      sendText: async () => { sendCalled = true; },
+      logger: { warn(msg) { warnings.push(String(msg)); }, error() {} }
+    });
+    assert.equal(res.status, 200);
+    await res.backgroundTask;
+    assert.equal(store.getOrder('ORDER-MISMATCH').status, 'pending');
+    assert.equal(sendCalled, false);
+    assert.ok(warnings.some((w) => /amount_mismatch|rejeitado/i.test(w)));
+  }
+});
+
+test('ADVERSARIAL InfinitePay: segredo configurável autentica o callback; sem segredo segue aberto ao payment_check', async () => {
+  assert.equal(isInfinitePayCallbackAuthorized({ headers: {} }, ''), true);
+  assert.equal(isInfinitePayCallbackAuthorized({ headers: { authorization: 'Bearer secret-one' } }, 'secret-one'), true);
+  assert.equal(isInfinitePayCallbackAuthorized({ headers: { authorization: 'Bearer wrong' } }, 'secret-one'), false);
+  assert.equal(isInfinitePayCallbackAuthorized({ headers: {} }, 'secret-one'), false);
+
+  const res = { writeHead() {}, end() {} };
+  const denied = await handleInfinitePayWebhookRoute({
+    req: { method: 'POST', headers: {} },
+    res,
+    u: new URL('http://localhost/webhook/infinitepay'),
+    webhookSecret: 'required-secret'
+  });
+  assert.notEqual(denied, NOT_HANDLED);
+
+  const ignored = await handleInfinitePayWebhookRoute({
+    req: { method: 'GET', headers: {} },
+    res,
+    u: new URL('http://localhost/webhook/infinitepay'),
+    webhookSecret: ''
+  });
+  assert.equal(ignored, NOT_HANDLED);
 });

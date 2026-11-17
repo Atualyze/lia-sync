@@ -55,14 +55,99 @@ export class CampaignStore {
     };
     const idem = String(idempotencyKey || '').trim();
     if (idem.length > 200) throw Object.assign(new Error('chave de idempotência inválida'), { code: 'invalid_campaign' });
+
+    // A chave de idempotência é reservada ANTES de criar qualquer coisa. Sem isso,
+    // dois cliques/retries simultâneos passavam pela checagem, ambos criavam a
+    // campanha e só a inserção final da chave estourava — deixando duas campanhas
+    // com os mesmos destinatários (envio duplicado).
     if (idem) {
-      const existing = await this.client.select('idempotency_keys', `select=resource_id,status_code,response_body&scope=eq.campaign_create&key=eq.${encodeURIComponent(idem)}&limit=1`);
-      if (existing?.[0]?.resource_id) return this.get(existing[0].resource_id);
+      const reservation = await this._reserveIdempotency(idem);
+      if (!reservation.reserved) return reservation.campaign;
     }
-    await this.client.insert('campaigns', campaign);
-    await this.client.insert('campaign_recipients', cleanRecipients.map(item => ({ ...item, campaign_id: campaignId, status: 'pending' })));
-    if (idem) await this.client.insert('idempotency_keys', { scope: 'campaign_create', key: idem, resource_id: campaignId, status_code: 201, response_body: { id: campaignId } });
+
+    try {
+      await this.client.insert('campaigns', campaign);
+      await this.client.insert('campaign_recipients', cleanRecipients.map(item => ({ ...item, campaign_id: campaignId, status: 'pending' })));
+    } catch (error) {
+      // Falha no meio da criação: remove o que foi gravado e libera a chave para
+      // que um retry legítimo possa começar do zero.
+      await this._rollbackCreation(campaignId, idem).catch(() => {});
+      throw error;
+    }
+
+    if (idem) {
+      try {
+        await this._completeIdempotency(idem, campaignId);
+      } catch (error) {
+        // A campanha existe e está íntegra; a chave continua "em criação" e um
+        // retry recebe campaign_creation_in_progress em vez de duplicar o envio.
+        this.logger.warn?.(`[campaigns] idempotência não finalizada para ${campaignId}: ${error.message}`);
+      }
+    }
+
     return this.get(campaignId);
+  }
+
+  /** Reserva a chave com `on conflict do nothing`; devolve a campanha existente quando já havia uma. */
+  async _reserveIdempotency(key, { allowRetry = true } = {}) {
+    const inserted = await this.client.request('idempotency_keys', {
+      method: 'POST',
+      query: 'on_conflict=scope,key',
+      body: { scope: 'campaign_create', key, resource_id: null, status_code: 202, response_body: { status: 'creating' } },
+      prefer: 'resolution=ignore-duplicates,return=representation'
+    });
+    if (Array.isArray(inserted) && inserted.length > 0) return { reserved: true, campaign: null };
+
+    // A chave já existia. Se já aponta para uma campanha, é retry: devolve a mesma.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const rows = await this.client.select('idempotency_keys', `select=resource_id&scope=eq.campaign_create&key=eq.${encodeURIComponent(key)}&limit=1`);
+      const resourceId = rows?.[0]?.resource_id;
+      if (resourceId) {
+        const campaign = await this.get(resourceId);
+        if (campaign) return { reserved: false, campaign };
+        // Chave órfã (campanha apagada): libera e tenta reservar novamente.
+        if (allowRetry) {
+          await this._releaseIdempotency(key).catch(() => {});
+          return this._reserveIdempotency(key, { allowRetry: false });
+        }
+        break;
+      }
+      // Criação em andamento por outra requisição: espera a chave ser finalizada.
+      await this.delay(150 * (attempt + 1));
+    }
+
+    throw Object.assign(new Error('campanha em criação por outra requisição; tente novamente'), { code: 'campaign_creation_in_progress' });
+  }
+
+  async _completeIdempotency(key, campaignId) {
+    await this.client.request('idempotency_keys', {
+      method: 'PATCH',
+      query: `scope=eq.campaign_create&key=eq.${encodeURIComponent(key)}`,
+      body: { resource_id: campaignId, status_code: 201, response_body: { id: campaignId } },
+      prefer: 'return=minimal'
+    });
+  }
+
+  async _releaseIdempotency(key) {
+    await this.client.request('idempotency_keys', {
+      method: 'DELETE',
+      query: `scope=eq.campaign_create&key=eq.${encodeURIComponent(key)}`,
+      prefer: 'return=minimal'
+    });
+  }
+
+  async _rollbackCreation(campaignId, idem) {
+    await this.client.request('campaign_recipients', {
+      method: 'DELETE',
+      query: `campaign_id=eq.${encodeURIComponent(campaignId)}`,
+      prefer: 'return=minimal'
+    });
+    await this.client.request('campaigns', {
+      method: 'DELETE',
+      query: `id=eq.${encodeURIComponent(campaignId)}`,
+      prefer: 'return=minimal'
+    });
+    if (idem) await this._releaseIdempotency(idem);
   }
   async get(id) {
     if (!this.enabled) throw Object.assign(new Error('campanhas exigem SUPABASE runtime configurado'), { code: 'campaign_persistence_unavailable' });

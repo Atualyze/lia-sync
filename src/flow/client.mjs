@@ -1,4 +1,4 @@
-import { sanitizeInput, isEmergency, filterReply, normalize } from '../safety.mjs';
+import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions } from '../safety.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
@@ -70,6 +70,8 @@ export async function handleClientMessage({
 
       if (pushName && !s.clientName) s.clientName = pushName;
       s.lastUserAt = new Date(now()).toISOString();
+      // Cliente voltou a falar: a sessão deixa de estar "aguardando resposta".
+      s.awaitingReply = false;
       store.touch(s);
       s.history ??= [];
 
@@ -105,7 +107,7 @@ export async function handleClientMessage({
 
           const reply = `Recebi seu áudio por aqui! 🎙️\n\nJá notifiquei *${owner}* para ouvir com atenção e te responder assim que puder, tá bom?`;
           s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-          s.lastBotAt = new Date(now()).toISOString();
+          s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
           store.markDirty();
           return reply;
         }
@@ -172,7 +174,7 @@ export async function handleClientMessage({
 
           const reply = `Recebi sua *${typeLabel}* por aqui! 📸\n\nJá dei um toque em *${owner}* para dar uma olhada e te responder com atenção assim que puder.`;
           s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-          s.lastBotAt = new Date(now()).toISOString();
+          s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
           store.markDirty();
           return reply;
         }
@@ -253,7 +255,7 @@ export async function handleClientMessage({
 
           const resumeReply = 'Prontinho! *Atendimento automático retomado.* Já retomei o atendimento! ✨\n\nComo posso te ajudar agora?';
           s.history.push({ role: 'assistant', content: resumeReply, createdAt: new Date(now()).toISOString() });
-          s.lastBotAt = new Date(now()).toISOString();
+          s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
           store.markDirty();
           return resumeReply;
         }
@@ -290,9 +292,13 @@ export async function handleClientMessage({
       // Se o usuário pediu diretamente para falar com o responsável
       if (isTalkToOwnerRequest(clean, identity) || isHumanRequest(clean, identity)) {
         await triggerHandoff(s, { reason: `solicitação para falar diretamente com ${owner}`, urgency: 'normal', now: now(), notify, identity });
-        const reply = messages.talkToOwner;
+        // Texto editável no painel também passa pelo filtro antes de ir ao cliente.
+        const talkOwnerFiltered = filterReply(String(messages.talkToOwner || ''), { allowedPrices: getAllowedPrices(), strictPrices: true });
+        const reply = talkOwnerFiltered.blocked || !talkOwnerFiltered.text
+          ? 'Já avisei a equipe responsável para te atender aqui mesmo. Um momento, por favor!'
+          : talkOwnerFiltered.text;
         s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-        s.lastBotAt = new Date(now()).toISOString();
+        s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
         store.markDirty();
         return reply;
       }
@@ -327,7 +333,7 @@ export async function handleClientMessage({
 
             const noticeReply = avaliacaoJanela.noticeText;
             s.history.push({ role: 'assistant', content: noticeReply, createdAt: new Date(now()).toISOString() });
-            s.lastBotAt = new Date(now()).toISOString();
+            s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
             store.markDirty();
             return noticeReply;
           }
@@ -437,7 +443,7 @@ export async function handleClientMessage({
       }
 
       const allowedPrices = getAllowedPrices();
-      const filtered = filterReply(raw, { allowedPrices });
+      const filtered = filterReply(raw, { allowedPrices, strictPrices: true });
       let safeReplyText = String(filtered.text || '');
       if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
@@ -445,9 +451,9 @@ export async function handleClientMessage({
         let faqPriceReply = null;
         if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(clean)) {
           const answer = findDynamicFaq(clean, items);
-          if (answer && /R\$\s?\d|\b\d+\s?reais\b/i.test(answer)) {
-            const faqPrices = new Set([...(allowedPrices || []), ...(answer.match(/R\$\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+\s?reais/gi) || [])]);
-            const faqFiltered = filterReply(answer, { allowedPrices: faqPrices });
+          if (answer && detectPriceMentions(answer).length) {
+            const faqPrices = new Set([...(allowedPrices || []), ...detectPriceMentions(answer).map(item => item.raw.replace(/\s/g, ''))]);
+            const faqFiltered = filterReply(answer, { allowedPrices: faqPrices, strictPrices: true });
             if (!faqFiltered.blocked) faqPriceReply = faqFiltered.text;
           }
         }
@@ -472,6 +478,9 @@ export async function handleClientMessage({
       let toolReplyOverride = null;
       let reminderHandledByTool = false;
       let pixHandledByTool = false;
+      // Valores autoritativos vindos de resultados de ferramentas (Pix gerado, checkout
+      // criado): são preços reais da operação e devem passar pelo filtro de segurança.
+      const toolAuthorizedPrices = new Set();
       let webSearchResult = null;
       if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
         for (const tc of result.tool_calls) {
@@ -509,6 +518,11 @@ export async function handleClientMessage({
               if (tc.name === 'gerar_cobranca_pix') {
                 pixHandledByTool = true;
                 if (toolRes?.success) {
+                  const pixAmount = Number(toolRes.valor) || 0;
+                  if (pixAmount > 0) {
+                    const fixed = pixAmount.toFixed(2);
+                    toolAuthorizedPrices.add(fixed).add(fixed.replace('.', ','));
+                  }
                   toolReplyOverride = formatPixSuccessReply(toolRes, {
                     owner,
                     pixKey: configuredPixKey,
@@ -522,18 +536,28 @@ export async function handleClientMessage({
               }
               if (tc.name === 'checkout_infinitepay') {
                 if (toolRes?.success && toolRes.action === 'verificar_pagamento') {
-                  if (toolRes.paid) {
-                    if (s.pendingCheckout && (!toolRes.orderNsu || s.pendingCheckout.orderNsu === toolRes.orderNsu)) {
-                      s.pendingCheckout.paidAt = new Date(now()).toISOString();
-                    }
+                  const pending = s.pendingCheckout;
+                  const orderMatches = Boolean(pending?.orderNsu && toolRes.orderNsu && pending.orderNsu === toolRes.orderNsu);
+                  if (toolRes.paid && orderMatches) {
+                    pending.paidAt = new Date(now()).toISOString();
                     s.tags = (Array.isArray(s.tags) ? s.tags : []).filter((t) => t !== 'checkout-pendente');
                     addSessionTags(['pagamento-confirmado']);
+                    const valorFmt = toolRes.amount ? `R$ ${(Number(toolRes.amount) / 100).toFixed(2).replace('.', ',')}` : '';
+                    toolReplyOverride = `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido \`${toolRes.orderNsu}\`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`;
+                  } else if (toolRes.paid) {
+                    // Pagamento localizado, mas não é o pedido deste contato: nunca confirmar por aqui.
+                    toolReplyOverride = 'Não localizei esse pedido para este contato. Vou pedir para a equipe verificar com segurança e te retorno por aqui.';
+                  } else {
+                    toolReplyOverride = pending?.orderNsu
+                      ? `⏳ O pagamento do pedido \`${pending.orderNsu}\` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`
+                      : '⏳ Ainda não encontrei um pagamento confirmado para este contato. Se você já pagou, me envie o comprovante que a equipe confere por aqui!';
                   }
-                  const valorFmt = toolRes.amount ? `R$ ${(Number(toolRes.amount) / 100).toFixed(2).replace('.', ',')}` : '';
-                  toolReplyOverride = toolRes.paid
-                    ? `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido \`${toolRes.orderNsu}\`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`
-                    : `⏳ O pagamento do pedido \`${toolRes.orderNsu}\` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`;
                 } else if (toolRes?.success) {
+                  const checkoutCents = Number(toolRes.amountCents ?? toolRes.amount) || 0;
+                  if (checkoutCents > 0) {
+                    const fixed = (checkoutCents / 100).toFixed(2);
+                    toolAuthorizedPrices.add(fixed).add(fixed.replace('.', ','));
+                  }
                   s.pendingCheckout = {
                     orderNsu: toolRes.orderNsu || '',
                     checkoutUrl: toolRes.checkoutUrl || '',
@@ -693,9 +717,9 @@ export async function handleClientMessage({
       }
 
       if (toolReplyOverride) {
-        const toolFiltered = filterReply(toolReplyOverride, { allowedPrices });
+        const toolFiltered = filterReply(toolReplyOverride, { allowedPrices: new Set([...(allowedPrices || []), ...toolAuthorizedPrices]), strictPrices: true });
         finalReply = toolFiltered.blocked
-          ? 'Não consegui concluir o agendamento com segurança. Vou pedir à equipe para verificar.'
+          ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
@@ -727,9 +751,9 @@ export async function handleClientMessage({
 
       // Se a IA julgou pelo contexto que deve transferir ou direcionar o assunto para o responsável / empresa
       if (toolReplyOverride) {
-        const toolFiltered = filterReply(toolReplyOverride, { allowedPrices });
+        const toolFiltered = filterReply(toolReplyOverride, { allowedPrices: new Set([...(allowedPrices || []), ...toolAuthorizedPrices]), strictPrices: true });
         finalReply = toolFiltered.blocked
-          ? 'Nao consegui responder com seguranca. Vou encaminhar sua duvida para a equipe.'
+          ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
@@ -764,7 +788,7 @@ export async function handleClientMessage({
       s.history.push({ role: 'assistant', content: finalReply, createdAt: new Date(now()).toISOString() });
           const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
           if (s.history.length > maxStoredHistory) s.history = s.history.slice(-maxStoredHistory);
-      s.lastBotAt = new Date(now()).toISOString();
+      s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
       store.markDirty();
 
       if (clientWantsVoiceNow) {

@@ -67,20 +67,16 @@ export async function evaluateProspectGuards({
     return { allowed: false, reason: 'suppression_check_failed' };
   }
 
-  // 2. Existing client / active session check (bypassed in testMode)
-  if (!config.testMode) {
-    const existingSession = sessionStore?.get?.(lead.phone);
-    if (existingSession && ((existingSession.history && existingSession.history.length > 0) || existingSession.human)) {
-      return { allowed: false, reason: 'existing_session' };
-    }
+  // 2. Existing client / active session check — never bypassed.
+  const existingSession = sessionStore?.get?.(lead.phone);
+  if (existingSession && ((existingSession.history && existingSession.history.length > 0) || existingSession.human)) {
+    return { allowed: false, reason: 'existing_session' };
   }
 
-  // 3. Business hours in configured timezone (no Sunday), bypassed in testMode
-  if (!config.testMode) {
-    const timeZone = config.timeZone || 'America/Sao_Paulo';
-    if (!isWithinBusinessWindow({ now, timeZone, windowStart: config.windowStart || '09:00', windowEnd: config.windowEnd || '18:00' })) {
-      return { allowed: false, reason: 'outside_business_hours' };
-    }
+  // 3. Business hours in configured timezone (no Sunday) — never bypassed.
+  const timeZone = config.timeZone || 'America/Sao_Paulo';
+  if (!isWithinBusinessWindow({ now, timeZone, windowStart: config.windowStart || '09:00', windowEnd: config.windowEnd || '18:00' })) {
+    return { allowed: false, reason: 'outside_business_hours' };
   }
 
   // 4. Cooldown per lead (default 48h)
@@ -92,7 +88,11 @@ export async function evaluateProspectGuards({
     }
   }
 
-  // 5. Daily cap with gradual warmup
+  // 5. Daily cap with gradual warmup.
+  //    Esta checagem serve para bloquear cedo e, no dryRun, mostrar exatamente o
+  //    que o envio real faria. A reserva autoritativa da vaga acontece junto do
+  //    claim do lead (claimLeadWithinCap), reavaliando o cap imediatamente antes
+  //    de reservar — entre estes dois passos outra réplica pode consumir a cota.
   const effectiveCap = computeWarmupDailyCap({
     baseCap: list.daily_cap ?? config.dailyCap ?? 20,
     warmupStartedAt: list.warmup_started_at,

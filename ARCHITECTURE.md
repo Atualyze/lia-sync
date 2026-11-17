@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.4.0**
+Versão: **2.5.0**
 
 ## Objetivo
 
