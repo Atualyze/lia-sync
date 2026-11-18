@@ -157,7 +157,37 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
   assert.match(repLista, /Glória Vasconcelos/);
 
   const repAlguem = await flow.process({ phone: '5588921694598', text: 'tem alguém esperando?' });
-  assert.match(repAlguem, /Glória Vasconcelos/);
+  assert.match(repQuem, /Glória Vasconcelos/);
+});
+
+test('Conversa interna: interpreta pedidos naturais para retomar e assumir contato', async () => {
+  const store = createMockStore();
+  const client = store.get('5588993602644');
+  client.clientName = 'Mikaelle Santos';
+  client.human = true;
+  client.handoffAt = new Date().toISOString();
+  client.history = [{ role: 'user', content: 'Ainda tenho uma dúvida sobre o orçamento' }];
+
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async ({ system, userText }) => system?.includes('Interprete apenas pedidos operacionais')
+        ? { text: JSON.stringify({ intent: /devolver|retomar/i.test(userText) ? 'resume_bot' : 'activate_human', target: 'Mikaelle', confidence: 0.96 }) }
+        : { reply: 'ok' }
+    }
+  });
+
+  const resumed = await flow.process({ phone: '5588921694598', text: 'Pode devolver a conversa da Mikaelle para a Lia?' });
+  assert.match(resumed, /Bot reativado com sucesso/i);
+  assert.equal(client.human, false);
+  assert.match(resumed, /ficou sem resposta|no vácuo/i);
+
+  client.human = true;
+  const human = await flow.process({ phone: '5588921694598', text: 'Assuma pessoalmente o atendimento da Mikaelle' });
+  assert.match(human, /Atendimento humano ativado/i);
+  assert.equal(client.human, true);
 });
 
 test('Conversa interna: frases comuns com "aguardando", "quem" ou "lista" não abrem a fila por engano', async () => {

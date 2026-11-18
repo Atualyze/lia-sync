@@ -13,6 +13,57 @@ import { createPdfDelivery } from './pdf.mjs';
 import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 
+const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
+
+function parseNaturalControlResult(result) {
+  const raw = String(result?.text || result?.reply || result?.content || '').trim();
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    const intent = String(parsed.intent || '').trim().toLowerCase();
+    const allowed = new Set(['resume_bot', 'activate_human', 'list_queue', 'status', 'clear_history', 'none']);
+    if (!allowed.has(intent) || intent === 'none') return null;
+    return {
+      intent,
+      target: String(parsed.target || '').trim().slice(0, 80),
+      confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation, deadline }) {
+  if (!ai?.askAI || !NATURAL_CONTROL_HINT.test(text)) return null;
+  const prompt = [
+    'Interprete apenas pedidos operacionais do responsável por um bot de WhatsApp.',
+    'Responda somente JSON válido neste formato: {"intent":"resume_bot|activate_human|list_queue|status|clear_history|none","target":"nome, telefone ou vazio","confidence":0.0}',
+    'resume_bot: devolver a conversa para a Lia, retomar ou deixar o bot continuar.',
+    'activate_human: assumir pessoalmente, pausar o bot ou manter atendimento humano.',
+    'list_queue: perguntar quem está aguardando ou mostrar a fila.',
+    'status: perguntar situação, saúde ou funcionamento do sistema.',
+    'clear_history: apagar, limpar ou resetar o histórico de uma conversa.',
+    'Use none para mensagens que não sejam claramente um desses pedidos. Não execute nada.',
+    pendingReactivation?.phone ? `Há uma continuidade pendente para o contato ${pendingReactivation.contactLabel || pendingReactivation.phone}.` : '',
+    `Mensagem do responsável: ${text}`
+  ].filter(Boolean).join('\n');
+  try {
+    const result = await ai.askAI({
+      system: prompt,
+      history: [],
+      userText: text,
+      botConfig,
+      isOwner: true,
+      autoRouting: false,
+      deadline
+    });
+    return parseNaturalControlResult(result);
+  } catch {
+    return null;
+  }
+}
+
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
   botConfig, identity, owner, assistant, ownerLabel,
@@ -140,8 +191,8 @@ export async function handleOwnerSession({
           return filterReply(`Estou aqui, ${owner}! Pode digitar ou mandar um áudio com o que precisar.`, { isCopilot: true }).text;
         }
         // Remove a menção ao nome da assistente (ex: "Lia fila" → "fila") para casar os comandos
-        const strippedCmd = stripBotMention(cleanCommand, assistant) || cleanCommand;
-        const norm = normalize(strippedCmd);
+        let strippedCmd = stripBotMention(cleanCommand, assistant) || cleanCommand;
+        let norm = normalize(strippedCmd);
         const telemetry = await getTelemetry?.();
 
 
@@ -161,6 +212,28 @@ export async function handleOwnerSession({
             ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
             : `Tudo bem, ${owner}! Cancelado por aqui. Em que posso te ajudar agora?`;
           return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text);
+        }
+
+        // Linguagem natural para controles: só consulta a IA quando há pistas
+        // operacionais, preservando respostas comuns do Copiloto sem custo extra.
+        const hasFixedControl = /^(?:ajuda|comandos|status|resumo|painel|diagnostico|fila|espera|infra|infraestrutura|servidores|agenda|ping|bot|lembretes|expediente|limpar|humano|quem)\b/i.test(norm);
+        if (!hasFixedControl) {
+          const natural = await classifyNaturalControl({
+            ai, botConfig, text: strippedCmd, pendingReactivation: sSelf.pendingReactivation, deadline: aiDeadline
+          });
+          if (natural && natural.confidence >= 0.65) {
+            const target = natural.target || sSelf.pendingReactivation?.contactLabel || sSelf.pendingReactivation?.phone || '';
+            const canonical = natural.intent === 'resume_bot' ? `bot${target ? ` ${target}` : ''}`
+              : natural.intent === 'activate_human' ? `humano${target ? ` ${target}` : ''}`
+                : natural.intent === 'list_queue' ? 'fila'
+                  : natural.intent === 'status' ? 'status'
+                    : natural.intent === 'clear_history' ? `limpar${target ? ` ${target}` : ''}` : '';
+            if (canonical) {
+              cleanCommand = canonical;
+              strippedCmd = canonical;
+              norm = normalize(canonical);
+            }
+          }
         }
 
         // 1.0.1 PDF pendente: a resposta do dono vira o conteúdo do documento
