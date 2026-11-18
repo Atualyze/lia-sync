@@ -15,13 +15,6 @@ export function renderFallbackTemplate(template = '', lead = {}) {
   return message;
 }
 
-const wait = ms => ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
-function randomDelay(min, max) {
-  const low = Math.max(0, Number(min) || 0);
-  const high = Math.max(low, Number(max) || low);
-  return Math.round(low + Math.random() * (high - low));
-}
-
 export async function runProspectingTick({
   enabled = false,
   dryRun = false,
@@ -29,6 +22,7 @@ export async function runProspectingTick({
   campaignStore,
   sessionStore = null,
   send,
+  stageOutboundDispatch,
   template = DEFAULT_TEMPLATE,
   batchSize = 5,
   now = new Date(),
@@ -36,11 +30,10 @@ export async function runProspectingTick({
 } = {}) {
   const empty = { skipped: true, dryRun, sent: 0, blocked: 0, failed: 0, previewed: 0, persistenceErrors: 0, details: [] };
   if (!enabled) return { ...empty, reason: 'disabled' };
-  if (!leadStore || (!dryRun && typeof send !== 'function')) return { ...empty, reason: 'missing_dependencies' };
+  if (!leadStore || (!dryRun && typeof stageOutboundDispatch !== 'function')) return { ...empty, reason: 'confirmation_gate_unavailable' };
 
   const due = await leadStore.listDueLeads({ limit: batchSize, scanLimit: Math.max(batchSize * 5, batchSize), now });
   const summary = { skipped: false, dryRun, checked: due.length, sent: 0, blocked: 0, failed: 0, previewed: 0, persistenceErrors: 0, details: [] };
-  let sentInTick = 0;
 
   for (const lead of due) {
     const guard = await evaluateProspectGuards({ lead, list: lead.list || {}, now, campaignStore, sessionStore, leadStore, config });
@@ -62,48 +55,57 @@ export async function runProspectingTick({
       continue;
     }
 
-    if (sentInTick > 0) await wait(randomDelay(config.minDelayMs, config.maxDelayMs));
     const cadenceStep = lead.list?.cadence?.steps?.[lead.stage || 0];
     const stepTemplate = typeof cadenceStep === 'string' ? cadenceStep : (cadenceStep?.template || template);
     const message = renderFallbackTemplate(stepTemplate, lead);
     try {
-      await send(lead.phone, message);
+      const currentStage = Number(lead.stage || 0);
+      const nextStage = currentStage + 1;
+      const nextStep = lead.list?.cadence?.steps?.[nextStage];
+      const nextDelayMinutes = Number(nextStep?.delayMinutes ?? (Number(nextStep?.delayHours || 0) * 60));
+      const hasNextStep = Boolean(nextStep);
+      const nextActionAt = hasNextStep ? new Date(now.getTime() + Math.max(1, nextDelayMinutes || 1440) * 60000).toISOString() : null;
+      const pending = await stageOutboundDispatch({
+        phone: lead.phone,
+        recipient: lead.name || lead.phone,
+        message
+      }, {
+        source: 'prospecting',
+        metadata: {
+          sourceRef: lead.id,
+          leadId: lead.id,
+          listId: lead.list_id,
+          claimToken: claimed.lead.claim_token,
+          leadStage: currentStage,
+          hasNextStep,
+          nextActionAt,
+          attempts: Number(lead.attempts || 0) + 1,
+          originalNextActionAt: lead.next_action_at || now.toISOString()
+        }
+      });
+      if (!pending) {
+        await leadStore.releaseClaim(lead.id, claimed.lead.claim_token, {
+          status: 'queued',
+          next_action_at: lead.next_action_at || now.toISOString(),
+          last_error: null
+        });
+        summary.blocked += 1;
+        summary.details.push({ leadId: lead.id, phone: lead.phone, status: 'blocked', reason: 'copilot_dispatch_pending' });
+        continue;
+      }
+      summary.previewed += 1;
+      summary.details.push({ leadId: lead.id, phone: lead.phone, status: 'pending_approval', stage: currentStage });
     } catch (err) {
-      const attempts = (lead.attempts || 0) + 1;
-      const maxAttempts = Math.max(1, Number(config.maxAttempts) || 3);
-      const retryable = attempts < maxAttempts;
-      const retryAt = new Date(now.getTime() + Math.max(1, Number(config.retryBaseMinutes) || 15) * 60000 * (2 ** Math.max(0, attempts - 1))).toISOString();
       try {
         await leadStore.releaseClaim(lead.id, claimed.lead.claim_token, {
-          status: retryable ? 'queued' : 'failed',
-          next_action_at: retryable ? retryAt : null,
-          attempts,
+          status: 'queued',
+          next_action_at: lead.next_action_at || now.toISOString(),
           last_error: String(err?.message || 'send_failed').slice(0, 300)
         });
       } catch { summary.persistenceErrors += 1; }
-      try { await leadStore.recordEvent({ listId: lead.list_id, leadId: lead.id, phone: lead.phone, eventType: 'failed', stage: lead.stage || 0, detail: { error: String(err?.message || 'send_failed'), retryable, attempts } }); } catch { summary.persistenceErrors += 1; }
       summary.failed += 1;
-      summary.details.push({ leadId: lead.id, phone: lead.phone, status: 'failed', retryable, attempts });
-      continue;
+      summary.details.push({ leadId: lead.id, phone: lead.phone, status: 'failed', retryable: true, error: String(err?.message || 'preview_failed') });
     }
-
-    const stage = (lead.stage || 0) + 1;
-    const nextStep = lead.list?.cadence?.steps?.[stage];
-    const nextDelayMinutes = Number(nextStep?.delayMinutes ?? (Number(nextStep?.delayHours || 0) * 60));
-    const hasNextStep = Boolean(nextStep);
-    const nextActionAt = hasNextStep ? new Date(now.getTime() + Math.max(1, nextDelayMinutes || 1440) * 60000).toISOString() : null;
-    sentInTick += 1;
-    summary.sent += 1;
-    summary.details.push({ leadId: lead.id, phone: lead.phone, status: 'sent', stage });
-    // O envio já aconteceu: falhas de persistência não podem transformar sucesso
-    // de WhatsApp em failed nem provocar reenvio indevido.
-    try {
-      await leadStore.releaseClaim(lead.id, claimed.lead.claim_token, {
-        status: hasNextStep ? 'queued' : 'contacted', stage, last_contacted_at: now.toISOString(),
-        next_action_at: nextActionAt, attempts: (lead.attempts || 0) + 1, last_error: null
-      });
-    } catch { summary.persistenceErrors += 1; }
-    try { await leadStore.recordEvent({ listId: lead.list_id, leadId: lead.id, phone: lead.phone, eventType: 'sent', stage }); } catch { summary.persistenceErrors += 1; }
   }
   return summary;
 }

@@ -23,133 +23,77 @@ function eligibleSession() {
   };
 }
 
-function remoteStore(session = eligibleSession(), overrides = {}) {
-  const calls = { claim: 0, complete: 0, release: 0, flush: 0 };
-  const store = {
+function storeWith(session = eligibleSession()) {
+  return {
     sessions: { [phone]: session },
-    client: { enabled: true },
     markDirty() {},
-    async flush() { calls.flush++; },
-    async claimFollowUp() { calls.claim++; return token; },
-    async completeFollowUp() { calls.complete++; return true; },
-    async releaseFollowUpClaim() { calls.release++; return true; },
-    ...overrides
+    async flush() {}
   };
-  return { store, calls, session };
 }
 
-function run(store, send, logger = quietLogger) {
+function run(store, stageOutboundDispatch, send = async () => { throw new Error('envio direto não permitido'); }) {
   return processMaintenance({
     store,
     send,
+    stageOutboundDispatch,
     now: () => current,
     timeZone: 'America/Fortaleza',
     enableLeadFollowUp: true,
-    logger
+    logger: quietLogger
   });
 }
 
-test('claims concorrentes em stores distintos enviam apenas um follow-up', async () => {
-  const firstSession = eligibleSession();
-  const secondSession = eligibleSession();
-  let dbClaimed = false;
-  const makeStore = session => remoteStore(session, {
-    async claimFollowUp() {
-      if (dbClaimed) return null;
-      dbClaimed = true;
-      return token;
-    }
-  });
-  const a = makeStore(firstSession);
-  const b = makeStore(secondSession);
-  let sent = 0;
-  const send = async () => { sent++; await new Promise(resolve => setTimeout(resolve, 5)); };
-  await Promise.all([run(a.store, send), run(b.store, send)]);
-  assert.equal(sent, 1);
-  assert.equal(a.calls.complete + b.calls.complete, 1);
-  assert.equal(a.calls.release + b.calls.release, 0);
-});
+test('follow-up automático vira prévia no Copilot e nunca envia diretamente ao cliente', async () => {
+  const session = eligibleSession();
+  const store = storeWith(session);
+  const staged = [];
+  let directSends = 0;
+  await run(store, async (prepared, options) => {
+    staged.push({ prepared, options });
+    return { id: 'A1B2C3D4' };
+  }, async () => { directSends += 1; });
 
-test('store sem persistência distribuída não envia follow-up', async () => {
-  const { store, session } = remoteStore();
-  store.client.enabled = false;
-  let sent = 0;
-  await run(store, async () => { sent++; });
-  assert.equal(sent, 0);
+  assert.equal(staged.length, 1);
+  assert.equal(staged[0].prepared.phone, phone);
+  assert.match(staged[0].prepared.message, /avaliar a proposta/i);
+  assert.equal(staged[0].options.source, 'maintenance-follow-up');
+  assert.equal(staged[0].options.metadata.sourceRef, phone);
+  assert.equal(directSends, 0);
   assert.equal(session.followUpSentAt, undefined);
-  assert.equal(session.followUpCount, 0);
-});
-
-test('claim RPC vazia não envia nem marca a conversa', async () => {
-  const { store, calls, session } = remoteStore(undefined, { async claimFollowUp() { calls.claim++; return null; } });
-  store.sessions[phone] = eligibleSession();
-  Object.assign(session, store.sessions[phone]);
-  let sent = 0;
-  await run(store, async () => { sent++; });
-  assert.equal(sent, 0);
-  assert.equal(store.sessions[phone].followUpCount, undefined);
-  assert.equal(calls.complete, 0);
-});
-
-test('falha da RPC de claim bloqueia envio e deixa estado elegível seguro', async () => {
-  const { store, session } = remoteStore(undefined, { async claimFollowUp() { throw new Error('rpc indisponível'); } });
-  store.sessions[phone] = eligibleSession();
-  Object.assign(session, store.sessions[phone]);
-  let sent = 0;
-  await run(store, async () => { sent++; });
-  assert.equal(sent, 0);
-  assert.equal(store.sessions[phone].followUpCount, 0);
-  assert.equal(store.sessions[phone].followUpClaimedAt, null);
-});
-
-test('confirmação false após envio preserva marca local e nunca libera a claim', async () => {
-  const { store, calls, session } = remoteStore(undefined, {
-    async completeFollowUp() { calls.complete++; return false; }
-  });
-  store.sessions[phone] = eligibleSession();
-  Object.assign(session, store.sessions[phone]);
-  let sent = 0;
-  await run(store, async () => { sent++; });
-  assert.equal(sent, 1);
-  assert.ok(store.sessions[phone].followUpSentAt);
-  assert.equal(store.sessions[phone].followUpCount, 1);
-  assert.equal(calls.release, 0);
-  assert.ok(calls.flush >= 1);
-});
-
-test('timeout na conclusão depois do envio preserva follow-up e não libera a claim', async () => {
-  const { store, calls, session } = remoteStore(undefined, {
-    async completeFollowUp() { calls.complete++; throw new Error('RPC timeout'); }
-  });
-  store.sessions[phone] = eligibleSession();
-  Object.assign(session, store.sessions[phone]);
-  let sent = 0;
-  await run(store, async () => { sent++; });
-  assert.equal(sent, 1);
-  assert.ok(store.sessions[phone].followUpSentAt);
-  assert.equal(store.sessions[phone].followUpCount, 1);
-  assert.equal(calls.release, 0);
-  assert.ok(calls.flush >= 1);
-});
-
-test('erro de entrega explicitamente anterior ao envio libera claim', async () => {
-  const { store, calls, session } = remoteStore();
-  const error = Object.assign(new Error('falha antes de enviar'), { beforeSend: true });
-  await run(store, async () => { throw error; });
-  assert.equal(calls.release, 1);
-  assert.equal(session.followUpCount, 0);
-  assert.equal(session.followUpClaimedAt, null);
-});
-
-test('erro de entrega ambíguo mantém claim e não pode gerar duplicidade', async () => {
-  const { store, calls, session } = remoteStore();
-  await run(store, async () => { throw new Error('conexão caiu após iniciar o envio'); });
-  assert.equal(calls.release, 0);
+  assert.equal(session.followUpPendingId, 'A1B2C3D4');
   assert.equal(session.followUpCount, 1);
-  assert.equal(session.followUpClaimToken, token);
 });
 
-test('adaptador RPC aceita só UUID para claim e boolean true para completion/release', async () => {
+test('manutenção falha fechada sem canal de aprovação, mesmo se houver sender', async () => {
+  const session = eligibleSession();
+  const store = storeWith(session);
+  let directSends = 0;
+  await run(store, undefined, async () => { directSends += 1; });
+  assert.equal(directSends, 0);
+  assert.equal(session.followUpSentAt, undefined);
+});
+
+test('duas réplicas não enviam diretamente nem duplicam prévias quando o gate compartilhado já está ocupado', async () => {
+  const firstStore = storeWith(eligibleSession());
+  const secondStore = storeWith(eligibleSession());
+  let occupied = false;
+  let stagedCount = 0;
+  let directSends = 0;
+  const stage = async () => {
+    if (occupied) return null;
+    occupied = true;
+    stagedCount += 1;
+    return { id: 'D4C3B2A1' };
+  };
+  await Promise.all([
+    run(firstStore, stage, async () => { directSends += 1; }),
+    run(secondStore, stage, async () => { directSends += 1; })
+  ]);
+  assert.equal(stagedCount, 1);
+  assert.equal(directSends, 0);
+});
+
+test('adaptador RPC de follow-up aceita só UUID para claim e boolean true para completion/release', async () => {
   const outputs = [token, '', true, 1, true, false];
   const client = { enabled: true, async rpc() { return outputs.shift(); } };
   const store = new SupabaseSessionStore(path.join(os.tmpdir(), 'unused-followup-rpc.json'), { client, logger: quietLogger });

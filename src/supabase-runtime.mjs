@@ -139,7 +139,14 @@ function rowToSession(row, messages = []) {
     pendingPixRequest: meta.pendingPixRequest && typeof meta.pendingPixRequest === 'object' && !Array.isArray(meta.pendingPixRequest)
       ? { ...meta.pendingPixRequest }
       : null,
+    pendingOutboundDispatch: meta.pendingOutboundDispatch && typeof meta.pendingOutboundDispatch === 'object' && !Array.isArray(meta.pendingOutboundDispatch)
+      ? { ...meta.pendingOutboundDispatch }
+      : null,
     pendingClientPayment: normalizePendingClientPayment(meta.pendingClientPayment),
+    pendingCheckout: meta.pendingCheckout && typeof meta.pendingCheckout === 'object' && !Array.isArray(meta.pendingCheckout)
+      ? { ...meta.pendingCheckout }
+      : null,
+    followUpPendingId: meta.followUpPendingId || null,
     lastIntent: row.last_intent || undefined,
     intents: row.intents || [],
     awaitingReply: Boolean(row.awaiting_reply),
@@ -232,7 +239,14 @@ function sessionToConversation(key, session, contactId) {
       pendingPixRequest: session.pendingPixRequest && typeof session.pendingPixRequest === 'object'
         ? { ...session.pendingPixRequest }
         : null,
+      pendingOutboundDispatch: session.pendingOutboundDispatch && typeof session.pendingOutboundDispatch === 'object'
+        ? { ...session.pendingOutboundDispatch }
+        : null,
       pendingClientPayment: normalizePendingClientPayment(session.pendingClientPayment),
+      pendingCheckout: session.pendingCheckout && typeof session.pendingCheckout === 'object'
+        ? { ...session.pendingCheckout }
+        : null,
+      followUpPendingId: session.followUpPendingId || null,
       followUpCount: Number(session.followUpCount || 0),
       followUpSentAt: date(session.followUpSentAt)
     },
@@ -409,6 +423,9 @@ export class SupabaseSessionStore extends SessionStore {
           if (lSession.pendingClientPayment && lTime >= rTime) {
             rSession.pendingClientPayment = normalizePendingClientPayment(lSession.pendingClientPayment);
           }
+          if (lSession.pendingOutboundDispatch && (lTime >= rTime || ['sending', 'uncertain'].includes(lSession.pendingOutboundDispatch.status))) {
+            rSession.pendingOutboundDispatch = { ...lSession.pendingOutboundDispatch };
+          }
           if (lSession.lastAnalyzedDocument && (!rSession.lastAnalyzedDocument || lTime >= rTime)) {
             rSession.lastAnalyzedDocument = lSession.lastAnalyzedDocument;
           }
@@ -498,6 +515,11 @@ export class SupabaseSessionStore extends SessionStore {
         if (localPayment && Date.parse(localPayment.createdAt) > remoteTime) {
           remoteSession.pendingClientPayment = localPayment;
         }
+        const localOutbound = s.pendingOutboundDispatch;
+        const localOutboundAt = Date.parse(localOutbound?.createdAt || '') || 0;
+        if (localOutbound && (['sending', 'uncertain'].includes(localOutbound.status) || localOutboundAt > remoteTime)) {
+          remoteSession.pendingOutboundDispatch = { ...localOutbound };
+        }
         remoteSession.pendingAudioConfirmation = s.pendingAudioConfirmation || null;
         remoteSession.pendingRecipient = s.pendingRecipient || null;
         remoteSession.pendingAsAudio = Boolean(s.pendingAsAudio);
@@ -523,6 +545,25 @@ export class SupabaseSessionStore extends SessionStore {
       throw new Error('Resposta inválida ao reservar follow-up no Supabase');
     }
     return token;
+  }
+
+  async claimOutboundDispatch(dispatchId) {
+    if (!this.client?.enabled || typeof this.client.request !== 'function') return false;
+    const key = String(dispatchId || '').trim().toUpperCase();
+    if (!/^[A-F0-9]{8}$/.test(key)) return false;
+    const inserted = await this.client.request('idempotency_keys', {
+      method: 'POST',
+      query: 'on_conflict=scope,key',
+      body: {
+        scope: 'outbound_dispatch',
+        key,
+        resource_id: null,
+        status_code: 202,
+        response_body: { status: 'sending' }
+      },
+      prefer: 'resolution=ignore-duplicates,return=representation'
+    });
+    return Array.isArray(inserted) && inserted.length > 0;
   }
 
   async completeFollowUp(externalKey, claimToken, sentAt) {
@@ -569,7 +610,7 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingClientPayment || null)}`;
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
         if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
         const externalId = isSimulation ? key : key.replace(/^sim:/, '');

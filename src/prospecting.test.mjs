@@ -164,7 +164,7 @@ function businessTickNow(from = new Date()) {
   throw new Error('no open prospecting window within 8 days');
 }
 
-test('prospecting guards & scheduler: blocks outside business hours or suppressed, sends when allowed', async () => {
+test('prospecting guards & scheduler: blocks opt-out and creates a preview for allowed leads', async () => {
   // Sunday in America/Fortaleza (2026-11-15T15:00:00Z is Sunday 12:00 BRT)
   const sundayNoon = new Date('2026-11-15T15:00:00.000Z');
   assert.equal(isWithinBusinessWindow({ now: sundayNoon, timeZone: PROSPECT_TZ }), false);
@@ -196,19 +196,25 @@ test('prospecting guards & scheduler: blocks outside business hours or suppresse
     isSuppressed: async phone => phone === '5585999991111'
   };
   const sent = [];
+  const previews = [];
   const summary = await runProspectingTick({
     enabled: true,
     leadStore,
     campaignStore,
     send: async (phone, text) => { sent.push({ phone, text }); },
+    stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return { id: 'P1R2O3S4' }; },
     now: tickNow,
     config: { timeZone: PROSPECT_TZ }
   });
 
-  assert.equal(summary.sent, 1);
+  assert.equal(summary.sent, 0);
+  assert.equal(summary.previewed, 1);
   assert.equal(summary.blocked, 1);
-  assert.equal(sent[0].phone, '5585988882222');
-  assert.match(sent[0].text, /Bruno/);
+  assert.equal(sent.length, 0, 'prospecção não envia antes da aprovação');
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].prepared.phone, '5585988882222');
+  assert.match(previews[0].prepared.message, /Bruno/);
+  assert.equal(previews[0].options.source, 'prospecting');
 
   // Fail-closed when suppression lookup throws
   const failingGuard = await evaluateProspectGuards({

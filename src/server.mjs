@@ -17,7 +17,8 @@ import { AdminConfigStore } from './admin-config.mjs';
 import { SupabaseSessionStore, SupabaseAdminConfigStore, createSupabaseRuntime } from './supabase-runtime.mjs';
 import { setMetricsPersistenceSink } from './metrics.mjs';
 import { ReminderStore } from './reminders.mjs';
-import { isOwnerKey } from './core/identity.mjs';
+import { isOwnerKey, OWNER_SELF_KEY } from './core/identity.mjs';
+import { createOutboundDispatchPreview } from './outbound-dispatch.mjs';
 import { createChatwootProxy } from './http/proxy.mjs';
 import { createRouter } from './http/router.mjs';
 import { deliveryTarget, json } from './http/utils.mjs';
@@ -75,6 +76,30 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     const cfgPhone = String(humanCfg.phone || '').replace(/\D/g, '');
     const raw = cfgPhone || cachedInstanceOwner || config.humanPhone || '';
     return String(raw).replace(/\D/g, '');
+  };
+
+  const stageAutomatedOutbound = async (prepared, options = {}) => {
+    const operatorPhone = getHumanPhone();
+    if (!operatorPhone) return null;
+    const ownerSession = store.get(OWNER_SELF_KEY);
+    const staged = createOutboundDispatchPreview(ownerSession, prepared, {
+      source: options.source || 'automation',
+      resumeBot: options.resumeBot === true,
+      metadata: options.metadata || {}
+    });
+    if (!staged) return null;
+    ownerSession.updatedAt = new Date().toISOString();
+    store.markDirty();
+    try {
+      await store.flush?.();
+      await sendText(operatorPhone, `🔔 *Aprovação de disparo automático necessária*\n\n${staged.preview}`);
+      return staged.pending;
+    } catch (error) {
+      ownerSession.pendingOutboundDispatch = null;
+      store.markDirty();
+      console.error('[outbound-dispatch] Não foi possível persistir/notificar a prévia:', error.message);
+      return null;
+    }
   };
 
   const reminderStore = new ReminderStore(path.join(path.dirname(config.dataFile), 'reminders.json'), { client: supabaseRuntime.client });
@@ -216,6 +241,43 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     sessionStore: store,
     adminConfig
   });
+  store.resolveProspectingDispatch = async (pending, outcome) => {
+    if (pending?.source !== 'prospecting') return true;
+    const leadStore = prospecting.leadStore;
+    const leadId = pending.leadId;
+    const claimToken = pending.claimToken;
+    if (!leadId || !claimToken || outcome === 'uncertain') return false;
+    let updates;
+    if (outcome === 'sent') {
+      const nextStage = Number(pending.leadStage || 0) + 1;
+      updates = {
+        status: pending.hasNextStep ? 'queued' : 'contacted',
+        stage: nextStage,
+        last_contacted_at: new Date().toISOString(),
+        next_action_at: pending.nextActionAt || null,
+        attempts: Number(pending.attempts || 1),
+        last_error: null
+      };
+    } else {
+      updates = {
+        status: 'queued',
+        next_action_at: outcome === 'failed' ? new Date(Date.now() + 15 * 60000).toISOString() : (pending.originalNextActionAt || new Date().toISOString()),
+        last_error: outcome === 'failed' ? 'copilot_dispatch_failed' : null
+      };
+    }
+    const released = await leadStore.releaseClaim(leadId, claimToken, updates);
+    if (!released) return false;
+    if (outcome === 'sent') {
+      await leadStore.recordEvent({
+        listId: pending.listId || null,
+        leadId,
+        phone: pending.phone,
+        eventType: 'sent',
+        stage: Number(pending.leadStage || 0) + 1
+      });
+    }
+    return true;
+  };
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
   const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });
   await integrationsStore.load().catch(() => {});
@@ -282,6 +344,7 @@ if (isDirectRun) {
       await processMaintenance({
       store,
       send: sendText,
+      stageOutboundDispatch: stageAutomatedOutbound,
       notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
       reminderStore: app.reminderStore,
       timeZone: config.businessTimeZone,
@@ -294,7 +357,7 @@ if (isDirectRun) {
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
       }).catch(e => console.error('[maintenance]', e.message));
-      return await app.prospecting?.tick();
+      return await app.prospecting?.tick({ stageOutboundDispatch: stageAutomatedOutbound });
     } finally {
       maintenanceRunning = false;
     }

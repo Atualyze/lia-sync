@@ -53,7 +53,7 @@ test('notifyReactivationToInternalChat: detects already answered conversation an
   assert.equal(selfSession.history.length, 1);
 });
 
-test('handlePendingReactivationReply: keeps human mode, closes session, or resumes and replies to client', async () => {
+test('handlePendingReactivationReply: keeps human mode, closes session, or stages a resumed reply for approval', async () => {
   const clientA = { phone: '5511999990002', clientName: 'Ana', human: false, history: [{ role: 'user', text: 'Tem vaga?' }] };
   const selfSession = { phone: OWNER_SELF_KEY, history: [] };
   const store = makeStore({ [OWNER_SELF_KEY]: selfSession, '5511999990002': clientA });
@@ -76,8 +76,9 @@ test('handlePendingReactivationReply: keeps human mode, closes session, or resum
   assert.equal(clientA.human, false);
   assert.equal(clientA.inactivityClosed, true);
 
-  // 3) Admin says "pode continuar" -> Lia sends reply to client and records in history
+  // 3) Admin says "pode continuar" -> Lia creates a preview but does not send before approval
   const sent = [];
+  const staged = [];
   notifyReactivationToInternalChat({ store, session: clientA, phone: '5511999990002' });
   const rBot = await handlePendingReactivationReply({
     store,
@@ -87,11 +88,17 @@ test('handlePendingReactivationReply: keeps human mode, closes session, or resum
     owner: 'Tauan',
     botConfig: {},
     ai: { askAI: async () => ({ text: 'Oi Ana! Temos vaga sim, qual horário fica melhor para você?' }) },
+    stageOutboundDispatch: async (payload, options) => {
+      staged.push({ payload, options });
+      return `Prévia de disparo aguardando confirmação: ${payload.message}`;
+    },
     whatsapp: { sendText: async (jid, text) => sent.push({ jid, text }) }
   });
-  assert.match(rBot, /Retomei o atendimento/i);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /Temos vaga sim/);
+  assert.match(rBot, /prévia.*confirmação/i);
+  assert.equal(sent.length, 0);
+  assert.equal(staged.length, 1);
+  assert.match(staged[0].payload.message, /Temos vaga sim/);
+  assert.equal(staged[0].options.source, 'reactivation');
   assert.equal(clientA.human, false);
-  assert.equal(clientA.inactivityClosed, false);
+  assert.equal(clientA.inactivityClosed, true, 'a retomada só muda o estado ao aprovar o disparo');
 });

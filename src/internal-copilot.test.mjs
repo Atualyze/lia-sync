@@ -5,6 +5,7 @@ import { SessionStore } from './sessions.mjs';
 
 function createMockStore() {
   const sessions = {};
+  const dispatchClaims = new Set();
   return {
     sessions,
     get(phone, origin = 'real') {
@@ -21,9 +22,144 @@ function createMockStore() {
       return sessions[key];
     },
     touch() {},
-    markDirty() {}
+    markDirty() {},
+    async claimOutboundDispatch(id) {
+      if (dispatchClaims.has(id)) return false;
+      dispatchClaims.add(id);
+      return true;
+    }
   };
 }
+
+test('Prévia de disparo exige ID, aceita uma única confirmação e respeita cancelamento/expiração', async () => {
+  const createDispatchFlow = (store, sent, now) => createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    now,
+    whatsapp: { sendText: async (phone, text) => { sent.push({ phone, text }); } }
+  });
+  const startDispatch = async flow => flow.process({
+    phone: '5588921694598',
+    text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
+  });
+  const getId = preview => preview.match(/SIM ([A-F0-9]{8})/i)?.[1];
+
+  const store = createMockStore();
+  store.get('5585991099483').clientName = 'Lima';
+  const sent = [];
+  const flow = createDispatchFlow(store, sent, () => Date.now());
+  const preview = await startDispatch(flow);
+  const id = getId(preview);
+  assert.ok(id);
+  assert.equal(sent.length, 0);
+
+  const missingId = await flow.process({ phone: '5588921694598', text: 'sim' });
+  assert.match(missingId, /código|SIM/i);
+  assert.equal(sent.length, 0);
+  const wrongId = id === '00000000' ? '11111111' : '00000000';
+  const mismatched = await flow.process({ phone: '5588921694598', text: `SIM ${wrongId}` });
+  assert.match(mismatched, /não corresponde/i);
+  assert.equal(sent.length, 0);
+
+  await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  assert.equal(sent.length, 1);
+  await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  assert.equal(sent.length, 1, 'repetir o mesmo ID não repete o envio');
+
+  const cancelStore = createMockStore();
+  cancelStore.get('5585991099483').clientName = 'Lima';
+  const cancelSent = [];
+  const cancelFlow = createDispatchFlow(cancelStore, cancelSent, () => Date.now());
+  const cancelPreview = await startDispatch(cancelFlow);
+  const cancelId = getId(cancelPreview);
+  const cancelled = await cancelFlow.process({ phone: '5588921694598', text: `NÃO ${cancelId}` });
+  assert.match(cancelled, /cancelado/i);
+  assert.equal(cancelSent.length, 0);
+  assert.ok(!cancelStore.get('owner_self').pendingOutboundDispatch);
+
+  let nowMs = Date.now();
+  const expireStore = createMockStore();
+  expireStore.get('5585991099483').clientName = 'Lima';
+  const expireSent = [];
+  const expireFlow = createDispatchFlow(expireStore, expireSent, () => nowMs);
+  const expirePreview = await startDispatch(expireFlow);
+  const expireId = getId(expirePreview);
+  nowMs += 16 * 60 * 1000;
+  const expired = await expireFlow.process({ phone: '5588921694598', text: `SIM ${expireId}` });
+  assert.match(expired, /expirou/i);
+  assert.equal(expireSent.length, 0);
+});
+
+test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o operador confirmar', async () => {
+  const start = async (store, sent) => {
+    store.get('5585991099483').clientName = 'Lima';
+    const flow = createFlow({
+      store,
+      humanPhone: '5588921694598',
+      getHumanPhone: () => '5588921694598',
+      whatsapp: { sendText: async (phone, text) => { sent.push({ phone, text }); } }
+    });
+    const preview = await flow.process({
+      phone: '5588921694598',
+      text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
+    });
+    return { flow, preview, id: preview.match(/SIM ([A-F0-9]{8})/i)?.[1] };
+  };
+
+  const persistenceStore = createMockStore();
+  let flushCalls = 0;
+  persistenceStore.flush = async () => { flushCalls += 1; if (flushCalls === 2) throw new Error('disk_down'); };
+  const persistenceSent = [];
+  const staged = await start(persistenceStore, persistenceSent);
+  const persistenceResult = await staged.flow.process({ phone: '5588921694598', text: `SIM ${staged.id}` });
+  assert.match(persistenceResult, /Não consegui persistir a aprovação/i);
+  assert.equal(persistenceSent.length, 0);
+
+  const claimStore = createMockStore();
+  claimStore.claimOutboundDispatch = async () => false;
+  const claimSent = [];
+  const claim = await start(claimStore, claimSent);
+  const claimResult = await claim.flow.process({ phone: '5588921694598', text: `SIM ${claim.id}` });
+  assert.match(claimResult, /reservar este envio de forma única/i);
+  assert.equal(claimSent.length, 0);
+
+  const remoteFailureStore = createMockStore();
+  remoteFailureStore.client = { enabled: true };
+  remoteFailureStore.persistence = 'fallback';
+  remoteFailureStore.remoteError = 'remote_write_failed';
+  remoteFailureStore.flush = async () => {};
+  const remoteFailure = await start(remoteFailureStore, []);
+  assert.equal(remoteFailure.id, undefined, 'não deve publicar ID de prévia não persistida no Supabase');
+  assert.doesNotMatch(remoteFailure.preview, /SIM [A-F0-9]{8}/i);
+});
+
+test('Cancelamento mantém a prévia bloqueada se a reserva externa não puder ser liberada', async () => {
+  const store = createMockStore();
+  store.get('5585991099483').clientName = 'Lima';
+  store.releaseFollowUpClaim = async () => false;
+  const sent = [];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: { sendText: async (phone, text) => { sent.push({ phone, text }); } }
+  });
+  const preview = await flow.process({
+    phone: '5588921694598',
+    text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
+  });
+  const id = preview.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  const pending = store.get('5588921694598').pendingOutboundDispatch;
+  assert.ok(pending, `esperava prévia; retorno: ${preview}`);
+  pending.source = 'maintenance-follow-up';
+  pending.claimToken = 'follow-up-claim-token';
+
+  const result = await flow.process({ phone: '5588921694598', text: `NÃO ${id}` });
+  assert.match(result, /não consegui liberar a reserva externa/i);
+  assert.equal(store.get('5588921694598').pendingOutboundDispatch.status, 'uncertain');
+  assert.equal(sent.length, 0);
+});
 
 test('Conversa interna: número legado NÃO ativa mais o copiloto do Tauan', async () => {
   const store = createMockStore();
@@ -188,7 +324,7 @@ test('Conversa interna: interpreta pedidos naturais para retomar e assumir conta
   assert.match(resumed, /ficou sem resposta|no vácuo/i);
 
   client.human = true;
-  const human = await flow.process({ phone: '5588921694598', text: 'Assuma pessoalmente o atendimento da Mikaelle' });
+  const human = await flow.process({ phone: '5588921694598', text: 'assuma 5588993602644' });
   assert.match(human, /Atendimento humano ativado/i);
   assert.equal(client.human, true);
 });
@@ -509,7 +645,7 @@ test('Cliente envia áudio: Lia responde com áudio E transcrição em texto qua
   assert.equal(textFollowUp, 'Oi, Lima! Nosso atendimento funciona de segunda a sexta, das 8h às 18h.', 'Deve retornar o texto da resposta para envio junto com o áudio');
 });
 
-test('Copiloto: gerar PDF pergunta as informações antes e gera após a resposta', async () => {
+test('Copiloto: gerar PDF pergunta as informações e exige confirmação antes do envio', async () => {
   const store = createMockStore();
   const sentDocs = [];
 
@@ -529,11 +665,16 @@ test('Copiloto: gerar PDF pergunta as informações antes e gera após a respost
 
   const reply = await flow.process({ phone: 'owner_self', text: 'dados do sistema' });
 
-  assert.equal(sentDocs.length, 1, 'O PDF deve ser enviado como documento');
+  assert.equal(sentDocs.length, 0, 'O PDF não deve ser enviado antes da confirmação');
+  assert.match(reply, /Prévia do disparo/i);
+  assert.match(reply, /\.pdf/i);
+  const id = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  assert.ok(id);
+  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  assert.equal(sentDocs.length, 1);
   assert.equal(sentDocs[0].phone, '5588921694598');
-  assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/, 'Deve enviar o dataUrl do PDF');
+  assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/);
   assert.match(sentDocs[0].doc.fileName, /\.pdf$/);
-  assert.match(reply, /gerado e enviado/i);
 });
 
 test('Copiloto: orçamento sem detalhes pergunta; com detalhes gera direto', async () => {
@@ -555,12 +696,18 @@ test('Copiloto: orçamento sem detalhes pergunta; com detalhes gera direto', asy
   assert.match(ask, /valores/i);
 
   const content = await flow.process({ phone: 'owner_self', text: 'Implantação de chatbot com IA, 2 atendentes, prazo de 30 dias, valor R$ 4.500,00' });
-  assert.equal(sentDocs.length, 1, 'Resposta com os detalhes deve gerar o PDF');
-  assert.match(content, /gerado e enviado/i);
+  assert.equal(sentDocs.length, 0, 'Resposta com os detalhes prepara o PDF, mas não o envia');
+  assert.match(content, /Prévia do disparo/i);
+  let id = content.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  assert.equal(sentDocs.length, 1);
 
   const direct = await flow.process({ phone: 'owner_self', text: 'gerar orçamento: manutenção mensal do sistema, 10 horas, R$ 2.000,00, prazo 5 dias' });
-  assert.equal(sentDocs.length, 2, 'Pedido já com valores gera direto');
-  assert.match(direct, /gerado e enviado/i);
+  assert.equal(sentDocs.length, 1, 'Pedido completo também aguarda confirmação');
+  assert.match(direct, /Prévia do disparo/i);
+  id = direct.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  assert.equal(sentDocs.length, 2);
 });
 
 test('Sanitização de roteiro: remove completamente "o áudio pro lima informando sobre" mesmo com artigo definido ("o áudio")', async () => {
@@ -691,7 +838,7 @@ test('Copiloto do Tauan (isTauan=true): tem acesso completo aos dossiês das bas
   assert.match(reply, /Clubinho HomeVet/i);
 });
 
-test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e envia áudio diretamente sem pedir confirmação', async () => {
+test('Copiloto do Tauan: áudio da resposta só é enviado após confirmação com ID', async () => {
   const store = createMockStore();
   const sentAudios = [];
   let speechTextPassed = '';
@@ -724,19 +871,16 @@ test('Copiloto do Tauan: quando Tauan pede para explicar em áudio, sintetiza e 
     text: 'Lia, me explique em áudio como exporto o relatório em html'
   });
 
-  // 1. Deve ter sintetizado o áudio diretamente
+  // A fala é preparada e apresentada, mas nenhum áudio é enviado ainda.
   assert.match(speechTextPassed, /para exportar o relatório em HTML/i);
-
-  // 2. Deve ter enviado o áudio para o Tauan no WhatsApp
-  assert.equal(sentAudios.length, 1, 'Deve ter disparado o áudio para o WhatsApp do Tauan');
+  assert.equal(sentAudios.length, 0, 'não deve enviar antes da confirmação');
+  assert.match(reply, /Prévia do disparo/i);
+  const dispatchId = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  assert.ok(dispatchId, 'a prévia deve exibir um ID de confirmação');
+  await flow.process({ phone: 'owner_self', text: `SIM ${dispatchId}` });
+  assert.equal(sentAudios.length, 1, 'o áudio é enviado após o ID correto');
   assert.equal(sentAudios[0].phone, '5588921694598');
   assert.equal(sentAudios[0].base64, 'AUDIO_BASE64_SIMULADO');
-
-  // 3. Resposta de texto deve conter o aviso e a transcrição, SEM pedir confirmação
-  assert.match(reply, /Áudio gravado e enviado para você/i);
-  assert.match(reply, /Relatórios/i);
-  assert.doesNotMatch(reply, /Deseja que eu grave e envie este áudio agora/i, 'NÃO deve pedir confirmação quando é para o próprio Tauan');
-  assert.doesNotMatch(reply, /Prévia do áudio personalizado para você/i);
 
   // 4. lastAudioBase64 deve ter sido salvo na sessão do Tauan para o Chatwoot
   const sTauan = store.get('owner_self');
@@ -792,7 +936,12 @@ test('Humanização e Eliminação de Clichês: Lia humaniza perguntas, avisos e
     text: 'Lia, manda uma mensagem pro Lima avisando que o site já ficou pronto'
   });
 
-  assert.match(sendRes, /Mensagem disparada com sucesso/i);
+  assert.match(sendRes, /Prévia do disparo/i);
+  assert.equal(sentTexts.length, 0);
+  const dispatchId = sendRes.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  assert.ok(dispatchId);
+  const confirmed = await flowText.process({ phone: '5588921694598', text: `SIM ${dispatchId}` });
+  assert.match(confirmed, /Envio confirmado e concluído/i);
   assert.equal(sentTexts.length, 1);
   assert.equal(sentTexts[0].phone, '5585991099483');
   assert.doesNotMatch(sentTexts[0].text, /Queria aproveitar para alinhar com você que/i);
@@ -800,15 +949,19 @@ test('Humanização e Eliminação de Clichês: Lia humaniza perguntas, avisos e
   assert.match(sentTexts[0].text, /Oi, Lima! Tudo bem\? Passando para te avisar que o site já ficou pronto/i);
 });
 
-test('Copiloto: Pedido de áudio no chat interno gera fala natural como assistente e salva áudio para o Tauan', async () => {
+test('Copiloto: pedido de áudio no chat interno gera prévia e envia só após confirmação', async () => {
   const store = createMockStore();
+  const sentAudios = [];
   let synthesizedText = '';
 
   const flow = createFlow({
     store,
     humanPhone: '5588921694598',
     getHumanPhone: () => '5588921694598',
-    whatsapp: {},
+    whatsapp: {
+      sendWhatsAppAudio: async (phone, base64) => { sentAudios.push({ phone, base64 }); },
+      sendText: async () => {}
+    },
     ai: {
       synthesizeVoice: async (text) => {
         synthesizedText = text;
@@ -822,16 +975,20 @@ test('Copiloto: Pedido de áudio no chat interno gera fala natural como assisten
     text: 'Lia, me mande um áudio no chat interno perguntando se o cliente vai querer a proposta'
   });
 
-  // Sem whatsapp.sendWhatsAppAudio configurado, o envio não acontece e a resposta
-  // deve ser honesta sobre a falha, mantendo o conteúdo no texto.
-  assert.match(reply, /Não consegui enviar o áudio no momento/i);
+  assert.match(reply, /Prévia do disparo/i);
   assert.match(reply, /Passando para saber se/i);
+  assert.equal(sentAudios.length, 0, 'a geração da prévia não envia o áudio');
   assert.doesNotMatch(synthesizedText, /Queria aproveitar para alinhar com você que/i);
   assert.match(synthesizedText, /Passando para saber se/i);
 
   const sSelf = store.get('owner_self');
   assert.equal(sSelf.lastAudioBase64, 'AUDIO_COPILOTO_BASE64');
-  assert.equal(sSelf.pendingRecipient, null);
+  const dispatchId = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
+  assert.ok(dispatchId);
+  const confirmed = await flow.process({ phone: 'owner_self', text: `SIM ${dispatchId}` });
+  assert.equal(sentAudios.length, 1);
+  assert.equal(sentAudios[0].phone, '5588921694598');
+  assert.match(confirmed, /Envio confirmado e concluído/i);
 });
 
 test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre o Lima sobre o monitoramento do pixel..."', async () => {
@@ -1010,19 +1167,21 @@ test('enviar_mensagem_contato resolve contato via SupabaseRestClient.select(cont
   };
 
   let sentTo = null;
-  const res = await executeToolCall(
+  const context = {
+    store,
+    whatsapp: { sendText: async (phone, msg) => { sentTo = { phone, msg }; } }
+  };
+  const blocked = await executeToolCall(
     'enviar_mensagem_contato',
     { recipient: 'Carlos Mendes', message: 'Oi Carlos, tudo bem?', asAudio: false },
-    {
-      store,
-      whatsapp: {
-        sendWhatsAppText: async (phone, msg) => {
-          sentTo = { phone, msg };
-          return { ok: true };
-        }
-      }
-    }
+    context
   );
+  assert.equal(blocked.requiresConfirmation, true);
+  assert.equal(sentTo, null, 'a ferramenta não envia antes da aprovação do Copiloto');
+
+  const res = await executeToolCall('enviar_mensagem_contato', {
+    recipient: 'Carlos Mendes', message: 'Oi Carlos, tudo bem?', asAudio: false
+  }, { ...context, dispatchConfirmed: true });
 
   assert.equal(res.success, true);
   assert.equal(sentTo?.phone, '5588999112233');

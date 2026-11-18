@@ -100,14 +100,18 @@ test('duas rodadas de manutenção simultâneas não disparam follow-up duplicad
     { role: 'assistant', content: 'Vou preparar para você.' }
   ];
   let sends = 0;
+  let previews = 0;
   const run = () => processMaintenance({
     store,
     send: async () => { sends++; await new Promise(resolve => setTimeout(resolve, 15)); },
+    stageOutboundDispatch: async () => { previews++; return { id: 'B2C3D4E5' }; },
     now: () => current,
     timeZone: 'America/Fortaleza',
     enableLeadFollowUp: true
   });
   await Promise.all([run(), run()]);
-  assert.equal(sends, 1);
-  assert.ok(session.followUpSentAt);
+  assert.equal(sends, 0, 'follow-up não deve ser enviado antes da aprovação');
+  assert.equal(previews, 1, 'duas execuções concorrentes devem criar uma única prévia local');
+  assert.equal(session.followUpSentAt, undefined);
+  assert.equal(session.followUpPendingId, 'B2C3D4E5');
 });

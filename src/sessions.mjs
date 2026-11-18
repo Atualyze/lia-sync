@@ -95,6 +95,14 @@ export class SessionStore {
     this.saveTimer = null;
     this.saving = null;
     this.queues = new Map();
+    this.outboundDispatchClaims = new Set();
+  }
+
+  async claimOutboundDispatch(dispatchId) {
+    const id = String(dispatchId || '').trim().toUpperCase();
+    if (!/^[A-F0-9]{8}$/.test(id) || this.outboundDispatchClaims.has(id)) return false;
+    this.outboundDispatchClaims.add(id);
+    return true;
   }
 
   async load() {

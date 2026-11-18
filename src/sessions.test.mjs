@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SessionStore, normalizePhone, mask } from './sessions.mjs';
 import { SupabaseSessionStore } from './supabase-runtime.mjs';
+import { OWNER_SELF_KEY } from './core/identity.mjs';
 
 test('normalizePhone e mask formatam numeros brasileiros corretamente', () => {
   assert.equal(normalizePhone('+55 (11) 99999-8888'), '5511999998888');
@@ -194,5 +195,49 @@ test('SupabaseSessionStore.syncSession preserva alterações locais pendentes, t
   clearTimeout(store.saveTimer);
   store.saveTimer = null;
 
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('SupabaseSessionStore persiste e restaura pendingOutboundDispatch na sessão do Copilot', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-pending-outbound-'));
+  let conversationRow = null;
+  const fakeClient = {
+    enabled: true,
+    async select(table, query = '') {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversationRow ? [conversationRow] : [];
+      }
+      if (table === 'conversation_messages') return [];
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-owner' }];
+      if (table === 'conversations') {
+        conversationRow = { ...rows[0], id: 'conv-owner', updated_at: rows[0].updated_at || new Date().toISOString(), contacts: { phone: null } };
+        return [{ id: 'conv-owner' }];
+      }
+      return [];
+    }
+  };
+  const pending = {
+    id: 'A1B2C3D4', phone: '5511999998888', recipient: 'Ana', message: 'Oi, tudo bem?',
+    source: 'copilot', status: 'pending', createdAt: '2026-11-18T15:00:00.000Z'
+  };
+  const store = new SupabaseSessionStore(path.join(dir, 'sessions.json'), { client: fakeClient });
+  const session = store.get(OWNER_SELF_KEY);
+  session.pendingOutboundDispatch = pending;
+  session.updatedAt = pending.createdAt;
+  store.markDirty();
+  await store.flush();
+
+  assert.deepEqual(conversationRow.metadata.pendingOutboundDispatch, pending);
+  // Mutação do status da prévia deve persistir mesmo que updatedAt e histórico não mudem.
+  session.pendingOutboundDispatch = { ...pending, status: 'sending' };
+  await store.flush();
+  assert.equal(conversationRow.metadata.pendingOutboundDispatch.status, 'sending');
+  const restoredStore = new SupabaseSessionStore(path.join(dir, 'sessions-restored.json'), { client: fakeClient });
+  const restored = await restoredStore.syncSession(OWNER_SELF_KEY);
+  assert.deepEqual(restored.pendingOutboundDispatch, { ...pending, status: 'sending' });
   await fs.rm(dir, { recursive: true, force: true });
 });

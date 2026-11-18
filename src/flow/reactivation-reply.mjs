@@ -130,7 +130,7 @@ function buildConfirmationQuestion(classification, pending) {
  * confirmação no chat interno, preservando o pending.
  */
 export async function handlePendingReactivationReply({
-  store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner
+  store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner, stageOutboundDispatch
 }) {
   const pending = sSelf?.pendingReactivation;
   if (!pending || !pending.phone) return null;
@@ -163,7 +163,7 @@ export async function handlePendingReactivationReply({
       }
       sSelf.pendingReactivation = null;
       store.markDirty?.();
-      return await applyIntent(storedIntent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig });
+      return await applyIntent(storedIntent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig, stageOutboundDispatch });
     }
 
     // "não" ou nova instrução: sai do estado de confirmação e re-classifica abaixo.
@@ -201,10 +201,10 @@ export async function handlePendingReactivationReply({
 
   sSelf.pendingReactivation = null;
   store.markDirty?.();
-  return await applyIntent(intent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig });
+  return await applyIntent(intent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig, stageOutboundDispatch });
 }
 
-async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig }) {
+async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig, stageOutboundDispatch }) {
   const nowIso = new Date(now()).toISOString();
 
   if (intent === 'HUMAN') {
@@ -231,12 +231,6 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   }
 
   // BOT_CONTINUE: Lia retoma e envia resposta natural ao cliente
-  sTarget.human = false;
-  sTarget.humanSource = null;
-  sTarget.handoffAt = null;
-  sTarget.inactivityClosed = false;
-  sTarget.updatedAt = nowIso;
-
   const targetJid = sTarget.jid || `${String(pending.phone).replace(/\D/g, '')}@s.whatsapp.net`;
   const sys = buildSystemPrompt({
     session: sTarget,
@@ -262,15 +256,13 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   // Nunca entregar texto cru quando o filtro bloqueia: usa mensagem neutra de segurança.
   const finalReply = formatOutgoingMessage(filteredReply.blocked || !filteredReply.text ? fallbackReply : filteredReply.text);
 
-  if (whatsapp?.sendText) {
-    await whatsapp.sendText(targetJid, finalReply);
+  if (typeof stageOutboundDispatch !== 'function') {
+    return 'Não enviei a resposta: este fluxo precisa registrar uma prévia no Copilot para sua confirmação.';
   }
-  sTarget.history ??= [];
-  sTarget.history.push({ role: 'assistant', content: finalReply, createdAt: nowIso });
-  sTarget.lastBotAt = nowIso;
-  sTarget.awaitingReply = true;
-  store.markDirty?.();
-  await store.flush?.();
-
-  return `Pronto! Retomei o atendimento de *${pending.contactLabel}* e já enviei a resposta para o cliente:\n\n> ${finalReply}`;
+  return await stageOutboundDispatch({
+    phone: sTarget.phone || pending.phone,
+    recipient: pending.contactLabel || pending.phone,
+    message: finalReply,
+    asAudio: false
+  }, { source: 'reactivation', resumeBot: true });
 }

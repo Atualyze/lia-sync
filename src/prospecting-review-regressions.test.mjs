@@ -20,29 +20,41 @@ test('opt-out não intercepta mensagem de cliente com sessão ativa', async () =
   assert.equal(sent, 0);
 });
 
-test('falha de persistência depois do envio não transforma sucesso em failed', async () => {
+test('scheduler cria prévia de prospecção e não envia ao lead antes da confirmação', async () => {
   const leadStore = {
     async listDueLeads() { return [{ id: 'l1', list_id: 'list', phone: '5585999991111', stage: 0, attempts: 0, list: { id: 'list', daily_cap: 10 } }]; },
     async claimLeadWithinCap() { return { claimed: { claim_token: 'token' } }; },
-    async releaseClaim() { throw new Error('db_down'); },
-    async recordEvent() { throw new Error('db_down'); },
+    async releaseClaim() { throw new Error('should_not_release_successful_preview'); },
     async countSentToday() { return 0; }
   };
-  const summary = await runProspectingTick({ enabled: true, leadStore, campaignStore: openCampaign, now: NOW, send: async () => {}, config: { timeZone: 'America/Fortaleza', minDelayMs: 0, maxDelayMs: 0 } });
-  assert.equal(summary.sent, 1);
+  const sent = [];
+  const previews = [];
+  const summary = await runProspectingTick({
+    enabled: true, leadStore, campaignStore: openCampaign, now: NOW,
+    send: async (...args) => sent.push(args),
+    stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return { id: 'A1B2C3D4' }; },
+    config: { timeZone: 'America/Fortaleza', minDelayMs: 0, maxDelayMs: 0 }
+  });
+  assert.equal(summary.sent, 0);
+  assert.equal(summary.previewed, 1);
+  assert.equal(sent.length, 0);
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].options.source, 'prospecting');
   assert.equal(summary.failed, 0);
-  assert.equal(summary.persistenceErrors, 2);
+  assert.equal(summary.persistenceErrors, 0);
 });
 
-test('falha transitória volta para a fila com backoff', async () => {
+test('falha ao criar prévia devolve lead à fila e não envia', async () => {
   const leadStore = new ProspectLeadStore();
   const list = await leadStore.createList({ name: 'Retry', status: 'active', dailyCap: 10 });
   const [lead] = await leadStore.addLeads(list.id, [{ phone: '5585999992222', name: 'Bia' }]);
   // O lead é criado com o relógio real; alinhe-o ao relógio simulado do teste
   // para que ele esteja vencido e entre na fila de forma determinística.
   leadStore.mem.leads.get(lead.id).next_action_at = NOW.toISOString();
-  const summary = await runProspectingTick({ enabled: true, leadStore, campaignStore: openCampaign, now: NOW, send: async () => { throw new Error('timeout'); }, config: { timeZone: 'America/Fortaleza', minDelayMs: 0, maxDelayMs: 0, retryBaseMinutes: 15, maxAttempts: 3 } });
+  const sent = [];
+  const summary = await runProspectingTick({ enabled: true, leadStore, campaignStore: openCampaign, now: NOW, send: async (...args) => sent.push(args), stageOutboundDispatch: async () => { throw new Error('preview_failed'); }, config: { timeZone: 'America/Fortaleza', minDelayMs: 0, maxDelayMs: 0, retryBaseMinutes: 15, maxAttempts: 3 } });
   assert.equal(summary.failed, 1);
+  assert.equal(sent.length, 0);
   assert.equal(leadStore.mem.leads.get(lead.id).status, 'queued');
   assert.ok(leadStore.mem.leads.get(lead.id).next_action_at);
 });

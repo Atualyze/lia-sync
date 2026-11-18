@@ -194,9 +194,18 @@ test('Google Drive: lista e envia PDF para WhatsApp via mock', async () => {
     assert.equal(list.success, true);
     assert.equal(list.files[0].id, 'file-1');
 
+    const context = { phone: '5585999998888', whatsapp: { sendDocument: async (phone, doc) => sentDocs.push({ phone, doc }) } };
+    const staged = await toolGerenciarDriveGoogle.execute(
+      { acao: 'enviar_arquivo_whatsapp', fileId: 'file-1', legenda: 'Segue catálogo' },
+      context
+    );
+    assert.equal(staged.requiresConfirmation, true);
+    assert.equal(staged.document.fileName, 'Catalogo 2026.pdf');
+    assert.equal(sentDocs.length, 0, 'o Drive não envia arquivos antes da confirmação');
+
     const sent = await toolGerenciarDriveGoogle.execute(
       { acao: 'enviar_arquivo_whatsapp', fileId: 'file-1', legenda: 'Segue catálogo' },
-      { phone: '5585999998888', whatsapp: { sendDocument: async (phone, doc) => sentDocs.push({ phone, doc }) } }
+      { ...context, dispatchConfirmed: true }
     );
     assert.equal(sent.success, true);
     assert.equal(sent.sentViaWhatsApp, true);
@@ -1196,6 +1205,7 @@ test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora s
   const { processMaintenance } = await import('./maintenance.mjs');
   const nowMs = new Date('2026-11-14T15:00:00-03:00').getTime(); // 15h daytime
   const sent = [];
+  const previews = [];
   const sessionUnpaid = {
     phone: '5511948273615',
     human: false,
@@ -1237,15 +1247,19 @@ test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora s
   await processMaintenance({
     store,
     send: async (phone, msg) => { sent.push({ phone, msg }); },
+    stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return { id: 'C1D2E3F4' }; },
     notify: async () => {},
     now: () => nowMs,
     checkPayment: async ({ orderNsu }) => ({ paid: orderNsu === 'ord-2' })
   });
 
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].phone, '5511948273615');
-  assert.ok(sent[0].msg.includes('https://pay.infinitepay.io/teste1'));
-  assert.ok(sessionUnpaid.pendingCheckout.recoverySentAt);
+  assert.equal(sent.length, 0, 'não envia recuperação de checkout antes de confirmação');
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].prepared.phone, '5511948273615');
+  assert.ok(previews[0].prepared.message.includes('https://pay.infinitepay.io/teste1'));
+  assert.equal(previews[0].options.source, 'maintenance-checkout');
+  assert.equal(sessionUnpaid.pendingCheckout.recoverySentAt, null);
+  assert.equal(sessionUnpaid.pendingCheckout.recoveryPendingId, 'C1D2E3F4');
   assert.ok(sessionPaid.pendingCheckout.paidAt);
   assert.ok(sessionPaid.tags.includes('pagamento-confirmado'));
   assert.equal(sessionPaid.tags.includes('checkout-pendente'), false);
@@ -1254,11 +1268,13 @@ test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora s
   await processMaintenance({
     store,
     send: async (phone, msg) => { sent.push({ phone, msg }); },
+    stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return { id: 'E5F6A7B8' }; },
     notify: async () => {},
     now: () => nowMs + 60000,
     checkPayment: async () => ({ paid: false })
   });
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 0);
+  assert.equal(previews.length, 1, 'prévia pendente não deve ser duplicada');
 });
 
 test('Lia Personality Engine injeta identidade compacta, adapta temperatura e detecta vicios roboticos', async () => {

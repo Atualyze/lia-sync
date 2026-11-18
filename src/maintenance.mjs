@@ -13,6 +13,7 @@ function hourAt(now, zone) {
 export async function processMaintenance({
   store,
   send,
+  stageOutboundDispatch,
   notify,
   reminderStore,
   checkPayment = checkInfinitePayPayment,
@@ -143,7 +144,6 @@ export async function processMaintenance({
         if (!locks) { locks = new Set(); followUpLocks.set(store, locks); }
         if (locks.has(key)) continue;
         locks.add(key);
-        let claimToken = null;
         const claimAt = new Date(current).toISOString();
 
         const clientName = (session.clientName || session.contactName || '').trim();
@@ -154,72 +154,27 @@ export async function processMaintenance({
           ? `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu avaliar a proposta ou se ficou com alguma dúvida sobre valores e prazos. Se quiser ajustar algo no projeto ou falar direto com *${owner}*, fico à disposição! ✨`
           : `${greeting} Tudo bem por aí? 😊\n\nPassando rapidinho só para saber se você conseguiu ver as informações ou se ficou com alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar direto com *${owner}*, fico à disposição! ✨`;
 
-        let safeFollowUpMessage = null;
         try {
-          if (typeof send !== 'function') throw Object.assign(new Error('followup_sender_unavailable'), { beforeSend: true });
-          // Texto gerado por configuração também passa pelo filtro: nenhum envio
-          // de manutenção chega ao cliente sem filterReply.
+          if (typeof stageOutboundDispatch !== 'function') throw new Error('copilot_confirmation_gate_unavailable');
           const followUpFiltered = filterReply(followUpMessage, { allowedPrices: getAllowedPrices(), strictPrices: true });
-          safeFollowUpMessage = followUpFiltered.blocked || !followUpFiltered.text
+          const safeFollowUpMessage = followUpFiltered.blocked || !followUpFiltered.text
             ? `${greeting} Passando para saber se ficou alguma dúvida sobre o que conversamos. Se quiser continuar por aqui ou falar com *${owner}*, fico à disposição!`
             : followUpFiltered.text;
-          if (store.client?.enabled) {
-            claimToken = await store.claimFollowUp(key, claimAt, 900);
-            if (typeof claimToken !== 'string' || !claimToken.trim()) { locks.delete(key); continue; }
+          const pending = await stageOutboundDispatch({
+            phone: session.phone,
+            recipient: clientName || session.phone,
+            message: safeFollowUpMessage
+          }, { source: 'maintenance-follow-up', metadata: { sourceRef: key } });
+          if (pending) {
             session.followUpCount = 1;
             session.followUpClaimedAt = claimAt;
-            session.followUpClaimToken = claimToken;
+            session.followUpClaimToken = null;
+            session.followUpPendingId = pending.id;
             store.markDirty();
-          } else {
-            throw Object.assign(new Error('followup_distributed_claim_unavailable'), { beforeSend: true });
+            await store.flush?.();
           }
         } catch (e) {
-          session.followUpCount = 0;
-          session.followUpClaimedAt = null;
-          store.markDirty();
-          logger.error?.('[maintenance] Não foi possível reservar o follow-up com segurança:', e.message);
-          locks.delete(key);
-          continue;
-        }
-        try {
-          await send(session.phone, safeFollowUpMessage);
-          const sentAt = new Date(current).toISOString();
-          session.followUpSentAt = sentAt;
-          session.followUpClaimedAt = null;
-          session.followUpClaimToken = null;
-          session.history.push({ role: 'assistant', content: safeFollowUpMessage, createdAt: new Date(current).toISOString() });
-          store.markDirty();
-          if (claimToken) {
-            const completed = await store.completeFollowUp(key, claimToken, sentAt);
-            if (completed !== true) logger.error?.('[maintenance] Follow-up enviado, mas confirmação remota não foi aceita; bloqueio local preservado.');
-          }
-          await store.flush?.();
-        } catch (e) {
-          const alreadySent = Boolean(session.followUpSentAt);
-          logger.error?.(alreadySent
-            ? '[maintenance] Follow-up enviado, mas falhou a confirmação/persistência remota:'
-            : '[maintenance] Erro ao enviar follow-up de reengajamento:', e.message);
-          if (alreadySent) {
-            store.markDirty();
-            try { await store.flush?.(); } catch (persistError) { logger.error?.('[maintenance] Não foi possível persistir o follow-up já enviado:', persistError.message); }
-          } else if (claimToken && (e?.beforeSend === true || e?.deliveryUnknown === false)) {
-            try {
-              const released = await store.releaseFollowUpClaim(key, claimToken);
-              if (released !== true) throw new Error('claim_release_not_confirmed');
-              session.followUpCount = 0;
-              session.followUpClaimedAt = null;
-              session.followUpClaimToken = null;
-              store.markDirty();
-              await store.flush?.();
-            } catch (releaseError) { logger.error?.('[maintenance] Não foi possível liberar claim de follow-up:', releaseError.message); }
-          } else if (claimToken) {
-            logger.warn?.('[maintenance] Resultado do envio é ambíguo; claim mantida para evitar duplicidade.');
-          } else if (e?.beforeSend === true || e?.deliveryUnknown === false) {
-            session.followUpCount = 0;
-            session.followUpClaimedAt = null;
-            store.markDirty();
-            try { await store.flush?.(); } catch (persistError) { logger.error?.('[maintenance] Não foi possível liberar o follow-up local não enviado:', persistError.message); }
-          }
+          logger.error?.('[maintenance] Não foi possível criar prévia do follow-up:', e.message);
         } finally {
           locks.delete(key);
         }
@@ -234,6 +189,7 @@ export async function processMaintenance({
       session.pendingCheckout &&
       !session.pendingCheckout.paidAt &&
       !session.pendingCheckout.recoverySentAt &&
+      !session.pendingCheckout.recoveryPendingId &&
       session.pendingCheckout.checkoutUrl
     ) {
       const checkoutCreatedMs = new Date(session.pendingCheckout.createdAt || 0).getTime();
@@ -257,7 +213,6 @@ export async function processMaintenance({
           }
         }
         if (!alreadyPaid) {
-          session.pendingCheckout.recoverySentAt = new Date(current).toISOString();
           const amountCents = Number(session.pendingCheckout.amountCents) || 0;
           const valorFmt = amountCents
             ? ` de *R$ ${(amountCents / 100).toFixed(2).replace('.', ',')}*`
@@ -272,14 +227,21 @@ export async function processMaintenance({
             strictPrices: true
           });
           const recMsg = recFiltered.blocked || !recFiltered.text ? '' : recFiltered.text;
-          store.markDirty();
           try {
             if (!recMsg) throw new Error('checkout_recovery_blocked_by_filter');
-            await send?.(session.phone, recMsg);
-            session.history = [...(session.history || []), { role: 'assistant', content: recMsg }].slice(-12);
-            store.markDirty();
+            if (typeof stageOutboundDispatch !== 'function') throw new Error('copilot_confirmation_gate_unavailable');
+            const pending = await stageOutboundDispatch({
+              phone: session.phone,
+              recipient: session.clientName || session.contactName || session.phone,
+              message: recMsg
+            }, { source: 'maintenance-checkout', metadata: { sourceRef: key } });
+            if (pending) {
+              session.pendingCheckout.recoveryPendingId = pending.id;
+              store.markDirty();
+              await store.flush?.();
+            }
           } catch (e) {
-            logger.error?.('[maintenance] Erro ao enviar recuperação de checkout:', e.message);
+            logger.error?.('[maintenance] Não foi possível criar prévia de recuperação de checkout:', e.message);
           }
           continue;
         }
@@ -311,19 +273,15 @@ export async function processMaintenance({
       ? 'Oi de novo! 👋\n\nCaso queira continuar depois ou falar direto com *' + owner + '*, é só me mandar uma mensagem aqui.'
       : 'Como não tive retorno, vou pausar nosso atendimento por agora. ⏸️\n\nQuando quiser continuar, é só me mandar um *oi*!';
 
-    session.inactivityStage = stage;
-    if (stage === 3) {
-      session.inactivityClosed = true;
-      session.awaitingReply = false;
-    }
-    store.markDirty();
-
     try {
-      await send?.(session.phone, message);
-      session.history = [...(session.history || []), { role: 'assistant', content: message }].slice(-12);
-      store.markDirty();
+      if (typeof stageOutboundDispatch !== 'function') throw new Error('copilot_confirmation_gate_unavailable');
+      await stageOutboundDispatch({
+        phone: session.phone,
+        recipient: session.clientName || session.contactName || session.phone,
+        message
+      }, { source: 'maintenance-inactivity', metadata: { sourceRef: key, inactivityStage: stage } });
     } catch (e) {
-      logger.error?.('[maintenance] Erro ao enviar ping de inatividade:', e.message);
+      logger.error?.('[maintenance] Não foi possível criar prévia do ping de inatividade:', e.message);
     }
   }
 

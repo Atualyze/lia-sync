@@ -125,14 +125,31 @@ export const toolGerenciarDriveGoogle = {
     const outMime = isGoogleDoc ? 'application/pdf' : (meta.mimeType || 'application/pdf');
     const baseName = String(meta.name || 'documento').trim();
     const fileName = isGoogleDoc && !/\.pdf$/i.test(baseName) ? `${baseName}.pdf` : baseName;
-    const targetPhone = String(args.telefoneDestino || context?.phone || '').trim();
+    const targetPhone = String(args.telefoneDestino || context?.targetPhone || context?.phone || '').trim();
 
     if (targetPhone && context?.whatsapp?.sendDocument) {
-      await context.whatsapp.sendDocument(targetPhone, {
+      const document = {
         base64,
         fileName,
         mimetype: outMime,
         caption: String(args.legenda || '').trim()
+      };
+      if (context.dispatchConfirmed !== true) {
+        return {
+          success: false,
+          requiresConfirmation: true,
+          acao,
+          fileId,
+          fileName,
+          mimetype: outMime,
+          bytes: arrayBuf.byteLength,
+          targetPhone,
+          recipient: String(args.telefoneDestino || targetPhone),
+          document
+        };
+      }
+      await context.whatsapp.sendDocument(targetPhone, {
+        ...document
       });
       return {
         success: true,

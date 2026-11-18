@@ -9,9 +9,9 @@ import {
   cleanForSpeech, escapeText, stripBotMention, buildFriendlyAudioScript,
   buildFriendlyMessage, humanizeContactMessage, applyAudioCorrection, extractDispatchIntent
 } from './text.mjs';
-import { createPdfDelivery } from './pdf.mjs';
 import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
+import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
@@ -126,6 +126,250 @@ export async function handleOwnerSession({
           return replyText;
         };
 
+        const assertOutboundStatePersisted = () => {
+          if (store.client?.enabled && store.persistence !== 'supabase') {
+            throw new Error(store.remoteError || 'Supabase não confirmou a persistência do estado do disparo');
+          }
+        };
+
+        const stageOutboundDispatch = async (prepared, { source = 'copilot', resumeBot = false, metadata = {} } = {}) => {
+          const staged = createOutboundDispatchPreview(sSelf, prepared, { now, source, resumeBot, metadata });
+          if (!staged) return null;
+          sSelf.pendingAudioConfirmation = null;
+          sSelf.pendingRecipient = null;
+          sSelf.pendingAsAudio = false;
+          sSelf.updatedAt = new Date(now()).toISOString();
+          store.markDirty();
+          try {
+            await store.flush?.();
+            assertOutboundStatePersisted();
+          } catch (error) {
+            if (sSelf.pendingOutboundDispatch?.id === staged.pending.id) sSelf.pendingOutboundDispatch = null;
+            store.markDirty();
+            await store.flush?.().catch(() => {});
+            logger.error?.('[outbound-dispatch] Não foi possível persistir a prévia:', error.message);
+            return null;
+          }
+          return staged.preview;
+        };
+
+        const releasePendingOutboundEffects = async pending => {
+          const target = store.get(pending.phone);
+          if (pending.source === 'maintenance-follow-up') {
+            if (pending.claimToken && typeof store.releaseFollowUpClaim === 'function') {
+              const released = await store.releaseFollowUpClaim(pending.sourceRef || pending.phone, pending.claimToken).catch(() => false);
+              if (released !== true) return false;
+            } else if (pending.claimToken) {
+              return false;
+            }
+            target.followUpCount = 0;
+            target.followUpClaimedAt = null;
+            target.followUpClaimToken = null;
+            target.followUpPendingId = null;
+          } else if (pending.source === 'maintenance-checkout' && target.pendingCheckout?.recoveryPendingId === pending.id) {
+            target.pendingCheckout.recoveryPendingId = null;
+          } else if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch === 'function') {
+            const released = await store.resolveProspectingDispatch(pending, 'cancelled').catch(() => false);
+            if (released !== true) return false;
+          }
+          store.markDirty();
+          return true;
+        };
+
+        const handlePendingOutboundDispatch = async () => {
+          const pending = sSelf.pendingOutboundDispatch;
+          if (!pending) return null;
+          const createdAt = Date.parse(pending.createdAt || '');
+          if (pending.status === 'pending' && (!Number.isFinite(createdAt) || now() - createdAt > OUTBOUND_DISPATCH_TTL_MS)) {
+            const released = await releasePendingOutboundEffects(pending);
+            if (!released) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('A prévia expirou, mas não consegui liberar a reserva externa. Mantive o despacho bloqueado; peça revisão ao responsável.');
+            }
+            sSelf.pendingOutboundDispatch = null;
+            store.markDirty();
+            await store.flush?.().catch(() => {});
+            return recordSelfTurn('A prévia do disparo expirou. Nada foi enviado; se ainda quiser, faça o pedido novamente.');
+          }
+          const id = String(pending.id || '').toUpperCase();
+          const approveMatch = cleanCommand.match(/^(?:sim(?:[, ]+pode)?|confirmo|confirmado|confirmar|confirm|pode\s+enviar|pode\s+mandar|autorizo|manda|envia|dispara|ok|okay|isso)(?:\s+([A-F0-9]{8}))?[.!\s]*$/i);
+          const cancelMatch = cleanCommand.match(/^(?:n[aã]o|nao|cancelar|cancela|cancelar\s+envio|cancela\s+envio)(?:\s+([A-F0-9]{8}))?[.!\s]*$/i);
+          const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
+          if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch !== 'function') {
+            return recordSelfTurn('Este disparo de prospecção aguarda a conexão de aprovação com a fila de leads. Não enviei nada; peça suporte ao responsável pelo sistema.');
+          }
+          if (pending.status !== 'pending') {
+            return recordSelfTurn('Este disparo já está em processamento ou teve resultado incerto. Não vou repeti-lo automaticamente; confira a conversa do destinatário antes de criar outro envio.');
+          }
+          if ((approveMatch || cancelMatch) && suppliedId !== id) {
+            return recordSelfTurn(`Esse código não corresponde à prévia pendente. Use *SIM ${id}* para enviar ou *NÃO ${id}* para cancelar.`);
+          }
+          if (!approveMatch && !cancelMatch) {
+            return recordSelfTurn(`Há um disparo pendente para *${pending.recipient}*. Primeiro confirme com *SIM ${id}* ou cancele com *NÃO ${id}*. Não enviei nada ainda.`);
+          }
+          if (cancelMatch) {
+            const released = await releasePendingOutboundEffects(pending);
+            if (!released) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('Não consegui liberar a reserva externa; não marquei o disparo como cancelado. O estado ficou bloqueado para revisão.');
+            }
+            sSelf.pendingOutboundDispatch = null;
+            sSelf.lastCancelledAt = now();
+            store.markDirty();
+            await store.flush?.().catch(() => {});
+            return recordSelfTurn('🚫 Disparo cancelado. A mensagem não foi enviada.');
+          }
+          if (pending.source === 'maintenance-follow-up') {
+            if (typeof store.claimFollowUp !== 'function') {
+              return recordSelfTurn('Não consegui reservar o follow-up com segurança; não enviei. A prévia continua pendente para nova tentativa.');
+            }
+            try {
+              pending.claimToken = await store.claimFollowUp(pending.sourceRef || pending.phone, new Date(now()).toISOString(), 900);
+            } catch {
+              pending.claimToken = null;
+            }
+            if (!pending.claimToken) {
+              return recordSelfTurn('Não consegui reservar o follow-up de forma única; não enviei. A prévia continua pendente para nova tentativa.');
+            }
+          }
+          pending.status = 'sending';
+          pending.confirmedAt = new Date(now()).toISOString();
+          sSelf.updatedAt = pending.confirmedAt;
+          store.markDirty();
+          try {
+            await store.flush?.();
+            assertOutboundStatePersisted();
+          } catch (error) {
+            pending.status = 'uncertain';
+            store.markDirty();
+            return recordSelfTurn('Não consegui persistir a aprovação com segurança. Não enviei; confira o estado da prévia antes de tentar novamente.');
+          }
+          if (typeof store.claimOutboundDispatch !== 'function') {
+            pending.status = 'pending';
+            store.markDirty();
+            return recordSelfTurn('O armazenamento não oferece reserva única de despacho. Não enviei; peça ao responsável para restaurar a conexão persistente.');
+          }
+          let claimed = false;
+          try { claimed = await store.claimOutboundDispatch(id); } catch {}
+          if (!claimed) {
+            pending.status = 'uncertain';
+            store.markDirty();
+            await store.flush?.().catch(() => {});
+            return recordSelfTurn('Não consegui reservar este envio de forma única. Por segurança, não foi repetido; confira o histórico do contato antes de tentar novamente.');
+          }
+
+          let sent;
+          if (pending.document) {
+            try {
+              if (typeof whatsapp?.sendDocument !== 'function') throw new Error('Envio de documento indisponível');
+              await whatsapp.sendDocument(pending.phone, pending.document);
+              sent = { success: true, recipient: pending.recipient, phone: pending.phone, message: pending.message };
+            } catch (err) {
+              sent = { success: false, deliveryUnknown: err?.deliveryUnknown !== false, error: err?.message || 'falha no envio do documento' };
+            }
+          } else {
+            sent = await executeToolCall('enviar_mensagem_contato', {
+              recipient: pending.phone,
+              message: pending.message,
+              asAudio: pending.asAudio === true
+            }, {
+              phone: OWNER_SELF_KEY,
+              clientName: `${owner} (Copiloto)`,
+              store,
+              reminderStore,
+              whatsapp,
+              ai,
+              botConfig,
+              session: sSelf,
+              dispatchConfirmed: true
+            });
+          }
+          if (!sent?.success) {
+            if (sent?.deliveryUnknown) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('O provedor não confirmou se a mensagem chegou. Não vou tentar novamente para evitar duplicidade; verifique a conversa do contato.');
+            }
+            let sourceReleased = false;
+            if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch === 'function') {
+              const released = await store.resolveProspectingDispatch(pending, 'failed').catch(() => false);
+              if (released !== true) {
+                pending.status = 'uncertain';
+                store.markDirty();
+                await store.flush?.().catch(() => {});
+                return recordSelfTurn('O envio falhou, mas não consegui liberar a reserva da prospecção. Mantive o despacho bloqueado; confira antes de tentar novamente.');
+              }
+              sourceReleased = true;
+            }
+            const effectsReleased = sourceReleased || await releasePendingOutboundEffects(pending);
+            if (!effectsReleased) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('O envio falhou, mas não consegui liberar a reserva externa. Mantive o despacho bloqueado; confira antes de tentar novamente.');
+            }
+            sSelf.pendingOutboundDispatch = null;
+            store.markDirty();
+            await store.flush?.().catch(() => {});
+            return recordSelfTurn(`⚠️ Não consegui enviar após sua confirmação: ${sent?.error || 'falha no envio'}. Nada será repetido automaticamente.`);
+          }
+
+          const sentAt = new Date(now()).toISOString();
+          const target = store.get(pending.phone);
+          if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch === 'function') {
+            const completed = await store.resolveProspectingDispatch(pending, 'sent').catch(() => false);
+            if (completed !== true) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('A mensagem foi enviada, mas não consegui concluir a reserva da prospecção. Mantive o despacho bloqueado para evitar duplicidade; confira o contato.');
+            }
+          }
+          if (pending.source === 'maintenance-follow-up') {
+            target.followUpSentAt = sentAt;
+            target.followUpClaimedAt = null;
+            target.followUpClaimToken = null;
+            target.followUpCount = 1;
+            target.followUpPendingId = null;
+            let completed = false;
+            try { completed = await store.completeFollowUp(pending.sourceRef || pending.phone, pending.claimToken, sentAt); } catch {}
+            if (completed !== true) {
+              pending.status = 'uncertain';
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn('A mensagem foi enviada, mas a reserva remota do follow-up não confirmou a conclusão. Mantive o despacho bloqueado para evitar duplicidade; confira a conversa do cliente.');
+            }
+          } else if (pending.source === 'maintenance-checkout' && target.pendingCheckout) {
+            target.pendingCheckout.recoverySentAt = sentAt;
+            target.pendingCheckout.recoveryPendingId = null;
+          } else if (pending.source === 'maintenance-inactivity') {
+            target.inactivityStage = Number(pending.inactivityStage || target.inactivityStage || 0);
+            if (target.inactivityStage === 3) {
+              target.inactivityClosed = true;
+              target.awaitingReply = false;
+            }
+          }
+          sSelf.pendingOutboundDispatch = null;
+          if (pending.resumeBot) {
+            target.human = false;
+            target.humanSource = null;
+            target.handoffAt = null;
+            target.handoffReminderAt = null;
+            target.inactivityClosed = false;
+            target.awaitingReply = true;
+            target.lastBotAt = sentAt;
+          }
+          target.updatedAt = sentAt;
+          store.markDirty();
+          await store.flush?.().catch(() => {});
+          return recordSelfTurn(`✅ Envio confirmado e concluído para *${sent.recipient}* (${sent.phone}):\n\n> "${sent.message}"`);
+        };
+
         const clearHistoryFor = async (targetArg) => {
           const sTarget = findSessionByTarget(targetArg);
           if (!sTarget) return `⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*.`;
@@ -168,15 +412,30 @@ export async function handleOwnerSession({
           return recordSelfTurn(filterReply(`Para confirmar, responda *sim* e eu limpo o histórico de *${pendingControl.label || pendingControl.target}*. Se não quiser, responda *não*.`, { isCopilot: true }).text);
         }
 
-        // Envia o PDF gerado como documento real no WhatsApp (o texto de confirmação continua no chat)
-        const deliverGeneratedPdf = createPdfDelivery({ whatsapp, rawItem, getHumanPhone, logger });
+        // O documento é materializado antes, mas só anexado ao WhatsApp após o SIM <ID>.
+        const stageGeneratedPdf = async (pdfRes, recipient = `${owner} (você)`) => {
+          if (!pdfRes?.success || !pdfRes?.dataUrl) return 'Não consegui preparar o documento para confirmação.';
+          const targetPhone = String(rawItem?.jid || rawItem?.phone || getHumanPhone() || '').replace(/@.*$/, '').replace(/\D/g, '');
+          if (targetPhone.length < 8) return 'Não consegui identificar seu número para preparar a prévia do documento.';
+          const preview = await stageOutboundDispatch({
+            phone: targetPhone,
+            recipient,
+            message: `Documento pronto: ${pdfRes.fileName || 'documento.pdf'}`,
+            document: { dataUrl: pdfRes.dataUrl, fileName: pdfRes.fileName || 'documento.pdf', mimetype: 'application/pdf' }
+          }, { source: 'copilot-document' });
+          return preview || 'Já existe outro disparo pendente ou incerto. Não enviei este documento; resolva primeiro a prévia anterior.';
+        };
 
         // Comandos explícitos de gestão de contato têm prioridade sobre uma
         // confirmação de continuidade pendente; não devem ser classificados
         // pela IA como uma resposta ambígua à pergunta anterior.
-        const isDirectContactCommand = /^(?:bot|humano|pausar|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
+        const earlyAssumeMatch = cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
+        if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
+        const pendingOutboundReply = await handlePendingOutboundDispatch();
+        if (pendingOutboundReply) return pendingOutboundReply;
+        const isDirectContactCommand = /^(?:bot|humano|pausar|assuma|assume|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
         const reactivationReply = isDirectContactCommand ? null : await handlePendingReactivationReply({
-          store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner
+          store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner, stageOutboundDispatch
         });
         if (reactivationReply) {
           return recordSelfTurn(filterReply(reactivationReply, { isCopilot: true }).text);
@@ -266,6 +525,11 @@ export async function handleOwnerSession({
         }
         // Remove a menção ao nome da assistente (ex: "Lia fila" → "fila") para casar os comandos
         let strippedCmd = stripBotMention(cleanCommand, assistant) || cleanCommand;
+        const assumeMatch = strippedCmd.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
+        if (assumeMatch) {
+          strippedCmd = `humano ${assumeMatch[1].trim()}`;
+          cleanCommand = strippedCmd;
+        }
         let norm = normalize(strippedCmd);
         const telemetry = await getTelemetry?.();
 
@@ -276,7 +540,8 @@ export async function handleOwnerSession({
           /^(?:pode\s+)?cancelar\b/i.test(strippedCmd);
 
         if (isExplicitCancel) {
-          const hadPending = Boolean(sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
+          const hadPending = Boolean(sSelf.pendingOutboundDispatch || sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
+          sSelf.pendingOutboundDispatch = null;
           sSelf.pendingAudioConfirmation = null;
           sSelf.pendingRecipient = null;
           sSelf.pendingAsAudio = false;
@@ -363,11 +628,8 @@ export async function handleOwnerSession({
             conteudo: pend.conteudo,
             ...(pend.valor ? { valor: pend.valor } : {})
           }, { clientName: owner, botConfig, identity });
-          const pdfDelivery = await deliverGeneratedPdf(pdfRes);
-          const pdfMsg = pdfDelivery.sent
-            ? `📄 *${pend.labelLabel || 'Documento'} gerado e enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${pdfRes?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
-            : `⚠️ *O PDF foi gerado, mas não pôde ser enviado:* ${pdfDelivery.error}`;
-          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+          const pdfPreview = await stageGeneratedPdf(pdfRes);
+          return recordSelfTurn(filterReply(pdfPreview, { isCopilot: true }).text);
           }
         }
 
@@ -443,11 +705,8 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
             const pdfRes = await executeToolCall('gerar_documento_pdf', {
               tipo, titulo, destinatario: ownerLabel, conteudo: bodyText
             }, { clientName: owner, botConfig, identity });
-            const pdfDelivery = await deliverGeneratedPdf(pdfRes);
-            const pdfMsg = pdfDelivery.sent
-              ? `📄 *${tipoTitulo} gerado e enviado!*\n\n• *Arquivo:* ${pdfRes?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((pdfRes?.fileSize || 0) / 1024).toFixed(1)} KB\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
-              : `⚠️ *O PDF foi gerado, mas não pôde ser enviado:* ${pdfDelivery.error}`;
-            return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+            const pdfPreview = await stageGeneratedPdf(pdfRes);
+            return recordSelfTurn(filterReply(pdfPreview, { isCopilot: true }).text);
           }
 
           sSelf.pendingPdf = { tipo, titulo, destinatario: ownerLabel, label: tipoInfo.label, labelLabel: tipoTitulo };
@@ -811,7 +1070,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
                   whatsapp,
                   ai,
                   botConfig,
-                  session: sSelf
+                  session: sSelf,
+                  dispatchConfirmed: true
                 });
 
                 if (toolRes?.success) {
@@ -908,16 +1168,16 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
               session: sSelf
             });
 
+            if (toolRes?.requiresConfirmation) {
+              const preview = await stageOutboundDispatch({
+                phone: toolRes.phone,
+                recipient: toolRes.recipient,
+                message: toolRes.message
+              });
+              if (preview) return recordSelfTurn(filterReply(preview, { isCopilot: true }).text);
+            }
             if (toolRes?.success) {
-              sSelf.pendingRecipient = null;
-              sSelf.pendingAsAudio = false;
-              const confirmation = `🚀 *Mensagem disparada com sucesso!*
-
-• *Destinatário:* ${toolRes.recipient} (${toolRes.phone})
-• *Formato:* 💬 (texto)
-• *Mensagem enviada:*
-> "${toolRes.message}"`;
-              return recordSelfTurn(filterReply(confirmation, { isCopilot: true }).text);
+              return recordSelfTurn(filterReply('Por segurança, não enviei: este fluxo não pode concluir um disparo sem registrar uma prévia pendente para confirmação.', { isCopilot: true }).text);
             } else {
               const errReply = `⚠️ *Não consegui disparar a mensagem:*
 
@@ -1232,20 +1492,43 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
         }
 
-        // PDF gerado por chamada de ferramenta do modelo: envia o arquivo real, não só o texto
+        // PDF gerado por chamada de ferramenta do modelo: preparar prévia com o arquivo real
         const pdfResult = toolOutputs.find(t => t.tool === 'gerar_documento_pdf');
         if (pdfResult?.result) {
           const res = pdfResult.result;
-          const delivery = await deliverGeneratedPdf(res);
-          const pdfMsg = delivery.sent
-            ? `📄 *Documento Oficial Gerado e Enviado!*\n\n• *Arquivo:* ${res?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((res?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${res?.destinatario || ownerLabel}\n\n_O PDF foi anexado como documento no seu WhatsApp._ 🚀`
-            : `📄 *Documento Oficial Gerado (pdfme):*\n\n• *Arquivo:* ${res?.fileName || 'documento.pdf'}\n• *Tamanho:* ${((res?.fileSize || 0) / 1024).toFixed(1)} KB\n• *Destinatário:* ${res?.destinatario || ownerLabel}\n\n⚠️ _O PDF foi gerado, mas não pôde ser enviado: ${delivery.error}_`;
-          return recordSelfTurn(filterReply(pdfMsg, { isCopilot: true }).text);
+          const pdfPreview = await stageGeneratedPdf(res);
+          return recordSelfTurn(filterReply(pdfPreview, { isCopilot: true }).text);
+        }
+
+        const pendingDriveDispatch = toolOutputs.find(t => t.tool === 'gerenciar_drive_google' && t.result?.requiresConfirmation);
+        if (pendingDriveDispatch) {
+          const result = pendingDriveDispatch.result;
+          const preview = await stageOutboundDispatch({
+            phone: result.targetPhone,
+            recipient: result.recipient || result.targetPhone,
+            message: `Documento do Google Drive: ${result.fileName || 'arquivo'}`,
+            document: result.document
+          }, { source: 'copilot-drive-document' });
+          return recordSelfTurn(filterReply(preview || 'Já existe outro disparo pendente ou incerto. Não enviei este arquivo; resolva primeiro a prévia anterior.', { isCopilot: true }).text);
         }
 
         // Se disparou mensagem para contato externo via tool
         const sendToolResult = toolOutputs.find(t => t.tool === 'enviar_mensagem_contato');
         if (sendToolResult) {
+          if (sendToolResult.result?.requiresConfirmation) {
+            const pendingTools = toolOutputs.filter(t => t.tool === 'enviar_mensagem_contato' && t.result?.requiresConfirmation);
+            if (pendingTools.length > 1) {
+              return recordSelfTurn(filterReply('A solicitação gerou mais de um disparo. Não enviei nenhum; peça e confirme uma mensagem por vez para eu mostrar cada prévia com segurança.', { isCopilot: true }).text);
+            }
+            const r = sendToolResult.result;
+            const preview = await stageOutboundDispatch({
+              phone: r.phone,
+              recipient: r.recipient,
+              message: r.message,
+              asAudio: r.asAudio === true
+            }, { source: 'copilot-tool' });
+            if (preview) return recordSelfTurn(filterReply(preview, { isCopilot: true }).text);
+          }
           if (sendToolResult.result?.success) {
             sSelf.pendingRecipient = null;
             sSelf.pendingAsAudio = false;
@@ -1580,6 +1863,15 @@ ${errMsg}`;
               botConfig,
               session: sSelf
             });
+            if (directRes?.requiresConfirmation) {
+              const preview = await stageOutboundDispatch({
+                phone: directRes.phone,
+                recipient: directRes.recipient,
+                message: directRes.message,
+                asAudio: directRes.asAudio === true
+              }, { source: 'copilot-fallback' });
+              if (preview) return recordSelfTurn(filterReply(preview, { isCopilot: true }).text);
+            }
             if (directRes?.success) {
               sSelf.pendingRecipient = null;
               rawReply = `🚀 *Mensagem disparada com sucesso!*
@@ -1613,23 +1905,19 @@ ${errMsg}`;
           if (voiceRes?.base64) {
             sSelf.lastAudioBase64 = voiceRes.base64;
             const selfTargetPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
-            let audioSent = false;
-            if (selfTargetPhone && selfTargetPhone.length >= 8 && whatsapp?.sendWhatsAppAudio) {
-              try {
-                await whatsapp.sendWhatsAppAudio(selfTargetPhone, voiceRes.base64);
-                audioSent = true;
-              } catch (audioErr) {
-                logger.error?.('[flow] Erro ao enviar áudio do Copiloto no WhatsApp:', audioErr.message);
-              }
+            if (!selfTargetPhone || selfTargetPhone.length < 8) {
+              return recordSelfTurn(filterReply(`⚠️ Não consegui identificar seu número para preparar o envio do áudio. Aqui está a resposta em texto:\n\n${rawReply}`, { isCopilot: true }).text);
             }
-            const sendTranscription = botConfig?.voice?.sendTranscriptionWithAudio !== false && botConfig?.voice?.deliveryMode !== 'audio_only';
-            const displayReply = rawReply.startsWith(`Estou aqui, ${owner}`)
-              ? 'Áudio de demonstração gerado com sucesso para você!'
-              : rawReply;
-            const okSelfReply = audioSent
-              ? (sendTranscription ? `🎙️ *Áudio gravado e enviado para você!* 👆\n\n${displayReply}` : `🎙️ *Áudio gravado e enviado para você!* 👆`)
-              : `⚠️ *Não consegui enviar o áudio no momento, mas aqui está a resposta:*\n\n${displayReply}`;
-            return recordSelfTurn(filterReply(okSelfReply, { isCopilot: true }).text);
+            const preview = await stageOutboundDispatch({
+              phone: selfTargetPhone,
+              recipient: `${owner} (você)`,
+              message: speechScript,
+              asAudio: true
+            }, { source: 'copilot-audio-self' });
+            if (!preview) {
+              return recordSelfTurn(filterReply('Já existe outro disparo pendente ou incerto. Não enviei este áudio; resolva primeiro a prévia anterior.', { isCopilot: true }).text);
+            }
+            return recordSelfTurn(filterReply(preview, { isCopilot: true }).text);
           } else {
             const fallbackReply = `⚠️ *Não consegui gerar o áudio no momento, mas aqui está a explicação:*\n\n${rawReply}`;
             return recordSelfTurn(filterReply(fallbackReply, { isCopilot: true }).text);

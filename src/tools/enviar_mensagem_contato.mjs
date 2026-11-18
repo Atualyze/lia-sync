@@ -60,6 +60,11 @@ export const toolEnviarMensagemContato = {
       return { success: false, error: 'Por favor, informe o conteúdo da mensagem que deseja enviar para ' + rawRec + '.' };
     }
 
+    // Comandos operacionais nunca podem ser tratados como texto destinado ao cliente.
+    if (/^(?:assuma|assume|assumir|humano|pausar|retome|retomar|bot|limpar|resetar|reset)\s+(?:\+?55[\s().-]*)?\d{8,15}\s*[.!?]*$/i.test(cleanMsg)) {
+      return { success: false, code: 'internal_command_as_message', error: 'Esse conteúdo parece um comando interno. Não foi enviado ao contato.' };
+    }
+
     // Nenhum texto gerado sai sem o filtro de segurança: preço não confirmado bloqueia o envio.
     const filtered = filterReply(cleanMsg, {
       allowedPrices: getAllowedPrices(),
@@ -175,6 +180,20 @@ export const toolEnviarMensagemContato = {
       targetPhone = '55' + targetPhone;
     }
 
+    // A ferramenta não pode enviar por conta própria, inclusive quando acionada
+    // por uma tool-call do modelo. O fluxo do Copiloto primeiro prepara a prévia;
+    // somente o handler de confirmação fornece dispatchConfirmed.
+    if (context.prepareOnly || context.dispatchConfirmed !== true) {
+      return {
+        success: false,
+        requiresConfirmation: true,
+        recipient: targetName || targetPhone,
+        phone: targetPhone,
+        message: safeMsg,
+        asAudio: asAudio === true
+      };
+    }
+
     // Dispara via whatsapp.mjs (Evolution API)
     try {
       let isVoice = asAudio === true;
@@ -183,7 +202,7 @@ export const toolEnviarMensagemContato = {
         const sendAudioFn = context.whatsapp?.sendWhatsAppAudio || sendWhatsAppAudio;
         let voiceRes = null;
         if (synthFn && sendAudioFn) {
-          try { voiceRes = await synthFn(cleanMsg, { botConfig: context.botConfig }); }
+          try { voiceRes = await synthFn(safeMsg, { botConfig: context.botConfig }); }
           catch (e) { console.error('[tool:enviar_mensagem_contato] Falha na síntese de áudio:', e.code || e.name || 'tts_failed'); }
         }
         if (voiceRes?.base64) {
@@ -192,7 +211,7 @@ export const toolEnviarMensagemContato = {
             const sendTranscription = context.botConfig?.voice?.sendTranscriptionWithAudio !== false && context.botConfig?.voice?.deliveryMode !== 'audio_only';
             if (sendTranscription) {
               const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
-              await sendFn(targetPhone, cleanMsg);
+              await sendFn(targetPhone, safeMsg);
             }
           }
           catch (e) {
@@ -200,12 +219,12 @@ export const toolEnviarMensagemContato = {
           }
         } else {
           const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
-          await sendFn(targetPhone, cleanMsg);
+          await sendFn(targetPhone, safeMsg);
           isVoice = false;
         }
       } else {
         const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
-        await sendFn(targetPhone, cleanMsg);
+        await sendFn(targetPhone, safeMsg);
       }
 
       // Registra no histórico do contato
@@ -215,7 +234,7 @@ export const toolEnviarMensagemContato = {
           sTarget.history = sTarget.history || [];
           sTarget.history.push({
             role: 'assistant',
-            content: cleanMsg,
+            content: safeMsg,
             createdAt: new Date().toISOString(),
             fromCopilot: true
           });
@@ -236,7 +255,7 @@ export const toolEnviarMensagemContato = {
         asAudio: isVoice,
         recipient: targetName || targetPhone,
         phone: targetPhone,
-        message: cleanMsg
+        message: safeMsg
       };
     } catch (err) {
       return {

@@ -54,7 +54,7 @@ test('Habilidade 3: Follow-up local sem claim distribuída permanece bloqueado',
   });
 
   assert.equal(sentMessages.length, 0, 'Não deve enviar follow-up sem claim distribuída persistente');
-  assert.equal(session.followUpCount, 0);
+  assert.equal(session.followUpCount, undefined, 'a sessão permanece intacta enquanto a claim distribuída não existe');
   assert.equal(session.followUpSentAt, undefined);
 
   // Na próxima rodada, a trava impede novo follow-up

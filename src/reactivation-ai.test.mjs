@@ -97,14 +97,19 @@ test('IA indisponível => fallback por regex mantém comportamento atual', async
   notifyReactivationToInternalChat({ store, session: client, phone: '5511999991003' });
 
   const sent = [];
+  const previews = [];
   const ai = { askAI: async () => { throw new Error('conexão recusada'); } };
   const reply = await handlePendingReactivationReply({
     ...BASE, store, ai, sSelf: self, cleanCommand: 'Pode continuar e responder ele',
-    whatsapp: { sendText: async (jid, text) => sent.push({ jid, text }) }
+    whatsapp: { sendText: async (jid, text) => sent.push({ jid, text }) },
+    stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return `PREVIEW ${prepared.message} SIM A1B2C3D4`; }
   });
 
-  assert.match(reply, /Retomei o atendimento/i);
-  assert.equal(sent.length, 1);
+  assert.match(reply, /PREVIEW/);
+  assert.equal(sent.length, 0, 'BOT_CONTINUE não envia ao cliente antes da aprovação');
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].prepared.phone, '5511999991003');
+  assert.equal(previews[0].options.resumeBot, true);
   assert.equal(self.pendingReactivation, null);
 });
 
