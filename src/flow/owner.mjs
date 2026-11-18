@@ -11,6 +11,7 @@ import {
 } from './text.mjs';
 import { createPdfDelivery } from './pdf.mjs';
 import { handlePendingReactivationReply } from './reactivation-reply.mjs';
+import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
@@ -45,7 +46,11 @@ export async function handleOwnerSession({
         // Envia o PDF gerado como documento real no WhatsApp (o texto de confirmação continua no chat)
         const deliverGeneratedPdf = createPdfDelivery({ whatsapp, rawItem, getHumanPhone, logger });
 
-        const reactivationReply = await handlePendingReactivationReply({
+        // Comandos explícitos de gestão de contato têm prioridade sobre uma
+        // confirmação de continuidade pendente; não devem ser classificados
+        // pela IA como uma resposta ambígua à pergunta anterior.
+        const isDirectContactCommand = /^(?:bot|humano|pausar|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
+        const reactivationReply = isDirectContactCommand ? null : await handlePendingReactivationReply({
           store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner
         });
         if (reactivationReply) {
@@ -504,6 +509,7 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
           if (!sTarget) {
             return recordSelfTurn(filterReply(`⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*. Digite *fila* para ver quem está aguardando ou confira o número informado.`, { isCopilot: true }).text);
           }
+          const wasHuman = Boolean(sTarget.human);
           sTarget.human = false;
           sTarget.humanSource = null;
           sTarget.handoffAt = null;
@@ -514,11 +520,20 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
           sTarget.inactivityClosed = false;
           sTarget.updatedAt = new Date(now()).toISOString();
           store.markDirty();
-          await store.flush?.();
+          try {
+            await store.flush?.();
+          } catch (err) {
+            logger.error?.('[flow] Falha ao persistir comando bot:', err.message);
+            return recordSelfTurn(filterReply(`⚠️ *Não consegui confirmar a reativação de ${sTarget.clientName || sTarget.phone} no banco de dados.*\n\nA alteração foi aplicada localmente, mas precisa ser sincronizada novamente.`, { isCopilot: true }).text);
+          }
           const targetName = sTarget.clientName || sTarget.contactName || sTarget.pushName || 'Contato';
           const targetPhone = String(sTarget.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
           const rep = `🤖 *Bot reativado com sucesso!*\n\nA ${assistant} voltou a atender *${targetName}* (${targetPhone}) automaticamente.`;
-          return recordSelfTurn(filterReply(rep, { isCopilot: true }).text);
+          const continuityNotice = wasHuman
+            ? notifyReactivationToInternalChat({ store, session: sTarget, phone: targetPhone })
+            : null;
+          const fullRep = continuityNotice?.message ? `${rep}\n\n${continuityNotice.message}` : rep;
+          return recordSelfTurn(filterReply(fullRep, { isCopilot: true }).text);
         }
 
         // 1.5 Comando: Pausar Bot / Atendimento Humano para um número, índice ou nome

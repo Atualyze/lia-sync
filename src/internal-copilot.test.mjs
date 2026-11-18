@@ -118,6 +118,8 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
   const repFormatado = await flow.process({ phone: '5588921694598', text: 'bot +55 88 99360-2644' });
   assert.match(repFormatado, /Bot reativado com sucesso/);
   assert.match(repFormatado, /Mikaelle Santos/);
+  assert.match(repFormatado, /ficou sem resposta|no vácuo/i, 'Deve perguntar sobre a continuidade quando a última mensagem é do cliente');
+  assert.equal(store.get('owner_self').pendingReactivation?.phone, clientPhone, 'Deve preservar a decisão pendente no chat interno');
   assert.equal(sClient.human, false, 'Sessão do cliente deve voltar para bot (human=false)');
   assert.equal(typeof sClient.updatedAt, 'string', 'updatedAt deve ser preenchido');
   assert.equal(flushCalled, true, 'flush deve ter sido chamado para persistir no banco');
