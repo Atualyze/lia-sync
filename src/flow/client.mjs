@@ -623,6 +623,26 @@ export async function handleClientMessage({
                   result.handoff_reason = 'falha ao persistir lembrete do cliente';
                 }
               }
+              if (tc.name === 'gerenciar_agenda_google') {
+                if (toolRes?.success) {
+                  const slots = Array.isArray(toolRes.availableSlots) ? toolRes.availableSlots : [];
+                  const events = Array.isArray(toolRes.events) ? toolRes.events : [];
+                  if (toolRes.message) {
+                    toolReplyOverride = toolRes.message;
+                  } else if (slots.length > 0) {
+                    toolReplyOverride = `Encontrei estes horários disponíveis: ${slots.join(', ')}.`;
+                  } else if (events.length > 0) {
+                    const eventLines = events.slice(0, 8).map(event => `• ${event.summary || 'Compromisso'}${event.start?.dateTime ? ` — ${event.start.dateTime}` : ''}`).join('\n');
+                    toolReplyOverride = `📅 *Compromissos encontrados:*\n\n${eventLines}`;
+                  } else {
+                    toolReplyOverride = 'A consulta da agenda foi concluída, mas não encontrei compromissos ou horários disponíveis para esse período.';
+                  }
+                } else {
+                  toolReplyOverride = toolRes?.message || 'Não consegui consultar a agenda agora. Vou encaminhar essa verificação para a equipe e evitar confirmar um horário sem validação.';
+                  result.handoff = true;
+                  result.handoff_reason = 'falha ao consultar Google Calendar';
+                }
+              }
               if (tc.name === 'agendar_retorno_ou_followup') reminderHandledByTool = true;
               if (tc.name === 'consultar_base_conhecimento') {
                 if (toolRes?.found && toolRes.resposta) {
@@ -700,6 +720,11 @@ export async function handleClientMessage({
                 toolReplyOverride = 'Não consegui concluir essa ação com segurança. Vou encaminhar para a equipe.';
                 result.handoff = true;
                 result.handoff_reason = 'falha ao persistir lembrete do cliente';
+              }
+              if (tc.name === 'gerenciar_agenda_google') {
+                toolReplyOverride = 'Não consegui consultar a agenda com segurança neste momento. Vou encaminhar essa verificação para a equipe.';
+                result.handoff = true;
+                result.handoff_reason = 'falha ao consultar Google Calendar';
               }
               if (tc.name === 'consultar_web') {
                 webSearchResult = { success: false, error: { code: 'WEB_SEARCH_EXECUTION_ERROR', message: err.message } };

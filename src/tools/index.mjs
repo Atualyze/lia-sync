@@ -79,6 +79,7 @@ export function resolveToolName(toolName) {
 
 const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'agendar_retorno_ou_followup',
+  'gerenciar_agenda_google',
   'consultar_base_conhecimento',
   'consultar_web',
   'consultar_planilha_google',

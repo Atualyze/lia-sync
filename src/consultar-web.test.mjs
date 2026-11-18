@@ -19,7 +19,7 @@ test('consultar_web está no catálogo, nas declarações Gemini e na allowlist 
   assert.equal(ALL_TOOLS.some(tool => tool.name === 'consultar_web'), true);
   assert.equal(getGeminiToolDeclarations()[0].functionDeclarations.some(tool => tool.name === 'consultar_web'), true);
   assert.equal(isClientToolAllowed('consultar_web'), true);
-  assert.equal(isClientToolAllowed('gerenciar_agenda_google'), false);
+  assert.equal(isClientToolAllowed('gerenciar_agenda_google'), true);
 });
 
 test('consultar_web distingue consulta inválida, timeout e erro HTTP', async () => {
@@ -81,7 +81,8 @@ test('fluxo owner executa consultar_web e retorna síntese com fontes sem reexec
   assert.equal(calls, 2);
 });
 
-test('executeToolCall preserva bloqueio de outras tools para client', async () => {
-  const result = await executeToolCall('gerenciar_agenda_google', {}, { actor: 'client' });
-  assert.match(result.error, /indisponível/);
+test('executeToolCall permite agenda no client e preserva o erro de integração ausente', async () => {
+  const result = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres', date: 'amanhã' }, { actor: 'client' });
+  assert.equal(result.success, false);
+  assert.match(result.error, /google_calendar_unavailable/);
 });
