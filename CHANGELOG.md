@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.0 - Portal Atualyze Pay e pagamento unificado
+- **Portal público responsivo:** a rota `/pix` ganhou o layout Atualyze Pay, otimizado para desktop e mobile, com QR Code e hierarquia clara de pagamento.
+- **Pix:** botões para copiar chave Pix e código Pix e Cola com feedback visual; a chave é extraída do BR Code quando necessário.
+- **InfinitePay:** o checkout passa a retornar `paymentUrl` unificado com Pix e botão para abrir o checkout oficial, preservando `checkoutUrl` para compatibilidade.
+- **Segurança:** links InfinitePay aceitos na página são limitados a `https://checkout.infinitepay.io/` e `https://infinitepay.io/`; nenhum segredo é enviado ao navegador.
+- **Validação:** testes dedicados cobrem renderização, QR Code, cópia da chave, copia e cola, checkout e payload inválido.
+
 ## 2.6.1 - Agenda e retornos com resposta garantida
 - **Agenda no atendimento ao cliente:** `gerenciar_agenda_google` passou a ser permitido no fluxo de cliente quando a integração está habilitada, mantendo a validação de configuração e credenciais.
 - **Respostas de ferramentas:** o fluxo de cliente transforma resultados de consulta, criação, ausência de horários e falhas da agenda em mensagens explícitas; a Lia não envia apenas uma promessa de consulta.

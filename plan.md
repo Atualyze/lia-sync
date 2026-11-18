@@ -39,3 +39,21 @@ O plano acima parou com três lacunas, resolvidas nesta continuação:
 3. **Contrato incompleto.** A projeção da ponte ganhou `settings.business.hours` com estado derivado no servidor (`isOpenNow`, `nextOpenAt`, `summary`), de forma aditiva dentro de `contractVersion: 1` e sem expor o texto do aviso ao cliente. A tela de Integrações agora mostra o expediente efetivo e o estado da projeção de setores.
 
 Documentação: [`docs/release-2.3.1.md`](docs/release-2.3.1.md) e [`docs/config-bridge-contract.md`](docs/config-bridge-contract.md). Validação: 190 testes, 26 contratos de arquitetura e build de 98 módulos; nenhuma migration foi necessária, porque a projeção de setores é arquivo de runtime e o expediente vive no JSON de configuração já versionado.
+
+## Portal Atualyze Pay — pagamento unificado
+
+O endpoint público `/pix` passa a funcionar como o portal responsivo `pay.atualyze.com.br`: uma página única, otimizada para desktop e mobile, com QR Code, cópia da chave Pix, cópia do código Pix e Cola e botão de checkout InfinitePay quando houver checkout configurado. O payload Pix continua assinado pelo BR Code e a página não persiste dados sensíveis; os dados da cobrança vêm do link assinado/encodado.
+
+### Direção visual aprovada
+
+- **Movimentos considerados:** Neomorfismo editorial (0,07), fintech editorial premium (0,62), minimalismo institucional (0,09). Escolhido: **fintech editorial premium**.
+- **Princípios:** confiança sem excesso de elementos, hierarquia forte para o valor, ações grandes para uso com uma mão e adaptação fluida entre telas.
+- **Paleta:** azul petróleo profundo para segurança e contraste, verde água para a ação Pix e azul claro para InfinitePay.
+- **Layout:** composição assimétrica em duas zonas no desktop, com narrativa curta à esquerda e cartão de pagamento à direita; empilhamento natural no mobile.
+- **Assinaturas:** selo “Seguro”, marca Atualyze Pay e card com QR contrastante; botões revelam claramente a próxima ação.
+- **Interação:** copiar com feedback toast, links externos abrem em nova aba e somente checkout InfinitePay validado é exibido.
+- **Tipografia e voz:** sistema sans-serif com títulos compactos; microcopy direta, clara e acolhedora.
+
+### Integração
+
+`gerar_cobranca_pix` prioriza `paymentBaseUrl`/`PAYMENT_BASE_URL` e usa `https://pay.atualyze.com.br` como fallback. `checkout_infinitepay` monta também `paymentUrl` com o payload Pix e o checkout oficial, permitindo uma única página de pagamento sem expor chaves de API no navegador.

@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.6.1** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.7.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.7.0 — Atualyze Pay
+
+- **Portal unificado:** `/pix` agora renderiza o portal responsivo `pay.atualyze.com.br`, com layout premium adaptável para desktop e mobile.
+- **Ações claras:** o cliente pode escanear o QR Code, copiar a chave Pix, copiar o código Pix e Cola ou abrir o checkout InfinitePay em um botão dedicado.
+- **Integração de fluxos:** Pix e InfinitePay retornam `paymentUrl` unificado quando há chave Pix configurada, mantendo o link oficial de checkout como fallback.
+- **Segurança:** checkout exibido somente após validação de domínio, sem expor chaves de API no navegador; payload e QR Code são derivados da cobrança.
+
+Detalhes técnicos e operação: [`docs/release-2.7.0.md`](docs/release-2.7.0.md).
 
 ## Novidades da Versão 2.6.1 — Agenda com retorno garantido e documentação operacional
 

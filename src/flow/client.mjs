@@ -743,7 +743,7 @@ export async function handleClientMessage({
                     `💳 *Aqui está seu link de pagamento (Pix ou Cartão):*`,
                     `• *Valor:* ${valorFmt}`,
                     toolRes.descricao ? `• *Descrição:* ${toolRes.descricao}` : '',
-                    `• *Link:* ${toolRes.checkoutUrl}`,
+                    `• *Abrir página de pagamento:* ${toolRes.paymentUrl || toolRes.checkoutUrl}`,
                     `_Assim que o pagamento for aprovado, eu confirmo automaticamente por aqui!_`
                   ].filter(Boolean).join('\n\n');
                 } else {

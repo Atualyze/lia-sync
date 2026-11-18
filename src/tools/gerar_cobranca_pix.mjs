@@ -181,17 +181,22 @@ export const toolGerarCobrancaPix = {
 
     const dataUrl = await QRCode.toDataURL(payload, { width: 512, margin: 2 });
     const baseUrl = String(
+      toolSettings.paymentBaseUrl ||
+      process.env.PAYMENT_BASE_URL ||
       toolSettings.publicBaseUrl ||
       process.env.PUBLIC_BASE_URL ||
       process.env.DASHBOARD_ORIGIN ||
-      ''
+      'https://pay.atualyze.com.br'
     ).replace(/\/$/, '');
     const linkParams = new URLSearchParams({
       p: Buffer.from(payload, 'utf8').toString('base64url'),
       ...(amount > 0 ? { v: amount.toFixed(2) } : {}),
       n: merchantName,
       ...(args.descricao ? { d: String(args.descricao).slice(0, 80) } : {}),
-      tx: txid
+      tx: txid,
+      ...(args.checkoutUrl && /^https:\/\/(?:checkout\.)?infinitepay\.io\//i.test(String(args.checkoutUrl))
+        ? { c: String(args.checkoutUrl) }
+        : {})
     });
     const paymentUrl = baseUrl ? `${baseUrl}/pix?${linkParams.toString()}` : `/pix?${linkParams.toString()}`;
 

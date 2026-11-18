@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { buildPixPayload } from './gerar_cobranca_pix.mjs';
 
 const DEFAULT_ORDERS_FILE = path.resolve(process.cwd(), 'data', 'infinitepay-orders.json');
 const CHECKOUT_BASE_URL = 'https://api.checkout.infinitepay.io';
@@ -315,11 +316,44 @@ export const toolCheckoutInfinitePay = {
       fetchImpl: context?.fetchImpl
     });
 
+    const configuredPixKey = String(pixSettings.key || context?.botConfig?.integrations?.pix?.key || process.env.PIX_KEY || '').trim();
+    const paymentBaseUrl = String(
+      settings.paymentBaseUrl ||
+      pixSettings.paymentBaseUrl ||
+      process.env.PAYMENT_BASE_URL ||
+      settings.publicBaseUrl ||
+      pixSettings.publicBaseUrl ||
+      process.env.PUBLIC_BASE_URL ||
+      'https://pay.atualyze.com.br'
+    ).replace(/\/$/, '');
+    let paymentUrl = '';
+    if (configuredPixKey) {
+      const pixPayload = buildPixPayload({
+        pixKey: configuredPixKey,
+        keyType: pixSettings.keyType || 'auto',
+        amount: valor * qty,
+        merchantName: pixSettings.merchantName || context?.botConfig?.identity?.companyName || 'Atualyze',
+        merchantCity: pixSettings.merchantCity || process.env.PIX_MERCHANT_CITY || 'SAO PAULO',
+        txid: created.orderNsu,
+        description
+      });
+      const params = new URLSearchParams({
+        p: Buffer.from(pixPayload, 'utf8').toString('base64url'),
+        v: (valor * qty).toFixed(2),
+        n: pixSettings.merchantName || context?.botConfig?.identity?.companyName || 'Atualyze',
+        d: description.slice(0, 80),
+        tx: created.orderNsu,
+        c: created.checkoutUrl
+      });
+      paymentUrl = `${paymentBaseUrl}/pix?${params.toString()}`;
+    }
+
     orderStore.recordOrder({
       orderNsu: created.orderNsu,
       handle: created.handle || handle,
       slug: created.slug || '',
       checkoutUrl: created.checkoutUrl,
+      paymentUrl,
       phone: targetPhone.length >= 8 ? targetPhone : '',
       clientName: context?.clientName || '',
       amountCents: priceCents * qty,
@@ -331,6 +365,7 @@ export const toolCheckoutInfinitePay = {
       success: true,
       action: 'criar_link',
       checkoutUrl: created.checkoutUrl,
+      paymentUrl,
       orderNsu: created.orderNsu,
       valor: Number(((priceCents * qty) / 100).toFixed(2)),
       descricao: description,

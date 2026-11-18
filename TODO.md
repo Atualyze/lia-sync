@@ -20,3 +20,6 @@
 - `npm run test:contract`: 26 verificações passaram, incluindo expediente só no painel central, projeção sem o aviso ao cliente, setores fora da configuração publicada e tela de Integrações com expediente e projeção de setores.
 - `npm run build`: sintaxe dos 142 módulos verificada.
 - [x] **Hardening de prospecção (2.5.1):** RLS service-role-only, opt-out contextual, scheduler com retry/backoff, TTL de claims, pausa anti-ban, trava contra ticks concorrentes, contagem local paginada, cadências por etapas e regressões automatizadas.
+
+- [x] **Portal Atualyze Pay:** página pública responsiva em `/pix` com QR Code, cópia da chave Pix, cópia do código Pix e Cola, feedback de cópia e botão opcional para abrir o checkout InfinitePay. Os fluxos Pix e InfinitePay passam a retornar `paymentUrl` unificado quando há chave Pix configurada; URLs de checkout são validadas antes de aparecerem na página.
+- [ ] **DNS e TLS do portal:** criar o registro DNS `pay.atualyze.com.br` apontando para a VPS e emitir certificado HTTPS no Nginx; a implementação da aplicação está pronta, mas o domínio ainda não resolve publicamente.

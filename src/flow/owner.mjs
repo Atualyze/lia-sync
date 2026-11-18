@@ -1336,7 +1336,7 @@ ${errMsg}`;
             `• *Valor:* ${valorFmt}`,
             r.descricao ? `• *Descrição:* ${r.descricao}` : '',
             `• *Pedido:* \`${r.orderNsu}\``,
-            `• *Link:* ${r.checkoutUrl}`,
+            `• *Abrir página de pagamento:* ${r.paymentUrl || r.checkoutUrl}`,
             r.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
           ].filter(Boolean).join('\n\n');
           return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
@@ -1432,7 +1432,7 @@ ${errMsg}`;
               `• *Valor:* ${valorFmt}`,
               autoIp.descricao ? `• *Descrição:* ${autoIp.descricao}` : '',
               `• *Pedido:* \`${autoIp.orderNsu}\``,
-              `• *Link:* ${autoIp.checkoutUrl}`,
+              `• *Abrir página de pagamento:* ${autoIp.paymentUrl || autoIp.checkoutUrl}`,
               autoIp.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
             ].filter(Boolean).join('\n\n');
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
