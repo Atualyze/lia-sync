@@ -471,6 +471,46 @@ test('Copiloto Pix: falha de validação da ferramenta não mascara o erro como 
   assert.doesNotMatch(reply, /me confirma o \*valor\* e a \*descrição\*/i);
 });
 
+test('Copiloto Pix: ignora `when` vazado do schema de agendamento ao responder “valor livre”', async () => {
+  const store = new SessionStore();
+  const self = store.get(OWNER_SELF_KEY);
+  const createdAt = new Date().toISOString();
+  self.pendingCopilotTask = {
+    type: 'payment', createdAt, updatedAt: createdAt,
+    originCommand: 'Quero que envie um Pix', lastQuestion: 'Informe o valor ou valor livre',
+    repeatCount: 0, turns: 1
+  };
+  self.pendingPixRequest = { requestedAt: createdAt, amount: null, description: 'Cobrança Pix' };
+  const sentImages = [];
+  const flow = createFlow({
+    store,
+    getBotConfig: () => createPixBotConfig('88998340085'),
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: phone => phone === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: { askAI: async () => ({
+      reply: 'Vou gerar o Pix com valor livre.',
+      tool_calls: [{
+        name: 'gerar_cobranca_pix',
+        args: { valor: 0, descricao: 'Cobrança Pix', when: '2026-11-19T10:00:00-03:00' }
+      }]
+    }) }
+  });
+
+  const reply = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'valor livre',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+
+  assert.match(reply, /Cobrança Pix gerada!/i);
+  assert.doesNotMatch(reply, /argumento ".*when.*não é aceito/i);
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].phone, '5588998340085');
+  assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest, null);
+});
+
 test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
   const store = new SessionStore();
   const botConfig = createPixBotConfig('88998340085');

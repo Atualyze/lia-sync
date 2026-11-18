@@ -133,6 +133,16 @@ export function getGeminiToolDeclarations(tools = ALL_TOOLS) {
   ];
 }
 
+function stripForeignToolArguments(tool, args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return args;
+  const accepted = new Set(Object.keys(tool.parameters?.properties || {}));
+  const declaredByOtherTools = new Set(ALL_TOOLS
+    .filter(candidate => candidate.name !== tool.name)
+    .flatMap(candidate => Object.keys(candidate.parameters?.properties || {})));
+  return Object.fromEntries(Object.entries(args).filter(([key]) =>
+    accepted.has(key) || !declaredByOtherTools.has(key)));
+}
+
 function validateToolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return 'Os argumentos da ferramenta precisam ser um objeto JSON.';
   const schema = tool.parameters || {};
@@ -171,10 +181,14 @@ export async function executeToolCall(toolName, args = {}, context = {}) {
   if (!tool) {
     return { error: 'Ferramenta "' + toolName + '" não encontrada.' };
   }
-  const invalid = validateToolArguments(tool, args);
+  // Model calls can leak a parameter declared by a different tool (for example
+  // `when` from scheduling into a Pix call). Remove only those known foreign
+  // parameters; genuinely unknown arguments remain validation errors.
+  const safeArgs = stripForeignToolArguments(tool, args);
+  const invalid = validateToolArguments(tool, safeArgs);
   if (invalid) return { success: false, error: invalid, code: 'invalid_tool_arguments' };
   try {
-    return await tool.execute(args, context);
+    return await tool.execute(safeArgs, context);
   } catch (err) {
     return { error: 'Falha ao executar ' + canonicalName + ': ' + err.message };
   }
