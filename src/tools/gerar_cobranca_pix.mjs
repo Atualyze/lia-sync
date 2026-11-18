@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { resolveIdentity } from '../core/identity.mjs';
+import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
 function tlv(id, value) {
   const str = String(value ?? '');
@@ -188,14 +189,15 @@ export const toolGerarCobrancaPix = {
       process.env.DASHBOARD_ORIGIN ||
       'https://pay.atualyze.com.br'
     ).replace(/\/$/, '');
+    const safeCheckoutUrl = amount > 0 ? getSafeInfinitePayCheckoutUrl(args.checkoutUrl) : '';
     const linkParams = new URLSearchParams({
       p: Buffer.from(payload, 'utf8').toString('base64url'),
       ...(amount > 0 ? { v: amount.toFixed(2) } : {}),
       n: merchantName,
       ...(args.descricao ? { d: String(args.descricao).slice(0, 80) } : {}),
       tx: txid,
-      ...(args.checkoutUrl && /^https:\/\/(?:checkout\.)?infinitepay\.io\//i.test(String(args.checkoutUrl))
-        ? { c: String(args.checkoutUrl) }
+      ...(safeCheckoutUrl
+        ? { c: safeCheckoutUrl }
         : {})
     });
     const paymentUrl = baseUrl ? `${baseUrl}/pix?${linkParams.toString()}` : `/pix?${linkParams.toString()}`;

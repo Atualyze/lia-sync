@@ -33,3 +33,13 @@ test('portal rejeita payload ausente com mensagem clara', async () => {
   assert.equal(res.status, 400);
   assert.match(res.body, /Link Pix inv\u00e1lido/);
 });
+
+test('portal omite InfinitePay em Pix sem valor, mesmo quando recebe uma URL válida', async () => {
+  const payload = buildPixPayload({ pixKey: '88998340085', merchantName: 'Atualyze', merchantCity: 'SOBRAL' });
+  const url = new URL(`https://pay.atualyze.com.br/pix?p=${Buffer.from(payload).toString('base64url')}&c=${encodeURIComponent('https://checkout.infinitepay.io/atualyze/abc')}`);
+  const res = responseCapture();
+  await renderPixPaymentPage(res, url);
+  assert.equal(res.status, 200);
+  assert.match(res.body, /Valor livre/);
+  assert.doesNotMatch(res.body, /Pagar com InfinitePay/);
+});

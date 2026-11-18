@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
 const escHtml = (v = '') =>
   String(v).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
@@ -39,7 +40,8 @@ export async function renderPixPaymentPage(res, urlObj) {
   }
 
   const rawAmount = Number(urlObj.searchParams.get('v') || 0);
-  const amountText = Number.isFinite(rawAmount) && rawAmount > 0
+  const hasAmount = Number.isFinite(rawAmount) && rawAmount > 0;
+  const amountText = hasAmount
     ? `R$ ${rawAmount.toFixed(2).replace('.', ',')}`
     : 'Valor livre';
   const merchantName = (urlObj.searchParams.get('n') || 'Atualyze').slice(0, 40);
@@ -47,7 +49,7 @@ export async function renderPixPaymentPage(res, urlObj) {
   const txid = (urlObj.searchParams.get('tx') || '').slice(0, 25);
   const pixKey = (urlObj.searchParams.get('k') || extractPixKey(payload)).slice(0, 120);
   const checkoutUrl = urlObj.searchParams.get('c') || '';
-  const safeCheckoutUrl = /^https:\/\/(?:checkout\.)?infinitepay\.io\//i.test(checkoutUrl) ? checkoutUrl : '';
+  const safeCheckoutUrl = hasAmount ? getSafeInfinitePayCheckoutUrl(checkoutUrl) : '';
   const qrDataUrl = await QRCode.toDataURL(payload, { width: 420, margin: 1, color: { dark: '#09222c', light: '#ffffff' } });
   const hasKey = Boolean(pixKey);
 

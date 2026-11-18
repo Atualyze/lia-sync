@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { buildPixPayload } from './gerar_cobranca_pix.mjs';
+import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
 const DEFAULT_ORDERS_FILE = path.resolve(process.cwd(), 'data', 'infinitepay-orders.json');
 const CHECKOUT_BASE_URL = 'https://api.checkout.infinitepay.io';
@@ -129,9 +130,10 @@ export async function createInfinitePayLink({
   if (!res.ok) {
     throw new Error(data?.message || data?.error || `Erro InfinitePay HTTP ${res.status}`);
   }
-  const checkoutUrl = data?.url || data?.checkout_url || data?.link || '';
+  const rawCheckoutUrl = data?.url || data?.checkout_url || data?.link || '';
+  const checkoutUrl = getSafeInfinitePayCheckoutUrl(rawCheckoutUrl);
   if (!checkoutUrl) {
-    throw new Error('InfinitePay não retornou a URL de checkout.');
+    throw new Error('InfinitePay não retornou uma URL de checkout HTTPS válida.');
   }
   return {
     checkoutUrl,
@@ -326,7 +328,7 @@ export const toolCheckoutInfinitePay = {
       process.env.PUBLIC_BASE_URL ||
       'https://pay.atualyze.com.br'
     ).replace(/\/$/, '');
-    let paymentUrl = '';
+    let paymentUrl = created.checkoutUrl;
     if (configuredPixKey) {
       const pixPayload = buildPixPayload({
         pixKey: configuredPixKey,

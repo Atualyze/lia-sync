@@ -506,7 +506,8 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
         checkout_infinitepay: {
           handle: '$tauanpires',
           publicBaseUrl: 'https://liasync.atualyze.com.br'
-        }
+        },
+        gerar_cobranca_pix: { key: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Sobral' }
       }
     }
   };
@@ -525,6 +526,11 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(created.success, true);
   assert.equal(created.handle, 'tauanpires');
   assert.equal(created.checkoutUrl, 'https://checkout.infinitepay.io/tauanpires/abc123');
+  const unifiedPaymentUrl = new URL(created.paymentUrl);
+  assert.equal(unifiedPaymentUrl.pathname, '/pix');
+  assert.equal(unifiedPaymentUrl.searchParams.get('v'), '10.00');
+  assert.equal(unifiedPaymentUrl.searchParams.get('c'), created.checkoutUrl);
+  assert.ok(unifiedPaymentUrl.searchParams.has('p'));
   assert.equal(fetchCalls[0].body.items[0].price, 1000);
   assert.equal(fetchCalls[0].body.webhook_url, 'https://liasync.atualyze.com.br/webhook/infinitepay');
 

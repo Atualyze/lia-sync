@@ -13,6 +13,7 @@ import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { createApiV1Handler } from './api-v1.mjs';
 import { renderPayHomePage } from './pay-home.mjs';
+import { toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -94,6 +95,20 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const requestHost = String(req.headers.host || '').replace(/:\d+$/, '').replace(/\.$/, '').toLowerCase();
     if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
+      try {
+        const generated = await toolGerarCobrancaPix.execute(
+          { valor: 0, enviarWhatsApp: false },
+          { botConfig: adminConfig?.active || {}, actor: 'client' }
+        );
+        if (generated?.success && generated.paymentUrl) {
+          const generatedUrl = new URL(generated.paymentUrl, 'https://pay.atualyze.com.br');
+          const paymentPageUrl = new URL('https://pay.atualyze.com.br/pix');
+          paymentPageUrl.search = generatedUrl.search;
+          return renderPixPaymentPage(res, paymentPageUrl);
+        }
+      } catch {
+        // Se a chave ainda não estiver configurada, mantém a página pública informativa.
+      }
       return renderPayHomePage(res);
     }
     if (req.method === 'GET' && u.pathname === '/pix') {
