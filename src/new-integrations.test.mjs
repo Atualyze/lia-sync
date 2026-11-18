@@ -589,6 +589,119 @@ test('Cliente Pix: pergunta o formato antes de gerar e entende "copia e cola" no
   assert.equal(sentImages.length, 1);
 });
 
+test('Cliente Pix: reidrata pedido, escolha de copia e cola e valor em processos diferentes', async (t) => {
+  const dir = fs.mkdtempSync('/tmp/lia-client-pix-');
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const phone = '5511987654321';
+  const botConfig = createPixBotConfig('11999998888');
+  const sentImages = [];
+  const conversationRows = new Map();
+  const fakeClient = {
+    enabled: true,
+    async select(table, query = '') {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        const match = query.match(/external_key=eq\.([^&]+)/);
+        const row = match ? conversationRows.get(decodeURIComponent(match[1])) : null;
+        return row ? [row] : [];
+      }
+      if (table === 'conversation_messages') return [];
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-client-pix' }];
+      if (table === 'conversations') {
+        const row = {
+          ...rows[0],
+          id: `conversation-${rows[0].external_key}`,
+          updated_at: new Date().toISOString(),
+          contacts: { phone: rows[0].external_key }
+        };
+        conversationRows.set(rows[0].external_key, row);
+        return [{ id: row.id }];
+      }
+      return [];
+    }
+  };
+  const createStore = turn => new SupabaseSessionStore(`${dir}/sessions-${turn}.json`, { client: fakeClient });
+  const createClientFlow = store => createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    whatsapp: { sendImage: async (target, payload) => sentImages.push({ target, payload }) },
+    ai: { askAI: async () => ({ reply: 'Certo, vou verificar.', tool_calls: [] }) }
+  });
+
+  const firstStore = createStore('first');
+  const first = await createClientFlow(firstStore).process({ phone, text: 'Preciso do Pix', origin: 'client' });
+  assert.match(first, /só a chave/i);
+  assert.match(first, /copia e cola/i);
+  await firstStore.flush();
+  assert.deepEqual(conversationRows.get(phone).metadata.pendingClientPayment, firstStore.get(phone).pendingClientPayment);
+
+  const secondStore = createStore('second');
+  const second = await createClientFlow(secondStore).process({ phone, text: 'Gere o código copia e cola', origin: 'client' });
+  assert.match(second, /qual é o valor/i);
+  assert.equal(secondStore.get(phone).pendingClientPayment.choice, 'pix');
+  await secondStore.flush();
+  assert.deepEqual(conversationRows.get(phone).metadata.pendingClientPayment, secondStore.get(phone).pendingClientPayment);
+
+  const thirdStore = createStore('third');
+  const rehydrated = await thirdStore.syncSession(phone);
+  assert.deepEqual(rehydrated.pendingClientPayment, secondStore.get(phone).pendingClientPayment);
+  const third = await createClientFlow(thirdStore).process({ phone, text: '10', origin: 'client' });
+  assert.match(third, /Aqui está seu Pix para pagamento/i);
+  assert.match(third, /R\$ 10,00/);
+  assert.match(third, /000201/);
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].target, phone);
+  assert.equal(thirdStore.get(phone).pendingClientPayment, null);
+  await thirdStore.flush();
+});
+
+test('Cliente Pix: “só a chave” é reconhecido deterministicamente mesmo sem contexto anterior', async () => {
+  const flow = createFlow({
+    store: new SessionStore(),
+    getBotConfig: () => createPixBotConfig('11999998888'),
+    ai: { askAI: async () => ({ reply: 'Não entendi.', tool_calls: [] }) }
+  });
+  const reply = await flow.process({ phone: '5511976543210', text: 'Só a chave', origin: 'client' });
+  assert.match(reply, /Chave Pix para pagamento/i);
+  assert.doesNotMatch(reply, /INSERIR CHAVE PIX AQUI/i);
+});
+
+test('Cliente Pix: nunca envia placeholder como se fosse chave configurada', async () => {
+  const flow = createFlow({
+    store: new SessionStore(),
+    getBotConfig: () => createPixBotConfig('[INSERIR CHAVE PIX AQUI]'),
+    ai: { askAI: async () => ({ reply: 'Vou verificar a chave.', tool_calls: [] }) }
+  });
+  const reply = await flow.process({ phone: '5511976543210', text: 'Só a chave', origin: 'client' });
+  assert.match(reply, /chave Pix ainda não está configurada/i);
+  assert.doesNotMatch(reply, /INSERIR CHAVE PIX AQUI/i);
+});
+
+test('Cliente Pix: falha de geração não repete pedido de valor/descrição se a IA estiver indisponível', async () => {
+  const originalPixKey = process.env.PIX_KEY;
+  delete process.env.PIX_KEY;
+  try {
+    const flow = createFlow({
+      store: new SessionStore(),
+      getBotConfig: () => createPixBotConfig(''),
+      ai: { askAI: async () => null }
+    });
+    const reply = await flow.process({
+      phone: '5511976543210',
+      text: 'Gere o código copia e cola de 10 reais',
+      origin: 'client'
+    });
+    assert.match(reply, /chave Pix ainda não está configurada/i);
+    assert.doesNotMatch(reply, /qual.*valor.*descri[cç][aã]o/i);
+  } finally {
+    if (originalPixKey === undefined) delete process.env.PIX_KEY;
+    else process.env.PIX_KEY = originalPixKey;
+  }
+});
+
 test('Pix BR Code: normaliza celular de 11 dígitos com +55 sem confundir com CPF e remove frase de pedido da descrição', () => {
   assert.equal(normalizePixKey('88998340085'), '+5588998340085');
   assert.equal(normalizePixKey('88998340085', 'telefone'), '+5588998340085');

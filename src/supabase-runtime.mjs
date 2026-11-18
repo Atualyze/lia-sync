@@ -4,6 +4,21 @@ import { AdminConfigStore, DEFAULT_BOT_CONFIG, merge, normalizeBotConfig } from 
 
 const jsonClone = value => JSON.parse(JSON.stringify(value));
 const iso = value => value ? new Date(value).toISOString() : null;
+const normalizePendingClientPayment = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  let createdAt;
+  try { createdAt = iso(value.createdAt); } catch { return null; }
+  if (!createdAt) return null;
+  const sourceArgs = value.args && typeof value.args === 'object' && !Array.isArray(value.args) ? value.args : {};
+  const args = {};
+  const rawAmount = sourceArgs.valor;
+  if (typeof rawAmount === 'number' && Number.isFinite(rawAmount) && rawAmount >= 0) args.valor = rawAmount;
+  else if (typeof rawAmount === 'string' && /^\d+(?:[.,]\d{1,2})?$/.test(rawAmount.trim())) args.valor = Number(rawAmount.trim().replace(',', '.'));
+  const description = typeof sourceArgs.descricao === 'string' ? sourceArgs.descricao.trim().slice(0, 80) : '';
+  if (description) args.descricao = description;
+  const choice = value.choice === 'pix' || value.choice === 'checkout' ? value.choice : null;
+  return { args, choice, createdAt };
+};
 // Logs não podem conter telefone completo (regra do projeto).
 const maskKey = value => {
   const raw = String(value || '');
@@ -124,6 +139,7 @@ function rowToSession(row, messages = []) {
     pendingPixRequest: meta.pendingPixRequest && typeof meta.pendingPixRequest === 'object' && !Array.isArray(meta.pendingPixRequest)
       ? { ...meta.pendingPixRequest }
       : null,
+    pendingClientPayment: normalizePendingClientPayment(meta.pendingClientPayment),
     lastIntent: row.last_intent || undefined,
     intents: row.intents || [],
     awaitingReply: Boolean(row.awaiting_reply),
@@ -216,6 +232,7 @@ function sessionToConversation(key, session, contactId) {
       pendingPixRequest: session.pendingPixRequest && typeof session.pendingPixRequest === 'object'
         ? { ...session.pendingPixRequest }
         : null,
+      pendingClientPayment: normalizePendingClientPayment(session.pendingClientPayment),
       followUpCount: Number(session.followUpCount || 0),
       followUpSentAt: date(session.followUpSentAt)
     },
@@ -389,6 +406,9 @@ export class SupabaseSessionStore extends SessionStore {
               ? { ...lSession.pendingPixRequest }
               : null;
           }
+          if (lSession.pendingClientPayment && lTime >= rTime) {
+            rSession.pendingClientPayment = normalizePendingClientPayment(lSession.pendingClientPayment);
+          }
           if (lSession.lastAnalyzedDocument && (!rSession.lastAnalyzedDocument || lTime >= rTime)) {
             rSession.lastAnalyzedDocument = lSession.lastAnalyzedDocument;
           }
@@ -474,6 +494,10 @@ export class SupabaseSessionStore extends SessionStore {
         if (s.pendingPixRequest && localPixRequestedAt > remoteTime) {
           remoteSession.pendingPixRequest = { ...s.pendingPixRequest };
         }
+        const localPayment = normalizePendingClientPayment(s.pendingClientPayment);
+        if (localPayment && Date.parse(localPayment.createdAt) > remoteTime) {
+          remoteSession.pendingClientPayment = localPayment;
+        }
         remoteSession.pendingAudioConfirmation = s.pendingAudioConfirmation || null;
         remoteSession.pendingRecipient = s.pendingRecipient || null;
         remoteSession.pendingAsAudio = Boolean(s.pendingAsAudio);
@@ -545,7 +569,7 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}`;
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingClientPayment || null)}`;
         if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
         const externalId = isSimulation ? key : key.replace(/^sim:/, '');

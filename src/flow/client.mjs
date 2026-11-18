@@ -5,7 +5,7 @@ import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
-import { toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
+import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
@@ -62,12 +62,15 @@ function directPixKeyReply({ key, owner }) {
 }
 
 function resolveConfiguredPixKey(botConfig) {
-  return String(
+  const configured = String(
     botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
     botConfig?.integrations?.pix?.key ||
     process.env.PIX_KEY ||
     ''
   ).trim();
+  if (!configured || /\b(?:inserir|placeholder|exemplo|sua chave)\b|chave\s+pix\s+aqui/i.test(configured)) return '';
+  const keyType = botConfig?.tools?.settings?.gerar_cobranca_pix?.keyType || 'auto';
+  return normalizePixKey(configured, keyType);
 }
 
 function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false } = {}) {
@@ -539,6 +542,8 @@ export async function handleClientMessage({
       let toolReplyOverride = null;
       let reminderHandledByTool = false;
       let pixHandledByTool = false;
+      let pixFailureHandoff = false;
+      let pixFailureReason = '';
       // Valores autoritativos vindos de resultados de ferramentas (Pix gerado, checkout
       // criado): são preços reais da operação e devem passar pelo filtro de segurança.
       const toolAuthorizedPrices = new Set();
@@ -567,9 +572,12 @@ export async function handleClientMessage({
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (selected === 'pix' || selected === 'checkout') {
           const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
-          if (selected === 'checkout' && amount <= 0) {
+          if (amount <= 0) {
             pendingPayment.choice = selected;
-            toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
+            s.pendingClientPayment = pendingPayment;
+            toolReplyOverride = selected === 'checkout'
+              ? 'Para gerar o checkout, qual é o valor do pagamento?'
+              : 'Qual é o valor para eu gerar o código copia e cola?';
           } else {
             const args = { ...(pendingPayment.args || {}), valor: amount };
             s.pendingClientPayment = null;
@@ -588,9 +596,9 @@ export async function handleClientMessage({
         toolCalls.push(...syntheticToolCalls);
       }
 
-      // Fallback determinístico para o caso observado em produção: a IA responde
-      // apenas com texto, embora o cliente tenha pedido Pix ou escolhido um formato.
-      if (isClient && toolCalls.length === 0 && /\bpix\b/i.test(clean) && !pendingPayment) {
+      // Fallback determinístico: seleções curtas, como "só a chave" ou
+      // "copia e cola", também funcionam sem depender do contexto anterior.
+      if (isClient && toolCalls.length === 0 && (/\bpix\b/i.test(clean) || currentPaymentChoice) && !pendingPayment) {
         const choice = paymentChoice(clean);
         const amount = amountFromText(clean);
         if (choice === 'key') {
@@ -698,9 +706,12 @@ export async function handleClientMessage({
                     includeKey: !toolRes.valor || askedPixKeyOrFree
                   });
                 } else {
+                  s.pendingClientPayment = null;
+                  pixFailureHandoff = true;
+                  pixFailureReason = 'falha ao gerar Pix para o cliente';
                   toolReplyOverride = toolRes?.error === 'pix_key_not_configured'
-                    ? `No momento não consegui gerar o Pix automaticamente porque a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui!`
-                    : `Qual o *valor* e a *descrição* do Pix que você precisa gerar?`;
+                    ? 'No momento não consegui gerar o Pix automaticamente porque a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.'
+                    : 'Não consegui concluir a geração do Pix agora. Já vou pedir para a equipe verificar e te retornar por aqui, sem solicitar novamente os dados que você já enviou.';
                 }
               }
               if (tc.name === 'checkout_infinitepay') {
@@ -962,8 +973,8 @@ export async function handleClientMessage({
       const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
       const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(clean));
 
-      if (result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner) {
-        const handoffReason = result?.handoff_reason ||
+      if (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner) {
+        const handoffReason = pixFailureReason || result?.handoff_reason ||
           (userDirectedToOwner ? `Assunto direcionado a ${owner}: "${clean.slice(0, 90)}"` :
             (textHintsHandoff ? `Assunto encaminhado pela ${assistant} a ${owner}: "${clean.slice(0, 90)}"` : `sugerido pela ${assistant} pelo contexto`));
         await triggerHandoff(s, {

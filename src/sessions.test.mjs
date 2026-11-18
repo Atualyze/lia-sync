@@ -99,6 +99,53 @@ test('SupabaseSessionStore persiste e restaura pendingPixRequest pelo metadata d
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+test('SupabaseSessionStore persiste e restaura pendingClientPayment entre processos', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-pending-client-payment-'));
+  let conversationRow = null;
+  const fakeClient = {
+    enabled: true,
+    async select(table, query = '') {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversationRow ? [conversationRow] : [];
+      }
+      if (table === 'conversation_messages') return [];
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-client-payment' }];
+      if (table === 'conversations') {
+        conversationRow = {
+          ...rows[0],
+          id: 'conversation-client-payment',
+          updated_at: new Date().toISOString(),
+          contacts: { phone: '5511987654321' }
+        };
+        return [{ id: 'conversation-client-payment' }];
+      }
+      return [];
+    }
+  };
+  const pending = {
+    args: { valor: 10, descricao: 'Consulta' },
+    choice: 'pix',
+    createdAt: new Date().toISOString()
+  };
+  const store = new SupabaseSessionStore(path.join(dir, 'sessions.json'), { client: fakeClient });
+  const session = store.get('5511987654321');
+  session.pendingClientPayment = pending;
+  session.updatedAt = pending.createdAt;
+  session.lastUserAt = pending.createdAt;
+  store.markDirty();
+  await store.flush();
+
+  assert.deepEqual(conversationRow.metadata.pendingClientPayment, pending);
+  const restoredStore = new SupabaseSessionStore(path.join(dir, 'sessions-restored.json'), { client: fakeClient });
+  const restored = await restoredStore.syncSession('5511987654321');
+  assert.deepEqual(restored.pendingClientPayment, pending);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test('SupabaseSessionStore.syncSession preserva alterações locais pendentes, takeover recente e limpeza local', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-sync-session-'));
   const file = path.join(dir, 'sessions.json');
