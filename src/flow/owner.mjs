@@ -1139,8 +1139,14 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   const hasNumericValue = Number(tc.args?.valor) > 0 || /(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i.test(cleanCommand);
                   const explicitFreeValue = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
                   if (!hasNumericValue && !explicitFreeValue) {
+                    sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
+                    store.markDirty();
                     const askVal = `${owner}, qual o *valor* e a *descrição* do Pix que você quer gerar? _(Se quiser sem valor fixo, me diga *valor livre*)_`;
                     return recordSelfTurn(filterReply(askVal, { isCopilot: true }).text);
+                  }
+                  const commandPixAmount = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
+                  if (commandPixAmount && (!Number(tc.args?.valor) || Number(tc.args?.valor) <= 0)) {
+                    tc.args.valor = Number(commandPixAmount[1].replace(',', '.'));
                   }
                 }
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
@@ -1268,6 +1274,7 @@ ${errMsg}`;
             .trim();
           return { hasAmountOrFree: Boolean(amountMatch || isFreeAmount), isFreeAmount, valor, desc };
         };
+        const pendingPixRequest = sSelf.pendingPixRequest;
 
         const pixResult = toolOutputs.find(t => t.tool === 'gerar_cobranca_pix');
         if (pixResult?.result) {
@@ -1397,7 +1404,7 @@ ${errMsg}`;
           && !isAudioForSelf
           && (
             promisedPixInReply
-            || ((hasPixKeyword || askedPixRecently) && pixParsed.hasAmountOrFree)
+            || ((hasPixKeyword || askedPixRecently || pendingPixRequest) && pixParsed.hasAmountOrFree)
           );
         if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
@@ -1417,6 +1424,8 @@ ${errMsg}`;
             session: sSelf
           });
           if (autoIp?.success) {
+            sSelf.pendingPixRequest = null;
+            store.markDirty();
             const valorFmt = `R$ ${Number(autoIp.valor).toFixed(2).replace('.', ',')}`;
             const msg = [
               `💳 *Link de Pagamento InfinitePay gerado!*`,
@@ -1452,6 +1461,8 @@ ${errMsg}`;
             session: sSelf
           });
           if (autoPix?.success) {
+            sSelf.pendingPixRequest = null;
+            store.markDirty();
             return recordSelfTurn(filterReply(formatPixCopilotReply(autoPix), { isCopilot: true }).text);
           }
           if (autoPix?.error === 'pix_key_not_configured') {
@@ -1475,11 +1486,17 @@ ${errMsg}`;
             } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a|infinitepay)\b/i.test(cleanCommand)) {
               const pixConfigured = Boolean(botConfig?.tools?.settings?.gerar_cobranca_pix?.key || process.env.PIX_KEY);
               if (ipEnabled) {
+                sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
+                store.markDirty();
                 rawReply = `Para gerar o link de pagamento InfinitePay agora, ${owner}, me diga o *valor* (ex: *150*) e a *descrição*.`;
               } else {
-                rawReply = pixConfigured
-                  ? `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`
-                  : `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
+                if (pixConfigured) {
+                  sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
+                  store.markDirty();
+                  rawReply = `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`;
+                } else {
+                  rawReply = `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
+                }
               }
             } else if (/\b(?:cep|cnpj|feriado)\b/i.test(cleanCommand)) {
               rawReply = `Pode me passar o *CEP*, *CNPJ* ou a *data/ano* que você quer consultar, ${owner}?`;

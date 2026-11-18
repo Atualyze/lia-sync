@@ -275,6 +275,35 @@ test('Copiloto Pix: executa gerar_cobranca_pix no turno seguinte ("Pix" -> "10, 
   assert.notEqual(sentImages[0].phone, OWNER_SELF_KEY);
 });
 
+test('Copiloto Pix: não entra em loop quando a IA repete a pergunta após o valor já ter sido informado', async () => {
+  const store = new SessionStore();
+  const sentImages = [];
+  const botConfig = createPixBotConfig('88998340085');
+  const self = store.get(OWNER_SELF_KEY);
+  self.pendingPixRequest = { requestedAt: new Date().toISOString() };
+  self.history.push({ role: 'assistant', content: 'Qual o valor e a descrição?', createdAt: new Date().toISOString() });
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: { askAI: async () => ({ reply: 'Qual o valor e a descrição?', tool_calls: [] }) }
+  });
+
+  const result = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: '20 reais, compra de ração',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+
+  assert.match(result, /Cobrança Pix gerada!/i);
+  assert.match(result, /R\$ 20,00/);
+  assert.equal(sentImages.length, 1);
+  assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest, null);
+});
+
 test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
   const store = new SessionStore();
   const botConfig = createPixBotConfig('88998340085');
