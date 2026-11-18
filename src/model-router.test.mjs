@@ -4,14 +4,14 @@ import { decidirModeloPorContexto } from './model-router.mjs';
 
 test('model-router: roteia saudações e mensagens curtas para flash-lite', () => {
   const r1 = decidirModeloPorContexto({ userText: 'Oi, tudo bem?' });
-  assert.equal(r1.model, 'gemini-3.5-flash-lite');
+  assert.equal(r1.model, 'gemini-3.1-flash-lite');
   assert.equal(r1.tier, 'lite');
 
   const r2 = decidirModeloPorContexto({ userText: 'bom dia!' });
-  assert.equal(r2.model, 'gemini-3.5-flash-lite');
+  assert.equal(r2.model, 'gemini-3.1-flash-lite');
 
   const r3 = decidirModeloPorContexto({ userText: 'qual o link do portal?' });
-  assert.equal(r3.model, 'gemini-3.5-flash-lite');
+  assert.equal(r3.model, 'gemini-3.1-flash-lite');
 });
 
 test('model-router: roteia comandos de ferramentas e super agente para flash', () => {
