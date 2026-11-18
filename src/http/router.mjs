@@ -12,6 +12,7 @@ import { handleProspectingRoutes } from './prospecting-routes.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { createApiV1Handler } from './api-v1.mjs';
+import { renderPayHomePage } from './pay-home.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -90,6 +91,10 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (req.method === 'GET' && u.pathname === '/ready') {
       const readiness = await readinessCheck();
       return json(res, readiness.ok ? 200 : 503, readiness);
+    }
+    const requestHost = String(req.headers.host || '').replace(/:\d+$/, '').replace(/\.$/, '').toLowerCase();
+    if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
+      return renderPayHomePage(res);
     }
     if (req.method === 'GET' && u.pathname === '/pix') {
       return renderPixPaymentPage(res, u);

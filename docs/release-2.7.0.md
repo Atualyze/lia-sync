@@ -7,6 +7,7 @@ Unificar a experiência de pagamento enviada pela Lia em uma página responsiva:
 ## Entrega
 
 - A rota pública `/pix` foi redesenhada com a marca Atualyze Pay e layout adaptável para desktop, tablet e mobile.
+- A raiz de `pay.atualyze.com.br` exibe uma página pública de boas-vindas; os demais subdomínios mantêm a autenticação do dashboard.
 - O card de pagamento mostra favorecido, valor, descrição e QR Code.
 - O cliente pode copiar o código Pix, copiar a chave Pix ou abrir o checkout InfinitePay em uma nova aba.
 - O botão InfinitePay é exibido somente quando o link possui domínio HTTPS permitido.
