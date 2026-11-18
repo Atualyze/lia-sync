@@ -56,6 +56,49 @@ test('SessionStore.purge() remove sessoes expiradas sem legalHold', () => {
   assert.ok(store.sessions['5511999997777']);
 });
 
+test('SupabaseSessionStore persiste e restaura pendingPixRequest pelo metadata da conversa', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-pending-pix-'));
+  let conversationRow = null;
+  const fakeClient = {
+    enabled: true,
+    async select(table, query) {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversationRow ? [conversationRow] : [];
+      }
+      if (table === 'conversation_messages') return [];
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-1' }];
+      if (table === 'conversations') {
+        conversationRow = {
+          ...rows[0],
+          id: 'conversation-1',
+          updated_at: new Date().toISOString(),
+          contacts: { phone: '5511999998888' }
+        };
+        return [{ id: 'conversation-1' }];
+      }
+      return [];
+    }
+  };
+  const pending = { requestedAt: '2026-11-18T15:34:56.000Z' };
+  const store = new SupabaseSessionStore(path.join(dir, 'sessions.json'), { client: fakeClient });
+  const session = store.get('5511999998888');
+  session.pendingPixRequest = pending;
+  session.updatedAt = pending.requestedAt;
+  session.lastUserAt = pending.requestedAt;
+  store.markDirty();
+  await store.flush();
+
+  assert.deepEqual(conversationRow.metadata.pendingPixRequest, pending);
+  const restoredStore = new SupabaseSessionStore(path.join(dir, 'sessions-restored.json'), { client: fakeClient });
+  const restored = await restoredStore.syncSession('5511999998888');
+  assert.deepEqual(restored.pendingPixRequest, pending);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test('SupabaseSessionStore.syncSession preserva alterações locais pendentes, takeover recente e limpeza local', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-sync-session-'));
   const file = path.join(dir, 'sessions.json');

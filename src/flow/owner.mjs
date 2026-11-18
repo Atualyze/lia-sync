@@ -15,6 +15,24 @@ import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mj
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
+function normalizePixAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  let normalized = value.trim().replace(/\s+/g, '').replace(/^R\$/i, '');
+  if (!normalized) return null;
+  const comma = normalized.lastIndexOf(',');
+  const dot = normalized.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    normalized = comma > dot
+      ? normalized.replace(/\./g, '').replace(',', '.')
+      : normalized.replace(/,/g, '');
+  } else if (comma >= 0) {
+    normalized = normalized.replace(',', '.');
+  }
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 function parseNaturalControlResult(result) {
   const raw = String(result?.text || result?.reply || result?.content || '').trim();
   const match = raw.match(/\{[\s\S]*\}/);
@@ -1136,6 +1154,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 tc.args = { acao: 'criar_link', ...(tc.args || {}) };
               }
               if (tc.name === 'gerar_cobranca_pix') {
+                  const normalizedAmount = normalizePixAmount(tc.args?.valor);
+                  if (normalizedAmount !== null && tc.args && typeof tc.args === 'object') {
+                    tc.args.valor = normalizedAmount;
+                  }
                   const hasNumericValue = Number(tc.args?.valor) > 0 || /(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i.test(cleanCommand);
                   const explicitFreeValue = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
                   if (!hasNumericValue && !explicitFreeValue) {
@@ -1282,9 +1304,15 @@ ${errMsg}`;
           if (!r.success) {
             const askPixMsg = r.error === 'pix_key_not_configured'
               ? `${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`
-              : `${owner}, me confirma o *valor* e a *descrição* (ou a *Chave Pix*) para eu gerar a cobrança certinha?`;
+              : `⚠️ *Não consegui gerar a cobrança Pix.* ${String(r.message || r.error || 'Falha inesperada na ferramenta Pix.').replace(/[\r\n]+/g, ' ').slice(0, 220)} Os dados informados não serão tratados como ausentes; confira o erro e tente novamente.`;
+            if (r.error !== 'pix_key_not_configured') {
+              sSelf.pendingPixRequest = null;
+              store.markDirty();
+            }
             return recordSelfTurn(filterReply(askPixMsg, { isCopilot: true }).text);
           }
+          sSelf.pendingPixRequest = null;
+          store.markDirty();
           return recordSelfTurn(filterReply(formatPixCopilotReply(r), { isCopilot: true }).text);
         }
 
@@ -1468,9 +1496,10 @@ ${errMsg}`;
           if (autoPix?.error === 'pix_key_not_configured') {
             return recordSelfTurn(filterReply(`${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`, { isCopilot: true }).text);
           }
-          if (!rawReply) {
-            return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${autoPix?.message || autoPix?.error || 'verifique a Chave Pix nas configurações da ferramenta gerar_cobranca_pix.'}`, { isCopilot: true }).text);
-          }
+          sSelf.pendingPixRequest = null;
+          store.markDirty();
+          const failure = String(autoPix?.message || autoPix?.error || 'verifique as configurações da ferramenta gerar_cobranca_pix.').replace(/[\r\n]+/g, ' ').slice(0, 220);
+          return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${failure} Os campos informados não serão solicitados novamente como se estivessem ausentes.`, { isCopilot: true }).text);
         }
         if (!rawReply) {
           if (isAudioForSelf) {
@@ -1508,6 +1537,14 @@ ${errMsg}`;
               rawReply = `${owner}, não ficou claro o que você precisa com essa mensagem. Pode me dar um pouco mais de contexto do que gostaria que eu fizesse?`;
             }
           }
+        }
+
+        if (rawReply && /\b(?:pix|cobran[cç]a)\b/i.test(rawReply)
+          && /\b(?:valor|quanto)\b/i.test(rawReply)
+          && /\bdescri[cç][aã]o\b/i.test(rawReply)
+          && /\?/.test(rawReply)) {
+          sSelf.pendingPixRequest ??= { requestedAt: new Date(now()).toISOString() };
+          store.markDirty();
         }
 
         // Prevenção de loop: se a resposta for idêntica à pergunta anterior da assistente

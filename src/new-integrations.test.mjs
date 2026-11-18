@@ -12,6 +12,7 @@ import { classificarSetorPorTexto } from './triage-router.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
 import { createFlow } from './flow.mjs';
 import { SessionStore, normalizePhone } from './sessions.mjs';
+import { SupabaseSessionStore } from './supabase-runtime.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { buildSystemPrompt } from './knowledge.mjs';
 import { listKnowledgeBasesSync } from './knowledge-bases.mjs';
@@ -302,6 +303,160 @@ test('Copiloto Pix: não entra em loop quando a IA repete a pergunta após o val
   assert.match(result, /R\$ 20,00/);
   assert.equal(sentImages.length, 1);
   assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest, null);
+});
+
+test('Copiloto Pix: normaliza valor textual do schema compartilhado após pergunta do modelo', async () => {
+  assert.equal(responseSchema.properties.tool_calls.items.properties.args.properties.valor.type, 'STRING');
+  const store = new SessionStore();
+  const sentImages = [];
+  const botConfig = createPixBotConfig('88998340085');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: {
+      askAI: async ({ userText }) => /^pix$/i.test(userText.trim())
+        ? { reply: 'Qual o *valor* e a *descrição* do Pix?', tool_calls: [] }
+        : { reply: 'Vou gerar a cobrança.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'pagamento de reação' } }] }
+    }
+  });
+
+  const first = await flow.process({ phone: OWNER_SELF_KEY, text: 'Pix', origin: 'owner', rawItem: { phone: '5588998340085' } });
+  assert.match(first, /valor/i);
+  assert.ok(store.get(OWNER_SELF_KEY).pendingPixRequest, 'pergunta textual da IA deve marcar uma continuação Pix');
+
+  const second = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: '20 reais, pagamento de reação',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+  assert.match(second, /Cobrança Pix gerada!/i);
+  assert.match(second, /R\$ 20,00/);
+  assert.equal(sentImages.length, 1, 'a cobrança deve ser executada uma única vez');
+  assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest, null);
+});
+
+test('Copiloto Pix: cobrança solicitada naturalmente sem a palavra “Pix” usa a ferramenta classificada pela IA', async () => {
+  const store = new SessionStore();
+  const sentImages = [];
+  const flow = createFlow({
+    store,
+    getBotConfig: () => createPixBotConfig('88998340085'),
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: { askAI: async () => ({
+      reply: 'Vou preparar a cobrança.',
+      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'compra de ração' } }]
+    }) }
+  });
+
+  const reply = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'Quero cobrar vinte reais pela compra de ração',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+  assert.match(reply, /Cobrança Pix gerada!/i);
+  assert.match(reply, /R\$ 20,00/);
+  assert.equal(sentImages.length, 1);
+});
+
+test('Copiloto Pix: resposta sobrevive à reidratação Supabase entre pergunta Markdown e valor/descrição', async () => {
+  const base = `/tmp/lia-pix-refresh-${process.pid}-${Date.now()}`;
+  let conversation = null;
+  let messages = [];
+  const fakeClient = {
+    enabled: true,
+    async select(table, query) {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversation ? [conversation] : [];
+      }
+      if (table === 'conversation_messages') return messages;
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-pix' }];
+      if (table === 'conversations') {
+        conversation = {
+          ...rows[0],
+          id: 'conversation-pix',
+          updated_at: new Date().toISOString(),
+          contacts: { phone: '5588998340085' }
+        };
+        return [{ id: 'conversation-pix' }];
+      }
+      if (table === 'conversation_messages') {
+        messages = rows;
+        return rows.map(row => ({ ...row }));
+      }
+      return [];
+    }
+  };
+  const botConfig = createPixBotConfig('88998340085');
+  const sentImages = [];
+  const firstStore = new SupabaseSessionStore(`${base}-first.json`, { client: fakeClient, logger: { warn() {}, error() {} } });
+  const firstFlow = createFlow({
+    store: firstStore,
+    getBotConfig: () => botConfig,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: { askAI: async () => ({ reply: 'Qual o *valor* e a *descrição* do Pix?', tool_calls: [] }) }
+  });
+  const asked = await firstFlow.process({ phone: OWNER_SELF_KEY, text: 'Pix', origin: 'owner' });
+  assert.match(asked, /valor/i);
+  assert.ok(firstStore.get(OWNER_SELF_KEY).pendingPixRequest);
+  await firstStore.flush();
+
+  const refreshedStore = new SupabaseSessionStore(`${base}-refreshed.json`, { client: fakeClient, logger: { warn() {}, error() {} } });
+  await refreshedStore.syncSession(OWNER_SELF_KEY);
+  assert.ok(refreshedStore.get(OWNER_SELF_KEY).pendingPixRequest, 'pendência Pix deve vir do metadata após reidratação');
+  const secondFlow = createFlow({
+    store: refreshedStore,
+    getBotConfig: () => botConfig,
+    getHumanPhone: () => '5588998340085',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: { askAI: async () => ({
+      reply: 'Vou gerar a cobrança.',
+      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'pagamento de reação' } }]
+    }) }
+  });
+  const generated = await secondFlow.process({
+    phone: OWNER_SELF_KEY,
+    text: '20 reais, pagamento de reação',
+    origin: 'owner',
+    rawItem: { phone: '5588998340085' }
+  });
+
+  assert.match(generated, /Cobrança Pix gerada!/i);
+  assert.match(generated, /R\$ 20,00/);
+  assert.equal(sentImages.length, 1);
+  assert.equal(refreshedStore.get(OWNER_SELF_KEY).pendingPixRequest, null);
+  await refreshedStore.flush();
+  for (const suffix of ['first', 'refreshed']) {
+    try { fs.unlinkSync(`${base}-${suffix}.json`); } catch {}
+  }
+});
+
+test('Copiloto Pix: falha de validação da ferramenta não mascara o erro como campos ausentes', async () => {
+  const store = new SessionStore();
+  const flow = createFlow({
+    store,
+    getBotConfig: () => createPixBotConfig('88998340085'),
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: { askAI: async () => ({
+      reply: '',
+      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste', argumento_invalido: true } }]
+    }) }
+  });
+
+  const reply = await flow.process({ phone: OWNER_SELF_KEY, text: 'Pix de 20 reais para teste', origin: 'owner' });
+  assert.match(reply, /Não consegui gerar a cobrança Pix/i);
+  assert.doesNotMatch(reply, /me confirma o \*valor\* e a \*descrição\*/i);
 });
 
 test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
@@ -823,6 +978,9 @@ test('Base de autoconhecimento (motor + painel + limites) é exclusiva do Copilo
 
   const copilotPrompt = buildSystemPrompt({ isOwner: true, botConfig: { identity: { assistantName: 'Lia', ownerName: 'Tauan' } } });
   assert.match(copilotPrompt, /MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES/i);
+  assert.match(copilotPrompt, /INTERPRETE A INTENÇÃO, NÃO UMA PALAVRA OU FRASE EXATA/i);
+  assert.match(copilotPrompt, /valores escritos por extenso/i);
+  assert.match(copilotPrompt, /Não peça de novo algo que já foi informado/i);
 
   const clientPrompt = buildSystemPrompt({ isOwner: false, botConfig: { identity: { assistantName: 'Lia', ownerName: 'Tauan' } } });
   assert.doesNotMatch(clientPrompt, /MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES/i);

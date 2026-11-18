@@ -121,6 +121,9 @@ function rowToSession(row, messages = []) {
     dealStage: meta.dealStage || '',
     audioPreference: meta.audioPreference || undefined,
     askedAudioPreference: Boolean(meta.askedAudioPreference),
+    pendingPixRequest: meta.pendingPixRequest && typeof meta.pendingPixRequest === 'object' && !Array.isArray(meta.pendingPixRequest)
+      ? { ...meta.pendingPixRequest }
+      : null,
     lastIntent: row.last_intent || undefined,
     intents: row.intents || [],
     awaitingReply: Boolean(row.awaiting_reply),
@@ -210,6 +213,9 @@ function sessionToConversation(key, session, contactId) {
       dealStage: session.dealStage || '',
       audioPreference: session.audioPreference || null,
       askedAudioPreference: Boolean(session.askedAudioPreference),
+      pendingPixRequest: session.pendingPixRequest && typeof session.pendingPixRequest === 'object'
+        ? { ...session.pendingPixRequest }
+        : null,
       followUpCount: Number(session.followUpCount || 0),
       followUpSentAt: date(session.followUpSentAt)
     },
@@ -378,6 +384,11 @@ export class SupabaseSessionStore extends SessionStore {
             rSession.clientName = lSession.clientName;
             rSession.contactName = lSession.contactName || lSession.clientName;
           }
+          if (lSession.pendingPixRequest !== undefined && lTime >= rTime) {
+            rSession.pendingPixRequest = lSession.pendingPixRequest && typeof lSession.pendingPixRequest === 'object'
+              ? { ...lSession.pendingPixRequest }
+              : null;
+          }
           if (lSession.lastAnalyzedDocument && (!rSession.lastAnalyzedDocument || lTime >= rTime)) {
             rSession.lastAnalyzedDocument = lSession.lastAnalyzedDocument;
           }
@@ -459,6 +470,10 @@ export class SupabaseSessionStore extends SessionStore {
         const remoteSession = rowToSession(row, cleanMessages);
 
         // Preserva flags voláteis locais se houver
+        const localPixRequestedAt = Date.parse(s.pendingPixRequest?.requestedAt || '') || 0;
+        if (s.pendingPixRequest && localPixRequestedAt > remoteTime) {
+          remoteSession.pendingPixRequest = { ...s.pendingPixRequest };
+        }
         remoteSession.pendingAudioConfirmation = s.pendingAudioConfirmation || null;
         remoteSession.pendingRecipient = s.pendingRecipient || null;
         remoteSession.pendingAsAudio = Boolean(s.pendingAsAudio);
@@ -530,7 +545,7 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}`;
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}`;
         if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
         const externalId = isSimulation ? key : key.replace(/^sim:/, '');
