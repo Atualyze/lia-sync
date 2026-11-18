@@ -138,7 +138,10 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
 
   // 4. Comando limpar
   sClient.history = [{ role: 'user', content: 'teste' }];
-  const repLimpar = await flow.process({ phone: '5588921694598', text: `limpar ${clientPhone}` });
+  const repLimparConfirmacao = await flow.process({ phone: '5588921694598', text: `limpar ${clientPhone}` });
+  assert.match(repLimparConfirmacao, /Confirmação necessária/);
+  assert.equal(sClient.history.length, 1, 'Histórico não deve ser apagado antes da confirmação');
+  const repLimpar = await flow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(repLimpar, /Sessão resetada com sucesso/);
   assert.equal(sClient.history.length, 0, 'Histórico do cliente deve ser esvaziado');
   assert.equal(sClient.human, false, 'Cliente resetado volta para bot');

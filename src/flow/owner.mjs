@@ -108,6 +108,48 @@ export async function handleOwnerSession({
           return replyText;
         };
 
+        const clearHistoryFor = async (targetArg) => {
+          const sTarget = findSessionByTarget(targetArg);
+          if (!sTarget) return `⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*.`;
+          sTarget.history = [];
+          sTarget.human = false;
+          sTarget.humanSource = null;
+          sTarget.handoffAt = null;
+          sTarget.handoffReminderAt = null;
+          sTarget.handoffNotified = false;
+          sTarget.inactivityClosed = false;
+          sTarget.updatedAt = new Date(now()).toISOString();
+          store.markDirty();
+          try {
+            await store.flush?.();
+          } catch (err) {
+            logger.error?.('[flow] Falha ao persistir limpeza de histórico:', err.message);
+            return '⚠️ *Não consegui confirmar a limpeza no banco de dados.*\n\nA alteração foi aplicada localmente, mas precisa ser sincronizada novamente.';
+          }
+          const targetName = sTarget.clientName || sTarget.contactName || sTarget.pushName || 'Contato';
+          const targetPhone = String(sTarget.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
+          return `🧹 *Sessão resetada com sucesso!*\n\nO histórico e o estado de *${targetName}* (${targetPhone}) foram limpos para um novo início.`;
+        };
+
+        const pendingControl = sSelf.pendingControlAction;
+        if (pendingControl?.type === 'clear_history') {
+          const normalizedAnswer = normalize(cleanCommand);
+          const confirmed = /^(?:sim|s|confirmo|confirmado|pode|pode sim|isso|isso mesmo|ok|okay|certo|certa|perfeito|autorizo)$/i.test(normalizedAnswer);
+          const denied = /^(?:n[aã]o|nao|n|cancela|cancelar|desiste|esquece)$/i.test(normalizedAnswer);
+          if (confirmed) {
+            sSelf.pendingControlAction = null;
+            store.markDirty();
+            const reply = await clearHistoryFor(pendingControl.target);
+            return recordSelfTurn(filterReply(reply, { isCopilot: true }).text);
+          }
+          if (denied) {
+            sSelf.pendingControlAction = null;
+            store.markDirty();
+            return recordSelfTurn(filterReply('Tudo bem. Não limpei o histórico e mantive a conversa intacta.', { isCopilot: true }).text);
+          }
+          return recordSelfTurn(filterReply(`Para confirmar, responda *sim* e eu limpo o histórico de *${pendingControl.label || pendingControl.target}*. Se não quiser, responda *não*.`, { isCopilot: true }).text);
+        }
+
         // Envia o PDF gerado como documento real no WhatsApp (o texto de confirmação continua no chat)
         const deliverGeneratedPdf = createPdfDelivery({ whatsapp, rawItem, getHumanPhone, logger });
 
@@ -672,20 +714,15 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
           if (!sTarget) {
             return recordSelfTurn(filterReply(`⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*.`, { isCopilot: true }).text);
           }
-          sTarget.history = [];
-          sTarget.human = false;
-          sTarget.humanSource = null;
-          sTarget.handoffAt = null;
-          sTarget.handoffReminderAt = null;
-          sTarget.handoffNotified = false;
-          sTarget.inactivityClosed = false;
-          sTarget.updatedAt = new Date(now()).toISOString();
-          store.markDirty();
-          await store.flush?.();
           const targetName = sTarget.clientName || sTarget.contactName || sTarget.pushName || 'Contato';
-          const targetPhone = String(sTarget.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
-          const rep = `🧹 *Sessão resetada com sucesso!*\n\nO histórico e o estado de *${targetName}* (${targetPhone}) foram limpos para um novo início.`;
-          return recordSelfTurn(filterReply(rep, { isCopilot: true }).text);
+          sSelf.pendingControlAction = {
+            type: 'clear_history',
+            target: targetArg,
+            label: targetName,
+            createdAt: new Date(now()).toISOString()
+          };
+          store.markDirty();
+          return recordSelfTurn(filterReply(`⚠️ *Confirmação necessária*\n\nVocê quer realmente limpar o histórico e o estado de *${targetName}*? Essa ação não pode ser desfeita.\n\nResponda *sim* para confirmar ou *não* para cancelar.`, { isCopilot: true }).text);
         }
 
         // 1.7 Consulta de Lembretes do responsável
