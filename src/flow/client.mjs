@@ -8,6 +8,7 @@ import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/in
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
+import { selectActiveClientHistory } from './client-context.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
@@ -42,6 +43,15 @@ function amountFromText(value = '') {
     : match[1].replace(',', '.');
   const amount = Number(raw);
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function hasActivePriceContext(currentText = '', history = [], pendingPayment = false) {
+  if (pendingPayment) return true;
+  const priceTopic = /\b(?:preco|valor|quanto|custa|custam|custo|mensalidade|orcamento|taxa|tarifa|investimento)\b/i;
+  if (priceTopic.test(normalizedClientText(currentText))) return true;
+  const priorClientMessages = (Array.isArray(history) ? history : []).filter(message => message?.role === 'user');
+  const previousClientMessage = priorClientMessages.at(-2);
+  return priceTopic.test(normalizedClientText(previousClientMessage?.content || ''));
 }
 
 function paymentChoiceReply({ hasCheckout = false } = {}) {
@@ -426,10 +436,35 @@ export async function handleClientMessage({
       }
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
-      const systemPrompt = buildSystemPrompt({ session: s, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
       const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>`;
       const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
-      const prevUserTurns = (s.history || []).slice(0, -1).filter(m => m.role === 'user');
+      const hasPendingClientWork = Boolean(
+        s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
+      );
+      const activeContext = selectActiveClientHistory(s.history, {
+        maxTurns: contextTurns,
+        nowMs: now(),
+        preservePendingContext: hasPendingClientWork
+      });
+      if (activeContext.topicBoundary && !hasPendingClientWork) {
+        s.contextSummary = null;
+        s.conversationState = null;
+        s.subject = null;
+        s.sentiment = null;
+        s.sectorId = null;
+        s.sectorName = null;
+        s.sectorCategory = null;
+      }
+      const promptSession = {
+        ...s,
+        history: activeContext.history,
+        hasPriorConversation: activeContext.history.length > 1,
+        ...(activeContext.topicBoundary && !hasPendingClientWork
+          ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
+          : {})
+      };
+      const systemPrompt = buildSystemPrompt({ session: promptSession, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
+      const prevUserTurns = activeContext.history.slice(0, -1).filter(m => m.role === 'user');
       const lastPrevUser = prevUserTurns[prevUserTurns.length - 1];
       const normCurrent = normalize(clean);
       if (lastPrevUser && normCurrent.length >= 3 && normalize(lastPrevUser.content) === normCurrent) {
@@ -440,7 +475,7 @@ export async function handleClientMessage({
 
       const result = await ai?.askAI?.({
         system: systemPrompt,
-        history: s.history.slice(-contextTurns, -1),
+        history: activeContext.history.slice(-contextTurns, -1),
         userText,
         botConfig,
         deadline: aiDeadline
@@ -512,6 +547,11 @@ export async function handleClientMessage({
       if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
+        const priceContextActive = isPriceViolation && hasActivePriceContext(
+          clean,
+          activeContext.history,
+          Boolean(s.pendingClientPayment || s.pendingCheckout || s.pendingPixRequest)
+        );
         let faqPriceReply = null;
         if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(clean)) {
           const answer = findDynamicFaq(clean, items);
@@ -521,17 +561,44 @@ export async function handleClientMessage({
             if (!faqFiltered.blocked) faqPriceReply = faqFiltered.text;
           }
         }
-        await triggerHandoff(s, {
-          reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
-          urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
-          now: now(),
-          notify,
-          forceNotify: true,
-          identity
-        });
-        safeReplyText = faqPriceReply || (isPriceViolation
-          ? 'Para garantir que você receba o valor correto e atualizado, vou confirmar essa informação com nossa equipe. Já encaminhei sua dúvida para eles.'
-          : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+        if (isPriceViolation && !priceContextActive) {
+          // An unrequested price in the model draft is a safety failure, not a
+          // customer request for pricing and not grounds for a human handoff.
+          // Retry using only the active thread; discard stale actions/handoffs.
+          result.handoff = false;
+          result.handoff_reason = null;
+          if (result.intent === 'falar_com_responsavel' || result.intent === 'humano') result.intent = 'outro';
+          result.tool_calls = [];
+          result.reminder = null;
+          let repairedReply = '';
+          try {
+            const repaired = await ai?.askAI?.({
+              system: `${systemPrompt}\n\n[REVISÃO DE RESPOSTA]\nA resposta preliminar foi bloqueada porque introduziu um preço não solicitado ou não confirmado. Ignore esse rascunho. Responda somente à mensagem atual usando a troca imediatamente anterior; não mencione preços, não reabra assuntos antigos, não execute ferramentas e não afirme que encaminhou a conversa. Se a mensagem estiver ambígua, faça uma pergunta curta e natural para esclarecer.`,
+              history: activeContext.history.slice(-contextTurns, -1),
+              userText,
+              botConfig,
+              deadline: aiDeadline
+            });
+            const candidate = String(repaired?.reply || '').trim();
+            const checked = filterReply(candidate, { allowedPrices, strictPrices: true });
+            if (candidate && !checked.blocked && detectPriceMentions(candidate).length === 0) repairedReply = checked.text;
+          } catch (error) {
+            logger.warn?.(`[flow] revisão segura de resposta indisponível: ${error?.name || 'Error'}`);
+          }
+          safeReplyText = repairedReply || 'Desculpe, acho que misturei os assuntos na resposta anterior. O que você gostaria que eu esclarecesse?';
+        } else {
+          await triggerHandoff(s, {
+            reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
+            urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
+            now: now(),
+            notify,
+            forceNotify: true,
+            identity
+          });
+          safeReplyText = faqPriceReply || (isPriceViolation
+            ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Já solicitei essa verificação e retorno por aqui.'
+            : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+        }
       }
       let finalReply = String(safeReplyText || '')
         .replace(/\(\s*`?(?:GET|POST|PUT|PATCH|DELETE)?\s*\/api\/[a-zA-Z0-9_/:.-]+`?\s*\)/gi, '')

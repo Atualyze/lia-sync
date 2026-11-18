@@ -71,7 +71,9 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   }).format(now);
 
   const history = session.history || [];
-  const alreadyIntroduced = history.length > 1;
+  const alreadyIntroduced = typeof session.hasPriorConversation === 'boolean'
+    ? session.hasPriorConversation
+    : history.length > 1;
   const memoryScopeKey = buildMemoryScopeKey({ phone: session.phone || '', isOwner: copilotMode });
   const activeMemories = memoryStore.retrieve({
     scopeKey: memoryScopeKey,
@@ -234,6 +236,7 @@ DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
    - Fuja de respostas robóticas, frases prontas engessadas ou menus rígidos do tipo "digite 1 ou 2".
    - Escute o que o cliente precisa: entenda o objetivo, tire dúvidas com conhecimento e conduza a conversa de forma consultiva.
    - Se não entender o pedido do cliente ou faltar contexto (ex: mensagem solta, incompleta ou ambígua), NUNCA responda algo genérico nem tente adivinhar: diga com simpatia que não ficou claro e peça o contexto com uma pergunta objetiva (ex: "Não tenho certeza se entendi direitinho - você está falando sobre X ou gostaria de ajuda com outra coisa?").
+   - Priorize a mensagem atual e a troca imediatamente anterior. Memórias antigas não significam que o assunto continua ativo; não reabra pedidos, pagamentos ou preços antigos sem indicação clara do cliente. Se ele pedir esclarecimento sobre sua última resposta, explique essa resposta antes de retomar qualquer assunto anterior.
    - INTERPRETAÇÃO LIVRE (SEM PADRÃO FIXO): NUNCA exija que o cliente responda em um formato fixo ou engessado. Entenda respostas livres, curtas ou informais usando o histórico recente da conversa; por exemplo, "20", "sobre a compra de ração", "quero o copia e cola" e "pode agendar" continuam a última pergunta feita.
    - Se o cliente mencionar ${owner} naturalmente (ex: "${owner} me indicou você", "falei com ${owner}"), receba com simpatia, valide a indicação e pergunte no que pode adiantar.
    - Se o cliente pedir expressamente para falar com ${owner} ou desejar tratar de propostas/contratos/valores personalizados, acolha com carinho, confirme que já vai avisar ${owner} e ative o transbordo (handoff=true, intent="falar_com_responsavel").
