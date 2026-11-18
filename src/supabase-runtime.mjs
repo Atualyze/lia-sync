@@ -19,6 +19,22 @@ const normalizePendingClientPayment = value => {
   const choice = value.choice === 'pix' || value.choice === 'checkout' ? value.choice : null;
   return { args, choice, createdAt };
 };
+const normalizePendingCopilotTask = value => {
+  const allowed = new Set(['payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !allowed.has(value.type)) return null;
+  let createdAt;
+  try { createdAt = iso(value.createdAt); } catch { return null; }
+  if (!createdAt) return null;
+  return {
+    type: value.type,
+    createdAt,
+    updatedAt: (() => { try { return iso(value.updatedAt) || createdAt; } catch { return createdAt; } })(),
+    originCommand: typeof value.originCommand === 'string' ? value.originCommand.slice(0, 500) : '',
+    lastQuestion: typeof value.lastQuestion === 'string' ? value.lastQuestion.slice(0, 500) : '',
+    repeatCount: Math.max(0, Math.min(2, Number(value.repeatCount) || 0)),
+    turns: Math.max(0, Math.min(10, Number(value.turns) || 0))
+  };
+};
 // Logs não podem conter telefone completo (regra do projeto).
 const maskKey = value => {
   const raw = String(value || '');
@@ -139,6 +155,7 @@ function rowToSession(row, messages = []) {
     pendingPixRequest: meta.pendingPixRequest && typeof meta.pendingPixRequest === 'object' && !Array.isArray(meta.pendingPixRequest)
       ? { ...meta.pendingPixRequest }
       : null,
+    pendingCopilotTask: normalizePendingCopilotTask(meta.pendingCopilotTask),
     pendingOutboundDispatch: meta.pendingOutboundDispatch && typeof meta.pendingOutboundDispatch === 'object' && !Array.isArray(meta.pendingOutboundDispatch)
       ? { ...meta.pendingOutboundDispatch }
       : null,
@@ -239,6 +256,7 @@ function sessionToConversation(key, session, contactId) {
       pendingPixRequest: session.pendingPixRequest && typeof session.pendingPixRequest === 'object'
         ? { ...session.pendingPixRequest }
         : null,
+      pendingCopilotTask: normalizePendingCopilotTask(session.pendingCopilotTask),
       pendingOutboundDispatch: session.pendingOutboundDispatch && typeof session.pendingOutboundDispatch === 'object'
         ? { ...session.pendingOutboundDispatch }
         : null,
@@ -420,6 +438,10 @@ export class SupabaseSessionStore extends SessionStore {
               ? { ...lSession.pendingPixRequest }
               : null;
           }
+          const localCopilotTask = normalizePendingCopilotTask(lSession.pendingCopilotTask);
+          if (localCopilotTask && Date.parse(localCopilotTask.updatedAt) >= rTime) {
+            rSession.pendingCopilotTask = localCopilotTask;
+          }
           if (lSession.pendingClientPayment && lTime >= rTime) {
             rSession.pendingClientPayment = normalizePendingClientPayment(lSession.pendingClientPayment);
           }
@@ -510,6 +532,10 @@ export class SupabaseSessionStore extends SessionStore {
         const localPixRequestedAt = Date.parse(s.pendingPixRequest?.requestedAt || '') || 0;
         if (s.pendingPixRequest && localPixRequestedAt > remoteTime) {
           remoteSession.pendingPixRequest = { ...s.pendingPixRequest };
+        }
+        const localCopilotTask = normalizePendingCopilotTask(s.pendingCopilotTask);
+        if (localCopilotTask && Date.parse(localCopilotTask.updatedAt) > remoteTime) {
+          remoteSession.pendingCopilotTask = localCopilotTask;
         }
         const localPayment = normalizePendingClientPayment(s.pendingClientPayment);
         if (localPayment && Date.parse(localPayment.createdAt) > remoteTime) {
@@ -610,7 +636,7 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingCopilotTask || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
         if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
         const externalId = isSimulation ? key : key.replace(/^sim:/, '');

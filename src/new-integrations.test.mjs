@@ -418,11 +418,14 @@ test('Copiloto Pix: resposta sobrevive à reidratação Supabase entre pergunta 
   const asked = await firstFlow.process({ phone: OWNER_SELF_KEY, text: 'Pix', origin: 'owner' });
   assert.match(asked, /valor/i);
   assert.ok(firstStore.get(OWNER_SELF_KEY).pendingPixRequest);
+  assert.equal(firstStore.get(OWNER_SELF_KEY).pendingCopilotTask?.type, 'payment');
   await firstStore.flush();
+  assert.equal(conversation.metadata.pendingCopilotTask?.type, 'payment');
 
   const refreshedStore = new SupabaseSessionStore(`${base}-refreshed.json`, { client: fakeClient, logger: { warn() {}, error() {} } });
   await refreshedStore.syncSession(OWNER_SELF_KEY);
   assert.ok(refreshedStore.get(OWNER_SELF_KEY).pendingPixRequest, 'pendência Pix deve vir do metadata após reidratação');
+  assert.equal(refreshedStore.get(OWNER_SELF_KEY).pendingCopilotTask?.type, 'payment', 'tarefa ativa deve vir do metadata após reidratação');
   const secondFlow = createFlow({
     store: refreshedStore,
     getBotConfig: () => botConfig,
@@ -1428,4 +1431,68 @@ test('Schemas Gemini e OpenRouter declaram sector, sentiment e context_summary',
 test('normalizePhone preserva DDD 55 (RS) em numeros de 10 e 11 digitos', () => {
   assert.equal(normalizePhone('55999999999'), '5555999999999');
   assert.equal(normalizePhone('5591234567'), '5555991234567');
+});
+
+test('Copiloto Pix: “Pix” isolado não aceita valor/descrição antigos que a IA colocou nos argumentos', async () => {
+  const store = new SessionStore();
+  const self = store.get(OWNER_SELF_KEY);
+  self.history.push({ role: 'user', content: 'Cobre R$ 20 pela compra antiga', createdAt: new Date(Date.now() - 60_000).toISOString() });
+  self.history.push({ role: 'assistant', content: 'Cobrança Pix gerada: R$ 20,00, compra antiga', createdAt: new Date(Date.now() - 60_000).toISOString() });
+  const sentImages = [];
+  const flow = createFlow({
+    store,
+    getBotConfig: () => createPixBotConfig('88998340085'),
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendImage: async (...args) => sentImages.push(args) },
+    ai: { askAI: async () => ({ reply: 'Vou gerar o Pix.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'compra antiga' } }] }) }
+  });
+  const reply = await flow.process({ phone: OWNER_SELF_KEY, text: 'Pix', origin: 'owner' });
+  assert.match(reply, /valor/i);
+  assert.match(reply, /descri[cç][aã]o/i);
+  assert.equal(sentImages.length, 0);
+  assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest.amount, null);
+  assert.equal(store.get(OWNER_SELF_KEY).pendingCopilotTask.type, 'payment');
+});
+
+test('Copiloto: mudar de tarefa invalida pendência antiga e tool call de disparo sem intenção não envia', async () => {
+  const store = new SessionStore();
+  const self = store.get(OWNER_SELF_KEY);
+  const old = new Date(Date.now() - 60_000).toISOString();
+  for (let i = 0; i < 12; i += 1) {
+    self.history.push({ role: i % 2 ? 'assistant' : 'user', content: `Tarefa concluída antiga ${i}`, createdAt: old });
+  }
+  const sent = [];
+  let suppliedHistory = [];
+  const flow = createFlow({
+    store,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    whatsapp: { sendText: async (...args) => sent.push(args) },
+    ai: { askAI: async ({ history }) => {
+      suppliedHistory = history;
+      return { reply: 'Mensagem enviada.', tool_calls: [{ name: 'enviar_mensagem_contato', args: { recipient: 'Lima', message: 'recado antigo' } }] };
+    } }
+  });
+  const reply = await flow.process({ phone: OWNER_SELF_KEY, text: 'oi', origin: 'owner' });
+  assert.match(reply, /Não executei essa ação/i);
+  assert.equal(sent.length, 0);
+  assert.ok(suppliedHistory.length <= 8, 'o prompt não recebe além das oito mensagens mais recentes');
+  assert.equal(suppliedHistory.some(item => /Tarefa concluída antiga 0/.test(item.content)), false);
+});
+
+test('Copiloto: interrompe pergunta de cobrança semanticamente repetida mesmo quando reformulada', async () => {
+  const store = new SessionStore();
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: { askAI: async () => ({
+      reply: ++aiCalls === 1 ? 'Qual contato você quer consultar no CRM?' : 'Qual contato você quer consultar pelo CRM?',
+      tool_calls: []
+    }) }
+  });
+  const first = await flow.process({ phone: OWNER_SELF_KEY, text: 'Consulte o CRM', origin: 'owner' });
+  assert.match(first, /Qual contato/i);
+  const second = await flow.process({ phone: OWNER_SELF_KEY, text: 'Ainda não sei', origin: 'owner' });
+  assert.match(second, /repetindo a pergunta|inicie um novo pedido/i);
+  assert.doesNotMatch(second, /Qual contato você quer consultar pelo CRM/i);
 });

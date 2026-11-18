@@ -1,4 +1,4 @@
-import { filterReply, normalize, isGreeting } from '../safety.mjs';
+import { filterReply, normalize, isGreeting, detectPriceMentions } from '../safety.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
@@ -31,6 +31,116 @@ function normalizePixAmount(value) {
   }
   const amount = Number(normalized);
   return Number.isFinite(amount) ? amount : null;
+}
+
+const COPILOT_PENDING_TTL_MS = 30 * 60 * 1000;
+const COPILOT_CONTEXT_LIMIT = 8;
+
+const COPILOT_TASK_PATTERNS = [
+  ['payment', /\b(?:pix|cobranc\w*|cobr(?:ar|e|o)\w*|pagament\w*|infinitepay|qr\s*code|copia\s+e\s+cola)\b/i],
+  ['dispatch', /\b(?:mensagem|recado|dispar\w*|envi\w*|mand\w*|avise?\w*|audio|áudio|voz)\b/i],
+  ['followup', /\b(?:lembre\w*|lembrete\w*|retorno\w*|follow[- ]?up)\b/i],
+  ['agenda', /\b(?:agenda|agend\w*|reuni\w*|compromisso\w*|hor[aá]rios?\s+livres|marc\w*)\b/i],
+  ['document', /\b(?:pdf|or[cç]amento|proposta|recibo|declara[cç][aã]o|relat[oó]rio)\b/i],
+  ['drive', /\b(?:drive|cat[aá]logo|contrato|arquivo|documento)\b/i],
+  ['sheet', /\b(?:planilha|sheets|estoque|tabela)\b/i],
+  ['public_data', /\b(?:cep|cnpj|feriado)\b/i],
+  ['crm', /\b(?:crm|atualiz\w*|corrig\w*|cadastro)\b/i],
+  ['contact', /\b(?:contato|lead|telefone|hist[oó]rico\s+do\s+cliente)\b/i],
+  ['memory', /\b(?:mem[oó]ria|memorize|lembre-se|esque[cç]a|guarde)\b/i],
+  ['infra', /\b(?:infra|servidor\w*|vps|dokku|containers?)\b/i],
+  ['web', /\b(?:pesquis\w*|procur\w*|busc\w*\s+(?:na\s+)?web|consulta\w*\s+web)\b/i],
+  ['knowledge', /\b(?:base\s+de\s+conhecimento|dossi[eê]|manual\s+operacional)\b/i]
+];
+
+const TOOL_TASK_TYPES = Object.freeze({
+  gerar_cobranca_pix: 'payment', checkout_infinitepay: 'payment',
+  enviar_mensagem_contato: 'dispatch', gerenciar_agenda_google: 'agenda',
+  agendar_retorno_ou_followup: 'followup', gerar_documento_pdf: 'document',
+  gerenciar_drive_google: 'drive', consultar_planilha_google: 'sheet',
+  consultar_dados_brasil: 'public_data', consultar_contato_ou_lead: 'contact',
+  atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
+  consultar_saude_infra: 'infra', consultar_web: 'web',
+  consultar_base_conhecimento: 'knowledge', transferir_setor: 'handoff'
+});
+
+const QUESTION_STOP_WORDS = new Set(['qual', 'quais', 'como', 'pode', 'poderia', 'me', 'diga', 'informe', 'informar', 'para', 'por', 'uma', 'um', 'do', 'da', 'de', 'o', 'a', 'e', 'eu', 'voce', 'você', 'quer', 'preciso', 'ainda', 'agora', 'gerar', 'criar']);
+
+function inferCopilotTaskType(text = '') {
+  const value = String(text || '');
+  return COPILOT_TASK_PATTERNS.find(([, pattern]) => pattern.test(value))?.[0] || null;
+}
+
+function copilotToolTaskType(toolName = '', args = {}) {
+  const type = TOOL_TASK_TYPES[String(toolName || '').trim()];
+  if (toolName === 'checkout_infinitepay' && String(args?.acao || 'criar_link') === 'verificar_pagamento') return 'payment';
+  return type || null;
+}
+
+function activeCopilotTask(session, nowMs = Date.now()) {
+  const task = session?.pendingCopilotTask;
+  if (!task || typeof task !== 'object') return null;
+  const createdAt = Date.parse(task.createdAt || '');
+  if (!Number.isFinite(createdAt) || nowMs - createdAt > COPILOT_PENDING_TTL_MS || nowMs < createdAt - 60_000) {
+    session.pendingCopilotTask = null;
+    return null;
+  }
+  return task;
+}
+
+function similarClarification(a = '', b = '') {
+  const tokens = value => [...new Set(normalize(value).split(/\s+/).filter(token => token.length > 2 && !QUESTION_STOP_WORDS.has(token)))];
+  const left = tokens(a);
+  const right = tokens(b);
+  if (!left.length || !right.length) return false;
+  const common = left.filter(token => right.includes(token)).length;
+  const overlap = common / Math.min(left.length, right.length);
+  const union = common / new Set([...left, ...right]).size;
+  return common >= 2 && (overlap >= 0.72 || union >= 0.62);
+}
+
+function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {}) {
+  const source = String(text || '');
+  const free = /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(source);
+  let price = detectPriceMentions(source)[0];
+  if (!price) {
+    const reaisIndex = source.search(/\breais?\b/i);
+    if (reaisIndex >= 0) {
+      const prefixWords = source.slice(0, reaisIndex).trim().split(/\s+/).filter(Boolean);
+      for (let start = Math.max(0, prefixWords.length - 6); start < prefixWords.length; start += 1) {
+        const candidate = `${prefixWords.slice(start).join(' ')} reais`;
+        price = detectPriceMentions(candidate)[0];
+        if (price) break;
+      }
+    }
+  }
+  let amount = price ? price.cents / 100 : null;
+  let rawAmount = price?.raw || '';
+  if (amount === null && allowBareNumber) {
+    const match = source.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?/i);
+    if (match) {
+      amount = normalizePixAmount(`${match[1]}${match[2] !== undefined ? `,${match[2]}` : ''}`);
+      rawAmount = match[0];
+    }
+  }
+
+  let description = source;
+  if (rawAmount) description = description.replace(new RegExp(rawAmount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ');
+  description = description
+    .replace(/\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/ig, ' ')
+    .replace(/^\s*(?:lia[,!: -]*)?(?:(?:quero|preciso|pode|gostaria\s+de)\s+)?(?:cobrar|gerar|criar|fazer|emitir)\s+(?:uma?\s+)?(?:cobran[cç]a\s+)?/i, '')
+    .replace(/^\s*(?:pix|cobran[cç]a(?:\s+pix)?)(?:\s+de)?\b/i, '')
+    .replace(/^\s*(?:sobre|para|pra|por|pela|pelo|referente(?:\s+a)?|de|do|da)\s+/i, '')
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '')
+    .trim()
+    .slice(0, 80);
+
+  return {
+    hasAmountOrFree: amount !== null || free,
+    isFreeAmount: free,
+    valor: free ? 0 : amount,
+    descricao: description
+  };
 }
 
 function parseNaturalControlResult(result) {
@@ -113,17 +223,77 @@ export async function handleOwnerSession({
         store.touch(sSelf);
 
         let cleanCommand = String(text || '').trim();
+        let activeTask = activeCopilotTask(sSelf, now());
+        const incomingTaskType = inferCopilotTaskType(cleanCommand);
+        const dispatchContinuationAtStart = activeTask?.type === 'dispatch' && sSelf.pendingRecipient
+          && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
+        const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
+        if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
+          sSelf.pendingPixRequest = null;
+        }
+        if (activeTask && incomingTaskType && incomingTaskType !== activeTask.type && !dispatchContinuationAtStart) {
+          if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
+          if (activeTask.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+          sSelf.pendingCopilotTask = null;
+          activeTask = null;
+        }
 
         const recordSelfTurn = (replyText) => {
-          sSelf.history.push({ role: 'user', content: cleanCommand, createdAt: new Date(now()).toISOString() });
-          sSelf.history.push({ role: 'assistant', content: replyText, createdAt: new Date(now()).toISOString() });
+          let safeReply = String(replyText || '');
+          const timestamp = new Date(now()).toISOString();
+          const intent = inferCopilotTaskType(cleanCommand);
+          let task = activeCopilotTask(sSelf, now());
+          const dispatchContinuation = task?.type === 'dispatch' && sSelf.pendingRecipient
+            && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
+          if (task && intent && task.type !== intent && !dispatchContinuation) {
+            if (task.type === 'payment') sSelf.pendingPixRequest = null;
+            sSelf.pendingCopilotTask = null;
+            task = null;
+          }
+
+          const taskType = dispatchContinuation ? task.type : (intent || task?.type);
+          const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta)\b/i.test(safeReply);
+          if (isClarification && taskType && !sSelf.pendingOutboundDispatch) {
+            const sameTask = task?.type === taskType;
+            const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
+            if (repeated) {
+              const repeatCount = (Number(task.repeatCount) || 0) + 1;
+              if (repeatCount >= 2) {
+                safeReply = 'Não consegui concluir esta solicitação sem repetir a mesma pergunta. Para evitar usar dados antigos, inicie um novo pedido com todas as informações necessárias.';
+                sSelf.pendingCopilotTask = null;
+                if (taskType === 'payment') sSelf.pendingPixRequest = null;
+              } else {
+                safeReply = 'Percebi que estou repetindo a pergunta. Para continuar, responda diretamente com o dado que falta; se mudou de assunto, envie o novo pedido completo.';
+                sSelf.pendingCopilotTask = { ...task, repeatCount, updatedAt: timestamp };
+              }
+            } else {
+              sSelf.pendingCopilotTask = {
+                type: taskType,
+                createdAt: sameTask ? task.createdAt : timestamp,
+                updatedAt: timestamp,
+                originCommand: sameTask ? task.originCommand : cleanCommand.slice(0, 500),
+                lastQuestion: safeReply.slice(0, 500),
+                repeatCount: 0,
+                turns: sameTask ? (Number(task.turns) || 0) + 1 : 0
+              };
+            }
+          } else if (task && intent && intent !== task.type && !dispatchContinuation) {
+            sSelf.pendingCopilotTask = null;
+          } else if (task && !isClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
+            sSelf.pendingCopilotTask = null;
+            if (task.type === 'payment') sSelf.pendingPixRequest = null;
+            if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+          }
+
+          sSelf.history.push({ role: 'user', content: cleanCommand, createdAt: timestamp });
+          sSelf.history.push({ role: 'assistant', content: safeReply, createdAt: timestamp });
           const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
           if (sSelf.history.length > maxStoredHistory) sSelf.history = sSelf.history.slice(-maxStoredHistory);
-          sSelf.lastUserAt = new Date(now()).toISOString();
-          sSelf.lastBotAt = new Date(now()).toISOString();
-          sSelf.updatedAt = new Date(now()).toISOString();
+          sSelf.lastUserAt = timestamp;
+          sSelf.lastBotAt = timestamp;
+          sSelf.updatedAt = timestamp;
           store.markDirty();
-          return replyText;
+          return safeReply;
         };
 
         const assertOutboundStatePersisted = () => {
@@ -1137,9 +1307,9 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
           .map(n => String(n).trim());
 
         const dispatchIntent = extractDispatchIntent(cleanCommand, {
-          pendingRecipient: sSelf.pendingRecipient,
+          pendingRecipient: activeCopilotTask(sSelf, now())?.type === 'dispatch' ? sSelf.pendingRecipient : null,
           pendingAsAudio: sSelf.pendingAsAudio,
-          lastAssistantMsg,
+          lastAssistantMsg: activeCopilotTask(sSelf, now())?.type === 'dispatch' ? lastAssistantMsg : '',
           knownNames,
           botName: assistant
         });
@@ -1200,8 +1370,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         // 1.9 Chamada Inteligente com Persona de Copiloto do responsável
-        const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
-        const recentHistory = Array.isArray(sSelf.history) ? sSelf.history.slice(-contextTurns) : [];
+        const configuredContextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
+        const contextTurns = Math.min(COPILOT_CONTEXT_LIMIT, configuredContextTurns);
+        activeTask = activeCopilotTask(sSelf, now());
+        const taskHistory = activeTask && Array.isArray(sSelf.history)
+          ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
+          : [];
+        const recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
         const supportContacts = Object.values(store.sessions || {})
           .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes))
           .map(s => ({
@@ -1220,7 +1395,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           telemetry
         });
         const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nQuando precisar consultar dados, histórico, CRM, bases, planilhas ou executar qualquer ação, emita a chamada em "tool_calls" imediatamente. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
-        const sys = (sSelf.lastAnalyzedDocument
+        const referencesPreviousDocument = /\b(?:anexo|documento\s+que\s+(?:enviei|mandei)|arquivo\s+que\s+(?:enviei|mandei)|documento\s+anterior|arquivo\s+anterior|(?:esse|desse|do)\s+(?:documento|arquivo)|resuma\s+(?:o\s+)?(?:anexo|documento))\b/i.test(cleanCommand);
+        const sys = (sSelf.lastAnalyzedDocument && referencesPreviousDocument
           ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
           : baseSys) + copilotToolRule;
 
@@ -1320,6 +1496,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 if (pixHandled) continue;
                 pixHandled = true;
               }
+              const toolTaskType = copilotToolTaskType(tc.name, tc.args);
+              const liveTask = activeCopilotTask(sSelf, now());
+              if (toolTaskType && inferCopilotTaskType(cleanCommand) !== toolTaskType && liveTask?.type !== toolTaskType) {
+                return recordSelfTurn('Não executei essa ação porque ela não foi solicitada no pedido atual nem pertence a uma continuação ativa. Envie novamente a solicitação com os dados necessários.');
+              }
               try {
                 if (tc.name === 'enviar_mensagem_contato') {
                   tc.args = tc.args || {};
@@ -1349,10 +1530,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                       }
                     }
                     if (!tc.args.recipient || IGNORED_TOOL_RECS.has(String(tc.args.recipient).toLowerCase())) {
-                      const validHistoryTurns = (sSelf.lastCancelledAt && recentHistory)
-                        ? recentHistory.filter(h => !h.createdAt || new Date(h.createdAt).getTime() > sSelf.lastCancelledAt)
-                        : recentHistory;
-                      const histCombined = `${cleanCommand} ${result?.reply || ''} ${validHistoryTurns.map(h => h.content).join(' ')}`;
+                      const histCombined = cleanCommand;
                       for (const name of knownNames) {
                         if (!name || name.length < 2 || IGNORED_TOOL_RECS.has(name.toLowerCase()) || /^(?:ptbr|pt-br|pt_br|br)$/i.test(name)) continue;
                         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1413,24 +1591,31 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 tc.name = 'checkout_infinitepay';
                 tc.args = { acao: 'criar_link', ...(tc.args || {}) };
               }
-              if (tc.name === 'gerar_cobranca_pix') {
-                  const normalizedAmount = normalizePixAmount(tc.args?.valor);
-                  if (normalizedAmount !== null && tc.args && typeof tc.args === 'object') {
-                    tc.args.valor = normalizedAmount;
-                  }
-                  const hasNumericValue = Number(tc.args?.valor) > 0 || /(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i.test(cleanCommand);
-                  const explicitFreeValue = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
-                  if (!hasNumericValue && !explicitFreeValue) {
-                    sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
-                    store.markDirty();
-                    const askVal = `${owner}, qual o *valor* e a *descrição* do Pix que você quer gerar? _(Se quiser sem valor fixo, me diga *valor livre*)_`;
-                    return recordSelfTurn(filterReply(askVal, { isCopilot: true }).text);
-                  }
-                  const commandPixAmount = cleanCommand.match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
-                  if (commandPixAmount && (!Number(tc.args?.valor) || Number(tc.args?.valor) <= 0)) {
-                    tc.args.valor = Number(commandPixAmount[1].replace(',', '.'));
-                  }
+              const isPixCreate = (tc.name === 'gerar_cobranca_pix'
+                || (tc.name === 'checkout_infinitepay' && String(tc.args?.acao || 'criar_link') !== 'verificar_pagamento'));
+              if (isPixCreate) {
+                const barePixCommand = /^(?:(?:quero|preciso|gera(?:r)?|cria(?:r)?|faz(?:er)?)\s+)?(?:um(?:a)?\s+)?(?:pix|cobran[cç]a(?:\s+pix)?)[.!\s]*$/i.test(cleanCommand);
+                if (barePixCommand) sSelf.pendingPixRequest = null;
+                const oldPix = sSelf.pendingPixRequest || {};
+                const currentPix = extractCurrentPixArgs(cleanCommand, {
+                  allowBareNumber: Boolean(oldPix.requestedAt) || /\b(?:pix|cobran[cç]a|pagamento|valor)\b/i.test(cleanCommand)
+                });
+                const amount = currentPix.hasAmountOrFree ? currentPix.valor : normalizePixAmount(oldPix.amount);
+                const requiresDescription = Boolean(oldPix.requestedAt) || !currentPix.isFreeAmount;
+                const description = currentPix.descricao || String(oldPix.description || '').trim() || (!requiresDescription ? 'Cobrança Pix' : '');
+                if (amount === null || !description) {
+                  sSelf.pendingPixRequest = {
+                    requestedAt: oldPix.requestedAt || new Date(now()).toISOString(),
+                    amount,
+                    description
+                  };
+                  store.markDirty();
+                  const missing = [amount === null ? '*valor* (ou *valor livre*)' : '', !description ? '*descrição*' : ''].filter(Boolean);
+                  const askVal = `${owner}, para gerar a cobrança Pix, me informe ${missing.join(' e ')}.`;
+                  return recordSelfTurn(filterReply(askVal, { isCopilot: true }).text);
                 }
+                tc.args = { ...(tc.args || {}), valor: amount, descricao: description };
+              }
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
                 const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                   phone: OWNER_SELF_KEY,
@@ -1445,12 +1630,23 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   userText: cleanCommand,
                   searchWebWithGemini: ai?.searchWebWithGemini
                 });
+                if (toolRes?.success && isPixCreate) {
+                  sSelf.pendingPixRequest = null;
+                  sSelf.pendingCopilotTask = null;
+                  store.markDirty();
+                }
                 toolOutputs.push({ tool: tc.name, args: tc.args, result: toolRes });
               } catch (err) {
                 toolOutputs.push({ tool: tc.name, args: tc.args, error: err.message });
               }
             }
           }
+        }
+
+        if (toolOutputs.some(item => !item.error && item.result?.success)) {
+          sSelf.pendingCopilotTask = null;
+          if (toolOutputs.some(item => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.tool))) sSelf.pendingPixRequest = null;
+          store.markDirty();
         }
 
         // A pesquisa web retorna dados não confiáveis. Sintetiza uma única vez
@@ -1568,16 +1764,6 @@ ${errMsg}`;
             `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
             r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
           ].filter(Boolean).join('\n\n');
-        };
-        const extractPixArgs = text => {
-          const amountMatch = String(text || '').match(/(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)/i);
-          const isFreeAmount = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(String(text || ''));
-          const valor = isFreeAmount ? 0 : (amountMatch ? Number(amountMatch[1].replace(',', '.')) : null);
-          const desc = String(text || '')
-            .replace(/(?:R\$\s*)?\d+(?:[.,]\d{1,2})?/i, '')
-            .replace(/^(?:[\s,.;:-]|e\b|sobre\b|de\b|para\b|pix\b|pagamento\b|gera\b|gerar\b|cobran[cç]a\b|valor\b|livre\b)+/i, '')
-            .trim();
-          return { hasAmountOrFree: Boolean(amountMatch || isFreeAmount), isFreeAmount, valor, desc };
         };
         const pendingPixRequest = sSelf.pendingPixRequest;
 
@@ -1704,25 +1890,41 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
-        const askedPixRecently = /\b(?:pix|infinitepay|link\s+de\s+pagamento|cobran[cç]a|valor\s+e\s+a?\s*descri[cç][aã]o)\b/i.test(String(lastAssistantMsg || ''));
         const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a(?:\s*pix)?|infinitepay|link\s+de\s+pagamento)\b/i.test(cleanCommand);
-        const pixParsed = extractPixArgs(cleanCommand);
-        const promisedPixInReply = Boolean(rawReply && /(?:vou|irei|gerando|preparando|criando)\s+.*?\bpix\b/i.test(rawReply));
+        const currentPix = extractCurrentPixArgs(cleanCommand, {
+          allowBareNumber: Boolean(pendingPixRequest?.requestedAt) || hasPixKeyword
+        });
+        const requiresPixDescription = Boolean(pendingPixRequest?.requestedAt) || !currentPix.isFreeAmount;
+        const pixParsed = {
+          ...currentPix,
+          valor: currentPix.hasAmountOrFree ? currentPix.valor : normalizePixAmount(pendingPixRequest?.amount),
+          desc: currentPix.descricao || String(pendingPixRequest?.description || '').trim() || (!requiresPixDescription ? 'Cobrança Pix' : '')
+        };
+        const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
+        const pixRequestActive = hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt);
+        if (pixRequestActive && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
+          && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
+          sSelf.pendingPixRequest = {
+            requestedAt: pendingPixRequest?.requestedAt || new Date(now()).toISOString(),
+            amount: pixParsed.valor,
+            description: pixParsed.desc
+          };
+          store.markDirty();
+          const missing = [pixParsed.valor === null ? '*valor* (ou *valor livre*)' : '', requiresPixDescription && !pixParsed.desc ? '*descrição*' : ''].filter(Boolean);
+          rawReply = `${owner}, para gerar a cobrança Pix, me informe ${missing.join(' e ')}.`;
+        }
         const pixEnabled = isToolEnabled('gerar_cobranca_pix', botConfig);
         const ipEnabled = isToolEnabled('checkout_infinitepay', botConfig)
           && Boolean(botConfig?.tools?.settings?.checkout_infinitepay?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.checkout_infinitepay?.apiKey || process.env.INFINITEPAY_API_KEY);
         const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && !isAudioForSelf
-          && (
-            promisedPixInReply
-            || ((hasPixKeyword || askedPixRecently || pendingPixRequest) && pixParsed.hasAmountOrFree)
-          );
+          && pixRequestActive && pixParsed.valor !== null && Boolean(pixParsed.desc);
         if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
           const autoIp = await executeToolCall('checkout_infinitepay', {
             acao: 'criar_link',
             valor: pixParsed.valor,
-            ...(pixParsed.desc ? { descricao: pixParsed.desc.slice(0, 80) } : {})
+            descricao: pixParsed.desc.slice(0, 80)
           }, {
             phone: OWNER_SELF_KEY,
             targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
@@ -1758,8 +1960,8 @@ ${errMsg}`;
         if (shouldAutoExecutePix && pixEnabled) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
           const autoPix = await executeToolCall('gerar_cobranca_pix', {
-            ...(pixParsed.valor > 0 ? { valor: pixParsed.valor } : {}),
-            ...(pixParsed.desc ? { descricao: pixParsed.desc.slice(0, 80) } : {})
+            valor: pixParsed.valor,
+            descricao: pixParsed.desc.slice(0, 80)
           }, {
             phone: OWNER_SELF_KEY,
             targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,

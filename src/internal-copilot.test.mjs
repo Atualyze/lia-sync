@@ -62,10 +62,12 @@ test('Prévia de disparo exige ID, aceita uma única confirmação e respeita ca
   assert.match(mismatched, /não corresponde/i);
   assert.equal(sent.length, 0);
 
-  await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  const confirmed = await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  assert.match(confirmed, /Envio confirmado e concluído/i);
   assert.equal(sent.length, 1);
-  await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  const duplicate = await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
   assert.equal(sent.length, 1, 'repetir o mesmo ID não repete o envio');
+  assert.doesNotMatch(duplicate, /Há um disparo pendente/i, 'ID já consumido não deve reabrir a confirmação pendente');
 
   const cancelStore = createMockStore();
   cancelStore.get('5585991099483').clientName = 'Lima';
@@ -89,6 +91,31 @@ test('Prévia de disparo exige ID, aceita uma única confirmação e respeita ca
   const expired = await expireFlow.process({ phone: '5588921694598', text: `SIM ${expireId}` });
   assert.match(expired, /expirou/i);
   assert.equal(expireSent.length, 0);
+});
+
+test('Copiloto: “sim” durante tarefa Pix não executa tool call antiga de disparo sem mensagem', async () => {
+  const store = createMockStore();
+  const self = store.get('owner_self');
+  const createdAt = new Date().toISOString();
+  self.pendingCopilotTask = { type: 'payment', createdAt, updatedAt: createdAt, originCommand: 'Pix de R$ 20 para pão', lastQuestion: 'Quer que eu gere a cobrança?', repeatCount: 0, turns: 0 };
+  self.pendingPixRequest = { requestedAt: createdAt, amount: 20, description: 'pagamento do pão' };
+  const sent = [];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    isOwnerSender: phone => phone === 'owner_self',
+    whatsapp: { sendText: async (...args) => sent.push(args) },
+    ai: { askAI: async () => ({
+      reply: 'Vou enviar a mensagem.',
+      tool_calls: [{ name: 'enviar_mensagem_contato', args: { recipient: '5588992185932' } }]
+    }) }
+  });
+
+  const reply = await flow.process({ phone: 'owner_self', text: 'sim', origin: 'owner' });
+  assert.match(reply, /Não executei essa ação/i);
+  assert.equal(sent.length, 0, 'não deve haver tentativa de envio com message ausente');
+  assert.equal(Boolean(self.pendingOutboundDispatch), false);
 });
 
 test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o operador confirmar', async () => {
