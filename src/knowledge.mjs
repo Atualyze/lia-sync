@@ -246,7 +246,7 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "consultar_base_conhecimento": {"termo": "..."} - busca informações e regras APENAS quando houver base de conhecimento vinculada ao produto/sistema; NÃO chame em saudações ("Oi", "Como pode ajudar?") ou pedidos de pagamento.
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} - atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} - diagnostica a saúde dos servidores, containers e banco de dados.
-   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} - consulta horários vagos e sincroniza eventos no Google Agenda.
+   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} - consulta horários vagos e sincroniza eventos no Google Agenda. Só confirme disponibilidade ou criação depois de receber sucesso da ferramenta; nunca diga apenas "vou consultar" e encerre o turno.
    • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} - gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Use "valor": 0 quando o cliente pedir "só a chave Pix" ou "Pix sem valor fixo", e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
    • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} - gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
    • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} - consulta preços, estoque e catálogo no Google Sheets.

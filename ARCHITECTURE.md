@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.5.1**
+Versão: **2.6.1**
 
 ## Objetivo
 
@@ -34,7 +34,7 @@ Evolution / Chatwoot / Dashboard
 | `http/` | Roteamento, autenticação, webhooks, bridge Chatwoot/SSE, painel e proxy. |
 | `http/dashboard.mjs` | Visão operacional autenticada, saúde, operações, modelos, métricas, campanhas e supressões mascaradas. |
 | `flow.mjs` | Seleciona atendimento do cliente ou Copiloto do responsável. |
-| `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento e resposta segura. |
+| `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento, ferramentas permitidas e resposta segura com retorno explícito de agenda/lembretes. |
 | `flow/owner.mjs` | Comandos do Copiloto, ações operacionais e confirmação de envio. |
 | `flow/media.mjs` | Transcrição de áudio recebido e resposta em voz. |
 | `flow/pdf.mjs` | Entrega de PDF gerado como documento no WhatsApp. |
@@ -68,6 +68,7 @@ Aliases e textos históricos são aceitos somente para migrar dados e conversas 
 - Handoff usa `triggerHandoff`; o fluxo não envia transferências diretamente.
 - PDFs e áudios são entregues por adaptadores específicos. Envios de áudio não são repetidos automaticamente quando o resultado da entrega é incerto, evitando duplicidade.
 - Follow-ups exigem claim atômica no Supabase e confirmação da entrega; sem claim distribuída, o envio é bloqueado.
+- Agenda e retornos nunca são confirmados apenas pela intenção da IA: o cliente recebe o resultado da ferramenta, e falhas de consulta/persistência podem acionar `triggerHandoff`.
 - Limites mensais podem ser definidos por provedor/modelo. A reserva e liquidação distribuídas são serializadas no banco; consumo ou tarifa desconhecidos não são tratados como custo zero.
 - RPCs de follow-up e orçamento são restritas a `service_role`; tabelas operacionais não concedem escrita direta ao browser.
 - O dashboard não retorna chaves, tokens, prompts, respostas completas ou telefones sem mascaramento.

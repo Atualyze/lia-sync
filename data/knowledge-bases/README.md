@@ -46,3 +46,4 @@ Versão: 1.0
 1. Use nomes de arquivo limpos em minúsculas sem acento (ex.: `sistema-clinica.md`).
 2. Coloque palavras-chave reais do cliente nos subtítulos `##` (a busca dá peso maior ao `# Título` e aos `## Subtítulos`).
 3. Evite colocar rotas de código interno (`/api/...`), nomes de tabelas do banco ou arquivos de servidor.
+4. Registre claramente o que depende de uma ferramenta externa, o que deve ser confirmado somente após sucesso e quando a Lia deve encaminhar para uma pessoa. A base orienta o raciocínio, mas não substitui o resultado real de agenda, pagamento, estoque ou persistência.

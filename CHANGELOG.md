@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.1 - Agenda e retornos com resposta garantida
+- **Agenda no atendimento ao cliente:** `gerenciar_agenda_google` passou a ser permitido no fluxo de cliente quando a integração está habilitada, mantendo a validação de configuração e credenciais.
+- **Respostas de ferramentas:** o fluxo de cliente transforma resultados de consulta, criação, ausência de horários e falhas da agenda em mensagens explícitas; a Lia não envia apenas uma promessa de consulta.
+- **Falhas seguras:** erros de agenda e persistência de lembretes acionam handoff e não confirmam operações não concluídas.
+- **Regressões:** adicionados testes para permissão da agenda no cliente, retorno de horários mockados e resposta de falha sem promessa pendente.
+- **Operação:** documentação atualizada com o serviço Compose `bot`/contêiner `lia-bot` e a permissão necessária do volume persistente `data/`.
+
 ## 2.6.0 - Conhecimento contextual e conversa natural
 - **Contexto de conhecimento:** recuperação de trechos relevantes da base vinculada por assunto, com orientação para usar o conteúdo como repertório e não como texto pronto.
 - **Memória conversacional:** persistência estruturada de objetivo, necessidade, próximo passo e confirmações para melhorar referências curtas e continuidade.

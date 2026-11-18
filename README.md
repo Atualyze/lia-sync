@@ -2,7 +2,17 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.6.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.6.1** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.6.1 — Agenda com retorno garantido e documentação operacional
+
+- **Agenda no atendimento ao cliente:** quando habilitada, `gerenciar_agenda_google` pode consultar horários, listar compromissos e criar eventos a partir da conversa com o cliente.
+- **Retorno explícito:** consultas de agenda e lembretes não deixam mais a Lia apenas prometendo verificar algo; sucesso, ausência de horários, integração desativada e falha são convertidos em uma resposta clara.
+- **Encaminhamento seguro:** falhas reais de agenda ou persistência de retorno acionam `triggerHandoff` e nunca confirmam um horário ou lembrete que não tenha sido persistido.
+- **Deploy documentado:** a aplicação usa `/home/ubuntu/lia-assistente`, o serviço Compose é `bot` e o contêiner é `lia-bot`; o volume `data/` deve ser gravável pelo usuário `node` (`UID:GID 1000:1000`).
+- **Validação:** regressões específicas cobrem permissões de agenda para clientes, retorno de horários e comportamento de erro.
+
+Detalhes técnicos e procedimento de deploy: [`docs/release-2.6.1.md`](docs/release-2.6.1.md).
 
 ## Novidades da Versão 2.6.0 - Conhecimento contextual e conversa natural
 
@@ -19,7 +29,7 @@ Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, int
 - Scheduler protegido contra sobreposição, contagem diária no fuso local, fila sem head-of-line blocking e cadências por etapas.
 - 296 testes automatizados, 26 contratos de arquitetura e 142 módulos verificados.
 
-**Operação na VPS:** o projeto fica em `/home/ubuntu/lia-assistente` e é executado pelo serviço/contêiner Docker Compose `bot`/`lia-bot`. A pasta é o diretório ativo da aplicação, não um segundo bot. Repositório espelho: `/home/ubuntu/lia-sync-repo`.
+**Operação na VPS:** o projeto fica em `/home/ubuntu/lia-assistente` e é executado pelo serviço Docker Compose `bot`, que cria o contêiner `lia-bot`. A pasta é o diretório ativo da aplicação, não um segundo bot. Repositório espelho: `/home/ubuntu/lia-sync-repo`. O volume `data/` é persistente e deve manter propriedade `1000:1000` para o usuário `node` do contêiner.
 
 ## Novidades da Versão 2.5.0 — API Pública v1, Integrações no Painel, Bases Inteligentes e White-Label 100%
 
