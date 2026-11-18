@@ -34,6 +34,20 @@ function parseNaturalControlResult(result) {
   }
 }
 
+function resolveNaturalTarget(target, { pendingReactivation, waiting }) {
+  const raw = String(target || '').trim();
+  const normalized = normalize(raw);
+  if (!normalized) return '';
+  if (/^(?:primeir[oa]|primeir[oa] da fila|primeir[oa] em espera)$/.test(normalized)) return '1';
+  if (/^(?:segund[oa]|segund[oa] da fila|segund[oa] em espera)$/.test(normalized)) return '2';
+  if (/^(?:ultim[oa]|ultim[oa] da fila|ultim[oa] em espera)$/.test(normalized)) return waiting.length ? String(waiting.length) : '';
+  if (/^(?:ess[ae]|est[ae]|essa conversa|esta conversa|esse cliente|este cliente|conversa atual|cliente atual)$/.test(normalized)) {
+    if (pendingReactivation?.phone) return pendingReactivation.phone;
+    return waiting.length === 1 ? String(waiting[0].phone || '') : '';
+  }
+  return raw;
+}
+
 async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation, deadline }) {
   if (!ai?.askAI || !NATURAL_CONTROL_HINT.test(text)) return null;
   const prompt = [
@@ -222,7 +236,18 @@ export async function handleOwnerSession({
             ai, botConfig, text: strippedCmd, pendingReactivation: sSelf.pendingReactivation, deadline: aiDeadline
           });
           if (natural && natural.confidence >= 0.65) {
-            const target = natural.target || sSelf.pendingReactivation?.contactLabel || sSelf.pendingReactivation?.phone || '';
+            const waiting = typeof getWaitingList === 'function' ? getWaitingList() : [];
+            const target = resolveNaturalTarget(natural.target, {
+              pendingReactivation: sSelf.pendingReactivation,
+              waiting
+            }) || sSelf.pendingReactivation?.contactLabel || sSelf.pendingReactivation?.phone || '';
+            const refersToCurrent = /^(?:ess[ae]|est[ae]|essa conversa|esta conversa|esse cliente|este cliente|conversa atual|cliente atual)$/i.test(normalize(natural.target));
+            if (refersToCurrent && !target) {
+              const details = waiting.length > 1
+                ? `Há ${waiting.length} contatos aguardando. Você quer retomar qual deles? Diga o nome ou o número.`
+                : 'Não consegui identificar qual conversa você quer usar. Pode me dizer o nome ou o número do contato?';
+              return recordSelfTurn(filterReply(details, { isCopilot: true }).text);
+            }
             const canonical = natural.intent === 'resume_bot' ? `bot${target ? ` ${target}` : ''}`
               : natural.intent === 'activate_human' ? `humano${target ? ` ${target}` : ''}`
                 : natural.intent === 'list_queue' ? 'fila'
