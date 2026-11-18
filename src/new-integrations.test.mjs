@@ -358,17 +358,51 @@ test('Cliente Pix: executa gerar_cobranca_pix, envia imagem no WhatsApp do clien
     }
   });
 
-  const res = await flow.process({
+  const first = await flow.process({
     phone: '5585999991111',
     text: 'Quero pagar 50 reais no Pix da consulta',
     origin: 'client',
     pushName: 'Maria'
   });
+  assert.match(first, /chave Pix|copia e cola/i);
+  assert.equal(sentImages.length, 0);
+  const res = await flow.process({ phone: '5585999991111', text: 'Pode gerar o copia e cola', origin: 'client' });
   assert.match(res, /Aqui está seu Pix para pagamento/i);
   assert.match(res, /R\$ 50,00/);
   assert.match(res, /000201/);
   assert.equal(sentImages.length, 1);
   assert.equal(sentImages[0].phone, '5585999991111');
+});
+
+test('Cliente Pix: pergunta o formato antes de gerar e entende "copia e cola" no turno seguinte', async () => {
+  const store = new SessionStore();
+  const sentImages = [];
+  const botConfig = createPixBotConfig('88998340085');
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    isOwnerSender: () => false,
+    whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
+    ai: {
+      askAI: async () => {
+        aiCalls += 1;
+        return aiCalls === 1
+          ? { reply: 'Vou gerar seu Pix.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 50, descricao: 'Compra de ração' } }] }
+          : { reply: '', tool_calls: [] };
+      }
+    }
+  });
+
+  const first = await flow.process({ phone: '5585999992222', text: 'Quero pagar 50 reais no Pix da compra de ração', origin: 'client' });
+  assert.match(first, /chave Pix|copia e cola/i);
+  assert.doesNotMatch(first, /Aqui está seu Pix para pagamento/i);
+  assert.equal(sentImages.length, 0);
+
+  const second = await flow.process({ phone: '5585999992222', text: 'prefiro o código copia e cola', origin: 'client' });
+  assert.match(second, /Aqui está seu Pix para pagamento/i);
+  assert.match(second, /R\$ 50,00/);
+  assert.equal(sentImages.length, 1);
 });
 
 test('Pix BR Code: normaliza celular de 11 dígitos com +55 sem confundir com CPF e remove frase de pedido da descrição', () => {

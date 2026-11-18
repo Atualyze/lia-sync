@@ -79,3 +79,39 @@ test('falha da agenda também gera resposta e não deixa o cliente sem retorno',
   assert.match(reply, /desativada|não.*agenda|equipe/i);
   assert.doesNotMatch(reply, /vou verificar sua agenda/i);
 });
+
+test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a pendência', async (t) => {
+  const oldNodeEnv = process.env.NODE_ENV;
+  const oldMock = process.env.GOOGLE_CALENDAR_MOCK;
+  process.env.NODE_ENV = 'test';
+  process.env.GOOGLE_CALENDAR_MOCK = 'true';
+  t.after(() => {
+    if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv;
+    if (oldMock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldMock;
+  });
+
+  const store = await makeStore('calendar-confirmation');
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    getBotConfig: () => baseConfig,
+    faq: async () => [],
+    ai: {
+      askAI: async () => {
+        aiCalls += 1;
+        return aiCalls === 1
+          ? { reply: 'Vou reservar esse horário.', tool_calls: [{ name: 'gerenciar_agenda_google', args: { action: 'criar_evento', date: 'amanhã', startTime: '14:30', summary: 'Atendimento' } }] }
+          : { reply: '', tool_calls: [] };
+      }
+    }
+  });
+
+  const first = await flow.process({ phone: '5511999990003', text: 'Quero agendar amanhã às 14:30' });
+  assert.match(first, /confirma|agendar/i);
+  assert.doesNotMatch(first, /agendado com sucesso/i);
+  assert.ok(store.get('5511999990003').pendingClientAgenda);
+
+  const second = await flow.process({ phone: '5511999990003', text: 'Pode sim' });
+  assert.match(second, /sucesso/i);
+  assert.equal(store.get('5511999990003').pendingClientAgenda, null);
+});

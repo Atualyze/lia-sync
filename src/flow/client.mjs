@@ -11,6 +11,56 @@ import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-r
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
+function normalizedClientText(value = '') {
+  return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
+}
+
+function isNaturalAffirmation(value = '') {
+  const text = normalizedClientText(value);
+  return /^(?:sim|s|ss|pode|pode sim|confirmo|confirmado|confirma|confirmar|quero|isso|perfeito|fechado|ok|okay|ta bom|tá bom|vamos|pode agendar|pode marcar)(?:[.!\s].*)?$/.test(text);
+}
+
+function isNaturalNegative(value = '') {
+  const text = normalizedClientText(value);
+  return /^(?:nao|não|n|cancela|cancelar|deixa|melhor nao|melhor não|desisti|desistir)(?:[.!\s].*)?$/.test(text);
+}
+
+function paymentChoice(value = '') {
+  const text = normalizedClientText(value);
+  if (/(?:so|só|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+[eé]\s+a\s+chave/.test(text)) return 'key';
+  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|c[oó]digo|br code)/.test(text)) return 'pix';
+  if (/(?:checkout|link|cartao|cartão|infinitepay)/.test(text)) return 'checkout';
+  return null;
+}
+
+function amountFromText(value = '') {
+  const text = String(value || '');
+  const match = text.match(/(?:r\$\s*)?(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|contos)?/i);
+  if (!match) return 0;
+  const raw = match[1].includes(',') && match[1].includes('.')
+    ? match[1].replace(/\./g, '').replace(',', '.')
+    : match[1].replace(',', '.');
+  const amount = Number(raw);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function paymentChoiceReply({ hasCheckout = false } = {}) {
+  return hasCheckout
+    ? 'Claro! Você prefere que eu envie *só a chave Pix*, gere o *código copia e cola* ou crie um *checkout com Pix e cartão*?'
+    : 'Claro! Você prefere que eu envie *só a chave Pix* ou gere o *código copia e cola*?';
+}
+
+function isCheckoutConfigured(botConfig = {}) {
+  const settings = botConfig?.tools?.settings?.checkout_infinitepay || {};
+  return Boolean(String(settings.handle || settings.apiKey || process.env.INFINITEPAY_HANDLE || process.env.INFINITEPAY_API_KEY || '').trim());
+}
+
+function directPixKeyReply({ key, owner }) {
+  return key
+    ? `💳 *Chave Pix para pagamento:*\n\n• *Chave:* \`${key}\`\n• *Favorecido:* ${owner}`
+    : 'No momento a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.';
+}
+
 function resolveConfiguredPixKey(botConfig) {
   return String(
     botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
@@ -493,8 +543,80 @@ export async function handleClientMessage({
       // criado): são preços reais da operação e devem passar pelo filtro de segurança.
       const toolAuthorizedPrices = new Set();
       let webSearchResult = null;
-      if (!filtered.blocked && isSuperAgent && Array.isArray(result?.tool_calls) && result.tool_calls.length > 0) {
-        for (const tc of result.tool_calls) {
+      const isClient = !isOwnerSender(phone) && origin !== 'owner';
+      let syntheticToolCalls = [];
+      const currentPaymentChoice = paymentChoice(clean);
+      const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
+        ? s.pendingClientPayment
+        : null;
+      const pendingAgenda = isClient && s.pendingClientAgenda && typeof s.pendingClientAgenda === 'object'
+        ? s.pendingClientAgenda
+        : null;
+
+      // Respostas curtas continuam o pedido pendente sem depender de a IA repetir a tool_call.
+      if (pendingAgenda && isNaturalNegative(clean)) {
+        s.pendingClientAgenda = null;
+        toolReplyOverride = 'Tudo bem, não vou agendar esse horário. Se quiser, posso consultar outra opção.';
+      } else if (pendingAgenda && isNaturalAffirmation(clean)) {
+        syntheticToolCalls = [{ name: 'gerenciar_agenda_google', args: pendingAgenda.args || {} }];
+        s.pendingClientAgenda = null;
+      } else if (pendingPayment) {
+        const selected = currentPaymentChoice || pendingPayment.choice;
+        if (selected === 'key') {
+          s.pendingClientPayment = null;
+          toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
+        } else if (selected === 'pix' || selected === 'checkout') {
+          const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
+          if (selected === 'checkout' && amount <= 0) {
+            pendingPayment.choice = selected;
+            toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
+          } else {
+            const args = { ...(pendingPayment.args || {}), valor: amount };
+            s.pendingClientPayment = null;
+            syntheticToolCalls = [{
+              name: selected === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
+              args: selected === 'checkout' ? { acao: 'criar_link', ...args } : args
+            }];
+          }
+        }
+      }
+
+      let toolCalls = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
+      if (syntheticToolCalls.length > 0) {
+        // Evita que uma tool_call repetida pela IA gere duas cobranças/agendamentos.
+        toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay', 'gerenciar_agenda_google'].includes(tc?.name));
+        toolCalls.push(...syntheticToolCalls);
+      }
+
+      // Fallback determinístico para o caso observado em produção: a IA responde
+      // apenas com texto, embora o cliente tenha pedido Pix ou escolhido um formato.
+      if (isClient && toolCalls.length === 0 && /\bpix\b/i.test(clean) && !pendingPayment) {
+        const choice = paymentChoice(clean);
+        const amount = amountFromText(clean);
+        if (choice === 'key') {
+          toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
+        } else if (choice === 'pix' || choice === 'checkout') {
+          if (choice === 'checkout' && amount <= 0) {
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
+          } else if (choice === 'pix' && amount <= 0) {
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
+          } else {
+            syntheticToolCalls = [{
+              name: choice === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
+              args: choice === 'checkout' ? { acao: 'criar_link', valor: amount, descricao: '' } : { valor: amount, descricao: '' }
+            }];
+            toolCalls = syntheticToolCalls;
+          }
+        } else {
+          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+          toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
+        }
+      }
+
+      if (!filtered.blocked && isSuperAgent && toolCalls.length > 0) {
+        for (const tc of toolCalls) {
           if (tc?.name && isClientToolAllowed(tc.name)) {
             const configuredPixKey = resolveConfiguredPixKey(botConfig);
             const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
@@ -510,6 +632,42 @@ export async function handleClientMessage({
             }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
+
+            // Para clientes, Pix começa por uma escolha explícita. Chave simples não
+            // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
+            if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
+              const directChoice = paymentChoice(clean);
+              if (directChoice === 'key') {
+                s.pendingClientPayment = null;
+                toolReplyOverride = directPixKeyReply({ key: configuredPixKey, owner });
+                continue;
+              }
+              if (!pendingPayment && !directChoice) {
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+                toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
+                continue;
+              }
+              if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString() };
+                toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
+                continue;
+              }
+              if (!pendingPayment && directChoice === 'pix' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'pix', createdAt: new Date(now()).toISOString() };
+                toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
+                continue;
+              }
+            }
+
+            // Consultar disponibilidade é seguro; criar evento altera a agenda e exige
+            // confirmação final do cliente, mesmo que o pedido inicial tenha sido direto.
+            if (isClient && tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && !syntheticToolCalls.includes(tc)) {
+              s.pendingClientAgenda = { args: { ...(tc.args || {}) }, createdAt: new Date(now()).toISOString() };
+              const date = tc.args?.date || tc.args?.start || 'a data informada';
+              const time = tc.args?.startTime || tc.args?.time || '';
+              toolReplyOverride = `Encontrei o horário de atendimento para ${date}${time ? ` às ${time}` : ''}. Posso confirmar e agendar para você?`;
+              continue;
+            }
             try {
               const toolContext = {
                 actor: 'client',
