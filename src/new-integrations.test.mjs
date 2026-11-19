@@ -1519,7 +1519,7 @@ test('Copiloto: sugestão de ferramenta sem vínculo com o pedido não executa a
   assert.equal(suppliedHistory.some(item => /Tarefa concluída antiga 0/.test(item.content)), false);
 });
 
-test('Copiloto: interrompe pergunta de cobrança semanticamente repetida mesmo quando reformulada', async () => {
+test('Copiloto registra pergunta reformulada sem descartar a continuidade ativa', async () => {
   const store = new SessionStore();
   let aiCalls = 0;
   const flow = createFlow({
@@ -1533,8 +1533,11 @@ test('Copiloto: interrompe pergunta de cobrança semanticamente repetida mesmo q
   const first = await flow.process({ phone: OWNER_SELF_KEY, text: 'Consulte o CRM', origin: 'owner' });
   assert.match(first, /Qual contato/i);
   const second = await flow.process({ phone: OWNER_SELF_KEY, text: 'Ainda não sei', origin: 'owner' });
-  assert.match(second, /repetindo a pergunta|inicie um novo pedido/i);
-  assert.doesNotMatch(second, /Qual contato você quer consultar pelo CRM/i);
+  assert.match(second, /Qual contato você quer consultar pelo CRM/i);
+  const pending = store.get(OWNER_SELF_KEY).pendingCopilotTask;
+  assert.equal(pending?.type, 'crm');
+  assert.equal(pending?.repeatCount, 1, 'a repetição fica registrada sem substituir a resposta natural');
+  assert.match(pending?.lastQuestion || '', /pelo CRM/i);
 });
 
 
