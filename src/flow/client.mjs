@@ -9,7 +9,7 @@ import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_p
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { selectActiveClientHistory } from './client-context.mjs';
-import { isNaturalAffirmation, isNaturalNegative } from './decision-signals.mjs';
+import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
@@ -17,37 +17,6 @@ function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
 }
 
-function paymentChoice(value = '') {
-  let text = normalizedClientText(value);
-  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) return null;
-
-  const negativeAt = text.search(/\b(?:nao|nunca|jamais)\b/);
-  if (negativeAt >= 0) {
-    const markers = [' mas ', ' porem ', ' prefiro ', ' quero ', ' escolho ', ' vou de '];
-    const marker = markers
-      .map(value => ({ value, index: text.lastIndexOf(value) }))
-      .filter(item => item.index > negativeAt)
-      .sort((a, b) => b.index - a.index)[0];
-    if (!marker) return null;
-    text = text.slice(marker.index + marker.value.length).trim();
-  }
-
-  if (/(?:so|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+(?:e\s+)?a\s+chave/.test(text)) return 'key';
-  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|br code)/.test(text)) return 'pix';
-  if (/(?:checkout|link|cartao|infinitepay)/.test(text)) return 'checkout';
-  return null;
-}
-
-function isPixActionRequest(value = '') {
-  const text = normalizedClientText(value);
-  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) {
-    return false;
-  }
-  const action = /\b(?:quero|preciso|me passa|passa|envia|enviar|manda|mandar|gera|gerar|cria|criar|faz|fazer|cobrar|cobranca|pagar|pagamento|informa|informar)\b/;
-  const paymentTerm = /\b(?:pix|chave|copia|qr code|checkout|infinitepay)\b/;
-  return (action.test(text) && paymentTerm.test(text))
-    || /\b(?:chave pix|copia e cola|qr code|qrcode|checkout infinitepay)\b/.test(text);
-}
 
 function amountFromText(value = '') {
   const text = String(value || '');
@@ -654,7 +623,7 @@ export async function handleClientMessage({
       let webSearchResult = null;
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
-      const currentPaymentChoice = paymentChoice(clean);
+      const currentPaymentChoice = resolvePaymentChoice(clean);
       const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
@@ -703,7 +672,7 @@ export async function handleClientMessage({
       // Fallback determinístico: seleções curtas, como "só a chave" ou
       // "copia e cola", também funcionam sem depender do contexto anterior.
       if (isClient && toolCalls.length === 0 && isPixActionRequest(clean) && !pendingPayment) {
-        const choice = paymentChoice(clean);
+        const choice = resolvePaymentChoice(clean);
         const amount = amountFromText(clean);
         if (choice === 'key') {
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
@@ -748,7 +717,7 @@ export async function handleClientMessage({
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
             if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
-              const directChoice = paymentChoice(clean);
+              const directChoice = resolvePaymentChoice(clean);
               if (directChoice === 'key') {
                 s.pendingClientPayment = null;
                 toolReplyOverride = directPixKeyReply({ key: configuredPixKey, owner });
