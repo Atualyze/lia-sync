@@ -250,9 +250,11 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
     botConfig,
     isOwner: false
   });
+  const lastCustomerMessage = pending.snippet || [...(sTarget.history || [])].reverse()
+    .find(message => message?.role === 'user')?.content || '';
   const continuationPrompt = pending.unanswered
-    ? `O atendimento humano devolveu esta conversa para você. A última mensagem do cliente ficou sem resposta ("${pending.snippet || ''}"). Responda de forma natural e acolhedora dando continuidade à qualificação e dúvidas.`
-    : `O atendimento humano devolveu esta conversa para você após já ter respondido ao cliente. Envie uma mensagem curta, natural e simpática perguntando se ficou alguma dúvida ou se podem seguir com o atendimento.`;
+    ? `Retome esta conversa como se você tivesse acompanhado todo o atendimento. A última mensagem do cliente ficou sem resposta: "${lastCustomerMessage}". Responda diretamente ao assunto dessa mensagem, aproveitando os dados reais do histórico. Seja natural, humana e acolhedora; não mencione handoff, reativação, modo interno ou que você é um fallback. Não use uma saudação genérica nem pergunte apenas se ficou alguma dúvida.`
+    : `Retome esta conversa com base no último assunto real do histórico. A mensagem anterior do cliente já recebeu resposta, então escreva uma continuação curta e humana que faça sentido para aquele contexto. Não mencione handoff, reativação ou modo interno, não use frase pronta genérica e não repita a resposta anterior.`;
 
   const aiResult = await ai?.askAI?.({
     system: sys,
@@ -262,7 +264,10 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
     isOwner: false
   }).catch(() => null);
 
-  const fallbackReply = 'Oi! Passando por aqui para saber se ficou alguma dúvida ou se posso te ajudar a continuar seu atendimento por aqui.';
+  const clientName = String(sTarget.clientName || sTarget.contactName || '').trim();
+  const fallbackReply = pending.unanswered && lastCustomerMessage
+    ? `Oi${clientName ? `, ${clientName}` : ''}! Vi sua mensagem sobre "${lastCustomerMessage}" e quero te ajudar com isso. Pode me confirmar um pouco mais do que você precisa para eu dar sequência?`
+    : `Oi${clientName ? `, ${clientName}` : ''}! Retomando nosso atendimento sobre o que conversamos: como você gostaria de seguir?`;
   const rawReply = aiResult?.text || aiResult?.reply || fallbackReply;
   const filteredReply = filterReply(rawReply, { allowedPrices: getAllowedPrices(), strictPrices: true });
   // Nunca entregar texto cru quando o filtro bloqueia: usa mensagem neutra de segurança.
@@ -271,10 +276,11 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   if (typeof stageOutboundDispatch !== 'function') {
     return 'Não enviei a resposta: este fluxo precisa registrar uma prévia no Copilot para sua confirmação.';
   }
-  return await stageOutboundDispatch({
+  const preview = await stageOutboundDispatch({
     phone: sTarget.phone || pending.phone,
     recipient: pending.contactLabel || pending.phone,
     message: finalReply,
     asAudio: false
   }, { source: 'reactivation', resumeBot: true });
+  return preview || 'Não consegui preparar a continuação para envio agora. O contato continua protegido e nenhuma mensagem foi enviada; tente confirmar novamente em alguns instantes.';
 }
