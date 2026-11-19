@@ -12,6 +12,7 @@ import {
 import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
+import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
@@ -365,8 +366,8 @@ export async function handleOwnerSession({
             return recordSelfTurn('A prévia do disparo expirou. Nada foi enviado; se ainda quiser, faça o pedido novamente.');
           }
           const id = String(pending.id || '').toUpperCase();
-          const approveMatch = cleanCommand.match(/^(?:sim|confirmo|confirmado|confirmar|confirm|pode\s+(?:enviar|mandar|disparar)|autorizo|manda|envia|dispara|ok|okay|isso)(?:\s+([A-F0-9]{8}))?(?:[\s,;:!?.].*)?$/i);
-          const cancelMatch = cleanCommand.match(/^(?:n[aã]o|nao|negativo|cancelar|cancela|cancelar\s+envio|cancela\s+envio|não precisa|nao precisa)(?:\s+([A-F0-9]{8}))?(?:[\s,;:!?.].*)?$/i);
+          const approveMatch = matchOutboundApproval(cleanCommand);
+          const cancelMatch = matchOutboundCancellation(cleanCommand);
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
           if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch !== 'function') {
             return recordSelfTurn('Este disparo de prospecção aguarda a conexão de aprovação com a fila de leads. Não enviei nada; peça suporte ao responsável pelo sistema.');
@@ -538,6 +539,12 @@ export async function handleOwnerSession({
           target.updatedAt = sentAt;
           store.markDirty();
           await store.flush?.().catch(() => {});
+          if (pending.asAudio) {
+            const transcriptionWarning = sent.transcriptionSent === false
+              ? '\n\n⚠️ O áudio foi entregue, mas a transcrição em texto não foi confirmada. O áudio não será reenviado.'
+              : '';
+            return recordSelfTurn('🎙️ *Áudio gravado e enviado com sucesso!*\n\n• *Destinatário:* ' + sent.recipient + ' (' + sent.phone + ')\n• *Roteiro enviado:*\n> "' + sent.message + '"' + transcriptionWarning);
+          }
           return recordSelfTurn(`✅ Envio confirmado e concluído para *${sent.recipient}* (${sent.phone}):\n\n> "${sent.message}"`);
         };
 
@@ -719,11 +726,11 @@ export async function handleOwnerSession({
 
 
         // 1.0 Cancelamento Geral Imediato (prioridade máxima antes de qualquer processamento)
-        const isExplicitCancel = /^(?:n[ãa]o(?:\s+(?:envia|manda|precisa|quero))?|cancela|cancelar|cancelado|abortar|esquece|deixa(?:\s+(?:quieto|pra\s+l[áa]))?|para|parar|n[ãa]o\s+envia|n[ãa]o\s+manda|n[ãa]o\s+precisa)\b/i.test(strippedCmd) ||
-          /^(?:pode\s+)?cancelar\b/i.test(strippedCmd);
+        // Só intercepta cancelamentos inequívocos; perguntas e negativas explicativas seguem para a IA.
+        const hadPending = Boolean(sSelf.pendingOutboundDispatch || sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
+        const isExplicitCancel = isExplicitCopilotCancellation(strippedCmd, { hasPending: hadPending });
 
         if (isExplicitCancel) {
-          const hadPending = Boolean(sSelf.pendingOutboundDispatch || sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
           sSelf.pendingOutboundDispatch = null;
           sSelf.pendingAudioConfirmation = null;
           sSelf.pendingRecipient = null;
@@ -927,7 +934,7 @@ Olá, *${owner}*! Aqui estão todos os controles e testes operacionais em tempo 
 • *status* - Raio-X do sistema: conexão, sessões e modelo ativo
 • *metricas* ou *consumo* - Requisições, tokens consumidos e taxa de sucesso
 • *ping* ou *teste* - Mede a latência real de resposta da IA em milissegundos
-• *relatorio* - Resumo executivo de atendimentos e conversas do dia
+• *relatorio* - Gera um relatório em PDF (digite *dados do sistema* para usar o raio-X atual)
 
 ⚡ *Controle Geral do Bot:*
 • *bot off* ou *pausar bot* - Desativa a ${assistant} globalmente (modo 100% humano)
@@ -1227,9 +1234,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
             store.markDirty();
             await store.flush?.().catch(() => {});
           } else {
-            const isConfirm = /^(?:sim|confirmo|confirmado|pode\s+enviar|pode\s+mandar|pode\s+gravar|autorizo|manda|dispara|dispare|envia|vai)[.!\s]*$/i.test(strippedCmd) ||
-              /^(?:pode\s+enviar|pode\s+mandar|pode\s+gravar|pode\s+sim|sim[,.\s]+pode\s+(?:enviar|mandar|gravar|disparar))\b/i.test(strippedCmd);
-            const isCancel = /(?:cancela|cancelar|cancelado|abortar|esquece|desiste|descarta|n[ãa]o\s+(?:envia|manda|precisa|quero)|deixa\s+(?:quieto|pra\s+l[áa]))\b/i.test(strippedCmd);
+            const isConfirm = Boolean(matchOutboundApproval(strippedCmd));
+            const isCancel = Boolean(matchOutboundCancellation(strippedCmd));
 
           if (isConfirm) {
             sSelf.pendingAudioConfirmation = null;
@@ -1257,34 +1263,64 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
                 return recordSelfTurn(filterReply(`⚠️ *Erro ao gravar/enviar áudio:* ${err.message}`, { isCopilot: true }).text);
               }
             } else {
-              try {
-                const toolRes = await executeToolCall('enviar_mensagem_contato', {
-                  recipient: pendingAudio.recipient,
+              // Áudio externo e áudio para o próprio responsável compartilham o despacho transacional.
+              // A confirmação atual é reaproveitada; não solicitamos um segundo 'sim'.
+              sSelf.pendingAudioConfirmation = pendingAudio;
+              let preparedAudio;
+              if (pendingAudio.forSelf) {
+                const selfTargetPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+                if (selfTargetPhone.length < 8) {
+                  return recordSelfTurn(filterReply('Não consegui identificar seu número para preparar o áudio. A prévia continua pendente e nada foi enviado.', { isCopilot: true }).text);
+                }
+                preparedAudio = {
+                  requiresConfirmation: true,
+                  phone: selfTargetPhone,
+                  recipient: owner + ' (você)',
                   message: pendingAudio.message,
                   asAudio: true
-                }, {
-                  phone: OWNER_SELF_KEY,
-                  clientName: `${owner} (Copiloto)`,
-                  store,
-                  reminderStore,
-                  whatsapp,
-                  ai,
-                  botConfig,
-                  session: sSelf,
-                  dispatchConfirmed: true
-                });
-
-                if (toolRes?.success) {
-                  const mediaIcon = toolRes.asAudio ? '🎙️ (áudio sintetizado)' : '💬 (texto)';
-                  const confirmation = `🚀 *Áudio gravado e enviado com sucesso!*\n\n• *Destinatário:* ${toolRes.recipient} (${toolRes.phone})\n• *Formato:* ${mediaIcon}\n• *Roteiro enviado:*\n> "${toolRes.message}"`;
-                  return recordSelfTurn(filterReply(confirmation, { isCopilot: true }).text);
-                } else {
-                  const errReply = `⚠️ *Não consegui disparar o áudio:*\n\n${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
-                  return recordSelfTurn(filterReply(errReply, { isCopilot: true }).text);
+                };
+              } else {
+                try {
+                  preparedAudio = await executeToolCall('enviar_mensagem_contato', {
+                    recipient: pendingAudio.recipient,
+                    message: pendingAudio.message,
+                    asAudio: true
+                  }, {
+                    phone: OWNER_SELF_KEY,
+                    clientName: owner + ' (Copiloto)',
+                    store,
+                    reminderStore,
+                    whatsapp,
+                    ai,
+                    botConfig,
+                    session: sSelf,
+                    prepareOnly: true
+                  });
+                } catch (err) {
+                  return recordSelfTurn(filterReply('Não consegui preparar o áudio para envio: ' + err.message + '. A prévia continua pendente; nada foi enviado.', { isCopilot: true }).text);
                 }
-              } catch (err) {
-                return recordSelfTurn(filterReply(`⚠️ *Erro ao enviar o áudio:* ${err.message}`, { isCopilot: true }).text);
               }
+
+              if (!preparedAudio?.requiresConfirmation || !preparedAudio.phone) {
+                return recordSelfTurn(filterReply('Não consegui preparar o áudio: ' + (preparedAudio?.error || 'não localizei um telefone válido para o contato') + '. A prévia continua pendente e nada foi enviado.', { isCopilot: true }).text);
+              }
+
+              const audioPreview = await stageOutboundDispatch({
+                phone: preparedAudio.phone,
+                recipient: preparedAudio.recipient || pendingAudio.recipient,
+                message: preparedAudio.message || pendingAudio.message,
+                asAudio: true
+              }, { source: 'copilot-audio' });
+
+              if (!audioPreview) {
+                // Uma falha ao reservar/persistir não pode descartar a prévia legada.
+                sSelf.pendingAudioConfirmation = pendingAudio;
+                store.markDirty();
+                await store.flush?.().catch(() => {});
+                return recordSelfTurn(filterReply('Já existe outro disparo pendente ou incerto, ou não consegui persistir esta prévia. O áudio não foi enviado; resolva a pendência antes de tentar novamente.', { isCopilot: true }).text);
+              }
+
+              return handlePendingOutboundDispatch();
             }
           } else if (isCancel) {
             sSelf.pendingAudioConfirmation = null;
