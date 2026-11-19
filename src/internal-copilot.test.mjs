@@ -1483,5 +1483,5 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
   assert.ok(receivedHistory.some(item => /o que aconteceu/i.test(item.content)));
   assert.doesNotMatch(receivedSystem, /CONTEXTO_CONTINUIDADE_ATIVA/);
   assert.match(receivedHistory.map(item => item.content || '').join('\\n'), /Me ajuda a entender uma situação que aconteceu com um cliente/);
-  assert.equal(store.get('owner_self').pendingCopilotTask, null, 'uma resposta concluída pode encerrar o contexto pendente');
+  assert.equal(store.get('owner_self').pendingCopilotTask, undefined, 'uma resposta concluída pode encerrar o contexto pendente');
 });
