@@ -232,6 +232,25 @@ export class MemoryStore {
   async rememberWithEmbedding(params = {}, embedOpts = {}) {
     const res = this.remember(params);
     if (!res.saved || !res.memory) return res;
+    // Do not keep a vector for old content if an update succeeds but embedding fails.
+    delete res.memory.embedding;
+    this.items.set(res.memory.id, res.memory);
+    this._persist();
+    const embedding = await generateMemoryEmbedding(res.memory.content, embedOpts);
+    if (embedding) {
+      res.memory.embedding = embedding;
+      this.items.set(res.memory.id, res.memory);
+      this._persist();
+    }
+    return res;
+  }
+
+  async correctWithEmbedding(params = {}, embedOpts = {}) {
+    const res = this.correct(params);
+    if (!res.updated || !res.memory) return res;
+    delete res.memory.embedding;
+    this.items.set(res.memory.id, res.memory);
+    this._persist();
     const embedding = await generateMemoryEmbedding(res.memory.content, embedOpts);
     if (embedding) {
       res.memory.embedding = embedding;
