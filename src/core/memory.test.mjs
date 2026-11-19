@@ -61,3 +61,29 @@ test('memória: usa embedding para enriquecer a recuperação quando há dados s
   assert.equal(calls, 2);
   assert.equal(result[0].type, 'preference');
 });
+
+
+test('memória: corrigir conteúdo atualiza o vetor semântico anterior', async t => {
+  const store = tempStore(t);
+  let vector = [1, 0, 0];
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ embedding: { values: vector } })
+  });
+  const saved = await store.rememberWithEmbedding({
+    scopeKey: 'tenant:owner',
+    type: 'project',
+    content: 'Projeto antigo de atendimento',
+    importance: 0.8
+  }, { apiKey: 'test-key', fetchImpl });
+  vector = [0, 1, 0];
+  const corrected = await store.correctWithEmbedding({
+    scopeKey: 'tenant:owner',
+    idOrQuery: saved.memory.id,
+    newContent: 'Projeto atualizado de automação',
+    type: 'project'
+  }, { apiKey: 'test-key', fetchImpl });
+  assert.equal(corrected.updated, true);
+  assert.deepEqual(corrected.memory.embedding, [0, 1, 0]);
+  assert.match(corrected.memory.content, /atualizado/i);
+});
