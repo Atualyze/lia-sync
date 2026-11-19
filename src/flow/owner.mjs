@@ -13,7 +13,8 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { classifyCopilotTurn, reviewCopilotToolCall } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent } from './copilot-continuity.mjs';
+import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
@@ -1490,22 +1491,22 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || /^(?:r\$\s*)?\d{1,3}(?:[.,]\d{1,2})?$/i.test(cleanCommand.trim())
           || /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand)
         ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext);
+        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer))?|pode detalhar|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn);
         const explicitDispatchContinuation = activeTask?.type === 'dispatch'
           && Boolean(sSelf.pendingRecipient)
           && cleanCommand.length > 5
-          && !/\b(?:nao entendi|não entendi|pode explicar|como assim|o que quis dizer|o que vc|o que você)\b/i.test(cleanCommand);
-        const explicitTaskContinuation = Boolean(activeTask && (
-          inferCopilotTaskTypes(cleanCommand).includes(activeTask.type)
-          || isAffirmativeTaskAnswer
-          || hasPaymentAmount
-          || explicitDispatchContinuation
+          && !isCopilotMetaQuestion
+          && !hasExplicitToolIntent(cleanCommand, 'enviar_mensagem_contato');
+        const isShortPaymentAnswer = activeTask?.type === 'payment'
+          && hasPaymentAmount
+          && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
+          && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
+        const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
+          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
-        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi (?:sua|essa) resposta|pode explicar (?:melhor )?(?:sua resposta|o que quis dizer)|como assim)\b/i.test(normalizedTurn);
-        const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general'
-          && (activeTask.type === 'payment' || isCopilotMetaQuestion)
-          && hasPendingClarification
-          && !explicitTaskContinuation);
+        const shouldClassifyTurn = Boolean(activeTask && hasPendingClarification
+          && (!explicitTaskContinuation || isCopilotMetaQuestion));
         if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
             ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
@@ -1648,17 +1649,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
-              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
-              const currentRequestMatches = Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType));
-              const activeTaskMatches = Boolean(liveTask && (
-                liveTask.type === toolTaskType ||
-                (Array.isArray(liveTask.allowedTools) && liveTask.allowedTools.includes(tc.name))
-              ));
-
-              // A mensagem atual ou uma tarefa ainda ativa pode autorizar a categoria.
-              // Quando nenhum dos dois vínculos existe, a revisão semântica decide
-              // entre continuação, novo pedido, esclarecimento ou recusa.
-              if (!currentRequestMatches && !activeTaskMatches) {
+              // A menção temática ou a tarefa pendente não autorizam a ferramenta.
+              // Só pulamos a revisão quando a mensagem atual pede explicitamente
+              // a ação proposta; continuações implícitas passam pela revisão semântica.
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name);
+              if (!currentRequestMatches) {
                 const review = await reviewCopilotToolCall({
                   ai,
                   currentMessage: cleanCommand,
