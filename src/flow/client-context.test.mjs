@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectActiveClientHistory } from './client-context.mjs';
+import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 
 const stamp = value => new Date(value).toISOString();
 
@@ -44,4 +44,53 @@ test('contexto de cliente: operação pendente mantém continuidade mesmo após 
 
   assert.equal(selected.topicBoundary, false);
   assert.deepEqual(selected.history, history);
+});
+
+
+test('contexto: pergunta sobre a resposta recente não dispara recuperação de conversas antigas', () => {
+  assert.equal(isExplicitHistoryRecallRequest('O que houve?'), false);
+  assert.equal(isExplicitHistoryRecallRequest('Você já conseguiu confirmar o Pix?'), false);
+});
+
+test('contexto: recupera conversa antiga somente quando o cliente pede para retomar o assunto', () => {
+  const history = [
+    { conversationId: 'old-project', role: 'user', content: 'Quero criar um site para minha oficina de motos', createdAt: stamp('2026-11-10T12:00:00Z') },
+    { conversationId: 'old-project', role: 'assistant', content: 'Podemos estruturar o site com domínio, hospedagem e painel de agendamentos', createdAt: stamp('2026-11-10T12:01:00Z') },
+    { conversationId: 'old-project', role: 'user', content: 'Também quero acompanhar os serviços da oficina', createdAt: stamp('2026-11-10T12:02:00Z') },
+    { conversationId: 'current-pix', role: 'user', content: 'Quero o Pix copia e cola', createdAt: stamp('2026-11-19T16:28:00Z') },
+    { conversationId: 'current-pix', role: 'assistant', content: 'Qual é o valor para gerar o código?', createdAt: stamp('2026-11-19T16:28:30Z') },
+    { conversationId: 'current-pix', role: 'user', content: '5', createdAt: stamp('2026-11-19T16:28:50Z') },
+    { conversationId: 'current-pix', role: 'assistant', content: 'Preciso confirmar esse valor com a equipe', createdAt: stamp('2026-11-19T16:29:00Z') }
+  ];
+
+  assert.equal(isExplicitHistoryRecallRequest('Vamos retomar o site da oficina de motos'), true);
+  const recalled = selectRelevantConversationContext(history, 'Vamos retomar o site da oficina de motos');
+
+  assert.equal(recalled.matched, true);
+  assert.equal(recalled.conversationId, 'old-project');
+  assert.ok(recalled.messages.some(message => /painel de agendamentos/i.test(message.content)));
+  assert.ok(!recalled.messages.some(message => /Pix copia e cola/i.test(message.content)));
+});
+
+test('contexto: pedido genérico para retomar conversa pergunta o assunto em vez de escolher uma memória', () => {
+  assert.equal(isExplicitHistoryRecallRequest('Vamos voltar àquela conversa?'), true);
+  const recalled = selectRelevantConversationContext([
+    { conversationId: 'old-project', role: 'user', content: 'Quero criar um site para minha oficina', createdAt: stamp('2026-11-10T12:00:00Z') }
+  ], 'Vamos voltar àquela conversa?');
+
+  assert.equal(recalled.matched, false);
+  assert.equal(recalled.reason, 'insufficient_topic');
+});
+
+test('memória: consulta usa apenas a mensagem atual e os turnos mais próximos', () => {
+  const query = buildMemoryRetrievalQuery('O que houve?', [
+    { role: 'user', content: 'Quero o Pix copia e cola' },
+    { role: 'assistant', content: 'Qual é o valor para gerar o código?' },
+    { role: 'user', content: '5' },
+    { role: 'assistant', content: 'Preciso confirmar esse valor com a equipe' }
+  ]);
+
+  assert.match(query, /Pix copia e cola/);
+  assert.match(query, /O que houve/);
+  assert.doesNotMatch(query, /oficina|site da oficina/i);
 });
