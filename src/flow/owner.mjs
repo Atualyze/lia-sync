@@ -1496,9 +1496,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && Boolean(sSelf.pendingRecipient)
           && cleanCommand.length > 5
           && !isCopilotMetaQuestion
+          && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)
           && !hasExplicitToolIntent(cleanCommand, 'enviar_mensagem_contato');
         const isShortPaymentAnswer = activeTask?.type === 'payment'
           && hasPaymentAmount
+          && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
@@ -1543,7 +1545,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           timeoutMs: 1200
         });
         const baseSys = buildSystemPrompt({
-          session: { history: recentHistory, supportContacts },
+          session: { history: recentHistory, supportContacts, lastUserText: cleanCommand },
           now: new Date(now()),
           botConfig,
           isOwner: true,
