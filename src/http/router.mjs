@@ -78,7 +78,6 @@ export function requiredRole(pathname, method) {
 export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
-    const requestHost = String(req.headers?.host || '').split(':')[0].toLowerCase();
     const requestOrigin = req.headers.origin;
     if (requestOrigin && config.dashboardOrigin && requestOrigin === config.dashboardOrigin && typeof res.setHeader === 'function') {
       res.setHeader('access-control-allow-origin', config.dashboardOrigin);
