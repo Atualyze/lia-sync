@@ -374,8 +374,8 @@ export function findMatchingKnowledgeBasesSync(
   for (const kb of all) {
     if (kb.copilotOnly && !includeCopilotOnly) continue;
     const folder = String(kb.folder || '');
-    if (Array.isArray(onlyFolders) && !onlyFolders.some(f => folder === f || folder.startsWith(\`\${f}/\`))) continue;
-    if (Array.isArray(excludeFolders) && excludeFolders.some(f => folder === f || folder.startsWith(\`\${f}/\`))) continue;
+    if (Array.isArray(onlyFolders) && !onlyFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
+    if (Array.isArray(excludeFolders) && excludeFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
     const match = scoreKbRelevance(kb, queryTokens);
     if (match) ranked.push(match);
   }
