@@ -1500,8 +1500,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || hasPaymentAmount
           || explicitDispatchContinuation
         ));
+        const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general'
-          && String(activeTask.lastQuestion || '').trim()
+          && hasPendingClarification
           && !explicitTaskContinuation);
         if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
