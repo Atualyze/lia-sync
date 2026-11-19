@@ -6,7 +6,7 @@ const CONTEXT_STOP_WORDS = new Set([
   'pelos', 'por', 'pra', 'pro', 'um', 'uma', 'uns', 'umas', 'que', 'qual',
   'quais', 'como', 'quando', 'onde', 'eu', 'voce', 'voces', 'me', 'meu',
   'minha', 'meus', 'minhas', 'nos', 'nosso', 'nossa', 'seu', 'sua', 'seus',
-  'suas', 'vamos', 'podemos', 'poderia', 'gostaria', 'queria', 'retoma', 'retomar', 'retome', 'volta', 'voltar', 'volte',
+  'suas', 'vamos', 'podemos', 'poderia', 'gostaria', 'queria', 'sobre', 'falamos', 'conversamos', 'combinamos', 'discutimos', 'retoma', 'retomar', 'retome', 'volta', 'voltar', 'volte',
   'continua', 'continuar', 'continue', 'recupera', 'recuperar', 'lembra',
   'lembrar', 'lembre', 'conversa', 'conversas', 'assunto', 'assuntos',
   'projeto', 'projetos', 'anterior', 'anteriores', 'antiga', 'antigo',
