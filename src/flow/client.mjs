@@ -9,21 +9,12 @@ import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_p
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { selectActiveClientHistory } from './client-context.mjs';
+import { isNaturalAffirmation, isNaturalNegative } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
 function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
-}
-
-function isNaturalAffirmation(value = '') {
-  const text = normalizedClientText(value);
-  return /^(?:sim|s|ss|pode|pode sim|confirmo|confirmado|confirma|confirmar|quero|isso|perfeito|fechado|ok|okay|ta bom|tá bom|vamos|pode agendar|pode marcar)(?:[.!\s].*)?$/.test(text);
-}
-
-function isNaturalNegative(value = '') {
-  const text = normalizedClientText(value);
-  return /^(?:nao|não|n|cancela|cancelar|deixa|melhor nao|melhor não|desisti|desistir)(?:[.!\s].*)?$/.test(text);
 }
 
 function paymentChoice(value = '') {
