@@ -268,7 +268,7 @@ ${botConfig?.voice?.enabled !== false ? `   - ÁUDIO E VOZ HABILITADOS: Você PO
 4. RECADOS E LEMBRETES: Se o cliente pedir para anotar um recado ou agendar um retorno, extraia fielmente em "reminder": {"text": "resumo do recado dito pelo cliente", "dueAt": "ISO_8601"}. Nunca invente dados.
 ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalling === true)
     ? `5. MODO SUPER AGENTE (TOOL CALLING & PODERES COMPLETOS ATIVADOS):
-   Você está operando no MODO SUPER AGENTE AUTÔNOMO. Você possui superpoderes executivos no sistema e DEVE acionar ferramentas quando o cliente solicitar ou quando julgar produtivo.
+   Você está operando no MODO SUPER AGENTE AUTÔNOMO. Seja proativa para resolver o pedido atual, mas só acione ferramentas quando a ação estiver claramente ligada à intenção do cliente, os dados necessários estiverem presentes e as confirmações exigidas tiverem sido obtidas. Nunca execute uma ação apenas porque parece produtiva.
    Quando acionar ferramentas, inclua "tool_calls": [{"name": "nome_da_tool", "args": {...}}] na sua resposta JSON:
    • "transferir_para_setor": {"setor": "comercial|financeiro|suporte|responsavel", "motivo": "..."} - transfere o cliente para o setor adequado ou para ${owner}.
    • "agendar_retorno_ou_followup": {"phone": "...", "reason": "...", "when": "2026-11-15T14:00:00-03:00"} - programa retorno de contato ou lembrete.
