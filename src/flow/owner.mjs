@@ -1501,7 +1501,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || explicitDispatchContinuation
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
+        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi (?:sua|essa) resposta|pode explicar (?:melhor )?(?:sua resposta|o que quis dizer)|como assim)\b/i.test(normalizedTurn);
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general'
+          && (activeTask.type === 'payment' || isCopilotMetaQuestion)
           && hasPendingClarification
           && !explicitTaskContinuation);
         if (shouldClassifyTurn) {
