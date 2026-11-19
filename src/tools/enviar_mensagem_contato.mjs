@@ -197,6 +197,7 @@ export const toolEnviarMensagemContato = {
     // Dispara via whatsapp.mjs (Evolution API)
     try {
       let isVoice = asAudio === true;
+      let transcriptionSent = null;
       if (isVoice) {
         const synthFn = context.ai?.synthesizeVoice;
         const sendAudioFn = context.whatsapp?.sendWhatsAppAudio || sendWhatsAppAudio;
@@ -205,22 +206,33 @@ export const toolEnviarMensagemContato = {
           try { voiceRes = await synthFn(safeMsg, { botConfig: context.botConfig }); }
           catch (e) { console.error('[tool:enviar_mensagem_contato] Falha na síntese de áudio:', e.code || e.name || 'tts_failed'); }
         }
-        if (voiceRes?.base64) {
-          try {
-            await sendAudioFn(targetPhone, voiceRes.base64);
-            const sendTranscription = context.botConfig?.voice?.sendTranscriptionWithAudio !== false && context.botConfig?.voice?.deliveryMode !== 'audio_only';
-            if (sendTranscription) {
-              const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
-              await sendFn(targetPhone, safeMsg);
-            }
-          }
-          catch (e) {
-            return { success: false, deliveryUnknown: e?.deliveryUnknown === true, error: e?.deliveryUnknown ? 'O resultado da entrega de áudio é incerto; não foi feito retry nem fallback para texto.' : 'A Evolution recusou a entrega do áudio; o texto não foi enviado automaticamente.' };
-          }
-        } else {
+        if (!voiceRes?.base64) {
+          return { success: false, error: 'Não consegui sintetizar o áudio. Nenhuma mensagem em texto foi enviada como substituição.' };
+        }
+
+        // Após a entrega do áudio, a transcrição é acessória e não pode causar retry do áudio.
+        try {
+          await sendAudioFn(targetPhone, voiceRes.base64);
+        } catch (e) {
+          return {
+            success: false,
+            deliveryUnknown: e?.deliveryUnknown === true,
+            error: e?.deliveryUnknown
+              ? 'O resultado da entrega de áudio é incerto; não foi feito retry nem fallback para texto.'
+              : 'A Evolution recusou a entrega do áudio; o texto não foi enviado automaticamente.'
+          };
+        }
+
+        const sendTranscription = context.botConfig?.voice?.sendTranscriptionWithAudio !== false && context.botConfig?.voice?.deliveryMode !== 'audio_only';
+        if (sendTranscription) {
           const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
-          await sendFn(targetPhone, safeMsg);
-          isVoice = false;
+          try {
+            await sendFn(targetPhone, safeMsg);
+            transcriptionSent = true;
+          } catch {
+            // O áudio já foi entregue: falha na transcrição não torna o envio do áudio incerto.
+            transcriptionSent = false;
+          }
         }
       } else {
         const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
@@ -236,7 +248,8 @@ export const toolEnviarMensagemContato = {
             role: 'assistant',
             content: safeMsg,
             createdAt: new Date().toISOString(),
-            fromCopilot: true
+            fromCopilot: true,
+            ...(isVoice ? { mediaType: 'audio', transcriptionSent } : { mediaType: 'text' })
           });
           store.touch?.(sTarget);
           store.markDirty?.();
@@ -253,6 +266,7 @@ export const toolEnviarMensagemContato = {
         success: true,
         sent: true,
         asAudio: isVoice,
+        ...(isVoice ? { transcriptionSent } : {}),
         recipient: targetName || targetPhone,
         phone: targetPhone,
         message: safeMsg
@@ -260,6 +274,7 @@ export const toolEnviarMensagemContato = {
     } catch (err) {
       return {
         success: false,
+        deliveryUnknown: err?.deliveryUnknown === true,
         error: 'Falha ao enviar mensagem no WhatsApp para ' + targetPhone + ': ' + err.message
       };
     }

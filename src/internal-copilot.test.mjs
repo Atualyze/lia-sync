@@ -1025,7 +1025,7 @@ test('Copiloto: pedido de áudio no chat interno gera prévia e envia só após 
   const confirmed = await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentAudios.length, 1);
   assert.equal(sentAudios[0].phone, '5588921694598');
-  assert.match(confirmed, /Envio confirmado e concluído/i);
+  assert.match(confirmed, /Áudio gravado e enviado com sucesso/i);
 });
 
 test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre o Lima sobre o monitoramento do pixel..."', async () => {
@@ -1222,4 +1222,82 @@ test('enviar_mensagem_contato resolve contato via SupabaseRestClient.select(cont
 
   assert.equal(res.success, true);
   assert.equal(sentTo?.phone, '5588999112233');
+});
+
+test('perguntas não cancelam uma prévia pendente; a confirmação explícita continua funcionando', async () => {
+  const store = createMockStore();
+  store.get('5585991099483').clientName = 'Lima';
+  const sent = [];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: { sendText: async (phone, text) => { sent.push({ phone, text }); } }
+  });
+  const preview = await flow.process({ phone: '5588921694598', text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta' });
+  assert.match(preview, /Prévia do disparo/i);
+  const self = store.get('5588921694598');
+  for (const text of ['Não entendi, pode explicar?', 'Para quando fica o orçamento?', 'Não precisa explicar isso']) {
+    const reply = await flow.process({ phone: '5588921694598', text });
+    assert.match(reply, /disparo pendente/i);
+    assert.equal(self.pendingOutboundDispatch?.status, 'pending');
+    assert.equal(sent.length, 0);
+  }
+  const confirmed = await flow.process({ phone: '5588921694598', text: 'sim, pode enviar agora' });
+  assert.match(confirmed, /Envio confirmado e concluído/i);
+  assert.equal(sent.length, 1);
+});
+
+test('áudio legado usa despacho transacional e a falha na transcrição não repete o áudio', async () => {
+  const store = createMockStore();
+  store.get('5585991099483').clientName = 'Lima';
+  const self = store.get('5588921694598');
+  self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
+  const audios = [];
+  let transcriptAttempts = 0;
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: {
+      sendWhatsAppAudio: async (phone, base64) => audios.push({ phone, base64 }),
+      sendText: async () => { transcriptAttempts += 1; throw new Error('transcription_failed'); }
+    },
+    ai: { synthesizeVoice: async text => ({ base64: 'AUDIO:' + text, mimeType: 'audio/ogg' }) }
+  });
+  const result = await flow.process({ phone: '5588921694598', text: 'sim' });
+  assert.equal(audios.length, 1);
+  assert.equal(audios[0].phone, '5585991099483');
+  assert.match(result, /Áudio gravado e enviado com sucesso/i);
+  assert.match(result, /transcrição em texto não foi confirmada/i);
+  assert.equal(transcriptAttempts, 1);
+  assert.equal(self.pendingAudioConfirmation, null);
+  assert.equal(self.pendingOutboundDispatch, null);
+  await flow.process({ phone: '5588921694598', text: 'sim' });
+  assert.equal(audios.length, 1, 'repetir a confirmação não deve reenviar o áudio');
+});
+
+test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry', async () => {
+  const store = createMockStore();
+  store.get('5585991099483').clientName = 'Lima';
+  const self = store.get('5588921694598');
+  self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
+  let audioAttempts = 0;
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    whatsapp: { sendWhatsAppAudio: async () => {
+      audioAttempts += 1;
+      throw Object.assign(new Error('provider_timeout'), { deliveryUnknown: true });
+    } },
+    ai: { synthesizeVoice: async () => ({ base64: 'AUDIO_B64', mimeType: 'audio/ogg' }) }
+  });
+  const result = await flow.process({ phone: '5588921694598', text: 'sim' });
+  assert.match(result, /não confirmou se a mensagem chegou/i);
+  assert.equal(audioAttempts, 1);
+  assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
+  const repeated = await flow.process({ phone: '5588921694598', text: 'sim' });
+  assert.match(repeated, /resultado incerto/i);
+  assert.equal(audioAttempts, 1, 'o áudio incerto não pode ser repetido');
 });
