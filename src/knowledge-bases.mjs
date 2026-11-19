@@ -204,7 +204,7 @@ export function getRelevantKnowledgeBaseContentSync(
   id,
   queryText = '',
   dir = DEFAULT_KB_DIR,
-  { maxChars = 6500, maxSections = 8 } = {}
+  { maxChars = 6500, maxSections = 4 } = {}
 ) {
   const kb = getKnowledgeBaseContentSync(id, dir);
   if (!kb) return null;
@@ -215,6 +215,8 @@ export function getRelevantKnowledgeBaseContentSync(
     : `${kb.content.slice(0, Math.min(1800, maxChars)).trim()}\n\n[Demais seções disponíveis na base vinculada; consulte somente se necessário.]`;
   return { ...kb, content };
 }
+
+const SPECIFIC_KB_TERMS = new Set(['asaas', 'infinitepay', 'supabase', 'chatwoot', 'evolution', 'pix', 'checkout']);
 
 const SEARCH_STOPWORDS = new Set([
   'para', 'como', 'mais', 'com', 'sem', 'por', 'que', 'uma', 'uns', 'umas',
@@ -302,8 +304,8 @@ function scoreKbRelevance(kb, queryTokens) {
   for (const sec of sections) {
     let secScore = 0;
     for (const token of queryTokens) {
-      if (sec.normHeading && sec.normHeading.includes(token)) secScore += 5;
-      else if (sec.normBody && sec.normBody.includes(token)) secScore += 2.5;
+      if (sec.normHeading && sec.normHeading.includes(token)) secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 5;
+      else if (sec.normBody && sec.normBody.includes(token)) secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5;
     }
     if (secScore > 0) scoredSections.push({ ...sec, score: secScore });
   }
