@@ -14,6 +14,8 @@ import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
 import { toolCheckoutInfinitePay } from './checkout_infinitepay.mjs';
 import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
+import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
+import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
@@ -57,7 +59,9 @@ export const ALL_TOOLS = [
   toolConsultarDadosBrasil,
   toolGerarCobrancaPix,
   toolCheckoutInfinitePay,
-  toolGerenciarMemoria
+  toolGerenciarMemoria,
+  toolGerenciarCodigo,
+  toolGerenciarConfiguracao
 ];
 
 const TOOL_NAME_ALIASES = {

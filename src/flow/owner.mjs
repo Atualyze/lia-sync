@@ -54,7 +54,8 @@ const COPILOT_TASK_PATTERNS = [
   ['memory', /\b(?:mem[oó]ria|memorize|lembre-se|esque[cç]a|guarde)\b/i],
   ['infra', /(?:\b(?:infra|servidor\w*|vps|dokku|containers?)\b|\b(?:rodei|fiz|apliquei|terminei|conclu[ií]|atualizei|atualizamos|publiquei|subi|reiniciei|reiniciamos|deploy)\b.{0,120}\b(?:est[aá]\s+tudo\s+(?:ok|certo|normal)|est[aá]\s+(?:funcionando|normal)|como\s+(?:est[aá]|ficou)|tem\s+(?:algum|alguma)\s+(?:falha|erro|problema)|deu\s+(?:algum\s+)?(?:problema|erro)|est[aá]\s+saud[aá]vel)\b)/i],
   ['web', /\b(?:pesquis\w*|procur\w*|busc\w*\s+(?:na\s+)?web|consulta\w*\s+web)\b/i],
-  ['knowledge', /\b(?:base\s+de\s+conhecimento|dossi[eê]|manual\s+operacional)\b/i]
+  ['knowledge', /\b(?:base\s+de\s+conhecimento|dossi[eê]|manual\s+operacional)\b/i],
+  ['self_maintenance', /\b(?:c[oó]digo|bug|erro|falha|configura[cç][aã]o|configura[cç][oõ]es|par[aâ]metro|comportamento)\b.{0,120}\b(?:corrig\w*|consert\w*|ajust\w*|alter\w*|edit\w*|mud\w*|configur\w*|repar\w*)\b/i]
 ];
 
 const TOOL_TASK_TYPES = Object.freeze({
@@ -66,6 +67,7 @@ const TOOL_TASK_TYPES = Object.freeze({
   atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
   consultar_saude_infra: 'infra', consultar_web: 'web',
   consultar_base_conhecimento: 'knowledge',
+  gerenciar_codigo: 'self_maintenance', gerenciar_configuracao: 'self_maintenance',
   transferir_setor: 'handoff', transferir_para_setor: 'handoff'
 });
 
@@ -231,7 +233,7 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
-  botConfig, identity, owner, assistant, ownerLabel,
+  botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
 }) {
@@ -1874,6 +1876,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
                 const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                   phone: OWNER_SELF_KEY,
+                  actor: 'owner',
+                  isOwner: true,
                   targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
                   clientName: `${owner} (Copiloto)`,
                   store,
@@ -1882,6 +1886,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   ai,
                   botConfig,
                   session: sSelf,
+                  adminConfig,
                   userText: cleanCommand,
                   searchWebWithGemini: ai?.searchWebWithGemini
                 });
