@@ -121,3 +121,27 @@ test('intenção explícita de ferramenta não confunde menção com autorizaç�
 test('correção de mensagem não é confundida com pedido explícito de envio', () => {
   assert.equal(hasExplicitToolIntent('Não, não mande para João. Corrija para Maria.', 'enviar_mensagem_contato'), false);
 });
+
+
+test('classificador trata resposta negativa sobre envio como esclarecimento, não como continuação autorizada', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"clarification","confidence":0.97,"reason":"pedido para não enviar ainda"}' }) },
+    currentMessage: 'Não envie ainda, quero revisar o texto.',
+    activeTask: { type: 'dispatch', originCommand: 'Enviar mensagem para João', lastQuestion: 'Posso enviar a mensagem agora?' },
+    recentContext: [{ role: 'assistant', content: 'Posso enviar a mensagem agora?' }]
+  });
+  assert.equal(review.intent, 'clarification');
+});
+
+test('continuação com confiança baixa é rebaixada para esclarecimento', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"continue","confidence":0.58,"reason":"talvez seja continuação"}' }) },
+    currentMessage: 'Pode ser',
+    activeTask: { type: 'agenda', originCommand: 'Consultar agenda', lastQuestion: 'Você quer consultar ou agendar?' },
+    recentContext: [{ role: 'assistant', content: 'Você quer consultar ou agendar?' }]
+  });
+  assert.equal(review.intent, 'clarification');
+  assert.equal(review.reason, 'low_confidence_continuation');
+});
