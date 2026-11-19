@@ -109,9 +109,9 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
       limit: 3,
       maxChars: 7000
     });
-    const kbIndex = allKbs.map(kb => \`• \${kb.title} (ID: \${kb.id} | v\${kb.version})\`).join('\n');
+    const kbIndex = allKbs.map(kb => `• ${kb.title} (ID: ${kb.id} | v${kb.version})`).join('\n');
     const kbCopilotSection = allKbs.length > 0
-      ? \`\n7. BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS:
+      ? `\n7. BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS:
 Você possui acesso às bases abaixo. Use somente a base que corresponder ao projeto e à pergunta atual. A presença de uma base no índice não comprova que ela se aplica ao contato ou à situação.
 REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 - SEJA DIRETA, ENXUTA E OBJETIVA: responda exatamente ao que foi perguntado, normalmente em 2 a 4 parágrafos curtos.
@@ -119,15 +119,15 @@ REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 - DADOS TÉCNICOS OPERACIONAIS SIM, CÓDIGO INTERNO NUNCA: não exponha rotas de API, tabelas ou caminhos de backend ao usuário final.
 - NÃO MISTURE PROJETOS: confirme o título/ID da base compatível com o assunto antes de usar detalhes. Se não houver correspondência segura, pergunte qual projeto ou consulte a base explicitamente.
 - Se o trecho recuperado não responder à dúvida, não improvise. Consulte a ferramenta de base de conhecimento ou informe o que falta.
-- ESCALONAMENTO: questões de manutenção interna, programação ou servidor devem ser direcionadas a \${owner}\${companySuffix(companyName)}.
+- ESCALONAMENTO: questões de manutenção interna, programação ou servidor devem ser direcionadas a ${owner}${companySuffix(companyName)}.
 
 [ÍNDICE DE BASES DISPONÍVEIS]
-\${kbIndex}
+${kbIndex}
 
 [ TRECHOS RECUPERADOS PARA A MENSAGEM ATUAL ]
-\${relevantKbs.length
-  ? relevantKbs.map(kb => \`[DOSSIÊ OFICIAL - \${kb.title} (ID: \${kb.id} | v\${kb.version})]\n\${kb.content}\`).join('\n\n---\n\n')
-  : 'Nenhum trecho foi recuperado com confiança para a mensagem atual. Não presuma conteúdo das bases; consulte a ferramenta apropriada quando necessário.'}\`
+${relevantKbs.length
+  ? relevantKbs.map(kb => `[DOSSIÊ OFICIAL - ${kb.title} (ID: ${kb.id} | v${kb.version})]\n${kb.content}`).join('\n\n---\n\n')
+  : 'Nenhum trecho foi recuperado com confiança para a mensagem atual. Não presuma conteúdo das bases; consulte a ferramenta apropriada quando necessário.'}`
       : '';
 
     const supportContactsList = Array.isArray(session.supportContacts) && session.supportContacts.length > 0
