@@ -303,15 +303,42 @@ function scoreKbRelevance(kb, queryTokens) {
   const scoredSections = [];
   for (const sec of sections) {
     let secScore = 0;
+    const matchedTokens = [];
     for (const token of queryTokens) {
-      if (sec.normHeading && sec.normHeading.includes(token)) secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 5;
-      else if (sec.normBody && sec.normBody.includes(token)) secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5;
+      if (sec.normHeading && sec.normHeading.includes(token)) {
+        secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 5;
+        matchedTokens.push(token);
+      } else if (sec.normBody && sec.normBody.includes(token)) {
+        secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5;
+        matchedTokens.push(token);
+      }
     }
-    if (secScore > 0) scoredSections.push({ ...sec, score: secScore });
+    if (secScore > 0) scoredSections.push({ ...sec, score: secScore, matchedTokens });
   }
 
   scoredSections.sort((a, b) => b.score - a.score);
   return { kb, score: docScore, scoredSections };
+}
+
+function selectRelevantParagraphs(section) {
+  const paragraphs = String(section.body || '').split(/\n\s*\n/).map((value, index) => ({
+    value: value.trim(),
+    index
+  })).filter(item => item.value);
+  const tokens = Array.isArray(section.matchedTokens) ? section.matchedTokens : [];
+  const ranked = paragraphs.map(item => {
+    const normalized = normalizeSearchText(item.value);
+    const hits = tokens.filter(token => normalized.includes(token));
+    const score = hits.reduce((sum, token) => sum + (SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5), 0);
+    return { ...item, score };
+  }).filter(item => item.score > 0);
+
+  if (!ranked.length) return paragraphs.slice(0, 1).map(item => item.value);
+  return ranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .sort((a, b) => a.index - b.index)
+    .map(item => item.value);
 }
 
 function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections = 3) {
@@ -345,7 +372,7 @@ function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections =
       ? Math.max(240, Math.floor(remainingChars / remainingSections))
       : remainingChars;
     const bodyBudget = Math.max(0, sectionBudget - heading.length);
-    const body = String(sec.body || '').slice(0, bodyBudget);
+    const body = selectRelevantParagraphs(sec).join('\n\n').slice(0, bodyBudget);
     out += heading + body + '\n\n';
   }
   return out.slice(0, maxChars).trim();
