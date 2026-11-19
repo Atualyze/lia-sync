@@ -1531,12 +1531,24 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             contactRole: s.contactRole || null,
             notes: s.contactNotes || ''
           }));
+        const ownerMemoryQuery = recentHistory.slice(-6)
+          .map(entry => \`\${entry.role}: \${entry.content || ''}\`)
+          .concat([cleanCommand])
+          .join('\n')
+          .slice(-5000);
+        const ownerMemoryItems = await memoryStore.retrieveSemantic({
+          scopeKey: buildMemoryScopeKey({ phone: OWNER_SELF_KEY, isOwner: true }),
+          query: ownerMemoryQuery,
+          limit: 6,
+          timeoutMs: 1200
+        });
         const baseSys = buildSystemPrompt({
           session: { history: recentHistory, supportContacts },
           now: new Date(now()),
           botConfig,
           isOwner: true,
-          telemetry
+          telemetry,
+          memoryItems: ownerMemoryItems
         });
         const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nQuando precisar consultar dados, histórico, CRM, bases, planilhas ou executar qualquer ação, emita a chamada em "tool_calls" imediatamente. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
         const continuityContext = activeTask
