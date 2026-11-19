@@ -56,5 +56,5 @@ export function isPixActionRequest(value = '') {
   const action = /\b(?:quero|preciso|me passa|passa|envia|enviar|manda|mandar|gera|gerar|cria|criar|faz|fazer|cobrar|cobranca|pagar|pagamento|informa|informar)\b/;
   const paymentTerm = /\b(?:pix|chave|copia|qr code|checkout|infinitepay)\b/;
   return (action.test(text) && paymentTerm.test(text))
-    || /\b(?:chave pix|copia e cola|qr code|qrcode|checkout infinitepay)\b/.test(text);
+    || /\b(?:so a chave|apenas a chave|chave pix|copia e cola|qr code|qrcode|checkout infinitepay)\b/.test(text);
 }
