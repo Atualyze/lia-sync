@@ -32,7 +32,7 @@ export function resolvePaymentChoice(value = '') {
 
   const negativeAt = text.search(/\b(?:nao|nunca|jamais)\b/);
   if (negativeAt >= 0) {
-    const markers = [' mas ', ' porem ', ' prefiro ', ' quero ', ' escolho ', ' vou de '];
+    const markers = [' mas ', ' porem ', ' prefiro ', ' escolho ', ' vou de '];
     const marker = markers
       .map(value => ({ value, index: text.lastIndexOf(value) }))
       .filter(item => item.index > negativeAt)
