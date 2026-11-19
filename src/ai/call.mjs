@@ -374,7 +374,7 @@ export async function askAI(args) {
 
   const deadline = Number.isFinite(args?.deadline) ? args.deadline : Date.now() + 35000;
   const actor = args?.isOwner === true ? 'owner' : 'client';
-  const isSynthesisTurn = /\\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\\]/.test(String(args?.system || ''));
+  const isSynthesisTurn = /\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\]/.test(String(args?.system || ''));
   const disableToolCalling = args?.disableToolCalling === true;
   const explicitDisableTools = disableToolCalling || args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
   const toolMode = !isSynthesisTurn && !disableToolCalling && (actor === 'owner' || !explicitDisableTools);
