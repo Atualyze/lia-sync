@@ -319,6 +319,19 @@ function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections =
   const selected = scoredSections.slice(0, Math.max(1, Math.min(80, Number(maxSections) || 3)));
   let out = header;
 
+  // Broad dossier requests have a larger budget: preserve full matched sections
+  // instead of clipping each section, so deep instructions remain available.
+  if (maxChars >= 16000) {
+    for (const sec of selected) {
+      const block = \`\${sec.heading ? \`## \${sec.heading}\n\` : ''}\${sec.body}\n\n\`;
+      const remaining = maxChars - out.length;
+      if (remaining <= 0) break;
+      out += block.length <= remaining ? block : block.slice(0, remaining);
+      if (block.length > remaining) break;
+    }
+    return out.slice(0, maxChars).trim();
+  }
+
   // Reserve space for later matches so one long chapter cannot hide
   // smaller but equally relevant sections from the same manual.
   for (let index = 0; index < selected.length && out.length < maxChars; index += 1) {
