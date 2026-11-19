@@ -51,10 +51,9 @@ function isCheckoutConfigured(botConfig = {}) {
 
 function directPixKeyReply({ key, owner }) {
   return key
-    ? `💳 *Chave Pix para pagamento:*\n\n• *Chave:* `${key}`\n• *Favorecido:* ${owner}`
+    ? '💳 *Chave Pix para pagamento:*' + '\n\n• *Chave:* `' + key + '`\n• *Favorecido:* ' + owner
     : 'No momento a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.';
 }
-
 function resolveConfiguredPixKey(botConfig) {
   const configured = String(
     botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
@@ -68,17 +67,16 @@ function resolveConfiguredPixKey(botConfig) {
 }
 
 function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false } = {}) {
-  const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+  const valorFmt = toolRes.valor ? 'R$ ' + Number(toolRes.valor).toFixed(2).replace('.', ',') : 'Valor livre';
   return [
-    `💳 *Aqui está seu Pix para pagamento:*`,
-    `• *Valor:* ${valorFmt}`,
-    `• *Favorecido:* ${toolRes.favorecido || owner}`,
-    (includeKey && pixKey) ? `• *Chave Pix:* `${pixKey}`` : '',
-    toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
-    `• *Copia e Cola:*\n```${toolRes.pixCopiaECola}````
+    '💳 *Aqui está seu Pix para pagamento:*',
+    '• *Valor:* ' + valorFmt,
+    '• *Favorecido:* ' + (toolRes.favorecido || owner),
+    (includeKey && pixKey) ? '• *Chave Pix:* `' + pixKey + '`' : '',
+    toolRes.paymentUrl ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
+    '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```'
   ].filter(Boolean).join('\n\n');
 }
-
 export async function handleClientMessage({
   store, ai, whatsapp, faq, reminderStore, logger, now,
   allowClientResume, maxInputChars, notify, isOwnerSender,
