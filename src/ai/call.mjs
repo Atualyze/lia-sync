@@ -374,10 +374,11 @@ export async function askAI(args) {
 
   const deadline = Number.isFinite(args?.deadline) ? args.deadline : Date.now() + 35000;
   const actor = args?.isOwner === true ? 'owner' : 'client';
-  const isSynthesisTurn = /\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\]/.test(String(args?.system || ''));
-  const explicitDisableTools = args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
-  const toolMode = !isSynthesisTurn && (actor === 'owner' || !explicitDisableTools);
-  const webOnlyFallback = !isSynthesisTurn && !toolMode && args?.botConfig?.webSearch?.enabled !== false && shouldEnableGoogleSearch(args?.userText);
+  const isSynthesisTurn = /\\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\\]/.test(String(args?.system || ''));
+  const disableToolCalling = args?.disableToolCalling === true;
+  const explicitDisableTools = disableToolCalling || args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
+  const toolMode = !isSynthesisTurn && !disableToolCalling && (actor === 'owner' || !explicitDisableTools);
+  const webOnlyFallback = !isSynthesisTurn && !disableToolCalling && !toolMode && args?.botConfig?.webSearch?.enabled !== false && shouldEnableGoogleSearch(args?.userText);
   const toolDeclarations = toolMode
     ? getEnabledTools(args?.botConfig, { actor })
     : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
