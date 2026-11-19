@@ -1471,7 +1471,7 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
     origin: 'owner'
   });
   assert.match(first, /o que aconteceu/i);
-  assert.equal(store.get('owner_self').pendingCopilotTask, null, 'conversa genérica não deve virar tarefa persistente');
+  assert.equal(store.get('owner_self').pendingCopilotTask, undefined, 'conversa genérica não deve virar tarefa persistente');
 
   const second = await flow.process({
     phone: 'owner_self',
