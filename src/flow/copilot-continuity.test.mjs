@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCopilotToolReview, reviewCopilotToolCall } from './copilot-continuity.mjs';
+import { parseCopilotToolReview, reviewCopilotToolCall, hasExplicitToolIntent } from './copilot-continuity.mjs';
 
 test('review semântico reconhece continuação natural sem depender de palavra-chave', async () => {
   let captured = null;
@@ -105,4 +105,19 @@ test('classificação falha de forma segura quando o avaliador não responde', a
     activeTask: { type: 'payment', originCommand: 'Gerar cobrança Pix' }
   });
   assert.equal(review.intent, 'clarification');
+});
+
+
+test('intenção explícita de ferramenta não confunde menção com autorização', () => {
+  assert.equal(hasExplicitToolIntent('Gera uma cobrança Pix de 80 reais', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Não gere a cobrança ainda', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Não entendi a cobrança, pode explicar?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Quero entender como funciona o Pix', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Mande uma mensagem para João dizendo que chego às 15h', 'enviar_mensagem_contato'), true);
+  assert.equal(hasExplicitToolIntent('Não mande mensagem para João', 'enviar_mensagem_contato'), false);
+  assert.equal(hasExplicitToolIntent('Quais horários estão livres na agenda?', 'gerenciar_agenda_google'), true);
+});
+
+test('correção de mensagem não é confundida com pedido explícito de envio', () => {
+  assert.equal(hasExplicitToolIntent('Não, não mande para João. Corrija para Maria.', 'enviar_mensagem_contato'), false);
 });
