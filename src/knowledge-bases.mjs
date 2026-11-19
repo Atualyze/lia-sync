@@ -204,14 +204,14 @@ export function getRelevantKnowledgeBaseContentSync(
   id,
   queryText = '',
   dir = DEFAULT_KB_DIR,
-  { maxChars = 6500 } = {}
+  { maxChars = 6500, maxSections = 8 } = {}
 ) {
   const kb = getKnowledgeBaseContentSync(id, dir);
   if (!kb) return null;
   const queryTokens = extractQueryTokens(queryText);
   const match = queryTokens.length ? scoreKbRelevance(kb, queryTokens) : null;
   const content = match
-    ? buildRelevantSnippet(kb, match.scoredSections, maxChars)
+    ? buildRelevantSnippet(kb, match.scoredSections, maxChars, maxSections)
     : `${kb.content.slice(0, Math.min(1800, maxChars)).trim()}\n\n[Demais seções disponíveis na base vinculada; consulte somente se necessário.]`;
   return { ...kb, content };
 }
@@ -222,7 +222,7 @@ const SEARCH_STOPWORDS = new Set([
   'clientes', 'atendimento', 'sistema', 'lia', 'pode', 'quer', 'quero',
   'esta', 'estao', 'esse', 'essa', 'muito', 'tudo', 'onde', 'qual', 'quais',
   'quando', 'porque', 'fazer', 'manual', 'conhecimento', 'suporte',
-  'operacional', 'base', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite'
+  'operacional', 'base', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite', 'preciso', 'bem'
 ]);
 
 function normalizeSearchText(text = '') {
