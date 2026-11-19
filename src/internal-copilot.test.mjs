@@ -1394,3 +1394,42 @@ test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry'
   assert.match(repeated, /resultado incerto/i);
   assert.equal(audioAttempts, 1, 'o áudio incerto não pode ser repetido');
 });
+
+
+test('Copiloto explica uma pergunta sem descartar a tarefa que estava em andamento', async () => {
+  const store = createMockStore();
+  const self = store.get('owner_self');
+  const createdAt = new Date().toISOString();
+  self.pendingCopilotTask = {
+    type: 'payment',
+    createdAt,
+    updatedAt: createdAt,
+    originCommand: 'Preciso cobrar a entrega',
+    lastQuestion: 'Qual valor devo usar?',
+    repeatCount: 0,
+    turns: 0
+  };
+  self.pendingPixRequest = { requestedAt: createdAt, amount: null, description: 'entrega' };
+
+  const flow = createFlow({
+    store,
+    isOwnerSender: phone => phone === 'owner_self',
+    ai: {
+      askAI: async () => ({
+        reply: 'Claro. Eu estava falando do valor da cobrança da entrega que você pediu para preparar.',
+        tool_calls: []
+      })
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'owner_self',
+    text: 'Não entendi, pode explicar?',
+    origin: 'owner'
+  });
+
+  assert.match(reply, /valor da cobrança da entrega/i);
+  assert.equal(self.pendingCopilotTask?.type, 'payment');
+  assert.equal(self.pendingPixRequest?.description, 'entrega');
+  assert.equal(self.pendingPixRequest?.amount, null);
+});
