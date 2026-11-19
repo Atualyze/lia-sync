@@ -151,9 +151,9 @@ function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {}) {
 
 
 function isValidPixDescription(value = '') {
-  const description = String(value || '').trim().replace(/\\s+/g, ' ');
+  const description = String(value || '').trim().replace(/\s+/g, ' ');
   if (description.length < 2 || description.length > 80 || /[?¿]/.test(description)) return false;
-  if (/\\b(?:o que|por que|porque|como assim|qual|quais|vc|você|voce|nao entendi|não entendi|bom dia|boa tarde|boa noite|me explica|me explique)\\b/i.test(description)) return false;
+  if (/\b(?:o que|por que|porque|como assim|qual|quais|vc|você|voce|nao entendi|não entendi|bom dia|boa tarde|boa noite|me explica|me explique)\b/i.test(description)) return false;
   return true;
 }
 
@@ -1509,7 +1509,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const referencesPreviousDocument = /\b(?:anexo|documento\s+que\s+(?:enviei|mandei)|arquivo\s+que\s+(?:enviei|mandei)|documento\s+anterior|arquivo\s+anterior|(?:esse|desse|do)\s+(?:documento|arquivo)|resuma\s+(?:o\s+)?(?:anexo|documento))\b/i.test(cleanCommand);
         const sys = (sSelf.lastAnalyzedDocument && referencesPreviousDocument
           ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
-          : baseSys) + continuityContext + (suppressToolExecution ? '\\n\\n[RESPOSTA_SEM_EXECUCAO]\\nA mensagem atual foi classificada como esclarecimento ou conversa sem relação direta com a tarefa pendente. Responda à mensagem atual naturalmente, usando o histórico para explicar o que for necessário. Não chame ferramentas, não complete parâmetros pendentes e não execute ações nesta rodada. Preserve a tarefa anterior sem misturar os assuntos.\\n[/RESPOSTA_SEM_EXECUCAO]' : '') + copilotToolRule;
+          : baseSys) + continuityContext + (suppressToolExecution ? '\n\n[RESPOSTA_SEM_EXECUCAO]\nA mensagem atual foi classificada como esclarecimento ou conversa sem relação direta com a tarefa pendente. Responda à mensagem atual naturalmente, usando o histórico para explicar o que for necessário. Não chame ferramentas, não complete parâmetros pendentes e não execute ações nesta rodada. Preserve a tarefa anterior sem misturar os assuntos.\n[/RESPOSTA_SEM_EXECUCAO]' : '') + copilotToolRule;
 
         const result = await ai?.askAI?.({
           system: sys,
@@ -2091,7 +2091,7 @@ ${errMsg}`;
         };
         const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
         const pixRequestActive = !suppressToolExecution && (hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt));
-        const isClarifyingExistingRequest = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique)\b/i.test(cleanCommand);
+        const isClarifyingExistingRequest = suppressToolExecution || /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|o que vc nao entendeu|o que você não entendeu|o que voce nao entendeu|por que você não entendeu|pq vc nao entendeu)\b/i.test(cleanCommand);
         if (pixRequestActive && !isClarifyingExistingRequest
           && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
