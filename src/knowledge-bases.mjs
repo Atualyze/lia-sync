@@ -356,6 +356,39 @@ export function findMatchingKnowledgeBaseSync(
   return best.kb;
 }
 
+/**
+ * Returns the most relevant knowledge bases for a conversational query.
+ * Unlike the single-result helper, this keeps a small ranked set for Copilot
+ * prompts and limits each document to its best matching sections.
+ */
+export function findMatchingKnowledgeBasesSync(
+  queryText = '',
+  dir = DEFAULT_KB_DIR,
+  { includeCopilotOnly = false, excludeFolders = null, onlyFolders = null, limit = 3, maxChars = 6500 } = {}
+) {
+  const queryTokens = extractQueryTokens(queryText);
+  if (!queryTokens.length) return [];
+
+  const all = listKnowledgeBasesSync(dir);
+  const ranked = [];
+  for (const kb of all) {
+    if (kb.copilotOnly && !includeCopilotOnly) continue;
+    const folder = String(kb.folder || '');
+    if (Array.isArray(onlyFolders) && !onlyFolders.some(f => folder === f || folder.startsWith(\`\${f}/\`))) continue;
+    if (Array.isArray(excludeFolders) && excludeFolders.some(f => folder === f || folder.startsWith(\`\${f}/\`))) continue;
+    const match = scoreKbRelevance(kb, queryTokens);
+    if (match) ranked.push(match);
+  }
+
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked.slice(0, Math.max(1, Math.min(8, Number(limit) || 3))).map(match => ({
+    ...match.kb,
+    content: maxChars > 0
+      ? buildRelevantSnippet(match.kb, match.scoredSections, maxChars)
+      : match.kb.content
+  }));
+}
+
 export function findGuidanceKnowledgeSync(queryText = '', dir = DEFAULT_KB_DIR, { maxChars = 3000 } = {}) {
   return findMatchingKnowledgeBaseSync(queryText, dir, {
     includeCopilotOnly: false,
