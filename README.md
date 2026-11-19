@@ -185,7 +185,7 @@ A Lia possui ferramentas internas protegidas para manutenção do próprio siste
 - `gerenciar_configuracao`: consulta a configuração e altera primeiro o rascunho; publicação exige confirmação explícita.
 - `gerenciar_codigo`: lê arquivos permitidos e pode criar um Pull Request de correção em branch separada; não faz merge nem deploy.
 - Segredos, tokens, senhas, `.env`, `package.json`, arquivos de dados e outros caminhos sensíveis são bloqueados.
-- O fluxo de código depende de `GITHUB_TOKEN` disponível somente no runtime do bot. O token deve ter permissão de escrita no conteúdo do repositório; alterações em workflows também exigem permissão de Workflows. O endpoint de conteúdo do GitHub exige permissões de escrita adequadas. citeturn556493search0turn556493search3
+- O fluxo de código depende de `GITHUB_TOKEN` disponível somente no runtime do bot. O token deve ter permissão de escrita no conteúdo do repositório; alterações em workflows também exigem permissão de Workflows. O endpoint de conteúdo do GitHub exige permissões de escrita adequadas. (consulte a documentação oficial do GitHub sobre [Contents API](https://docs.github.com/en/rest/repos/contents) e [Git Trees](https://docs.github.com/en/rest/git/trees))
 
 A intenção é: **diagnosticar → corrigir → abrir PR → CI validar → humano decidir merge/deploy**. A Lia não recebe autorização implícita para publicar código em produção.
 
