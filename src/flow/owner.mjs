@@ -13,7 +13,7 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 
-const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
+const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
 function normalizePixAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -701,6 +701,18 @@ export async function handleOwnerSession({
           cleanCommand = strippedCmd;
         }
         let norm = normalize(strippedCmd);
+        if (pendingControl?.type === 'contact_target') {
+          const targetSession = findSessionByTarget(strippedCmd);
+          if (targetSession) {
+            sSelf.pendingControlAction = null;
+            store.markDirty();
+            cleanCommand = `${pendingControl.intent === 'activate_human' ? 'humano' : 'bot'} ${strippedCmd}`;
+            strippedCmd = cleanCommand;
+            norm = normalize(cleanCommand);
+          } else {
+            return recordSelfTurn(filterReply(`Ainda não localizei um contato correspondente a *"${strippedCmd}"*. Envie o nome exatamente como aparece na fila ou o número completo, com ou sem +55.`, { isCopilot: true }).text);
+          }
+        }
         const telemetry = await getTelemetry?.();
 
 
@@ -741,6 +753,19 @@ export async function handleOwnerSession({
               const details = waiting.length > 1
                 ? `Há ${waiting.length} contatos aguardando. Você quer retomar qual deles? Diga o nome ou o número.`
                 : 'Não consegui identificar qual conversa você quer usar. Pode me dizer o nome ou o número do contato?';
+              return recordSelfTurn(filterReply(details, { isCopilot: true }).text);
+            }
+            if (!target && (natural.intent === 'resume_bot' || natural.intent === 'activate_human')) {
+              sSelf.pendingControlAction = {
+                type: 'contact_target',
+                intent: natural.intent,
+                createdAt: new Date(now()).toISOString(),
+                label: natural.intent === 'resume_bot' ? 'retomar a conversa' : 'assumir o atendimento'
+              };
+              store.markDirty();
+              const details = waiting.length > 1
+                ? `Certo. Qual contato você quer ${natural.intent === 'resume_bot' ? 'retomar' : 'assumir'}? Pode enviar o nome ou o número, com ou sem +55.`
+                : `Certo. Me informe o nome ou o número do contato que você quer ${natural.intent === 'resume_bot' ? 'retomar' : 'assumir'}, com ou sem +55.`;
               return recordSelfTurn(filterReply(details, { isCopilot: true }).text);
             }
             const canonical = natural.intent === 'resume_bot' ? `bot${target ? ` ${target}` : ''}`

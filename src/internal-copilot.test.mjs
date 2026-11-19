@@ -348,6 +348,33 @@ test('Conversa interna: interpreta pedidos naturais para retomar e assumir conta
   assert.equal(client.human, true);
 });
 
+test('Conversa interna: mantém intenção natural pendente até receber o contato', async () => {
+  const store = createMockStore();
+  const client = store.get('5588993602644');
+  client.clientName = 'Mikaelle Santos';
+  client.human = true;
+  client.history = [{ role: 'user', content: 'Ainda tenho uma dúvida sobre o orçamento' }];
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    ai: {
+      askAI: async ({ system, userText }) => system?.includes('Interprete apenas pedidos operacionais')
+        ? { text: JSON.stringify({ intent: /assum/i.test(userText) ? 'activate_human' : 'resume_bot', target: '', confidence: 0.96 }) }
+        : { reply: 'ok' }
+    }
+  });
+
+  const question = await flow.process({ phone: '5588921694598', text: 'Apenas dê continuidade' });
+  assert.match(question, /nome ou o número/i);
+  assert.equal(store.get('5588921694598').pendingControlAction?.intent, 'resume_bot');
+
+  const resumed = await flow.process({ phone: '5588921694598', text: '88993602644' });
+  assert.match(resumed, /Bot reativado com sucesso/i);
+  assert.equal(client.human, false);
+  assert.equal(store.get('5588921694598').pendingControlAction, null);
+});
+
 test('Conversa interna: frases comuns com "aguardando", "quem" ou "lista" não abrem a fila por engano', async () => {
   const store = createMockStore();
   const sClient = store.get('5511999998888');
