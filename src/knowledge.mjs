@@ -3,6 +3,7 @@ import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs'
 import { getKnowledgeBaseContentSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
+import { buildCognitionProtocol } from './core/cognition.mjs';
 import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
 import {
   buildGreetingMessage,
@@ -56,7 +57,7 @@ export function findFaq(text = '') {
 /** Trecho "da Empresa" opcional, sem deixar espaços/artigos soltos. */
 const companySuffix = companyName => (companyName ? ` da ${companyName}` : '');
 
-export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], plans = [], botConfig = {}, isOwner = false, telemetry = null } = {}) {
+export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], plans = [], botConfig = {}, isOwner = false, telemetry = null, memoryItems = null } = {}) {
   const copilotMode = isOwner === true;
   const identity = resolveIdentity(botConfig);
   const business = botConfig.business || {};
@@ -75,7 +76,7 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     ? session.hasPriorConversation
     : history.length > 1;
   const memoryScopeKey = buildMemoryScopeKey({ phone: session.phone || '', isOwner: copilotMode });
-  const activeMemories = memoryStore.retrieve({
+  const activeMemories = Array.isArray(memoryItems) ? memoryItems : memoryStore.retrieve({
     scopeKey: memoryScopeKey,
     query: session.lastUserText || '',
     limit: 6
@@ -118,7 +119,9 @@ REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
 Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
 Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
 
-${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}${memorySection}
+${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}
+
+${buildCognitionProtocol({ isOwner: true })}${memorySection}
 
 DIRETRIZES DE FORMATAÇÃO VISUAL (WHATSAPP):
 - Priorize leitura natural no celular, usando parágrafos curtos quando houver mais de uma ideia.
@@ -222,6 +225,8 @@ Contrato de saída JSON obrigatório:
 Você conversa pelo WhatsApp com clientes e parceiros de forma humana, calorosa, inteligente, prestativa e bem distribuída visualmente no celular.
 
 ${buildPersonalityPrompt({ botName, isOwner: false, botConfig })}
+
+${buildCognitionProtocol({ isOwner: false })}
 
 DIRETRIZES DE FORMATAÇÃO E LEITURA (WHATSAPP):
 1. FORMATAÇÃO NATURAL:
