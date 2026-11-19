@@ -66,6 +66,7 @@ const TOOL_TASK_TYPES = Object.freeze({
   atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
   consultar_saude_infra: 'infra', consultar_web: 'web',
   consultar_base_conhecimento: 'knowledge',
+  gerenciar_codigo: 'self_maintenance', gerenciar_configuracao: 'self_maintenance',
   transferir_setor: 'handoff', transferir_para_setor: 'handoff'
 });
 
@@ -231,7 +232,7 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
-  botConfig, identity, owner, assistant, ownerLabel,
+  botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
 }) {
@@ -1882,6 +1883,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   ai,
                   botConfig,
                   session: sSelf,
+                  adminConfig,
                   userText: cleanCommand,
                   searchWebWithGemini: ai?.searchWebWithGemini
                 });
