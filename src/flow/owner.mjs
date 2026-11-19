@@ -2078,7 +2078,9 @@ ${errMsg}`;
         };
         const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
         const pixRequestActive = hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt);
-        if (pixRequestActive && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
+        const isClarifyingExistingRequest = /\\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique)\\b/i.test(cleanCommand);
+        if (pixRequestActive && !isClarifyingExistingRequest
+          && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
           sSelf.pendingPixRequest = {
             requestedAt: pendingPixRequest?.requestedAt || new Date(now()).toISOString(),
@@ -2094,6 +2096,7 @@ ${errMsg}`;
           && Boolean(botConfig?.tools?.settings?.checkout_infinitepay?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.checkout_infinitepay?.apiKey || process.env.INFINITEPAY_API_KEY);
         const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && !isAudioForSelf
+          && !isClarifyingExistingRequest
           && pixRequestActive && pixParsed.valor !== null && Boolean(pixParsed.desc);
         if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
