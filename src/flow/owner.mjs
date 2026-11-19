@@ -1039,7 +1039,7 @@ Olá, *${owner}*! Aqui estão todos os controles e testes operacionais em tempo 
           const rep = `⚡ *Teste de Latência & Desempenho:*
 • *Status:* 🟢 Operacional
 • *Latência Real:* *${lat} ms*
-• *Modelo Testado:* `${modelUsed}`
+• *Modelo Testado:* \`${modelUsed}`
 • *Provedor:* Google Gemini API (Online)`;
           return recordSelfTurn(filterReply(rep, { isCopilot: true }).text);
         }
@@ -1989,7 +1989,7 @@ ${errMsg}`;
             `• *Valor:* ${valorFmt}`,
             `• *Favorecido:* ${r.favorecido || owner}`,
             r.paymentUrl ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
-            `• *Copia e Cola:*\n```${r.pixCopiaECola}````,
+            `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}````,
             r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
           ].filter(Boolean).join('\n\n');
         };
@@ -2051,8 +2051,8 @@ ${errMsg}`;
           if (r.action === 'verificar_pagamento') {
             const valorFmt = r.amount ? `R$ ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')}` : '-';
             const msg = r.paid
-              ? `✅ *Pagamento InfinitePay confirmado!*\n• *Pedido:* `${r.orderNsu}`\n• *Valor:* ${valorFmt}\n• *Forma:* ${r.captureMethod === 'credit_card' ? 'Cartão de Crédito' : 'Pix'}${r.receiptUrl ? `\n• *Comprovante:* ${r.receiptUrl}` : ''}`
-              : `⏳ *Pagamento ainda pendente* para o pedido `${r.orderNsu}`. Assim que for aprovado, o webhook confirma automaticamente por aqui.`;
+              ? `✅ *Pagamento InfinitePay confirmado!*\n• *Pedido:* \`${r.orderNsu}`\n• *Valor:* ${valorFmt}\n• *Forma:* ${r.captureMethod === 'credit_card' ? 'Cartão de Crédito' : 'Pix'}${r.receiptUrl ? `\n• *Comprovante:* ${r.receiptUrl}` : ''}`
+              : `⏳ *Pagamento ainda pendente* para o pedido \`${r.orderNsu}`. Assim que for aprovado, o webhook confirma automaticamente por aqui.`;
             return recordSelfTurn(filterReply(msg, { isCopilot: true }).text);
           }
           const valorFmt = `R$ ${Number(r.valor).toFixed(2).replace('.', ',')}`;
@@ -2060,7 +2060,7 @@ ${errMsg}`;
             `💳 *Link de Pagamento InfinitePay gerado!*`,
             `• *Valor:* ${valorFmt}`,
             r.descricao ? `• *Descrição:* ${r.descricao}` : '',
-            `• *Pedido:* `${r.orderNsu}``,
+            `• *Pedido:* \`${r.orderNsu}``,
             `• *Abrir página de pagamento:* ${r.paymentUrl || r.checkoutUrl}`,
             r.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
           ].filter(Boolean).join('\n\n');
@@ -2096,7 +2096,7 @@ ${errMsg}`;
           const r = driveResult.result;
           if (!r.success) return recordSelfTurn(filterReply(`⚠️ *Google Drive:* ${r.message || r.error}`, { isCopilot: true }).text);
           if (r.sentViaWhatsApp) return recordSelfTurn(filterReply(`📁 *Arquivo enviado no WhatsApp:* ${r.fileName}`, { isCopilot: true }).text);
-          const filesList = (r.files || []).slice(0, 8).map(f => `• *${f.name}* (`${f.id}`)`).join('\n');
+          const filesList = (r.files || []).slice(0, 8).map(f => `• *${f.name}* (\`${f.id}`)`).join('\n');
           return recordSelfTurn(filterReply(`📁 *Arquivos no Google Drive:*\n\n${filesList || 'Nenhum arquivo encontrado.'}`, { isCopilot: true }).text);
         }
 
@@ -2175,7 +2175,7 @@ ${errMsg}`;
               `💳 *Link de Pagamento InfinitePay gerado!*`,
               `• *Valor:* ${valorFmt}`,
               autoIp.descricao ? `• *Descrição:* ${autoIp.descricao}` : '',
-              `• *Pedido:* `${autoIp.orderNsu}``,
+              `• *Pedido:* \`${autoIp.orderNsu}``,
               `• *Abrir página de pagamento:* ${autoIp.paymentUrl || autoIp.checkoutUrl}`,
               autoIp.webhookConfigured ? `_Confirmação automática via webhook ativada._` : ''
             ].filter(Boolean).join('\n\n');
