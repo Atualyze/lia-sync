@@ -17,4 +17,7 @@ test('findFaqInItems e findFaq buscam respostas e buildSystemPrompt gera prompt'
   const prompt = buildSystemPrompt({ session: { phone: '5511999998888', history: [] } });
   assert.equal(typeof prompt, 'string');
   assert.ok(prompt.length > 20);
+  assert.match(prompt, /PROTOCOLO DE DELIBERAÇÃO/);
+  const ownerPrompt = buildSystemPrompt({ session: { history: [] }, isOwner: true });
+  assert.match(ownerPrompt, /PROTOCOLO DE DELIBERAÇÃO/);
 });

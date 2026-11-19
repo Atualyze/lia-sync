@@ -9,6 +9,7 @@ import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_p
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { selectActiveClientHistory } from './client-context.mjs';
+import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 
@@ -16,23 +17,6 @@ function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
 }
 
-function isNaturalAffirmation(value = '') {
-  const text = normalizedClientText(value);
-  return /^(?:sim|s|ss|pode|pode sim|confirmo|confirmado|confirma|confirmar|quero|isso|perfeito|fechado|ok|okay|ta bom|tá bom|vamos|pode agendar|pode marcar)(?:[.!\s].*)?$/.test(text);
-}
-
-function isNaturalNegative(value = '') {
-  const text = normalizedClientText(value);
-  return /^(?:nao|não|n|cancela|cancelar|deixa|melhor nao|melhor não|desisti|desistir)(?:[.!\s].*)?$/.test(text);
-}
-
-function paymentChoice(value = '') {
-  const text = normalizedClientText(value);
-  if (/(?:so|só|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+[eé]\s+a\s+chave/.test(text)) return 'key';
-  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|c[oó]digo|br code)/.test(text)) return 'pix';
-  if (/(?:checkout|link|cartao|cartão|infinitepay)/.test(text)) return 'checkout';
-  return null;
-}
 
 function amountFromText(value = '') {
   const text = String(value || '');
@@ -67,10 +51,9 @@ function isCheckoutConfigured(botConfig = {}) {
 
 function directPixKeyReply({ key, owner }) {
   return key
-    ? `💳 *Chave Pix para pagamento:*\n\n• *Chave:* \`${key}\`\n• *Favorecido:* ${owner}`
+    ? '💳 *Chave Pix para pagamento:*' + '\n\n• *Chave:* `' + key + '`\n• *Favorecido:* ' + owner
     : 'No momento a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.';
 }
-
 function resolveConfiguredPixKey(botConfig) {
   const configured = String(
     botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
@@ -84,17 +67,16 @@ function resolveConfiguredPixKey(botConfig) {
 }
 
 function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false } = {}) {
-  const valorFmt = toolRes.valor ? `R$ ${Number(toolRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+  const valorFmt = toolRes.valor ? 'R$ ' + Number(toolRes.valor).toFixed(2).replace('.', ',') : 'Valor livre';
   return [
-    `💳 *Aqui está seu Pix para pagamento:*`,
-    `• *Valor:* ${valorFmt}`,
-    `• *Favorecido:* ${toolRes.favorecido || owner}`,
-    (includeKey && pixKey) ? `• *Chave Pix:* \`${pixKey}\`` : '',
-    toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
-    `• *Copia e Cola:*\n\`\`\`${toolRes.pixCopiaECola}\`\`\``
+    '💳 *Aqui está seu Pix para pagamento:*',
+    '• *Valor:* ' + valorFmt,
+    '• *Favorecido:* ' + (toolRes.favorecido || owner),
+    (includeKey && pixKey) ? '• *Chave Pix:* `' + pixKey + '`' : '',
+    toolRes.paymentUrl ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
+    '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```'
   ].filter(Boolean).join('\n\n');
 }
-
 export async function handleClientMessage({
   store, ai, whatsapp, faq, reminderStore, logger, now,
   allowClientResume, maxInputChars, notify, isOwnerSender,
@@ -432,7 +414,10 @@ export async function handleClientMessage({
       s.lastUserText = clean;
       const clientMemScope = buildMemoryScopeKey({ phone: s.phone, isOwner: false });
       for (const cand of extractMemoryCandidates(clean)) {
-        memoryStore.remember({ scopeKey: clientMemScope, ...cand, source: 'conversation' });
+        await memoryStore.rememberWithEmbedding(
+          { scopeKey: clientMemScope, ...cand, source: 'conversation' },
+          { timeoutMs: 1200 }
+        );
       }
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
@@ -463,7 +448,26 @@ export async function handleClientMessage({
           ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
           : {})
       };
-      const systemPrompt = buildSystemPrompt({ session: promptSession, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
+      const memoryQuery = activeContext.history.slice(-6)
+        .map(entry => `${entry.role}: ${entry.content || ''}`)
+        .concat([clean])
+        .join('\n')
+        .slice(-5000);
+      const promptMemories = await memoryStore.retrieveSemantic({
+        scopeKey: clientMemScope,
+        query: memoryQuery,
+        limit: 6,
+        timeoutMs: 1200
+      });
+      const systemPrompt = buildSystemPrompt({
+        session: promptSession,
+        faq: items,
+        plans: getPlansForPrompt(),
+        now: new Date(now()),
+        botConfig,
+        isOwner: false,
+        memoryItems: promptMemories
+      });
       const prevUserTurns = activeContext.history.slice(0, -1).filter(m => m.role === 'user');
       const lastPrevUser = prevUserTurns[prevUserTurns.length - 1];
       const normCurrent = normalize(clean);
@@ -617,7 +621,7 @@ export async function handleClientMessage({
       let webSearchResult = null;
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
-      const currentPaymentChoice = paymentChoice(clean);
+      const currentPaymentChoice = resolvePaymentChoice(clean);
       const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
@@ -665,8 +669,8 @@ export async function handleClientMessage({
 
       // Fallback determinístico: seleções curtas, como "só a chave" ou
       // "copia e cola", também funcionam sem depender do contexto anterior.
-      if (isClient && toolCalls.length === 0 && (/\bpix\b/i.test(clean) || currentPaymentChoice) && !pendingPayment) {
-        const choice = paymentChoice(clean);
+      if (isClient && toolCalls.length === 0 && isPixActionRequest(clean) && !pendingPayment) {
+        const choice = resolvePaymentChoice(clean);
         const amount = amountFromText(clean);
         if (choice === 'key') {
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
@@ -711,7 +715,7 @@ export async function handleClientMessage({
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
             if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
-              const directChoice = paymentChoice(clean);
+              const directChoice = resolvePaymentChoice(clean);
               if (directChoice === 'key') {
                 s.pendingClientPayment = null;
                 toolReplyOverride = directPixKeyReply({ key: configuredPixKey, owner });

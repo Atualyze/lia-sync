@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCopilotToolReview, reviewCopilotToolCall } from './copilot-continuity.mjs';
+import { parseCopilotToolReview, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 
 test('review semântico reconhece continuação natural sem depender de palavra-chave', async () => {
   let captured = null;
@@ -105,4 +105,57 @@ test('classificação falha de forma segura quando o avaliador não responde', a
     activeTask: { type: 'payment', originCommand: 'Gerar cobrança Pix' }
   });
   assert.equal(review.intent, 'clarification');
+});
+
+
+test('intenção explícita de ferramenta não confunde menção com autorização', () => {
+  assert.equal(hasExplicitToolIntent('Gera uma cobrança Pix de 80 reais', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Não gere a cobrança ainda', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Não entendi a cobrança, pode explicar?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Quero entender como funciona o Pix', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Mande uma mensagem para João dizendo que chego às 15h', 'enviar_mensagem_contato'), true);
+  assert.equal(hasExplicitToolIntent('Não mande mensagem para João', 'enviar_mensagem_contato'), false);
+  assert.equal(hasExplicitToolIntent('Quais horários estão livres na agenda?', 'gerenciar_agenda_google'), true);
+});
+
+test('correção de mensagem não é confundida com pedido explícito de envio', () => {
+  assert.equal(hasExplicitToolIntent('Não, não mande para João. Corrija para Maria.', 'enviar_mensagem_contato'), false);
+});
+
+
+test('classificador trata resposta negativa sobre envio como esclarecimento, não como continuação autorizada', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"clarification","confidence":0.97,"reason":"pedido para não enviar ainda"}' }) },
+    currentMessage: 'Não envie ainda, quero revisar o texto.',
+    activeTask: { type: 'dispatch', originCommand: 'Enviar mensagem para João', lastQuestion: 'Posso enviar a mensagem agora?' },
+    recentContext: [{ role: 'assistant', content: 'Posso enviar a mensagem agora?' }]
+  });
+  assert.equal(review.intent, 'clarification');
+});
+
+test('continuação com confiança baixa é rebaixada para esclarecimento', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"continue","confidence":0.58,"reason":"talvez seja continuação"}' }) },
+    currentMessage: 'Pode ser',
+    activeTask: { type: 'agenda', originCommand: 'Consultar agenda', lastQuestion: 'Você quer consultar ou agendar?' },
+    recentContext: [{ role: 'assistant', content: 'Você quer consultar ou agendar?' }]
+  });
+  assert.equal(review.intent, 'clarification');
+  assert.equal(review.reason, 'low_confidence_continuation');
+});
+
+
+test('intenção explícita: reconhece comandos curtos, mas não transforma dúvidas em ações', () => {
+  assert.equal(hasExplicitToolIntent('Pix', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Como funciona o Pix?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Vocês aceitam Pix?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Quero cobrar R$ 20 pela compra', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Me explica como funciona o envio de áudio', 'enviar_mensagem_contato'), false);
+});
+
+test('intenção explícita: distingue pedido de nova ação de continuação de envio', () => {
+  assert.equal(hasOtherExplicitToolIntent('Mande uma mensagem para o Lima', 'gerar_cobranca_pix'), true);
+  assert.equal(hasOtherExplicitToolIntent('Não mande mensagem para o Lima', 'gerar_cobranca_pix'), false);
 });

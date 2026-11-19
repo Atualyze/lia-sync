@@ -232,6 +232,25 @@ export class MemoryStore {
   async rememberWithEmbedding(params = {}, embedOpts = {}) {
     const res = this.remember(params);
     if (!res.saved || !res.memory) return res;
+    // Do not keep a vector for old content if an update succeeds but embedding fails.
+    delete res.memory.embedding;
+    this.items.set(res.memory.id, res.memory);
+    this._persist();
+    const embedding = await generateMemoryEmbedding(res.memory.content, embedOpts);
+    if (embedding) {
+      res.memory.embedding = embedding;
+      this.items.set(res.memory.id, res.memory);
+      this._persist();
+    }
+    return res;
+  }
+
+  async correctWithEmbedding(params = {}, embedOpts = {}) {
+    const res = this.correct(params);
+    if (!res.updated || !res.memory) return res;
+    delete res.memory.embedding;
+    this.items.set(res.memory.id, res.memory);
+    this._persist();
     const embedding = await generateMemoryEmbedding(res.memory.content, embedOpts);
     if (embedding) {
       res.memory.embedding = embedding;
@@ -242,7 +261,12 @@ export class MemoryStore {
   }
 
   async retrieveSemantic({ scopeKey, query = '', limit = 6, ...embedOpts } = {}) {
-    const queryEmbedding = query ? await generateMemoryEmbedding(query, embedOpts) : null;
+    const active = this.list(scopeKey);
+    // Avoid an embedding API request until this scope actually has semantic memories.
+    if (!query || !active.some(item => Array.isArray(item.embedding) && item.embedding.length > 0)) {
+      return this.retrieve({ scopeKey, query, limit });
+    }
+    const queryEmbedding = await generateMemoryEmbedding(query, embedOpts);
     return this.retrieve({ scopeKey, query, queryEmbedding, limit });
   }
 

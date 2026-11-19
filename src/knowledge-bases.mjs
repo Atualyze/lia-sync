@@ -204,17 +204,19 @@ export function getRelevantKnowledgeBaseContentSync(
   id,
   queryText = '',
   dir = DEFAULT_KB_DIR,
-  { maxChars = 6500 } = {}
+  { maxChars = 6500, maxSections = 6 } = {}
 ) {
   const kb = getKnowledgeBaseContentSync(id, dir);
   if (!kb) return null;
   const queryTokens = extractQueryTokens(queryText);
   const match = queryTokens.length ? scoreKbRelevance(kb, queryTokens) : null;
   const content = match
-    ? buildRelevantSnippet(kb, match.scoredSections, maxChars)
+    ? buildRelevantSnippet(kb, match.scoredSections, maxChars, maxSections)
     : `${kb.content.slice(0, Math.min(1800, maxChars)).trim()}\n\n[Demais seções disponíveis na base vinculada; consulte somente se necessário.]`;
   return { ...kb, content };
 }
+
+const SPECIFIC_KB_TERMS = new Set(['asaas', 'infinitepay', 'supabase', 'chatwoot', 'evolution', 'pix', 'checkout']);
 
 const SEARCH_STOPWORDS = new Set([
   'para', 'como', 'mais', 'com', 'sem', 'por', 'que', 'uma', 'uns', 'umas',
@@ -222,7 +224,7 @@ const SEARCH_STOPWORDS = new Set([
   'clientes', 'atendimento', 'sistema', 'lia', 'pode', 'quer', 'quero',
   'esta', 'estao', 'esse', 'essa', 'muito', 'tudo', 'onde', 'qual', 'quais',
   'quando', 'porque', 'fazer', 'manual', 'conhecimento', 'suporte',
-  'operacional', 'base', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite'
+  'operacional', 'base', 'ola', 'bom', 'boa', 'dia', 'tarde', 'noite', 'preciso', 'bem'
 ]);
 
 function normalizeSearchText(text = '') {
@@ -244,7 +246,7 @@ function splitMarkdownSections(content = '') {
   let currentHeading = '';
   let currentBody = [];
   for (const line of lines) {
-    if (/^##\s+/.test(line)) {
+    if (/^#{2,3}\s+/.test(line)) {
       if (currentHeading || currentBody.length) {
         const bodyText = currentBody.join('\n').trim();
         sections.push({
@@ -254,7 +256,7 @@ function splitMarkdownSections(content = '') {
           normBody: normalizeSearchText(bodyText)
         });
       }
-      currentHeading = line.replace(/^##\s+/, '').trim();
+      currentHeading = line.replace(/^#{2,3}\s+/, '').trim();
       currentBody = [];
     } else {
       currentBody.push(line);
@@ -301,26 +303,77 @@ function scoreKbRelevance(kb, queryTokens) {
   const scoredSections = [];
   for (const sec of sections) {
     let secScore = 0;
+    const matchedTokens = [];
     for (const token of queryTokens) {
-      if (sec.normHeading && sec.normHeading.includes(token)) secScore += 5;
-      else if (sec.normBody && sec.normBody.includes(token)) secScore += 2.5;
+      if (sec.normHeading && sec.normHeading.includes(token)) {
+        secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 5;
+        matchedTokens.push(token);
+      } else if (sec.normBody && sec.normBody.includes(token)) {
+        secScore += SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5;
+        matchedTokens.push(token);
+      }
     }
-    if (secScore > 0) scoredSections.push({ ...sec, score: secScore });
+    if (secScore > 0) scoredSections.push({ ...sec, score: secScore, matchedTokens });
   }
 
   scoredSections.sort((a, b) => b.score - a.score);
   return { kb, score: docScore, scoredSections };
 }
 
-function buildRelevantSnippet(kb, scoredSections, maxChars = 3600) {
+function selectRelevantParagraphs(section) {
+  const paragraphs = String(section.body || '').split(/\n\s*\n|\n(?=(?:\*|\d+\.)\s+\*\*)/).map((value, index) => ({
+    value: value.trim(),
+    index
+  })).filter(item => item.value);
+  const tokens = Array.isArray(section.matchedTokens) ? section.matchedTokens : [];
+  const ranked = paragraphs.map(item => {
+    const normalized = normalizeSearchText(item.value);
+    const hits = tokens.filter(token => normalized.includes(token));
+    const score = hits.reduce((sum, token) => sum + (SPECIFIC_KB_TERMS.has(token) ? 12 : 2.5), 0);
+    return { ...item, score };
+  }).filter(item => item.score > 0);
+
+  if (!ranked.length) return paragraphs.slice(0, 1).map(item => item.value);
+  return ranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .sort((a, b) => a.index - b.index)
+    .map(item => item.value);
+}
+
+function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections = 3) {
   if (!maxChars || maxChars <= 0) return kb.content;
-  const header = `# ${kb.title}\n\n`;
+  const header = '# ' + kb.title + '\n\n';
   if (!scoredSections.length) return kb.content.slice(0, maxChars);
+  const selected = scoredSections.slice(0, Math.max(1, Math.min(80, Number(maxSections) || 3)));
   let out = header;
-  for (const sec of scoredSections.slice(0, 3)) {
-    const block = `${sec.heading ? `## ${sec.heading}\n` : ''}${sec.body}\n\n`;
-    if (out.length + block.length > maxChars && out.length > header.length) break;
-    out += block;
+
+  // Broad dossier requests preserve full matched sections instead of clipping each one.
+  if (maxChars >= 16000) {
+    for (const sec of selected) {
+      const heading = sec.heading ? '## ' + sec.heading + '\n' : '';
+      const block = heading + String(sec.body || '') + '\n\n';
+      const remaining = maxChars - out.length;
+      if (remaining <= 0) break;
+      out += block.length <= remaining ? block : block.slice(0, remaining);
+      if (block.length > remaining) break;
+    }
+    return out.slice(0, maxChars).trim();
+  }
+
+  // Reserve space for later matches so one long chapter cannot hide
+  // smaller but equally relevant sections from the same manual.
+  for (let index = 0; index < selected.length && out.length < maxChars; index += 1) {
+    const sec = selected[index];
+    const heading = sec.heading ? '## ' + sec.heading + '\n' : '';
+    const remainingSections = selected.length - index;
+    const remainingChars = Math.max(0, maxChars - out.length);
+    const sectionBudget = remainingSections > 1
+      ? Math.max(240, Math.floor(remainingChars / remainingSections))
+      : remainingChars;
+    const bodyBudget = Math.max(0, sectionBudget - heading.length);
+    const body = selectRelevantParagraphs(sec).join('\n\n').slice(0, bodyBudget);
+    out += heading + body + '\n\n';
   }
   return out.slice(0, maxChars).trim();
 }
@@ -354,6 +407,39 @@ export function findMatchingKnowledgeBaseSync(
     };
   }
   return best.kb;
+}
+
+/**
+ * Returns the most relevant knowledge bases for a conversational query.
+ * Unlike the single-result helper, this keeps a small ranked set for Copilot
+ * prompts and limits each document to its best matching sections.
+ */
+export function findMatchingKnowledgeBasesSync(
+  queryText = '',
+  dir = DEFAULT_KB_DIR,
+  { includeCopilotOnly = false, excludeFolders = null, onlyFolders = null, limit = 3, maxChars = 6500, maxSections = 8 } = {}
+) {
+  const queryTokens = extractQueryTokens(queryText);
+  if (!queryTokens.length) return [];
+
+  const all = listKnowledgeBasesSync(dir);
+  const ranked = [];
+  for (const kb of all) {
+    if (kb.copilotOnly && !includeCopilotOnly) continue;
+    const folder = String(kb.folder || '');
+    if (Array.isArray(onlyFolders) && !onlyFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
+    if (Array.isArray(excludeFolders) && excludeFolders.some(f => folder === f || folder.startsWith(`${f}/`))) continue;
+    const match = scoreKbRelevance(kb, queryTokens);
+    if (match) ranked.push(match);
+  }
+
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked.slice(0, Math.max(1, Math.min(8, Number(limit) || 3))).map(match => ({
+    ...match.kb,
+    content: maxChars > 0
+      ? buildRelevantSnippet(match.kb, match.scoredSections, maxChars, maxSections)
+      : match.kb.content
+  }));
 }
 
 export function findGuidanceKnowledgeSync(queryText = '', dir = DEFAULT_KB_DIR, { maxChars = 3000 } = {}) {
