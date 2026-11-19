@@ -80,29 +80,122 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   assert.equal(expireSent.length, 0);
 });
 
-test('Copiloto: “sim” durante tarefa Pix não executa tool call antiga de disparo sem mensagem', async () => {
+test('Copiloto: ferramenta incompatível pede contexto sem apagar a tarefa ativa', async () => {
   const store = createMockStore();
   const self = store.get('owner_self');
   const createdAt = new Date().toISOString();
-  self.pendingCopilotTask = { type: 'payment', createdAt, updatedAt: createdAt, originCommand: 'Pix de R$ 20 para pão', lastQuestion: 'Quer que eu gere a cobrança?', repeatCount: 0, turns: 0 };
+  self.pendingCopilotTask = {
+    type: 'payment',
+    createdAt,
+    updatedAt: createdAt,
+    originCommand: 'Pix de R$ 20 para pão',
+    lastQuestion: 'Quer que eu gere a cobrança?',
+    repeatCount: 0,
+    turns: 0
+  };
   self.pendingPixRequest = { requestedAt: createdAt, amount: 20, description: 'pagamento do pão' };
   const sent = [];
+  let calls = 0;
   const flow = createFlow({
     store,
     humanPhone: '5588921694598',
     getHumanPhone: () => '5588921694598',
     isOwnerSender: phone => phone === 'owner_self',
     whatsapp: { sendText: async (...args) => sent.push(args) },
-    ai: { askAI: async () => ({
-      reply: 'Vou enviar a mensagem.',
-      tool_calls: [{ name: 'enviar_mensagem_contato', args: { recipient: '5588992185932' } }]
-    }) }
+    ai: { askAI: async () => {
+      calls += 1;
+      return {
+        reply: 'Vou enviar a mensagem.',
+        tool_calls: [{ name: 'enviar_mensagem_contato', args: { recipient: '5588992185932' } }]
+      };
+    } }
   });
 
   const reply = await flow.process({ phone: 'owner_self', text: 'sim', origin: 'owner' });
-  assert.match(reply, /Não executei essa ação/i);
+  assert.match(reply, /continuar a solicitação anterior/i);
+  assert.equal(calls, 2, 'a ferramenta incompatível deve passar por revisão semântica');
   assert.equal(sent.length, 0, 'não deve haver tentativa de envio com message ausente');
   assert.equal(Boolean(self.pendingOutboundDispatch), false);
+  assert.equal(self.pendingCopilotTask?.type, 'payment', 'a tarefa original deve continuar ativa');
+  assert.ok(self.pendingCopilotTask?.allowedTools?.includes('enviar_mensagem_contato'));
+  assert.equal(self.pendingPixRequest?.amount, 20, 'os dados já informados não podem ser descartados');
+});
+
+test('Copiloto transcreve áudio recebido no chat interno e usa a fala como contexto', async () => {
+  const store = createMockStore();
+  let transcribed = false;
+  let receivedText = '';
+  const flow = createFlow({
+    store,
+    isOwnerSender: phone => phone === 'owner_self',
+    whatsapp: {
+      getMediaBase64: async () => ({ base64: 'YXVkaW8=', mimetype: 'audio/ogg' })
+    },
+    ai: {
+      transcribeAudio: async (base64, mime) => {
+        transcribed = true;
+        assert.equal(base64, 'YXVkaW8=');
+        assert.equal(mime, 'audio/ogg');
+        return 'Dá uma olhada no cadastro do Carlos e vê se o telefone está atualizado.';
+      },
+      askAI: async ({ userText }) => {
+        receivedText = userText;
+        return { reply: 'Você quer que eu confira o telefone do Carlos no cadastro?', tool_calls: [] };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'owner_self',
+    text: '🎤 [Áudio / Mídia recebido]',
+    mediaType: 'audio',
+    rawItem: { key: { id: 'audio-1' } },
+    origin: 'owner'
+  });
+
+  assert.equal(transcribed, true);
+  assert.match(receivedText, /Dá uma olhada no cadastro do Carlos/i);
+  assert.match(reply, /telefone do Carlos/i);
+  assert.match(store.get('owner_self').history.at(-2).content, /Áudio transcrito/);
+});
+
+test('Copiloto não inventa conteúdo quando a transcrição do áudio falha e preserva a tarefa ativa', async () => {
+  const store = createMockStore();
+  const self = store.get('owner_self');
+  const createdAt = new Date().toISOString();
+  self.pendingCopilotTask = {
+    type: 'payment',
+    createdAt,
+    updatedAt: createdAt,
+    originCommand: 'Cobrança da entrega',
+    lastQuestion: 'Qual valor devo usar?',
+    repeatCount: 0,
+    turns: 0
+  };
+  self.pendingPixRequest = { requestedAt: createdAt, amount: null, description: 'entrega' };
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    isOwnerSender: phone => phone === 'owner_self',
+    whatsapp: { getMediaBase64: async () => ({ base64: 'YXVkaW8=', mimetype: 'audio/ogg' }) },
+    ai: {
+      transcribeAudio: async () => null,
+      askAI: async () => { aiCalls += 1; return { reply: 'não deveria ser chamada' }; }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'owner_self',
+    text: '🎤 [Áudio / Mídia recebido]',
+    mediaType: 'audio',
+    rawItem: {},
+    origin: 'owner'
+  });
+
+  assert.match(reply, /não consegui transcrever/i);
+  assert.equal(aiCalls, 0);
+  assert.equal(self.pendingCopilotTask?.type, 'payment');
+  assert.equal(self.pendingPixRequest?.description, 'entrega');
 });
 
 test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o operador confirmar', async () => {
