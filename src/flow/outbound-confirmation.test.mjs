@@ -19,7 +19,7 @@ test('negativas conversacionais não cancelam uma prévia pendente', () => {
   for (const text of ['Não entendi, pode explicar?', 'Não, pode explicar melhor?', 'Para quando fica o orçamento?', 'Não precisa explicar isso']) {
     assert.equal(matchOutboundCancellation(text), null, 'não deveria cancelar: ' + text);
   }
-  for (const text of ['não', 'não precisa', 'não precisa mandar', 'não envia', 'cancela', 'pode cancelar o envio', 'deixa pra lá']) {
+  for (const text of ['não', 'não precisa', 'não precisa mandar', 'não envia', 'não, cancela', 'cancela', 'pode cancelar o envio', 'deixa pra lá']) {
     assert.ok(matchOutboundCancellation(text), 'deveria reconhecer cancelamento: ' + text);
   }
 });
