@@ -117,7 +117,8 @@ test('Copiloto: ferramenta incompatível pede contexto sem apagar a tarefa ativa
   assert.equal(sent.length, 0, 'não deve haver tentativa de envio com message ausente');
   assert.equal(Boolean(self.pendingOutboundDispatch), false);
   assert.equal(self.pendingCopilotTask?.type, 'payment', 'a tarefa original deve continuar ativa');
-  assert.ok(self.pendingCopilotTask?.allowedTools?.includes('enviar_mensagem_contato'));
+  assert.equal(self.pendingCopilotTask?.allowedTools?.includes('enviar_mensagem_contato') || false, false,
+    'uma ferramenta rejeitada ainda não pode ser liberada para a próxima mensagem');
   assert.equal(self.pendingPixRequest?.amount, 20, 'os dados já informados não podem ser descartados');
 });
 
