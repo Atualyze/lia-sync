@@ -1492,9 +1492,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || /\b\d{1,6}(?:[.,]\d{1,2})?\b/.test(cleanCommand)
           || /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand)
         ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext || activeTask?.originCommand || '');
-        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer))?|pode detalhar|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn)
-          || /\b(?:o que e|como funciona|qual a diferenca|aceita|aceitam|recebe|recebem)\b.{0,60}\b(?:pix|cobranca|pagamento|infinitepay|checkout)\b/i.test(normalizedTurn)
-          || /\b(?:pix|cobranca|pagamento|infinitepay|checkout)\b.{0,45}\b(?:o que e|como funciona|qual a diferenca)\b/i.test(normalizedTurn);
+        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta|\s+previa|\s+mensagem)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer|essa previa|a previa))?|pode detalhar|me explica(?:\s+melhor)?|me explique(?:\s+melhor)?|me esclarece|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn)
+          || /\b(?:o que e|como funciona|qual a diferenca|pra que serve|para que serve|aceita|aceitam|recebe|recebem)\b.{0,80}\b(?:pix|cobranca|pagamento|infinitepay|checkout|agenda|agendamento|mensagem|audio|ferramenta|crm)\b/i.test(normalizedTurn)
+          || /\b(?:pix|cobranca|pagamento|infinitepay|checkout|agenda|agendamento|mensagem|audio|ferramenta|crm)\b.{0,60}\b(?:o que e|como funciona|qual a diferenca|pra que serve|para que serve)\b/i.test(normalizedTurn);
         const explicitDispatchContinuation = activeTask?.type === 'dispatch'
           && Boolean(sSelf.pendingRecipient)
           && String(dispatchIntent.message || '').trim().length >= 4
