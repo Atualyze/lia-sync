@@ -1494,7 +1494,7 @@ test('Copiloto Pix: “Pix” isolado não aceita valor/descrição antigos que 
   assert.equal(store.get(OWNER_SELF_KEY).pendingCopilotTask.type, 'payment');
 });
 
-test('Copiloto: mudar de tarefa invalida pendência antiga e tool call de disparo sem intenção não envia', async () => {
+test('Copiloto: sugestão de ferramenta sem vínculo com o pedido não executa ação antiga', async () => {
   const store = new SessionStore();
   const self = store.get(OWNER_SELF_KEY);
   const old = new Date(Date.now() - 60_000).toISOString();
@@ -1513,7 +1513,7 @@ test('Copiloto: mudar de tarefa invalida pendência antiga e tool call de dispar
     } }
   });
   const reply = await flow.process({ phone: OWNER_SELF_KEY, text: 'oi', origin: 'owner' });
-  assert.match(reply, /Não executei essa ação/i);
+  assert.match(reply, /não consegui entender|pode me explicar/i);
   assert.equal(sent.length, 0);
   assert.ok(suppliedHistory.length <= 8, 'o prompt não recebe além das oito mensagens mais recentes');
   assert.equal(suppliedHistory.some(item => /Tarefa concluída antiga 0/.test(item.content)), false);
@@ -1582,7 +1582,7 @@ test('Supabase preserva continuidade genérica do Copiloto e ferramentas relacio
     lastQuestion: 'Você pode me explicar qual parte quer revisar?',
     repeatCount: 0,
     turns: 1,
-    allowedTools: ['consultar_web', 'enviar_mensagem_contato', 'tool_inexistente']
+    allowedTools: ['consultar_web', 'enviar_mensagem_contato', 'tool name']
   };
   firstStore.markDirty();
   await firstStore.flush();
