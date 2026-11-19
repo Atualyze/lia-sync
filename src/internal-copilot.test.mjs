@@ -51,7 +51,7 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   assert.doesNotMatch(preview, /SIM [A-F0-9]{8}/i);
   assert.equal(sent.length, 0);
 
-  const confirmed = await flow.process({ phone: '5588921694598', text: 'sim' });
+  const confirmed = await flow.process({ phone: '5588921694598', text: 'sim, pode enviar agora' });
   assert.match(confirmed, /Envio confirmado e concluído/i);
   assert.equal(sent.length, 1);
   const duplicate = await flow.process({ phone: '5588921694598', text: 'sim' });
@@ -63,7 +63,7 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   const cancelSent = [];
   const cancelFlow = createDispatchFlow(cancelStore, cancelSent, () => Date.now());
   const cancelPreview = await startDispatch(cancelFlow);
-  const cancelled = await cancelFlow.process({ phone: '5588921694598', text: 'não' });
+  const cancelled = await cancelFlow.process({ phone: '5588921694598', text: 'não precisa mandar' });
   assert.match(cancelled, /cancelado/i);
   assert.equal(cancelSent.length, 0);
   assert.ok(!cancelStore.get('owner_self').pendingOutboundDispatch);

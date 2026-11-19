@@ -364,8 +364,8 @@ export async function handleOwnerSession({
             return recordSelfTurn('A prévia do disparo expirou. Nada foi enviado; se ainda quiser, faça o pedido novamente.');
           }
           const id = String(pending.id || '').toUpperCase();
-          const approveMatch = cleanCommand.match(/^(?:sim(?:[, ]+pode)?|confirmo|confirmado|confirmar|confirm|pode\s+enviar|pode\s+mandar|autorizo|manda|envia|dispara|ok|okay|isso)(?:\s+([A-F0-9]{8}))?[.!\s]*$/i);
-          const cancelMatch = cleanCommand.match(/^(?:n[aã]o|nao|cancelar|cancela|cancelar\s+envio|cancela\s+envio)(?:\s+([A-F0-9]{8}))?[.!\s]*$/i);
+          const approveMatch = cleanCommand.match(/^(?:sim|confirmo|confirmado|confirmar|confirm|pode\s+(?:enviar|mandar|disparar)|autorizo|manda|envia|dispara|ok|okay|isso)(?:\s+([A-F0-9]{8}))?(?:[\s,;:!?.].*)?$/i);
+          const cancelMatch = cleanCommand.match(/^(?:n[aã]o|nao|negativo|cancelar|cancela|cancelar\s+envio|cancela\s+envio|não precisa|nao precisa)(?:\s+([A-F0-9]{8}))?(?:[\s,;:!?.].*)?$/i);
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
           if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch !== 'function') {
             return recordSelfTurn('Este disparo de prospecção aguarda a conexão de aprovação com a fila de leads. Não enviei nada; peça suporte ao responsável pelo sistema.');
