@@ -10,8 +10,7 @@
 const DECISIONS = new Set(['allow', 'clarify', 'deny']);
 const RELATIONS = new Set(['continuation', 'new_request', 'unrelated']);
 
-const fallbackQuestion = hasActiveTask
-  => hasActiveTask
+const fallbackQuestion = hasActiveTask => hasActiveTask
     ? 'Só para eu não misturar os assuntos: você quer continuar a solicitação anterior ou começar uma nova ação?'
     : 'Ainda não consegui entender com segurança o que você quer fazer. Pode me explicar o objetivo com suas palavras?';
 
