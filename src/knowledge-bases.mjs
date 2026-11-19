@@ -244,7 +244,7 @@ function splitMarkdownSections(content = '') {
   let currentHeading = '';
   let currentBody = [];
   for (const line of lines) {
-    if (/^##\s+/.test(line)) {
+    if (/^#{2,3}\s+/.test(line)) {
       if (currentHeading || currentBody.length) {
         const bodyText = currentBody.join('\n').trim();
         sections.push({
@@ -254,7 +254,7 @@ function splitMarkdownSections(content = '') {
           normBody: normalizeSearchText(bodyText)
         });
       }
-      currentHeading = line.replace(/^##\s+/, '').trim();
+      currentHeading = line.replace(/^#{2,3}\s+/, '').trim();
       currentBody = [];
     } else {
       currentBody.push(line);
