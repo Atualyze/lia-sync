@@ -11,7 +11,7 @@
 
 const SECTOR_KEYWORDS = {
   vendas: [
-    'preço', 'preco', 'valor', 'quanto custa', 'orçamento', 'orcamento', 'comprar',
+    'preço', 'preco', 'quanto custa', 'orçamento', 'orcamento', 'comprar',
     'adquirir', 'contratar', 'plano', 'planos', 'proposta', 'tabela', 'serviços', 'servicos',
     'quero assinar', 'adesão', 'adesao', 'quero saber mais'
   ],
