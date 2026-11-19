@@ -52,7 +52,7 @@ const COPILOT_TASK_PATTERNS = [
   ['crm', /\b(?:crm|atualiz\w*|corrig\w*|cadastro)\b/i],
   ['contact', /\b(?:contato|lead|telefone|hist[oó]rico\s+do\s+cliente)\b/i],
   ['memory', /\b(?:mem[oó]ria|memorize|lembre-se|esque[cç]a|guarde)\b/i],
-  ['infra', /\b(?:infra|servidor\w*|vps|dokku|containers?)\b/i],
+  ['infra', /(?:\b(?:infra|servidor\w*|vps|dokku|containers?)\b|\b(?:rodei|fiz|apliquei|terminei|conclu[ií]|atualizei|atualizamos|publiquei|subi|reiniciei|reiniciamos|deploy)\b.{0,120}\b(?:est[aá]\s+tudo\s+(?:ok|certo|normal)|est[aá]\s+(?:funcionando|normal)|como\s+(?:est[aá]|ficou)|tem\s+(?:algum|alguma)\s+(?:falha|erro|problema)|deu\s+(?:algum\s+)?(?:problema|erro)|est[aá]\s+saud[aá]vel)\b)/i],
   ['web', /\b(?:pesquis\w*|procur\w*|busc\w*\s+(?:na\s+)?web|consulta\w*\s+web)\b/i],
   ['knowledge', /\b(?:base\s+de\s+conhecimento|dossi[eê]|manual\s+operacional)\b/i]
 ];
@@ -89,6 +89,13 @@ function activeCopilotTask(session, nowMs = Date.now()) {
   if (!task || typeof task !== 'object') return null;
   const createdAt = Date.parse(task.createdAt || '');
   if (!Number.isFinite(createdAt) || nowMs - createdAt > COPILOT_PENDING_TTL_MS || nowMs < createdAt - 60_000) {
+    session.pendingCopilotTask = null;
+    return null;
+  }
+  // A generic clarification must never become a sticky task. It can otherwise
+  // contaminate the next independent request and force an unnecessary
+  // continuation-vs-new-request clarification.
+  if (String(task.type || '').trim().toLowerCase() === 'general') {
     session.pendingCopilotTask = null;
     return null;
   }
@@ -290,7 +297,7 @@ export async function handleOwnerSession({
                 : (task && intentTypes.includes(task.type)
                   ? task.type
                   : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general')));
-            if (isClarification && !sSelf.pendingOutboundDispatch) {
+            if (isClarification && !sSelf.pendingOutboundDispatch && taskType !== 'general') {
               const sameTask = task?.type === taskType;
               if (task && !sameTask) {
                 if (task.type === 'payment') sSelf.pendingPixRequest = null;
