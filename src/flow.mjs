@@ -30,6 +30,7 @@ export function createFlow({
   maxInputChars = 2000,
   rateLimitMax = 20,
   rateLimitWindowMs = 600000,
+  adminConfig = null,
   logger = console
 }) {
   const dedupe = new Map();
@@ -195,7 +196,7 @@ export function createFlow({
       if (isOwnerSession) {
         return handleOwnerSession({
           store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
-          botConfig, identity, owner, assistant, ownerLabel,
+          botConfig, adminConfig, identity, owner, assistant, ownerLabel,
           isOwnerSender, getWaitingList, findSessionByTarget,
           phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
         });
