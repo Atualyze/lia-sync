@@ -27,7 +27,9 @@ const EXPLICIT_TOOL_INTENTS = Object.freeze({
   consultar_web: /\b(?:pesquisa|pesquisar|pesquise|procura|procurar|procure|busca|buscar|busque|consulta|consultar|consulte)\b.{0,100}\b(?:web|internet|online|atualidade|notícia|noticia)\b/i,
   consultar_base_conhecimento: /\b(?:consulta|consultar|consulte|busca|buscar|busque|procura|procurar|procure|abre|abrir|abra|leia|ler)\b.{0,100}\b(?:base de conhecimento|manual|dossi[eê]|documentação|documentacao)\b/i,
   transferir_setor: /\b(?:transfere|transferir|transfira|encaminha|encaminhar|encaminhe|passa|passar|passe)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i,
-  transferir_para_setor: /\b(?:transfere|transferir|transfira|encaminha|encaminhar|encaminhe|passa|passar|passe)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i
+  transferir_para_setor: /\b(?:transfere|transferir|transfira|encaminha|encaminhar|encaminhe|passa|passar|passe)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i,
+  gerenciar_codigo: /\b(?:corrige|corrigir|corrija|conserta|consertar|conserte|ajusta|ajustar|ajuste|edita|editar|edite|altera|alterar|altere|muda|mudar|mude|implementa|implementar|implemente)\b.{0,120}\b(?:c[oó]digo|bug|erro|falha|arquivo|fun[cç][aã]o|sistema|lia)\b/i,
+  gerenciar_configuracao: /\b(?:configura|configurar|configure|altera|alterar|altere|muda|mudar|mude|ajusta|ajustar|ajuste|desativa|desativar|ativa|ativar)\b.{0,120}\b(?:configura[cç][aã]o|configura[cç][oõ]es|par[aâ]metro|op[cç][aã]o|ferramenta|modelo|hor[aá]rio|comportamento)\b/i
 });
 
 const NEGATED_ACTION = /\b(?:não|nao|nunca|jamais|nem|sem)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|avise|dispara|disparar|dispare|agenda|agendar|agende|marca|marcar|marque|consulta|consultar|consulte|busca|buscar|busque|atualiza|atualizar|atualize|transfere|transferir|encaminha|encaminhar)\b/i;
