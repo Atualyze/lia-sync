@@ -202,7 +202,9 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
       return j;
     } catch (e) {
       last = e;
-      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+      // Só repete rejeições explícitas de rate limit; timeout/5xx podem significar envio aceito.
+      if (e?.deliveryUnknown || !/^evolution_http_429$/.test(e?.code || '') || i >= retry) throw e;
+      await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
     }
   }
   throw last;
@@ -224,7 +226,9 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
       return j;
     } catch (e) {
       last = e;
-      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+      // Só repete rejeições explícitas de rate limit; timeout/5xx podem significar envio aceito.
+      if (e?.deliveryUnknown || !/^evolution_http_429$/.test(e?.code || '') || i >= retry) throw e;
+      await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
     }
   }
   throw last;
@@ -246,7 +250,9 @@ export async function sendImage(jid, { dataUrl, base64, mimetype = 'image/png', 
       return j;
     } catch (e) {
       last = e;
-      if (i < retry) await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
+      // Só repete rejeições explícitas de rate limit; timeout/5xx podem significar envio aceito.
+      if (e?.deliveryUnknown || !/^evolution_http_429$/.test(e?.code || '') || i >= retry) throw e;
+      await new Promise(r => setTimeout(r, Math.min(3000, 1000 * (i + 1))));
     }
   }
   throw last;
