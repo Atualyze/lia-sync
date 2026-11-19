@@ -284,6 +284,7 @@ export async function handleOwnerSession({
                 : (intentTypes[0] || task?.type || suggestedTaskTypes[0]
                   || (['comando', 'envio_mensagem'].includes(currentModelIntent) ? 'general' : null)));
             const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
+            const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
             if (isClarification && taskType && !sSelf.pendingOutboundDispatch) {
               const sameTask = task?.type === taskType;
               const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
@@ -316,7 +317,7 @@ export async function handleOwnerSession({
                   ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
                 };
               }
-            } else if (task && !isClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
+            } else if (task && !isClarification && !isUserClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
               sSelf.pendingCopilotTask = null;
               if (task.type === 'payment') sSelf.pendingPixRequest = null;
               if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
