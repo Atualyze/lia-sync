@@ -123,7 +123,7 @@ export async function processMaintenance({
     const elapsed = current - new Date(session.lastBotAt).getTime();
 
     // 2.3 Follow-up Ativo e Proativo de Leads (Reengajamento inteligente após 24h a 72h)
-    // Apenas para leads reais comprovados, com mensagens reais trocadas e telefone móvel verificado
+    // Apenas para leads reais, com mensagens reais trocadas e telefone móvel brasileiro válido (formato)
     if (enableLeadFollowUp && daytime) {
       const elapsedHours = elapsed / 3600000;
       const isWithinWindow = elapsedHours >= followUpMinHours && elapsedHours <= followUpMaxHours;
