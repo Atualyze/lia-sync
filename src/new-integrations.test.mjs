@@ -1536,3 +1536,68 @@ test('Copiloto: interrompe pergunta de cobrança semanticamente repetida mesmo q
   assert.match(second, /repetindo a pergunta|inicie um novo pedido/i);
   assert.doesNotMatch(second, /Qual contato você quer consultar pelo CRM/i);
 });
+
+
+test('Supabase preserva continuidade genérica do Copiloto e ferramentas relacionadas', async () => {
+  const base = `/tmp/lia-copilot-continuity-${process.pid}-${Date.now()}`;
+  let conversation = null;
+  let messages = [];
+  const fakeClient = {
+    enabled: true,
+    async select(table, query = '') {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversation ? [conversation] : [];
+      }
+      if (table === 'conversation_messages') return messages;
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-continuity' }];
+      if (table === 'conversations') {
+        conversation = {
+          ...rows[0],
+          id: 'conversation-continuity',
+          updated_at: new Date().toISOString(),
+          contacts: { phone: OWNER_SELF_KEY }
+        };
+        return [{ id: 'conversation-continuity' }];
+      }
+      if (table === 'conversation_messages') {
+        messages = rows;
+        return rows.map(row => ({ ...row }));
+      }
+      return [];
+    }
+  };
+
+  const createdAt = new Date().toISOString();
+  const firstStore = new SupabaseSessionStore(`${base}-first.json`, { client: fakeClient, logger: { warn() {}, error() {} } });
+  const session = firstStore.get(OWNER_SELF_KEY);
+  session.pendingCopilotTask = {
+    type: 'general',
+    createdAt,
+    updatedAt: createdAt,
+    originCommand: 'Me ajuda a resolver aquele assunto',
+    lastQuestion: 'Você pode me explicar qual parte quer revisar?',
+    repeatCount: 0,
+    turns: 1,
+    allowedTools: ['consultar_web', 'enviar_mensagem_contato', 'tool_inexistente']
+  };
+  firstStore.markDirty();
+  await firstStore.flush();
+
+  assert.equal(conversation.metadata.pendingCopilotTask.type, 'general');
+  assert.deepEqual(conversation.metadata.pendingCopilotTask.allowedTools, ['consultar_web', 'enviar_mensagem_contato']);
+
+  const refreshedStore = new SupabaseSessionStore(`${base}-refreshed.json`, { client: fakeClient, logger: { warn() {}, error() {} } });
+  await refreshedStore.syncSession(OWNER_SELF_KEY);
+  const restored = refreshedStore.get(OWNER_SELF_KEY).pendingCopilotTask;
+  assert.equal(restored?.type, 'general');
+  assert.deepEqual(restored?.allowedTools, ['consultar_web', 'enviar_mensagem_contato']);
+  assert.equal(restored?.originCommand, 'Me ajuda a resolver aquele assunto');
+
+  for (const suffix of ['first', 'refreshed']) {
+    try { fs.unlinkSync(`${base}-${suffix}.json`); } catch {}
+  }
+});
