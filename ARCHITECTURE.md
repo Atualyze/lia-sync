@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.6.1**
+Versão: **2.8.0**
 
 ## Objetivo
 
@@ -36,6 +36,7 @@ Evolution / Chatwoot / Dashboard
 | `flow.mjs` | Seleciona atendimento do cliente ou Copiloto do responsável. |
 | `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento, ferramentas permitidas e resposta segura com retorno explícito de agenda/lembretes. |
 | `flow/owner.mjs` | Comandos do Copiloto, ações operacionais e confirmação de envio. |
+| `flow/copilot-continuity.mjs` | Revisão semântica de tool calls: continuação, novo pedido, esclarecimento ou assunto não relacionado. |
 | `flow/media.mjs` | Transcrição de áudio recebido e resposta em voz. |
 | `flow/pdf.mjs` | Entrega de PDF gerado como documento no WhatsApp. |
 | `flow/text.mjs` | Normalização, intenção e humanização de mensagens. |
@@ -67,6 +68,7 @@ Aliases e textos históricos são aceitos somente para migrar dados e conversas 
 - Sessões reais e simulações usam namespaces distintos.
 - Handoff usa `triggerHandoff`; o fluxo não envia transferências diretamente.
 - PDFs e áudios são entregues por adaptadores específicos. Envios de áudio não são repetidos automaticamente quando o resultado da entrega é incerto, evitando duplicidade.
+- O Copiloto preserva tarefas ativas com pedido original, última pergunta e ferramentas permitidas; esclarecimentos não executam ações sem relação. Áudios do responsável são transcritos antes de interpretar comandos, e falha de transcrição é tratada sem adivinhação.
 - Follow-ups exigem claim atômica no Supabase e confirmação da entrega; sem claim distribuída, o envio é bloqueado.
 - Agenda e retornos nunca são confirmados apenas pela intenção da IA: o cliente recebe o resultado da ferramenta, e falhas de consulta/persistência podem acionar `triggerHandoff`.
 - Limites mensais podem ser definidos por provedor/modelo. A reserva e liquidação distribuídas são serializadas no banco; consumo ou tarifa desconhecidos não são tratados como custo zero.

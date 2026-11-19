@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.8.0 - Continuidade natural do Copiloto e revisão semântica de tarefas
+- **Contexto ativo:** o Copiloto mantém o pedido original, a última pergunta, o tipo da tarefa, os turnos e as ferramentas permitidas enquanto uma solicitação ainda está em andamento.
+- **Continuidade sem palavras-chave:** respostas curtas, reformulações, correções e mudanças parciais de assunto são avaliadas pelo contexto, não apenas por correspondência literal de palavras.
+- **Revisão de tool calls:** `src/flow/copilot-continuity.mjs` classifica chamadas como continuação, novo pedido, esclarecimento ou assunto não relacionado antes da execução.
+- **Esclarecimentos:** perguntas como “não entendi”, “pode explicar?” e “como assim?” preservam a tarefa e não disparam cobrança, envio, agenda ou documento por engano.
+- **Áudio do responsável:** o chat interno tenta transcrever áudio antes de interpretar comandos; quando não há transcrição confiável, solicita reenvio ou resumo e não executa ações.
+- **Persistência e isolamento:** `pendingCopilotTask` aceita o contexto geral e `allowedTools`, com normalização, limite de itens e expiração; a base de autoconhecimento continua exclusiva do Copiloto.
+- **Validação:** 350 testes automatizados aprovados, com lint, build, contratos e publicação Docker validados no commit de release.
+
 ## 2.7.0 - Portal Atualyze Pay e pagamento unificado
 - **Portal público responsivo:** a rota `/pix` ganhou o layout Atualyze Pay, otimizado para desktop e mobile, com QR Code e hierarquia clara de pagamento.
 - **Pix:** botões para copiar chave Pix e código Pix e Cola com feedback visual; a chave é extraída do BR Code quando necessário.

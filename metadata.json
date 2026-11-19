@@ -1,7 +1,7 @@
 {
   "name": "Lia Sync",
-  "version": "2.7.0",
-  "description": "Assistente operacional via WhatsApp com portal Atualyze Pay responsivo, Pix unificado, InfinitePay, agenda e retornos confirmados, catálogo de modelos por provedor e dashboard administrativo.",
+  "version": "2.8.0",
+  "description": "Assistente operacional via WhatsApp com continuidade natural do Copiloto, revisão semântica de tarefas, transcrição de áudio interno, portal Atualyze Pay, Pix unificado, InfinitePay, agenda e dashboard administrativo.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

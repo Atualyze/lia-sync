@@ -2,7 +2,18 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.7.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.8.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.8.0 — Continuidade natural do Copiloto
+
+- **Tarefas em andamento:** o Copiloto preserva o pedido original, a última pergunta, o tipo de tarefa e as ferramentas autorizadas ao longo de respostas curtas, reformulações, correções e mudanças parciais de assunto.
+- **Revisão semântica de ferramentas:** antes de executar uma ferramenta que não esteja explicitamente ligada à mensagem atual, a Lia avalia se é continuação, novo pedido, pedido de esclarecimento ou assunto não relacionado.
+- **Esclarecimentos seguros:** frases como “não entendi”, “pode explicar?” e “como assim?” não executam cobranças, envios ou outras ações; a Lia esclarece o próximo passo.
+- **Áudio do responsável:** mensagens de áudio recebidas no chat interno são transcritas antes da interpretação. Se a transcrição falhar, a Lia pede reenvio ou resumo sem presumir o conteúdo.
+- **Persistência:** o contexto de continuidade e a lista de ferramentas permitidas são persistidos no Supabase, com expiração de tarefas antigas e isolamento do modo Copiloto.
+- **Validação:** a suíte atual contém 350 testes automatizados aprovados, além de lint, build, contratos e publicação da imagem Docker.
+
+Detalhes técnicos e operação: [`docs/release-2.8.0.md`](docs/release-2.8.0.md).
 
 ## Novidades da Versão 2.7.0 — Atualyze Pay
 
