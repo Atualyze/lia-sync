@@ -423,7 +423,10 @@ export async function handleClientMessage({
       s.lastUserText = clean;
       const clientMemScope = buildMemoryScopeKey({ phone: s.phone, isOwner: false });
       for (const cand of extractMemoryCandidates(clean)) {
-        memoryStore.remember({ scopeKey: clientMemScope, ...cand, source: 'conversation' });
+        await memoryStore.rememberWithEmbedding(
+          { scopeKey: clientMemScope, ...cand, source: 'conversation' },
+          { timeoutMs: 1200 }
+        );
       }
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
