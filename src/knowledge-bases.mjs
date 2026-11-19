@@ -204,7 +204,7 @@ export function getRelevantKnowledgeBaseContentSync(
   id,
   queryText = '',
   dir = DEFAULT_KB_DIR,
-  { maxChars = 6500, maxSections = 4 } = {}
+  { maxChars = 6500, maxSections = 6 } = {}
 ) {
   const kb = getKnowledgeBaseContentSync(id, dir);
   if (!kb) return null;
