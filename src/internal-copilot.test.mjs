@@ -1294,7 +1294,7 @@ test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry'
     ai: { synthesizeVoice: async () => ({ base64: 'AUDIO_B64', mimeType: 'audio/ogg' }) }
   });
   const result = await flow.process({ phone: '5588921694598', text: 'sim' });
-  assert.match(result, /resultado da entrega.*incerto/i);
+  assert.match(result, /não confirmou se a mensagem chegou/i);
   assert.equal(audioAttempts, 1);
   assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
   const repeated = await flow.process({ phone: '5588921694598', text: 'sim' });
