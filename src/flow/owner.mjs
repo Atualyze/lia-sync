@@ -13,7 +13,7 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 
@@ -1488,20 +1488,30 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && /(?:quer que|posso|devo|confirma|confirmar|gerar|continuar|seguir|prosseguir)/i.test(lastAssistantContext);
         const hasPaymentAmount = activeTask?.type === 'payment' && (
           detectPriceMentions(cleanCommand).length > 0
-          || /^(?:r\$\s*)?\d{1,3}(?:[.,]\d{1,2})?$/i.test(cleanCommand.trim())
+          || /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?$/i.test(cleanCommand.trim())
+          || /\b\d{1,6}(?:[.,]\d{1,2})?\b/.test(cleanCommand)
           || /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand)
-        ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext);
-        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer))?|pode detalhar|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn);
+        ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext || activeTask?.originCommand || '');
+        const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer))?|pode detalhar|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn)
+          || /\b(?:o que e|como funciona|qual a diferenca|aceita|aceitam|recebe|recebem)\b.{0,60}\b(?:pix|cobranca|pagamento|infinitepay|checkout)\b/i.test(normalizedTurn)
+          || /\b(?:pix|cobranca|pagamento|infinitepay|checkout)\b.{0,45}\b(?:o que e|como funciona|qual a diferenca)\b/i.test(normalizedTurn);
+        const explicitDispatchContinuation = activeTask?.type === 'dispatch'
+          && Boolean(sSelf.pendingRecipient)
+          && String(dispatchIntent.message || '').trim().length >= 4
+          && !isCopilotMetaQuestion
+          && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
+          && !hasOtherExplicitToolIntent(cleanCommand, 'enviar_mensagem_contato');
         const isShortPaymentAnswer = activeTask?.type === 'payment'
           && hasPaymentAmount
           && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
+          && !isCopilotMetaQuestion
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer
+          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
-        const shouldClassifyTurn = Boolean(activeTask && hasPendingClarification
+        const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
           && (!explicitTaskContinuation || isCopilotMetaQuestion));
         if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
@@ -1658,11 +1668,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
-              // A menção temática ou a tarefa pendente não autorizam a ferramenta.
-              // Só pulamos a revisão quando a mensagem atual pede explicitamente
-              // a ação proposta; continuações implícitas passam pela revisão semântica.
-              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name);
-              if (!currentRequestMatches) {
+              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
+              const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
+              // A mensagem do turno atual precisa indicar a ação, ou a classificação
+              // contextual precisa ter reconhecido uma continuação legítima da tarefa.
+              // O tipo e as ferramentas guardadas na tarefa, isoladamente, não autorizam.
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
+              const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
+                && !isCopilotMetaQuestion && !negatedAction
+                && (explicitTaskContinuation || turnReview?.intent === 'continue'));
+              if (!currentRequestMatches && !activeTaskContinuation) {
                 const review = await reviewCopilotToolCall({
                   ai,
                   currentMessage: cleanCommand,
