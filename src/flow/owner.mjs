@@ -1243,25 +1243,25 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
             sSelf.pendingAsAudio = false;
 
             if (pendingAudio.forSelf) {
-              try {
-                if (ai?.synthesizeVoice && whatsapp?.sendWhatsAppAudio) {
-                  const voiceRes = await ai.synthesizeVoice(pendingAudio.message, { botConfig });
-                  if (voiceRes?.base64) {
-                    const tPhone = getHumanPhone();
-                    if (tPhone) {
-                      await whatsapp.sendWhatsAppAudio(tPhone, voiceRes.base64);
-                      const sendTranscription = botConfig?.voice?.sendTranscriptionWithAudio !== false && botConfig?.voice?.deliveryMode !== 'audio_only';
-                      const okSelf = sendTranscription
-                        ? `🎙️ *Áudio gravado e enviado para você no WhatsApp!* 👆\n\n> "${pendingAudio.message}"`
-                        : `🎙️ *Áudio gravado e enviado para você no WhatsApp!* 👆`;
-                      return recordSelfTurn(filterReply(okSelf, { isCopilot: true }).text);
-                    }
-                  }
-                }
-                return recordSelfTurn(filterReply(`⚠️ Não consegui sintetizar o áudio no momento, mas aqui está a mensagem:\n\n> "${pendingAudio.message}"`, { isCopilot: true }).text);
-              } catch (err) {
-                return recordSelfTurn(filterReply(`⚠️ *Erro ao gravar/enviar áudio:* ${err.message}`, { isCopilot: true }).text);
+              // Também usa reserva única e estado uncertain para o áudio destinado ao responsável.
+              sSelf.pendingAudioConfirmation = pendingAudio;
+              const selfTargetPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+              if (selfTargetPhone.length < 8) {
+                return recordSelfTurn(filterReply('Não consegui identificar seu número para preparar o áudio. A prévia continua pendente e nada foi enviado.', { isCopilot: true }).text);
               }
+              const audioPreview = await stageOutboundDispatch({
+                phone: selfTargetPhone,
+                recipient: owner + ' (você)',
+                message: pendingAudio.message,
+                asAudio: true
+              }, { source: 'copilot-audio-self' });
+              if (!audioPreview) {
+                sSelf.pendingAudioConfirmation = pendingAudio;
+                store.markDirty();
+                await store.flush?.().catch(() => {});
+                return recordSelfTurn(filterReply('Já existe outro disparo pendente ou incerto, ou não consegui persistir esta prévia. O áudio não foi enviado; resolva a pendência antes de tentar novamente.', { isCopilot: true }).text);
+              }
+              return handlePendingOutboundDispatch();
             } else {
               // Áudio externo e áudio para o próprio responsável compartilham o despacho transacional.
               // A confirmação atual é reaproveitada; não solicitamos um segundo 'sim'.
