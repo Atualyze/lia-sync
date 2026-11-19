@@ -1875,6 +1875,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
                 const toolRes = await executeToolCall(tc.name, tc.args || {}, {
                   phone: OWNER_SELF_KEY,
+                  actor: 'owner',
+                  isOwner: true,
                   targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
                   clientName: `${owner} (Copiloto)`,
                   store,
