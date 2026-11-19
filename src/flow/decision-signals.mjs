@@ -13,7 +13,7 @@ export function isNaturalAffirmation(value = '') {
   const text = normalized(value);
   if (!text || text.length > 48 || /\\b(?:mas|porem|antes|duvida|duvidas|nao|cancel|corrige|altera|troca)\\b/.test(text)) return false;
   const exact = /^(?:sim|s|ss|pode|pode sim|confirmo|confirmado|confirma|quero|isso|perfeito|fechado|ok|okay|ta bom|vamos|pode agendar|pode marcar|combinado|autorizo|pode seguir|segue|manda ver)[.!]*$/;
-  const combined = /^(?:sim|isso|ok|okay|perfeito|pode)[, ]+(?:pode|confirmo|confirmar|agendar|marcar|fechar|seguir|prosseguir|autoriza|autorizar)(?: sim)?[.!]*$/;
+  const combined = /^(?:sim|isso|ok|okay|perfeito|pode)[, ]+(?:pode|confirmo|confirmar|agendar|marcar|fechar|seguir|prosseguir|autoriza|autorizar)(?:[, ]+(?:agendar|marcar|agora|sim|por favor))?[.!]*$/;
   return exact.test(text) || combined.test(text);
 }
 
