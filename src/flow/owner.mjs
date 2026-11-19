@@ -1492,19 +1492,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand)
         ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext);
         const isCopilotMetaQuestion = /\b(?:o que (?:vc|voce) nao entendeu|por que (?:vc|voce) nao entendeu|pq (?:vc|voce) nao entendeu|nao entendi(?:\s+direito)?(?:\s+(?:sua|essa|a))?(?:\s+resposta)?|pode explicar(?:\s+melhor)?(?:\s+(?:sua resposta|o que quis dizer))?|pode detalhar|como assim|o que (?:vc|voce) quis dizer)\b/i.test(normalizedTurn);
-        const explicitDispatchContinuation = activeTask?.type === 'dispatch'
-          && Boolean(sSelf.pendingRecipient)
-          && cleanCommand.length > 5
-          && !isCopilotMetaQuestion
-          && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
-          && !hasExplicitToolIntent(cleanCommand, 'enviar_mensagem_contato');
         const isShortPaymentAnswer = activeTask?.type === 'payment'
           && hasPaymentAmount
           && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
+          isAffirmativeTaskAnswer || isShortPaymentAnswer
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && hasPendingClarification
