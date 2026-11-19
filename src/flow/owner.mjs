@@ -736,6 +736,9 @@ export async function handleOwnerSession({
           sSelf.pendingRecipient = null;
           sSelf.pendingAsAudio = false;
           sSelf.pendingPdf = null;
+          sSelf.pendingControlAction = null;
+          sSelf.pendingReactivation = null;
+          sSelf.pendingCopilotTask = null;
           store.markDirty();
           const cancelMsg = hadPending
             ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
