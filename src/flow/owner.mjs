@@ -281,8 +281,7 @@ export async function handleOwnerSession({
               ? task.type
               : (task && intentTypes.includes(task.type)
                 ? task.type
-                : (intentTypes[0] || task?.type || suggestedTaskTypes[0]
-                  || (['comando', 'envio_mensagem'].includes(currentModelIntent) ? 'general' : 'general')));
+                : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general');
             const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
             const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
             if (isClarification && !sSelf.pendingOutboundDispatch) {
