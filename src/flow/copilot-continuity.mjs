@@ -11,26 +11,26 @@ const DECISIONS = new Set(['allow', 'clarify', 'deny']);
 const RELATIONS = new Set(['continuation', 'new_request', 'unrelated']);
 
 const EXPLICIT_TOOL_INTENTS = Object.freeze({
-  gerar_cobranca_pix: /(?:\b(?:gera(?:r)?|cria(?:r)?|emite|faz(?:er)?|cobra(?:r)?|quero\s+cobrar)\b.{0,70}\b(?:pix|cobran[cç]a|pagament|infinitepay)\b|\b(?:pix|cobran[cç]a)\b.{0,45}\b(?:gera(?:r)?|cria(?:r)?|emite|faz(?:er)?|cobra(?:r)?)\b)/i,
-  checkout_infinitepay: /(?:\b(?:gera(?:r)?|cria(?:r)?|faz(?:er)?|emite)\b.{0,70}\b(?:checkout|link|infinitepay|pagament)\b|\b(?:checkout|infinitepay)\b.{0,45}\b(?:gera(?:r)?|cria(?:r)?|faz(?:er)?)\b)/i,
-  enviar_mensagem_contato: /\b(?:manda(?:r)?|envia(?:r)?|avisa(?:r)?|dispara(?:r)?|encaminha(?:r)?|escreve(?:r)?)\b.{0,120}(?:\b(?:para|pro|pra|ao|a)\b|\b(?:mensagem|recado|whatsapp|áudio|audio)\b)/i,
-  gerenciar_agenda_google: /\b(?:agenda(?:r)?|marca(?:r)?|agend(?:a|ar|e)|consulta(?:r)?|verifica(?:r)?|cancela(?:r)?|remarca(?:r)?)\b.{0,100}\b(?:agenda|hor[aá]rio|reuni[aã]o|compromisso|calend[aá]rio)\b/i,
-  agendar_retorno_ou_followup: /\b(?:agenda(?:r)?|programa(?:r)?|marca(?:r)?|cria(?:r)?|lembra(?:r)?|lembrete)\b.{0,100}\b(?:retorno|follow[- ]?up|lembrete|contato|cliente)\b/i,
-  gerar_documento_pdf: /\b(?:gera(?:r)?|cria(?:r)?|monta(?:r)?|prepara(?:r)?|emite|faz(?:er)?)\b.{0,100}\b(?:pdf|relat[oó]rio|orçamento|orcamento|proposta|recibo|declaração|declaracao)\b/i,
-  gerenciar_drive_google: /\b(?:busca(?:r)?|procura(?:r)?|localiza(?:r)?|lista(?:r)?|envia(?:r)?|manda(?:r)?)\b.{0,100}\b(?:drive|arquivo|catálogo|catalogo|contrato|documento|pasta)\b/i,
-  consultar_planilha_google: /\b(?:consulta(?:r)?|busca(?:r)?|pesquisa(?:r)?|mostra(?:r)?|lê|ler|verifica(?:r)?)\b.{0,100}\b(?:planilha|sheets|estoque|tabela|preços|precos)\b/i,
-  consultar_dados_brasil: /\b(?:consulta(?:r)?|busca(?:r)?|verifica(?:r)?|confere|confira)\b.{0,80}\b(?:cep|cnpj|feriado)\b/i,
-  consultar_contato_ou_lead: /\b(?:consulta(?:r)?|busca(?:r)?|procura(?:r)?|mostra(?:r)?|verifica(?:r)?)\b.{0,100}\b(?:contato|lead|cliente|hist[oó]rico|cadastro|crm)\b/i,
-  atualizar_dados_crm: /\b(?:atualiza(?:r)?|corrige(?:r)?|altera(?:r)?|edita(?:r)?|salva(?:r)?|registra(?:r)?)\b.{0,100}\b(?:crm|cadastro|contato|lead|cliente|funil)\b/i,
-  gerenciar_memoria: /\b(?:memoriza(?:r)?|guarda(?:r)?|salva(?:r)?|lembra(?:r)?|esquece(?:r)?|apaga(?:r)?)\b.{0,100}\b(?:mem[oó]ria|preferência|preferencia|informação|informacao|fato)\b/i,
-  consultar_saude_infra: /\b(?:diagnostica(?:r)?|consulta(?:r)?|verifica(?:r)?|confere|monitora(?:r)?|mostra(?:r)?)\b.{0,100}\b(?:infra|servidor|vps|dokku|container|saúde|saude)\b/i,
-  consultar_web: /\b(?:pesquisa(?:r)?|procura(?:r)?|busca(?:r)?|consulta(?:r)?)\b.{0,100}\b(?:web|internet|online|atualidade|notícia|noticia)\b/i,
-  consultar_base_conhecimento: /\b(?:consulta(?:r)?|busca(?:r)?|procura(?:r)?|abre(?:r)?|leia|ler)\b.{0,100}\b(?:base de conhecimento|manual|dossi[eê]|documentação|documentacao)\b/i,
-  transferir_setor: /\b(?:transfere|transferir|encaminha(?:r)?|passa(?:r)?)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i,
-  transferir_para_setor: /\b(?:transfere|transferir|encaminha(?:r)?|passa(?:r)?)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i
+  gerar_cobranca_pix: /(?:\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre|quero cobrar)\b.{0,70}\b(?:pix|cobran[cç]a|pagament|infinitepay)\b|\b(?:pix|cobran[cç]a)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre)\b)/i,
+  checkout_infinitepay: /(?:\b(?:gera|gerar|gere|cria|criar|crie|faz|fazer|faça|emite|emitir|emita)\b.{0,70}\b(?:checkout|link|infinitepay|pagament)\b|\b(?:checkout|infinitepay)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|faz|fazer|faça)\b)/i,
+  enviar_mensagem_contato: /\b(?:manda|mandar|mande|envia|enviar|envie|avisa|avisar|avise|dispara|disparar|dispare|encaminha|encaminhar|encaminhe|escreve|escrever|escreva)\b.{0,120}(?:\b(?:para|pro|pra|ao|a)\b|\b(?:mensagem|recado|whatsapp|áudio|audio)\b)/i,
+  gerenciar_agenda_google: /(?:\b(?:quais?|me mostra|mostre|verifique|verificar|consulte|consultar|agende|agendar|marque|marcar|cancele|cancelar|remarque|remarcar)\b.{0,100}\b(?:agenda|hor[aá]rio|reuni[aã]o|compromisso|calend[aá]rio)\b|\b(?:hor[aá]rios? livres|disponibilidade)\b.{0,80}\b(?:agenda|calend[aá]rio)\b)/i,
+  agendar_retorno_ou_followup: /\b(?:agenda|agendar|agende|programa|programar|programe|marca|marcar|marque|cria|criar|crie|lembra|lembrar|lembre|lembrete)\b.{0,100}\b(?:retorno|follow[- ]?up|lembrete|contato|cliente)\b/i,
+  gerar_documento_pdf: /\b(?:gera|gerar|gere|cria|criar|crie|monta|montar|monte|prepara|preparar|prepare|emite|emitir|emita|faz|fazer|faça)\b.{0,100}\b(?:pdf|relat[oó]rio|orçamento|orcamento|proposta|recibo|declaração|declaracao)\b/i,
+  gerenciar_drive_google: /\b(?:busca|buscar|busque|procura|procurar|procure|localiza|localizar|localize|lista|listar|liste|envia|enviar|envie|manda|mandar|mande)\b.{0,100}\b(?:drive|arquivo|catálogo|catalogo|contrato|documento|pasta)\b/i,
+  consultar_planilha_google: /\b(?:consulta|consultar|consulte|busca|buscar|busque|pesquisa|pesquisar|pesquise|mostra|mostrar|mostre|lê|ler|verifica|verificar|verifique)\b.{0,100}\b(?:planilha|sheets|estoque|tabela|preços|precos)\b/i,
+  consultar_dados_brasil: /\b(?:consulta|consultar|consulte|busca|buscar|busque|verifica|verificar|verifique|confere|confira)\b.{0,80}\b(?:cep|cnpj|feriado)\b/i,
+  consultar_contato_ou_lead: /\b(?:consulta|consultar|consulte|busca|buscar|busque|procura|procurar|procure|mostra|mostrar|mostre|verifica|verificar|verifique)\b.{0,100}\b(?:contato|lead|cliente|hist[oó]rico|cadastro|crm)\b/i,
+  atualizar_dados_crm: /\b(?:atualiza|atualizar|atualize|corrige|corrigir|corrija|altera|alterar|altere|edita|editar|edite|salva|salvar|salve|registra|registrar|registre)\b.{0,100}\b(?:crm|cadastro|contato|lead|cliente|funil)\b/i,
+  gerenciar_memoria: /\b(?:memoriza|memorizar|memorize|guarda|guardar|guarde|salva|salvar|salve|lembra|lembrar|lembre|esquece|esquecer|esqueça|apaga|apagar|apague)\b.{0,100}\b(?:mem[oó]ria|preferência|preferencia|informação|informacao|fato)\b/i,
+  consultar_saude_infra: /\b(?:diagnostica|diagnosticar|diagnostique|consulta|consultar|consulte|verifica|verificar|verifique|confere|confira|monitora|monitorar|monitore|mostra|mostrar|mostre)\b.{0,100}\b(?:infra|servidor|vps|dokku|container|saúde|saude)\b/i,
+  consultar_web: /\b(?:pesquisa|pesquisar|pesquise|procura|procurar|procure|busca|buscar|busque|consulta|consultar|consulte)\b.{0,100}\b(?:web|internet|online|atualidade|notícia|noticia)\b/i,
+  consultar_base_conhecimento: /\b(?:consulta|consultar|consulte|busca|buscar|busque|procura|procurar|procure|abre|abrir|abra|leia|ler)\b.{0,100}\b(?:base de conhecimento|manual|dossi[eê]|documentação|documentacao)\b/i,
+  transferir_setor: /\b(?:transfere|transferir|transfira|encaminha|encaminhar|encaminhe|passa|passar|passe)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i,
+  transferir_para_setor: /\b(?:transfere|transferir|transfira|encaminha|encaminhar|encaminhe|passa|passar|passe)\b.{0,100}\b(?:setor|equipe|financeiro|comercial|suporte|responsável|responsavel|atendimento humano)\b/i
 });
 
-const NEGATED_ACTION = /\b(?:não|nao|nunca|jamais|nem|sem)\b.{0,45}\b(?:gera(?:r)?|cria(?:r)?|emite|faz(?:er)?|cobra(?:r)?|manda(?:r)?|envia(?:r)?|avisa(?:r)?|dispara(?:r)?|agenda(?:r)?|marca(?:r)?|consulta(?:r)?|busca(?:r)?|atualiza(?:r)?|transfere|transferir|encaminha(?:r)?)\b/i;
+const NEGATED_ACTION = /\b(?:não|nao|nunca|jamais|nem|sem)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|avise|dispara|disparar|dispare|agenda|agendar|agende|marca|marcar|marque|consulta|consultar|consulte|busca|buscar|busque|atualiza|atualizar|atualize|transfere|transferir|encaminha|encaminhar)\b/i;
 
 /** True only when the current message explicitly asks for the proposed action. */
 export function hasExplicitToolIntent(message = '', toolName = '') {
