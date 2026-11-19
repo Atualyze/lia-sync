@@ -314,16 +314,16 @@ function scoreKbRelevance(kb, queryTokens) {
 
 function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections = 3) {
   if (!maxChars || maxChars <= 0) return kb.content;
-  const header = \`# \${kb.title}\n\n\`;
+  const header = '# ' + kb.title + '\n\n';
   if (!scoredSections.length) return kb.content.slice(0, maxChars);
   const selected = scoredSections.slice(0, Math.max(1, Math.min(80, Number(maxSections) || 3)));
   let out = header;
 
-  // Broad dossier requests have a larger budget: preserve full matched sections
-  // instead of clipping each section, so deep instructions remain available.
+  // Broad dossier requests preserve full matched sections instead of clipping each one.
   if (maxChars >= 16000) {
     for (const sec of selected) {
-      const block = \`\${sec.heading ? \`## \${sec.heading}\n\` : ''}\${sec.body}\n\n\`;
+      const heading = sec.heading ? '## ' + sec.heading + '\n' : '';
+      const block = heading + String(sec.body || '') + '\n\n';
       const remaining = maxChars - out.length;
       if (remaining <= 0) break;
       out += block.length <= remaining ? block : block.slice(0, remaining);
@@ -336,7 +336,7 @@ function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections =
   // smaller but equally relevant sections from the same manual.
   for (let index = 0; index < selected.length && out.length < maxChars; index += 1) {
     const sec = selected[index];
-    const heading = sec.heading ? \`## \${sec.heading}\n\` : '';
+    const heading = sec.heading ? '## ' + sec.heading + '\n' : '';
     const remainingSections = selected.length - index;
     const remainingChars = Math.max(0, maxChars - out.length);
     const sectionBudget = remainingSections > 1
@@ -344,7 +344,7 @@ function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections =
       : remainingChars;
     const bodyBudget = Math.max(0, sectionBudget - heading.length);
     const body = String(sec.body || '').slice(0, bodyBudget);
-    out += \`\${heading}\${body}\n\n\`;
+    out += heading + body + '\n\n';
   }
   return out.slice(0, maxChars).trim();
 }
