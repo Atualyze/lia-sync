@@ -53,14 +53,17 @@ export const toolGerenciarMemoria = {
     }
 
     if (acao === 'salvar') {
-      const res = store.remember({
+      const saveParams = {
         scopeKey,
         type: args.tipo || 'fact',
         content: args.conteudo || '',
         importance: 0.85,
         confidence: 0.95,
         source: 'explicit'
-      });
+      };
+      const res = typeof store.rememberWithEmbedding === 'function'
+        ? await store.rememberWithEmbedding(saveParams, { timeoutMs: 1200 })
+        : store.remember(saveParams);
       return {
         success: Boolean(res.saved),
         acao,
@@ -69,12 +72,15 @@ export const toolGerenciarMemoria = {
     }
 
     if (acao === 'corrigir') {
-      const res = store.correct({
+      const correction = {
         scopeKey,
         idOrQuery: args.referencia || '',
         newContent: args.conteudo || '',
         type: args.tipo
-      });
+      };
+      const res = typeof store.correctWithEmbedding === 'function'
+        ? await store.correctWithEmbedding(correction, { timeoutMs: 1200 })
+        : store.correct(correction);
       return {
         success: Boolean(res.updated),
         acao,
