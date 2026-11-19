@@ -1481,7 +1481,22 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
         let turnReview = null;
         let suppressToolExecution = false;
-        if (activeTask) {
+        const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
+        const normalizedTurn = normalize(cleanCommand);
+        const isAffirmativeTaskAnswer = /^(?:sim|isso|esse mesmo|essa mesma|pode|pode sim|confirmo|confirmado|exatamente|isso mesmo|pode seguir|segue|manda ver)[.!\\s]*$/i.test(normalizedTurn)
+          && /(?:quer que|posso|devo|confirma|confirmar|gerar|continuar|seguir|prosseguir)/i.test(lastAssistantContext);
+        const hasPaymentAmount = activeTask?.type === 'payment' && (
+          detectPriceMentions(cleanCommand).length > 0
+          || /^(?:r\\$\\s*)?\\d{1,3}(?:[.,]\\d{1,2})?$/i.test(cleanCommand.trim())
+          || /\\b(?:valor\\s+livre|livre|sem\\s+valor|qualquer\\s+valor)\\b/i.test(cleanCommand)
+        ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext);
+        const explicitTaskContinuation = Boolean(activeTask && (
+          inferCopilotTaskTypes(cleanCommand).includes(activeTask.type)
+          || isAffirmativeTaskAnswer
+          || hasPaymentAmount
+        ));
+        const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && !explicitTaskContinuation);
+        if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
             ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
           });
