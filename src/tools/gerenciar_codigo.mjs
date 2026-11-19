@@ -102,7 +102,12 @@ export const toolGerenciarCodigo = {
     const { token, owner, repo } = githubConfig(context);
 
     if (action === 'ler_arquivo') {
-      const path = safePath(args.caminho);
+      let path;
+      try {
+        path = safePath(args.caminho);
+      } catch (error) {
+        return { success: false, error: String(error.message || error) };
+      }
       const data = await githubRequest(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=main`, { token });
       if (data?.type !== 'file') return { success: false, error: 'O caminho informado não é um arquivo.' };
       const content = Buffer.from(String(data.content || '').replace(/\n/g, ''), 'base64').toString('utf8');
@@ -129,10 +134,15 @@ export const toolGerenciarCodigo = {
       if (!files.length) return { success: false, error: 'Nenhum arquivo foi informado para alteração.' };
       if (files.length > 8) return { success: false, error: 'Uma manutenção automática pode alterar no máximo 8 arquivos por PR.' };
 
-      const normalizedFiles = files.map((file) => ({
-        path: safePath(file?.caminho),
-        content: normalizeContent(file?.conteudo)
-      }));
+      let normalizedFiles;
+      try {
+        normalizedFiles = files.map((file) => ({
+          path: safePath(file?.caminho),
+          content: normalizeContent(file?.conteudo)
+        }));
+      } catch (error) {
+        return { success: false, error: String(error.message || error) };
+      }
 
       const base = await githubRequest(`/repos/${owner}/${repo}/git/ref/heads/main`, { token });
       const baseSha = base?.object?.sha;
