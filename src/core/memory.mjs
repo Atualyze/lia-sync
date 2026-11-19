@@ -242,7 +242,12 @@ export class MemoryStore {
   }
 
   async retrieveSemantic({ scopeKey, query = '', limit = 6, ...embedOpts } = {}) {
-    const queryEmbedding = query ? await generateMemoryEmbedding(query, embedOpts) : null;
+    const active = this.list(scopeKey);
+    // Avoid an embedding API request until this scope actually has semantic memories.
+    if (!query || !active.some(item => Array.isArray(item.embedding) && item.embedding.length > 0)) {
+      return this.retrieve({ scopeKey, query, limit });
+    }
+    const queryEmbedding = await generateMemoryEmbedding(query, embedOpts);
     return this.retrieve({ scopeKey, query, queryEmbedding, limit });
   }
 
