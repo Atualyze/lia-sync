@@ -11,10 +11,10 @@ const DECISIONS = new Set(['allow', 'clarify', 'deny']);
 const RELATIONS = new Set(['continuation', 'new_request', 'unrelated']);
 
 const EXPLICIT_TOOL_INTENTS = Object.freeze({
-  gerar_cobranca_pix: /(?:\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre|quero cobrar)\b.{0,70}\b(?:pix|cobran[cç]a|pagament|infinitepay)\b|\b(?:pix|cobran[cç]a)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre)\b)/i,
+  gerar_cobranca_pix: /(?:\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre)\b.{0,70}\b(?:pix|cobran[cç]a|pagament|infinitepay)\b|\b(?:pix|cobran[cç]a)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|emita|faz|fazer|faça|cobra|cobrar|cobre)\b|\b(?:quero|preciso)\s+cobrar\b|^(?:pix|chave\s+pix|cobran[cç]a|pagamento)[.! ]*$)/i,
   checkout_infinitepay: /(?:\b(?:gera|gerar|gere|cria|criar|crie|faz|fazer|faça|emite|emitir|emita)\b.{0,70}\b(?:checkout|link|infinitepay|pagament)\b|\b(?:checkout|infinitepay)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|faz|fazer|faça)\b)/i,
   enviar_mensagem_contato: /\b(?:manda|mandar|mande|envia|enviar|envie|avisa|avisar|avise|dispara|disparar|dispare|encaminha|encaminhar|encaminhe|escreve|escrever|escreva)\b.{0,120}(?:\b(?:para|pro|pra|ao|a)\b|\b(?:mensagem|recado|whatsapp|áudio|audio)\b)/i,
-  gerenciar_agenda_google: /(?:\b(?:quais?|me mostra|mostre|verifique|verificar|consulte|consultar|agende|agendar|marque|marcar|cancele|cancelar|remarque|remarcar)\b.{0,100}\b(?:agenda|hor[aá]rio|reuni[aã]o|compromisso|calend[aá]rio)\b|\b(?:hor[aá]rios? livres|disponibilidade)\b.{0,80}\b(?:agenda|calend[aá]rio)\b)/i,
+  gerenciar_agenda_google: /(?:\b(?:quais?|me mostra|mostre|consulta|consultar|consulte|verifique|verificar|agende|agendar|marque|marcar|cancele|cancelar|remarque|remarcar)\b.{0,100}\b(?:agenda|hor[aá]rio|reuni[aã]o|compromisso|calend[aá]rio)\b|\b(?:hor[aá]rios? livres|disponibilidade)\b.{0,80}\b(?:agenda|calend[aá]rio)\b)/i,
   agendar_retorno_ou_followup: /\b(?:agenda|agendar|agende|programa|programar|programe|marca|marcar|marque|cria|criar|crie|lembra|lembrar|lembre|lembrete)\b.{0,100}\b(?:retorno|follow[- ]?up|lembrete|contato|cliente)\b/i,
   gerar_documento_pdf: /\b(?:gera|gerar|gere|cria|criar|crie|monta|montar|monte|prepara|preparar|prepare|emite|emitir|emita|faz|fazer|faça)\b.{0,100}\b(?:pdf|relat[oó]rio|orçamento|orcamento|proposta|recibo|declaração|declaracao)\b/i,
   gerenciar_drive_google: /\b(?:busca|buscar|busque|procura|procurar|procure|localiza|localizar|localize|lista|listar|liste|envia|enviar|envie|manda|mandar|mande)\b.{0,100}\b(?:drive|arquivo|catálogo|catalogo|contrato|documento|pasta)\b/i,
@@ -39,6 +39,13 @@ export function hasExplicitToolIntent(message = '', toolName = '') {
   if (!text || !pattern || NEGATED_ACTION.test(text)) return false;
   if (/\b(?:não entendi|nao entendi|pode explicar|pode detalhar|como assim|o que você quis dizer|o que voce quis dizer)\b/i.test(text)) return false;
   return pattern.test(text);
+}
+
+/** Detects a clear current-turn action for any tool except the supplied one. */
+export function hasOtherExplicitToolIntent(message = '', excludedToolName = '') {
+  return Object.keys(EXPLICIT_TOOL_INTENTS).some(name =>
+    name !== excludedToolName && hasExplicitToolIntent(message, name)
+  );
 }
 
 const fallbackQuestion = hasActiveTask => hasActiveTask
