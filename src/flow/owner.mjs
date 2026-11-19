@@ -2146,7 +2146,11 @@ ${errMsg}`;
         };
         const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
         const pixRequestActive = !suppressToolExecution && (hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt));
-        const isClarifyingExistingRequest = suppressToolExecution || /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|o que vc nao entendeu|o que você não entendeu|o que voce nao entendeu|por que você não entendeu|pq vc nao entendeu)\b/i.test(cleanCommand);
+        const isClarifyingExistingRequest = suppressToolExecution
+          || /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|o que vc nao entendeu|o que você não entendeu|o que voce nao entendeu|por que você não entendeu|pq vc nao entendeu)\b/i.test(cleanCommand)
+          || /\b(?:o que e|como funciona|qual a diferenca|aceita|aceitam|recebe|recebem)\b.{0,60}\b(?:pix|chave|cobranca|pagamento|infinitepay|checkout)\b/i.test(normalizedTurn)
+          || /\b(?:pix|chave|cobranca|pagamento|infinitepay|checkout)\b.{0,45}\b(?:o que e|como funciona|qual a diferenca)\b/i.test(normalizedTurn)
+          || /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|faz|fazer|cobre|cobrar|cobranca|pix)\b/i.test(normalizedTurn);
         if (pixRequestActive && !isClarifyingExistingRequest
           && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
