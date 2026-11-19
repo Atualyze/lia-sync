@@ -47,3 +47,15 @@ test('KB content search: does not return unrelated bases for greetings', () => {
   );
   assert.deepEqual(matches, []);
 });
+
+
+test('KB content search: recovers deep third-level export instructions without truncating the parent chapter', () => {
+  const matches = findMatchingKnowledgeBasesSync(
+    'Clubinho HomeVet relatório exportação HTML',
+    undefined,
+    { includeCopilotOnly: true, limit: 3, maxChars: 7000, maxSections: 8 }
+  );
+  const clubinho = matches.find(item => item.id === 'clubinho-homevet');
+  assert.ok(clubinho, 'Should recover the specific Clubinho HomeVet manual');
+  assert.match(clubinho.content, /Relatório Completo Web \(`\.HTML`\)/i);
+});
