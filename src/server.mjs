@@ -164,6 +164,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     ai: { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
+    adminConfig,
     whatsapp: { sendText, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64 },
     getHumanPhone,
     reminderStore,
