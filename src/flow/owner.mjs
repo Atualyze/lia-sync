@@ -166,6 +166,7 @@ function resolveNaturalTarget(target, { pendingReactivation, waiting }) {
   const raw = String(target || '').trim();
   const normalized = normalize(raw);
   if (!normalized) return '';
+  if (/^(?:um|uma|o|a)?\s*(?:atendimento|contato|cliente|conversa|pessoa)$/.test(normalized)) return '';
   if (/^(?:primeir[oa]|primeir[oa] da fila|primeir[oa] em espera)$/.test(normalized)) return '1';
   if (/^(?:segund[oa]|segund[oa] da fila|segund[oa] em espera)$/.test(normalized)) return '2';
   if (/^(?:ultim[oa]|ultim[oa] da fila|ultim[oa] em espera)$/.test(normalized)) return waiting.length ? String(waiting.length) : '';
@@ -1115,6 +1116,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
         if (botMatch) {
           const targetArg = botMatch[1].trim();
           if (!targetArg) {
+            sSelf.pendingControlAction = { type: 'contact_target', intent: 'resume_bot', createdAt: new Date(now()).toISOString() };
+            store.markDirty();
             return recordSelfTurn(filterReply(`🤖 *Como reativar o bot:*\n\nInforme qual contato deseja devolver para a ${assistant}. Exemplos:\n• *bot 1* (reativa o 1º da fila de espera)\n• *bot 5588993602644* (reativa pelo telefone)\n• *bot Mikaelle* (reativa pelo nome do contato)\n\nDigite *fila* para ver os contatos em espera.`, { isCopilot: true }).text);
           }
           const sTarget = findSessionByTarget(targetArg);
@@ -1153,6 +1156,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
         if (humanMatch) {
           const targetArg = humanMatch[1].trim();
           if (!targetArg) {
+            sSelf.pendingControlAction = { type: 'contact_target', intent: 'activate_human', createdAt: new Date(now()).toISOString() };
+            store.markDirty();
             return recordSelfTurn(filterReply(`👤 *Como assumir atendimento:*\n\nInforme qual contato deseja pausar o bot. Exemplos:\n• *humano 1* (primeiro da lista)\n• *humano 5588993602644* (pelo telefone)\n• *humano Mikaelle* (pelo nome)`, { isCopilot: true }).text);
           }
           const sTarget = findSessionByTarget(targetArg);
