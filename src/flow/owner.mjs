@@ -1603,7 +1603,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
-              const currentRequestMatches = Boolean(toolTaskType && currentTaskTypes.length === 1 && currentTaskTypes[0] === toolTaskType);
+              const currentRequestMatches = Boolean(!liveTask && toolTaskType && currentTaskTypes.length === 1 && currentTaskTypes[0] === toolTaskType);
 
               // Mesmo quando há uma tarefa pendente, uma ferramenta sugerida precisa
               // fazer sentido para a mensagem atual ou para a continuação semântica.
