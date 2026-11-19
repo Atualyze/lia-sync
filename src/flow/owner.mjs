@@ -311,10 +311,7 @@ export async function handleOwnerSession({
                   lastQuestion: safeReply.slice(0, 500),
                   repeatCount: 0,
                   turns: sameTask ? (Number(task.turns) || 0) + 1 : 0,
-                  allowedTools: [...new Set([
-                    ...(sameTask && Array.isArray(task.allowedTools) ? task.allowedTools : []),
-                    ...currentToolSuggestions
-                  ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
+                  allowedTools: sameTask && Array.isArray(task.allowedTools) ? task.allowedTools.slice(0, 8) : []
                 };
               }
             } else if (task && !isClarification && !isUserClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
@@ -1604,12 +1601,16 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
-              const currentRequestMatches = Boolean(!liveTask && toolTaskType && currentTaskTypes.length === 1 && currentTaskTypes[0] === toolTaskType);
+              const currentRequestMatches = Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType));
+              const activeTaskMatches = Boolean(liveTask && (
+                liveTask.type === toolTaskType ||
+                (Array.isArray(liveTask.allowedTools) && liveTask.allowedTools.includes(tc.name))
+              ));
 
-              // Mesmo quando há uma tarefa pendente, uma ferramenta sugerida precisa
-              // fazer sentido para a mensagem atual ou para a continuação semântica.
-              // Não basta a categoria coincidir: a resposta pode ter mudado de assunto.
-              if (!currentRequestMatches) {
+              // A mensagem atual ou uma tarefa ainda ativa pode autorizar a categoria.
+              // Quando nenhum dos dois vínculos existe, a revisão semântica decide
+              // entre continuação, novo pedido, esclarecimento ou recusa.
+              if (!currentRequestMatches && !activeTaskMatches) {
                 const review = await reviewCopilotToolCall({
                   ai,
                   currentMessage: cleanCommand,
@@ -1631,10 +1632,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                         ...liveTask,
                         updatedAt: timestamp,
                         lastQuestion: question.slice(0, 500),
-                        allowedTools: [...new Set([
-                          ...(Array.isArray(liveTask.allowedTools) ? liveTask.allowedTools : []),
-                          tc.name
-                        ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
+                        allowedTools: Array.isArray(liveTask.allowedTools) ? liveTask.allowedTools.slice(0, 8) : []
                       };
                     } else if (review.relation === 'new_request') {
                       sSelf.pendingCopilotTask = {
@@ -1645,7 +1643,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                         lastQuestion: question.slice(0, 500),
                         repeatCount: 0,
                         turns: 0,
-                        allowedTools: [tc.name]
+                        allowedTools: []
                       };
                     }
                     store.markDirty();
