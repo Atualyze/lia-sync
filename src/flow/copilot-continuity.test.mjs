@@ -145,3 +145,17 @@ test('continuação com confiança baixa é rebaixada para esclarecimento', asyn
   assert.equal(review.intent, 'clarification');
   assert.equal(review.reason, 'low_confidence_continuation');
 });
+
+
+test('intenção explícita: reconhece comandos curtos, mas não transforma dúvidas em ações', () => {
+  assert.equal(hasExplicitToolIntent('Pix', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Como funciona o Pix?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Vocês aceitam Pix?', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Quero cobrar R$ 20 pela compra', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Me explica como funciona o envio de áudio', 'enviar_mensagem_contato'), false);
+});
+
+test('intenção explícita: distingue pedido de nova ação de continuação de envio', () => {
+  assert.equal(hasOtherExplicitToolIntent('Mande uma mensagem para o Lima', 'gerar_cobranca_pix'), true);
+  assert.equal(hasOtherExplicitToolIntent('Não mande mensagem para o Lima', 'gerar_cobranca_pix'), false);
+});
