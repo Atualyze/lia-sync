@@ -282,25 +282,21 @@ export async function handleOwnerSession({
               : (task && intentTypes.includes(task.type)
                 ? task.type
                 : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general'));
-            const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
+            const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|me conte|me conta|me explique|me explica|me descreva|me descreve|me fale|me fala|conte mais|fale um pouco mais|para eu entender|pra eu entender|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
             const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
             if (isClarification && !sSelf.pendingOutboundDispatch) {
               const sameTask = task?.type === taskType;
               const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
               if (repeated) {
-                const repeatCount = (Number(task.repeatCount) || 0) + 1;
-                if (repeatCount >= 2) {
-                  safeReply = 'Ainda não consegui entender exatamente esse ponto. Pode me explicar do seu jeito o que está faltando? Vou manter o contexto para não começarmos do zero.';
-                  sSelf.pendingCopilotTask = {
-                    ...task,
-                    repeatCount,
-                    updatedAt: timestamp,
-                    lastQuestion: safeReply.slice(0, 500)
-                  };
-                } else {
-                  safeReply = 'Percebi que estou repetindo a pergunta. Pode responder do jeito que for mais natural; vou manter o contexto para continuar.';
-                  sSelf.pendingCopilotTask = { ...task, repeatCount, updatedAt: timestamp };
-                }
+                // Keep the assistant's actual response. A user may be moving through
+                // a multi-step task (script -> preview -> approval), so high word
+                // overlap alone must never replace a valid answer with a canned line.
+                sSelf.pendingCopilotTask = {
+                  ...task,
+                  repeatCount: Math.min(10, (Number(task.repeatCount) || 0) + 1),
+                  updatedAt: timestamp,
+                  lastQuestion: safeReply.slice(0, 500)
+                };
               } else {
                 sSelf.pendingCopilotTask = {
                   type: taskType,
