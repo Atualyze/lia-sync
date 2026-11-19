@@ -212,8 +212,8 @@ export class MemoryStore {
     const scored = active.map((m) => {
       let queryScore = 0;
       if (qTokens.size > 0) {
-        const mTokens = tokenize(m.content);
-        const hits = mTokens.filter((t) => qTokens.has(t)).length;
+        const mTokens = new Set(tokenize(m.content));
+        const hits = [...mTokens].filter(token => qTokens.has(token)).length;
         queryScore = hits > 0 ? Math.min(1, hits / Math.min(4, qTokens.size)) : 0;
       }
       const semanticScore = (Array.isArray(queryEmbedding) && Array.isArray(m.embedding))
@@ -222,11 +222,24 @@ export class MemoryStore {
       const ageDays = Math.max(0, (nowMs - new Date(m.updatedAt || m.createdAt || nowMs).getTime()) / 86400000);
       const recencyScore = Math.max(0, 1 - ageDays / 90);
       const total = semanticScore * 1.8 + queryScore * 1.4 + (m.importance || 0.5) * 0.8 + recencyScore * 0.3;
-      return { memory: m, total };
+      return { memory: m, total, queryScore, semanticScore };
     });
 
-    scored.sort((a, b) => b.total - a.total);
-    return scored.slice(0, Math.max(1, limit)).map((s) => s.memory);
+    // Preferências são referências estáveis e podem acompanhar qualquer assunto.
+    // Fatos, decisões e projetos só entram quando há correspondência com a consulta atual.
+    const preferences = scored
+      .filter(item => item.memory.type === 'preference')
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 2);
+    const relevant = scored
+      .filter(item => item.memory.type !== 'preference'
+        && (item.queryScore >= 0.25 || item.semanticScore >= 0.62))
+      .sort((a, b) => b.total - a.total);
+
+    const maxItems = Math.max(1, Math.min(12, Number(limit) || 6));
+    return [...preferences, ...relevant]
+      .slice(0, maxItems)
+      .map(item => item.memory);
   }
 
   async rememberWithEmbedding(params = {}, embedOpts = {}) {
@@ -382,5 +395,11 @@ export function extractMemoryCandidates(userText = '') {
 export function buildMemoryPromptSection(memories = []) {
   if (!Array.isArray(memories) || memories.length === 0) return '';
   const lines = memories.slice(0, 6).map((m) => `- [${m.type}] ${m.content}`);
-  return `\n[MEMÓRIA PERSISTENTE DO CONTATO]\n${lines.join('\n')}`;
+  return [
+    '',
+    '[MEMÓRIA PERSISTENTE DO CONTATO — REFERÊNCIA, NÃO ASSUNTO ATIVO]',
+    'Use estas informações apenas quando forem relevantes ao pedido atual. A existência de uma memória não significa que o cliente quer retomar aquele projeto, tarefa ou conversa, nem que uma pendência antiga continua ativa.',
+    'Não mude de assunto para mencionar projetos lembrados espontaneamente. Para retomar uma conversa anterior, procure o trecho solicitado no histórico; se não houver referência suficiente, pergunte qual assunto o cliente deseja recuperar.',
+    ...lines
+  ].join('\n');
 }
