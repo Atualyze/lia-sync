@@ -272,6 +272,13 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
   assert.equal(typeof sClient.updatedAt, 'string', 'updatedAt deve ser preenchido');
   assert.equal(flushCalled, true, 'flush deve ter sido chamado para persistir no banco');
 
+  // 1b. O mesmo contato deve ser encontrado pelo número nacional, sem +55.
+  store.get('owner_self').pendingReactivation = null;
+  sClient.human = true;
+  const repNacional = await flow.process({ phone: '5588921694598', text: 'bot 88993602644' });
+  assert.match(repNacional, /Bot reativado com sucesso/);
+  assert.match(repNacional, /Mikaelle Santos/);
+
   // 2. Coloca em humano pelo nome
   sClient.human = false;
   const repHumanoNome = await flow.process({ phone: '5588921694598', text: 'humano mikaelle' });

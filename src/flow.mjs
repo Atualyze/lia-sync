@@ -1,9 +1,10 @@
-import { normalize } from './safety.mjs';
+import { normalizePhone } from './sessions.mjs';
 import { resolveIdentity, isOwnerContact, OWNER_SELF_KEY } from './core/identity.mjs';
 import { resolveMessages } from './core/messages.mjs';
 import { handleOwnerSession } from './flow/owner.mjs';
 import { handleClientMessage } from './flow/client.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
+import { normalize } from './safety.mjs';
 
 export {
   collectedValid, isHumanRequest, isTalkToOwnerRequest, isAtendimentoOption,
@@ -103,14 +104,26 @@ export function createFlow({
 
     // 2. Por dígitos (telefone): exato primeiro, ou sufixo único (sem criar sessão fantasma)
     const digits = raw.replace(/\D/g, '');
+    const canonicalPhone = digits.length === 10 || digits.length === 11 || /^55\d{10,11}$/.test(digits)
+      ? normalizePhone(digits)
+      : digits;
     if (digits.length >= 8) {
-      const exactDigit = all.find((s) => String(s.phone || '').replace(/\D/g, '') === digits);
+      const exactDigit = all.find((s) => {
+        const sessionDigits = String(s.phone || '').replace(/\D/g, '');
+        return sessionDigits === digits || normalizePhone(sessionDigits) === canonicalPhone;
+      });
       if (exactDigit) return exactDigit;
-      const explicitKey = wantsSimulation ? `sim:${digits}` : digits;
-      if (store.sessions[explicitKey]) return store.sessions[explicitKey];
+      const explicitKeys = [...new Set([
+        digits,
+        canonicalPhone,
+        ...(wantsSimulation ? [`sim:${digits}`, `sim:${canonicalPhone}`] : [])
+      ])];
+      for (const explicitKey of explicitKeys) {
+        if (store.sessions[explicitKey]) return store.sessions[explicitKey];
+      }
       const suffixMatches = all.filter((s) => {
         const sDigits = String(s.phone || '').replace(/\D/g, '');
-        return sDigits.endsWith(digits) || digits.endsWith(sDigits);
+        return sDigits.endsWith(digits) || digits.endsWith(sDigits) || normalizePhone(sDigits) === canonicalPhone;
       });
       if (suffixMatches.length === 1) return suffixMatches[0];
     }
