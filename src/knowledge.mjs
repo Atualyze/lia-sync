@@ -108,8 +108,8 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     const relevantKbs = findMatchingKnowledgeBasesSync(kbQuery, undefined, {
       includeCopilotOnly: true,
       limit: 3,
-      maxChars: broadKnowledgeRequest ? 24000 : 7000,
-      maxSections: broadKnowledgeRequest ? 24 : 8
+      maxChars: broadKnowledgeRequest ? 32000 : 7000,
+      maxSections: broadKnowledgeRequest ? 80 : 8
     });
     const kbIndex = allKbs.map(kb => `• ${kb.title} (ID: ${kb.id} | v${kb.version})`).join('\n');
     const kbCopilotSection = allKbs.length > 0
