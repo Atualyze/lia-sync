@@ -20,7 +20,7 @@ const normalizePendingClientPayment = value => {
   return { args, choice, createdAt };
 };
 const normalizePendingCopilotTask = value => {
-  const allowed = new Set(['payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
+  const allowed = new Set(['general', 'payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
   if (!value || typeof value !== 'object' || Array.isArray(value) || !allowed.has(value.type)) return null;
   let createdAt;
   try { createdAt = iso(value.createdAt); } catch { return null; }
@@ -32,7 +32,10 @@ const normalizePendingCopilotTask = value => {
     originCommand: typeof value.originCommand === 'string' ? value.originCommand.slice(0, 500) : '',
     lastQuestion: typeof value.lastQuestion === 'string' ? value.lastQuestion.slice(0, 500) : '',
     repeatCount: Math.max(0, Math.min(2, Number(value.repeatCount) || 0)),
-    turns: Math.max(0, Math.min(10, Number(value.turns) || 0))
+    turns: Math.max(0, Math.min(10, Number(value.turns) || 0)),
+    allowedTools: Array.isArray(value.allowedTools)
+      ? [...new Set(value.allowedTools.filter(name => typeof name === 'string' && /^[a-z][a-z0-9_]{0,63}$/i.test(name)))].slice(0, 8)
+      : []
   };
 };
 // Logs não podem conter telefone completo (regra do projeto).
