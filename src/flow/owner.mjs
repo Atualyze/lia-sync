@@ -1512,7 +1512,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
-          && (!explicitTaskContinuation || isCopilotMetaQuestion));
+          && !explicitTaskContinuation
+          && (activeTask.type === 'payment' || isCopilotMetaQuestion));
         if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
             ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
