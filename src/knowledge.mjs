@@ -1,6 +1,6 @@
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
-import { getKnowledgeBaseContentSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync } from './knowledge-bases.mjs';
+import { getKnowledgeBaseContentSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync, findMatchingKnowledgeBasesSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
 import { buildCognitionProtocol } from './core/cognition.mjs';
@@ -100,15 +100,34 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
 
   if (copilotMode) {
     const allKbs = listKnowledgeBasesSync();
+    const kbQuery = [session.lastUserText || '', ...history.slice(-6).map(entry => entry?.content || '')]
+      .filter(Boolean)
+      .join('\n')
+      .slice(-5000);
+    const relevantKbs = findMatchingKnowledgeBasesSync(kbQuery, undefined, {
+      includeCopilotOnly: true,
+      limit: 3,
+      maxChars: 7000
+    });
+    const kbIndex = allKbs.map(kb => \`• \${kb.title} (ID: \${kb.id} | v\${kb.version})\`).join('\n');
     const kbCopilotSection = allKbs.length > 0
-      ? `\n7. BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS:
-Você possui acesso às bases de conhecimento dos sistemas e clientes abaixo (uma por cliente atendido${companySuffix(companyName)}).
+      ? \`\n7. BASES DE CONHECIMENTO E SUPORTE PRÁTICO DE PROJETOS CADASTRADOS:
+Você possui acesso às bases abaixo. Use somente a base que corresponder ao projeto e à pergunta atual. A presença de uma base no índice não comprova que ela se aplica ao contato ou à situação.
 REGRAS DE OURO AO RESPONDER SOBRE QUALQUER BASE DE CONHECIMENTO:
-- SEJA DIRETA, ENXUTA E OBJETIVA: NUNCA envie textos longos demais nem despeje o manual inteiro de uma vez. Responda em 2 a 4 parágrafos curtos ou bullet points diretos focado exatamente no que foi perguntado.
-- FOCO 100% EM COMO USAR O CRM + LANDING PAGE: Explique sempre na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/aba* (no Painel CRM /admin ou na Landing Page) e *como usar passo a passo*.
-- DADOS TÉCNICOS OPERACIONAIS SIM, CÓDIGO INTERNO NUNCA: Você pode explicar regras operacionais e integrações na visão de uso (ex: como sincronizar pagamentos no botão do Asaas, como funciona o Funil 360, etapas do Kanban, planos e valores), mas é PROIBIDA de citar caminhos de backend, rotas de API (/api/...), tabelas de banco de dados ou arquivos de código interno.
-- ESCALONAMENTO PARA ${responsible.toUpperCase() || 'O RESPONSÁVEL'}${companySuffix(companyName).toUpperCase()}: Se a dúvida for sobre manutenção no código, algo técnico interno de programação/servidor ou algo que não esteja na base, informe que esse ponto específico é tratado diretamente por ${owner}${companySuffix(companyName)}.\n\n` +
-        allKbs.map(kb => `[DOSSIÊ OFICIAL CADASTRADO - ${kb.title} (ID: ${kb.id} | v${kb.version})]\n${kb.content.slice(0, 32000)}`).join('\n\n---\n\n')
+- SEJA DIRETA, ENXUTA E OBJETIVA: responda exatamente ao que foi perguntado, normalmente em 2 a 4 parágrafos curtos.
+- FOCO PRÁTICO: explique o que é, para que serve, onde fica na interface e como usar, quando isso estiver documentado.
+- DADOS TÉCNICOS OPERACIONAIS SIM, CÓDIGO INTERNO NUNCA: não exponha rotas de API, tabelas ou caminhos de backend ao usuário final.
+- NÃO MISTURE PROJETOS: confirme o título/ID da base compatível com o assunto antes de usar detalhes. Se não houver correspondência segura, pergunte qual projeto ou consulte a base explicitamente.
+- Se o trecho recuperado não responder à dúvida, não improvise. Consulte a ferramenta de base de conhecimento ou informe o que falta.
+- ESCALONAMENTO: questões de manutenção interna, programação ou servidor devem ser direcionadas a \${owner}\${companySuffix(companyName)}.
+
+[ÍNDICE DE BASES DISPONÍVEIS]
+\${kbIndex}
+
+[ TRECHOS RECUPERADOS PARA A MENSAGEM ATUAL ]
+\${relevantKbs.length
+  ? relevantKbs.map(kb => \`[DOSSIÊ OFICIAL - \${kb.title} (ID: \${kb.id} | v\${kb.version})]\n\${kb.content}\`).join('\n\n---\n\n')
+  : 'Nenhum trecho foi recuperado com confiança para a mensagem atual. Não presuma conteúdo das bases; consulte a ferramenta apropriada quando necessário.'}\`
       : '';
 
     const supportContactsList = Array.isArray(session.supportContacts) && session.supportContacts.length > 0
