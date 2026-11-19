@@ -13,6 +13,8 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
+import { reviewCopilotToolCall } from './copilot-continuity.mjs';
+import { transcribeIncomingAudio } from './media.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
@@ -67,9 +69,15 @@ const TOOL_TASK_TYPES = Object.freeze({
 
 const QUESTION_STOP_WORDS = new Set(['qual', 'quais', 'como', 'pode', 'poderia', 'me', 'diga', 'informe', 'informar', 'para', 'por', 'uma', 'um', 'do', 'da', 'de', 'o', 'a', 'e', 'eu', 'voce', 'você', 'quer', 'preciso', 'ainda', 'agora', 'gerar', 'criar']);
 
-function inferCopilotTaskType(text = '') {
+function inferCopilotTaskTypes(text = '') {
   const value = String(text || '');
-  return COPILOT_TASK_PATTERNS.find(([, pattern]) => pattern.test(value))?.[0] || null;
+  return COPILOT_TASK_PATTERNS
+    .filter(([, pattern]) => pattern.test(value))
+    .map(([type]) => type);
+}
+
+function inferCopilotTaskType(text = '') {
+  return inferCopilotTaskTypes(text)[0] || null;
 }
 
 function copilotToolTaskType(toolName = '', args = {}) {
@@ -225,69 +233,104 @@ export async function handleOwnerSession({
         store.touch(sSelf);
 
         let cleanCommand = String(text || '').trim();
+        let audioTranscriptionFailed = false;
+        if (mediaType === 'audio') {
+          const transcript = await transcribeIncomingAudio({ whatsapp, ai, rawItem, botConfig });
+          const caption = cleanCommand
+            .replace(/^(?:🎤\\s*)?\\[(?:áudio|audio)(?:\\s*\\/\\s*mídia)?(?:\\s+recebido)?\\]$/i, '')
+            .trim();
+          if (typeof transcript === 'string' && transcript.trim()) {
+            cleanCommand = [caption, transcript.trim()].filter(Boolean).join('\\n').trim();
+          } else {
+            cleanCommand = '';
+            audioTranscriptionFailed = true;
+          }
+        }
         let activeTask = activeCopilotTask(sSelf, now());
-        const incomingTaskType = inferCopilotTaskType(cleanCommand);
+        const incomingTaskTypes = inferCopilotTaskTypes(cleanCommand);
+        const incomingTaskType = incomingTaskTypes[0] || null;
+        let currentToolSuggestions = [];
+        let currentModelIntent = '';
         const dispatchContinuationAtStart = activeTask?.type === 'dispatch' && sSelf.pendingRecipient
-          && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
+          && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
         if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
           sSelf.pendingPixRequest = null;
         }
-        if (activeTask && incomingTaskType && incomingTaskType !== activeTask.type && !dispatchContinuationAtStart) {
+        if (activeTask && incomingTaskTypes.length && !incomingTaskTypes.includes(activeTask.type) && !dispatchContinuationAtStart) {
           if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
           if (activeTask.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
           sSelf.pendingCopilotTask = null;
           activeTask = null;
         }
 
-        const recordSelfTurn = (replyText) => {
+        const recordSelfTurn = (replyText, { preserveTask = false } = {}) => {
           let safeReply = String(replyText || '');
           const timestamp = new Date(now()).toISOString();
-          const intent = inferCopilotTaskType(cleanCommand);
-          let task = activeCopilotTask(sSelf, now());
-          const dispatchContinuation = task?.type === 'dispatch' && sSelf.pendingRecipient
-            && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
-          if (task && intent && task.type !== intent && !dispatchContinuation) {
-            if (task.type === 'payment') sSelf.pendingPixRequest = null;
-            sSelf.pendingCopilotTask = null;
-            task = null;
-          }
 
-          const taskType = dispatchContinuation ? task.type : (intent || task?.type);
-          const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta)\b/i.test(safeReply);
-          if (isClarification && taskType && !sSelf.pendingOutboundDispatch) {
-            const sameTask = task?.type === taskType;
-            const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
-            if (repeated) {
-              const repeatCount = (Number(task.repeatCount) || 0) + 1;
-              if (repeatCount >= 2) {
-                safeReply = 'Não consegui concluir esta solicitação sem repetir a mesma pergunta. Para evitar usar dados antigos, inicie um novo pedido com todas as informações necessárias.';
-                sSelf.pendingCopilotTask = null;
-                if (taskType === 'payment') sSelf.pendingPixRequest = null;
-              } else {
-                safeReply = 'Percebi que estou repetindo a pergunta. Para continuar, responda diretamente com o dado que falta; se mudou de assunto, envie o novo pedido completo.';
-                sSelf.pendingCopilotTask = { ...task, repeatCount, updatedAt: timestamp };
-              }
-            } else {
-              sSelf.pendingCopilotTask = {
-                type: taskType,
-                createdAt: sameTask ? task.createdAt : timestamp,
-                updatedAt: timestamp,
-                originCommand: sameTask ? task.originCommand : cleanCommand.slice(0, 500),
-                lastQuestion: safeReply.slice(0, 500),
-                repeatCount: 0,
-                turns: sameTask ? (Number(task.turns) || 0) + 1 : 0
-              };
+          if (!preserveTask) {
+            const intentTypes = inferCopilotTaskTypes(cleanCommand);
+            let task = activeCopilotTask(sSelf, now());
+            const dispatchContinuation = task?.type === 'dispatch' && sSelf.pendingRecipient
+              && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
+            if (task && intentTypes.length && !intentTypes.includes(task.type) && !dispatchContinuation) {
+              if (task.type === 'payment') sSelf.pendingPixRequest = null;
+              if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+              sSelf.pendingCopilotTask = null;
+              task = null;
             }
-          } else if (task && intent && intent !== task.type && !dispatchContinuation) {
-            sSelf.pendingCopilotTask = null;
-          } else if (task && !isClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
-            sSelf.pendingCopilotTask = null;
-            if (task.type === 'payment') sSelf.pendingPixRequest = null;
-            if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+
+            const suggestedTaskTypes = currentToolSuggestions.map(name => copilotToolTaskType(name)).filter(Boolean);
+            const taskType = dispatchContinuation
+              ? task.type
+              : (task && intentTypes.includes(task.type)
+                ? task.type
+                : (intentTypes[0] || task?.type || suggestedTaskTypes[0]
+                  || (['comando', 'envio_mensagem'].includes(currentModelIntent) ? 'general' : null)));
+            const isClarification = safeReply.includes('?') || /\\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\\b/i.test(safeReply);
+            if (isClarification && taskType && !sSelf.pendingOutboundDispatch) {
+              const sameTask = task?.type === taskType;
+              const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
+              if (repeated) {
+                const repeatCount = (Number(task.repeatCount) || 0) + 1;
+                if (repeatCount >= 2) {
+                  safeReply = 'Ainda não consegui entender exatamente esse ponto. Pode me explicar do seu jeito o que está faltando? Vou manter o contexto para não começarmos do zero.';
+                  sSelf.pendingCopilotTask = {
+                    ...task,
+                    repeatCount,
+                    updatedAt: timestamp,
+                    lastQuestion: safeReply.slice(0, 500)
+                  };
+                } else {
+                  safeReply = 'Percebi que estou repetindo a pergunta. Pode responder do jeito que for mais natural; vou manter o contexto para continuar.';
+                  sSelf.pendingCopilotTask = { ...task, repeatCount, updatedAt: timestamp };
+                }
+              } else {
+                sSelf.pendingCopilotTask = {
+                  type: taskType,
+                  createdAt: sameTask ? task.createdAt : timestamp,
+                  updatedAt: timestamp,
+                  originCommand: sameTask ? task.originCommand : cleanCommand.slice(0, 500),
+                  lastQuestion: safeReply.slice(0, 500),
+                  repeatCount: 0,
+                  turns: sameTask ? (Number(task.turns) || 0) + 1 : 0,
+                  allowedTools: [...new Set([
+                    ...(sameTask && Array.isArray(task.allowedTools) ? task.allowedTools : []),
+                    ...currentToolSuggestions
+                  ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
+                };
+              }
+            } else if (task && !isClarification && !/(?:me informe|me diga|ainda preciso|para concluir|falta|responda diretamente)/i.test(safeReply)) {
+              sSelf.pendingCopilotTask = null;
+              if (task.type === 'payment') sSelf.pendingPixRequest = null;
+              if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+            }
           }
 
-          sSelf.history.push({ role: 'user', content: cleanCommand, createdAt: timestamp });
+          const userHistoryText = mediaType === 'audio'
+            ? (cleanCommand ? '[Áudio transcrito]: ' + cleanCommand : '[Áudio recebido; transcrição indisponível]')
+            : cleanCommand;
+          sSelf.history.push({ role: 'user', content: userHistoryText, createdAt: timestamp });
           sSelf.history.push({ role: 'assistant', content: safeReply, createdAt: timestamp });
           const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
           if (sSelf.history.length > maxStoredHistory) sSelf.history = sSelf.history.slice(-maxStoredHistory);
@@ -297,6 +340,12 @@ export async function handleOwnerSession({
           store.markDirty();
           return safeReply;
         };
+
+        if (audioTranscriptionFailed) {
+          return recordSelfTurn('Recebi seu áudio, mas não consegui transcrever o conteúdo com segurança. Pode enviar novamente ou me resumir por texto; não vou presumir o que foi dito.', {
+            preserveTask: Boolean(activeTask)
+          });
+        }
 
         const assertOutboundStatePersisted = () => {
           if (store.client?.enabled && store.persistence !== 'supabase') {
@@ -1463,6 +1512,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           isOwner: true,
           deadline: aiDeadline
         });
+        currentToolSuggestions = (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
+          .map(call => String(call?.name || '').trim())
+          .filter(Boolean);
+        currentModelIntent = String(result?.intent || '').trim().toLowerCase();
 
         // Se pediu para agendar um lembrete
         if (result?.reminder && reminderStore) {
@@ -1553,8 +1606,81 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
-              if (toolTaskType && inferCopilotTaskType(cleanCommand) !== toolTaskType && liveTask?.type !== toolTaskType) {
-                return recordSelfTurn('Não executei essa ação porque ela não foi solicitada no pedido atual nem pertence a uma continuação ativa. Envie novamente a solicitação com os dados necessários.');
+              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
+              const currentRequestMatches = Boolean(toolTaskType && currentTaskTypes.length === 1 && currentTaskTypes[0] === toolTaskType);
+
+              // Mesmo quando há uma tarefa pendente, uma ferramenta sugerida precisa
+              // fazer sentido para a mensagem atual ou para a continuação semântica.
+              // Não basta a categoria coincidir: a resposta pode ter mudado de assunto.
+              if (!currentRequestMatches) {
+                const review = await reviewCopilotToolCall({
+                  ai,
+                  currentMessage: cleanCommand,
+                  activeTask: liveTask,
+                  toolCall: tc,
+                  recentContext: recentHistory,
+                  botConfig,
+                  deadline: aiDeadline
+                });
+                if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                  const question = review.question || (liveTask
+                    ? 'Você quer continuar a solicitação anterior ou começar outra coisa?'
+                    : 'Não consegui entender com segurança o que você quer fazer. Pode me explicar com suas palavras?');
+
+                  if (review.decision === 'clarify') {
+                    const timestamp = new Date(now()).toISOString();
+                    if (review.relation === 'continuation' && liveTask) {
+                      sSelf.pendingCopilotTask = {
+                        ...liveTask,
+                        updatedAt: timestamp,
+                        lastQuestion: question.slice(0, 500),
+                        allowedTools: [...new Set([
+                          ...(Array.isArray(liveTask.allowedTools) ? liveTask.allowedTools : []),
+                          tc.name
+                        ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
+                      };
+                    } else if (review.relation === 'new_request') {
+                      sSelf.pendingCopilotTask = {
+                        type: toolTaskType || 'general',
+                        createdAt: timestamp,
+                        updatedAt: timestamp,
+                        originCommand: cleanCommand.slice(0, 500),
+                        lastQuestion: question.slice(0, 500),
+                        repeatCount: 0,
+                        turns: 0,
+                        allowedTools: [tc.name]
+                      };
+                    }
+                    store.markDirty();
+                  }
+                  return recordSelfTurn(question, { preserveTask: true });
+                }
+
+                const timestamp = new Date(now()).toISOString();
+                if (review.relation === 'new_request') {
+                  if (liveTask?.type === 'payment') sSelf.pendingPixRequest = null;
+                  if (liveTask?.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+                  sSelf.pendingCopilotTask = {
+                    type: toolTaskType || 'general',
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                    originCommand: cleanCommand.slice(0, 500),
+                    lastQuestion: '',
+                    repeatCount: 0,
+                    turns: 0,
+                    allowedTools: [tc.name]
+                  };
+                } else if (review.relation === 'continuation' && liveTask) {
+                  sSelf.pendingCopilotTask = {
+                    ...liveTask,
+                    updatedAt: timestamp,
+                    allowedTools: [...new Set([
+                      ...(Array.isArray(liveTask.allowedTools) ? liveTask.allowedTools : []),
+                      tc.name
+                    ])].filter(name => /^[a-z][a-z0-9_]{0,63}$/i.test(name)).slice(0, 8)
+                  };
+                }
+                store.markDirty();
               }
               try {
                 if (tc.name === 'enviar_mensagem_contato') {
