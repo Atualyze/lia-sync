@@ -13,7 +13,7 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { reviewCopilotToolCall } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall } from './copilot-continuity.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
@@ -147,6 +147,14 @@ function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {}) {
     valor: free ? 0 : amount,
     descricao: description
   };
+}
+
+
+function isValidPixDescription(value = '') {
+  const description = String(value || '').trim().replace(/\\s+/g, ' ');
+  if (description.length < 2 || description.length > 80 || /[?¿]/.test(description)) return false;
+  if (/\\b(?:o que|por que|porque|como assim|qual|quais|vc|você|voce|nao entendi|não entendi|bom dia|boa tarde|boa noite|me explica|me explique)\\b/i.test(description)) return false;
+  return true;
 }
 
 function parseNaturalControlResult(result) {
@@ -1461,6 +1469,22 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
           : [];
         const recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
+        let turnReview = null;
+        let suppressToolExecution = false;
+        if (activeTask) {
+          turnReview = await classifyCopilotTurn({
+            ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
+          });
+          if (turnReview.intent === 'new_request') {
+            if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
+            sSelf.pendingCopilotTask = null;
+            activeTask = null;
+            store.markDirty();
+          } else if (turnReview.intent !== 'continue') {
+            suppressToolExecution = true;
+          }
+        }
+
         const supportContacts = Object.values(store.sessions || {})
           .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes))
           .map(s => ({
@@ -1485,7 +1509,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const referencesPreviousDocument = /\b(?:anexo|documento\s+que\s+(?:enviei|mandei)|arquivo\s+que\s+(?:enviei|mandei)|documento\s+anterior|arquivo\s+anterior|(?:esse|desse|do)\s+(?:documento|arquivo)|resuma\s+(?:o\s+)?(?:anexo|documento))\b/i.test(cleanCommand);
         const sys = (sSelf.lastAnalyzedDocument && referencesPreviousDocument
           ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
-          : baseSys) + continuityContext + copilotToolRule;
+          : baseSys) + continuityContext + (suppressToolExecution ? '\\n\\n[RESPOSTA_SEM_EXECUCAO]\\nA mensagem atual foi classificada como esclarecimento ou conversa sem relação direta com a tarefa pendente. Responda à mensagem atual naturalmente, usando o histórico para explicar o que for necessário. Não chame ferramentas, não complete parâmetros pendentes e não execute ações nesta rodada. Preserve a tarefa anterior sem misturar os assuntos.\\n[/RESPOSTA_SEM_EXECUCAO]' : '') + copilotToolRule;
 
         const result = await ai?.askAI?.({
           system: sys,
@@ -1529,7 +1553,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         );
 
         const toolOutputs = [];
-        let toolCallsToRun = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
+        let toolCallsToRun = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? [...result.tool_calls] : []);
         if (isAudioForSelf) {
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
         }
@@ -1767,7 +1791,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 });
                 const amount = currentPix.hasAmountOrFree ? currentPix.valor : normalizePixAmount(oldPix.amount);
                 const requiresDescription = Boolean(oldPix.requestedAt) || !currentPix.isFreeAmount;
-                const description = currentPix.descricao || String(oldPix.description || '').trim() || (!requiresDescription ? 'Cobrança Pix' : '');
+                const description = (isValidPixDescription(currentPix.descricao) ? currentPix.descricao : '') || (isValidPixDescription(oldPix.description) ? String(oldPix.description).trim() : '') || (amount !== null ? 'Cobrança Pix' : (!requiresDescription ? 'Cobrança Pix' : ''));
                 if (amount === null || !description) {
                   sSelf.pendingPixRequest = {
                     requestedAt: oldPix.requestedAt || new Date(now()).toISOString(),
@@ -2063,10 +2087,10 @@ ${errMsg}`;
         const pixParsed = {
           ...currentPix,
           valor: currentPix.hasAmountOrFree ? currentPix.valor : normalizePixAmount(pendingPixRequest?.amount),
-          desc: currentPix.descricao || String(pendingPixRequest?.description || '').trim() || (!requiresPixDescription ? 'Cobrança Pix' : '')
+          desc: (isValidPixDescription(currentPix.descricao) ? currentPix.descricao : '') || (isValidPixDescription(pendingPixRequest?.description) ? String(pendingPixRequest.description).trim() : '') || (currentPix.hasAmountOrFree || normalizePixAmount(pendingPixRequest?.amount) !== null ? 'Cobrança Pix' : (!requiresPixDescription ? 'Cobrança Pix' : ''))
         };
         const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
-        const pixRequestActive = hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt);
+        const pixRequestActive = !suppressToolExecution && (hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt));
         const isClarifyingExistingRequest = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique)\b/i.test(cleanCommand);
         if (pixRequestActive && !isClarifyingExistingRequest
           && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
