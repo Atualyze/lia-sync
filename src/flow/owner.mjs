@@ -1675,14 +1675,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 pixHandled = true;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
+              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
               const liveTask = activeCopilotTask(sSelf, now());
               const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
               // A mensagem do turno atual precisa indicar a ação, ou a classificação
               // contextual precisa ter reconhecido uma continuação legítima da tarefa.
               // O tipo e as ferramentas guardadas na tarefa, isoladamente, não autorizam.
-              // A categoria da tarefa ativa é contexto, não autorização. A mensagem atual
-              // precisa ser explícita ou passar pela revisão semântica.
-              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name);
+              // Uma tarefa específica pode autorizar a continuação sem exigir a mesma
+              // formulação textual. Tarefas genéricas, porém, não são persistidas e portanto
+              // nunca chegam aqui como autorização implícita.
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
                 && (explicitTaskContinuation || turnReview?.intent === 'continue'));
