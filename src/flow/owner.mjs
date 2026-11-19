@@ -2074,7 +2074,7 @@ ${errMsg}`;
         };
         const activePaymentTask = activeCopilotTask(sSelf, now())?.type === 'payment';
         const pixRequestActive = hasPixKeyword || activePaymentTask || Boolean(pendingPixRequest?.requestedAt);
-        const isClarifyingExistingRequest = /\\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique)\\b/i.test(cleanCommand);
+        const isClarifyingExistingRequest = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique)\b/i.test(cleanCommand);
         if (pixRequestActive && !isClarifyingExistingRequest
           && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
           && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
