@@ -64,7 +64,8 @@ const TOOL_TASK_TYPES = Object.freeze({
   consultar_dados_brasil: 'public_data', consultar_contato_ou_lead: 'contact',
   atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
   consultar_saude_infra: 'infra', consultar_web: 'web',
-  consultar_base_conhecimento: 'knowledge', transferir_setor: 'handoff'
+  consultar_base_conhecimento: 'knowledge',
+  transferir_setor: 'handoff', transferir_para_setor: 'handoff'
 });
 
 const QUESTION_STOP_WORDS = new Set(['qual', 'quais', 'como', 'pode', 'poderia', 'me', 'diga', 'informe', 'informar', 'para', 'por', 'uma', 'um', 'do', 'da', 'de', 'o', 'a', 'e', 'eu', 'voce', 'você', 'quer', 'preciso', 'ainda', 'agora', 'gerar', 'criar']);
@@ -74,10 +75,6 @@ function inferCopilotTaskTypes(text = '') {
   return COPILOT_TASK_PATTERNS
     .filter(([, pattern]) => pattern.test(value))
     .map(([type]) => type);
-}
-
-function inferCopilotTaskType(text = '') {
-  return inferCopilotTaskTypes(text)[0] || null;
 }
 
 function copilotToolTaskType(toolName = '', args = {}) {
