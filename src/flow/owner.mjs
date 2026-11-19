@@ -237,10 +237,10 @@ export async function handleOwnerSession({
         if (mediaType === 'audio') {
           const transcript = await transcribeIncomingAudio({ whatsapp, ai, rawItem, botConfig });
           const caption = cleanCommand
-            .replace(/^(?:🎤\\s*)?\\[(?:áudio|audio)(?:\\s*\\/\\s*mídia)?(?:\\s+recebido)?\\]$/i, '')
+            .replace(/^(?:🎤\s*)?\[(?:áudio|audio)(?:\s*\/\s*mídia)?(?:\s+recebido)?\]$/i, '')
             .trim();
           if (typeof transcript === 'string' && transcript.trim()) {
-            cleanCommand = [caption, transcript.trim()].filter(Boolean).join('\\n').trim();
+            cleanCommand = [caption, transcript.trim()].filter(Boolean).join('\n').trim();
           } else {
             cleanCommand = '';
             audioTranscriptionFailed = true;
@@ -248,11 +248,10 @@ export async function handleOwnerSession({
         }
         let activeTask = activeCopilotTask(sSelf, now());
         const incomingTaskTypes = inferCopilotTaskTypes(cleanCommand);
-        const incomingTaskType = incomingTaskTypes[0] || null;
         let currentToolSuggestions = [];
         let currentModelIntent = '';
         const dispatchContinuationAtStart = activeTask?.type === 'dispatch' && sSelf.pendingRecipient
-          && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
+          && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
         if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
           sSelf.pendingPixRequest = null;
@@ -272,7 +271,7 @@ export async function handleOwnerSession({
             const intentTypes = inferCopilotTaskTypes(cleanCommand);
             let task = activeCopilotTask(sSelf, now());
             const dispatchContinuation = task?.type === 'dispatch' && sSelf.pendingRecipient
-              && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
+              && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
             if (task && intentTypes.length && !intentTypes.includes(task.type) && !dispatchContinuation) {
               if (task.type === 'payment') sSelf.pendingPixRequest = null;
               if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
@@ -287,7 +286,7 @@ export async function handleOwnerSession({
                 ? task.type
                 : (intentTypes[0] || task?.type || suggestedTaskTypes[0]
                   || (['comando', 'envio_mensagem'].includes(currentModelIntent) ? 'general' : null)));
-            const isClarification = safeReply.includes('?') || /\\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\\b/i.test(safeReply);
+            const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
             if (isClarification && taskType && !sSelf.pendingOutboundDispatch) {
               const sameTask = task?.type === taskType;
               const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
