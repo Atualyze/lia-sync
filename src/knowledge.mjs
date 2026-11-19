@@ -104,10 +104,12 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
       .filter(Boolean)
       .join('\n')
       .slice(-5000);
+    const broadKnowledgeRequest = /\b(?:o que (?:vc|voce) sabe|me diga tudo sobre|tudo sobre|conhece(?:r)? (?:todos os detalhes|bem)|vis[aã]o geral de|resumo completo de)\b/i.test(kbQuery);
     const relevantKbs = findMatchingKnowledgeBasesSync(kbQuery, undefined, {
       includeCopilotOnly: true,
       limit: 3,
-      maxChars: 7000
+      maxChars: broadKnowledgeRequest ? 24000 : 7000,
+      maxSections: broadKnowledgeRequest ? 24 : 8
     });
     const kbIndex = allKbs.map(kb => `• ${kb.title} (ID: ${kb.id} | v${kb.version})`).join('\n');
     const kbCopilotSection = allKbs.length > 0
