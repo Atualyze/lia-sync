@@ -1479,7 +1479,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const taskHistory = activeTask && Array.isArray(sSelf.history)
           ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
           : [];
-        const recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
+        let recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
         let turnReview = null;
         let suppressToolExecution = false;
         const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
@@ -1517,6 +1517,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
             sSelf.pendingCopilotTask = null;
             activeTask = null;
+            recentHistory = [];
             store.markDirty();
           } else if (turnReview.intent !== 'continue') {
             suppressToolExecution = true;
