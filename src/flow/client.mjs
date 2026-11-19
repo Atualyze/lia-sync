@@ -426,12 +426,22 @@ export async function handleClientMessage({
       const hasPendingClientWork = Boolean(
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
+      const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
+        resolvePaymentChoice(clean)
+        || isPixActionRequest(clean)
+        || /^(?:r\\$\\s*)?\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s*(?:reais?|conto|contos))?[.!]*$/i.test(String(clean || '').trim())
+      ));
+      const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
+        && (isNaturalAffirmation(clean) || isNaturalNegative(clean)));
+      const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
+        .test(normalize(clean));
+      const pendingContextContinuation = pendingPaymentAnswer || pendingAgendaAnswer || asksAboutRecentReply;
       const activeContext = selectActiveClientHistory(s.history, {
         maxTurns: contextTurns,
         nowMs: now(),
-        preservePendingContext: hasPendingClientWork
+        preservePendingContext: hasPendingClientWork && pendingContextContinuation
       });
-      if (activeContext.topicBoundary && !hasPendingClientWork) {
+      if (activeContext.topicBoundary && !pendingContextContinuation) {
         s.contextSummary = null;
         s.conversationState = null;
         s.subject = null;
@@ -501,7 +511,7 @@ export async function handleClientMessage({
         historyRecallRequested,
         historyRecallMatched: historyRecall.matched,
         recalledHistory: historyRecall.messages,
-        ...(activeContext.topicBoundary && !hasPendingClientWork
+        ...(activeContext.topicBoundary && !pendingContextContinuation
           ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
           : {})
       };
@@ -682,7 +692,7 @@ export async function handleClientMessage({
       } else if (pendingAgenda && isNaturalAffirmation(clean)) {
         syntheticToolCalls = [{ name: 'gerenciar_agenda_google', args: pendingAgenda.args || {} }];
         s.pendingClientAgenda = null;
-      } else if (pendingPayment) {
+      } else if (pendingPayment && pendingPaymentAnswer) {
         const selected = currentPaymentChoice || pendingPayment.choice;
         if (selected === 'key') {
           s.pendingClientPayment = null;
