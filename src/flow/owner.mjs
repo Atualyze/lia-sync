@@ -1681,8 +1681,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               // A mensagem do turno atual precisa indicar a ação, ou a classificação
               // contextual precisa ter reconhecido uma continuação legítima da tarefa.
               // O tipo e as ferramentas guardadas na tarefa, isoladamente, não autorizam.
-              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
-                || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
+              // A categoria da tarefa ativa é contexto, não autorização. A mensagem atual
+              // precisa ser explícita ou passar pela revisão semântica.
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
                 && (explicitTaskContinuation || turnReview?.intent === 'continue'));
@@ -2253,32 +2254,34 @@ ${errMsg}`;
             const simName = IGNORED_SIM.has(rawSimName.toLowerCase()) ? '' : rawSimName;
             rawReply = buildFriendlyMessage(simName, cleanCommand, { asAudio: true, identity });
           } else {
-            const isGreeting = cleanCommand.length < 25 && new RegExp(`^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|${escapeText(assistant)})[\\s,!.]*$`, 'i').test(cleanCommand.trim());
-            if (isGreeting) {
-              rawReply = `Olá, ${owner}! Estou por aqui. Como posso te ajudar agora?`;
-            } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a|infinitepay)\b/i.test(cleanCommand)) {
-              const pixConfigured = Boolean(botConfig?.tools?.settings?.gerar_cobranca_pix?.key || process.env.PIX_KEY);
-              if (ipEnabled) {
-                sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
-                store.markDirty();
-                rawReply = `Para gerar o link de pagamento InfinitePay agora, ${owner}, me diga o *valor* (ex: *150*) e a *descrição*.`;
-              } else {
-                if (pixConfigured) {
-                  sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
-                  store.markDirty();
-                  rawReply = `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`;
-                } else {
-                  rawReply = `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
-                }
-              }
-            } else if (/\b(?:cep|cnpj|feriado)\b/i.test(cleanCommand)) {
-              rawReply = `Pode me passar o *CEP*, *CNPJ* ou a *data/ano* que você quer consultar, ${owner}?`;
-            } else if (/\b(?:planilha|sheets|estoque|tabela)\b/i.test(cleanCommand)) {
-              rawReply = `O que você quer consultar ou buscar na planilha do Google Sheets, ${owner}?`;
-            } else if (/\b(?:drive|cat[aá]logo|contrato|arquivo)\b/i.test(cleanCommand)) {
-              rawReply = `Qual arquivo ou catálogo do Google Drive você quer que eu busque ou envie, ${owner}?`;
-            } else {
-              rawReply = `${owner}, não ficou claro o que você precisa com essa mensagem. Pode me dar um pouco mais de contexto do que gostaria que eu fizesse?`;
+            // Se o modelo não produziu uma resposta, não caia em um menu de frases
+            // baseado em palavras-chave. Fazemos uma última passagem conversacional,
+            // sem ferramentas, para responder ao sentido da mensagem atual.
+            const naturalFallback = await ai?.askAI?.({
+              system: [
+                sys,
+                '',
+                '[FALLBACK_CONVERSACIONAL]',
+                'Responda ao responsável como uma assistente de IA natural e competente.',
+                'Não transforme a resposta em um menu de comandos.',
+                'Não diga que não entendeu apenas porque não houve tool_call.',
+                'Se a mensagem for conversa casual, converse normalmente.',
+                'Se houver uma intenção de ação mas faltarem dados, explique exatamente o que falta em uma pergunta curta.',
+                'Não invente execução, dados ou resultados. Não chame ferramentas nesta etapa.',
+                '[/FALLBACK_CONVERSACIONAL]'
+              ].join('\\n'),
+              history: recentHistory,
+              userText: cleanCommand,
+              botConfig,
+              isOwner: true,
+              autoRouting: false,
+              disableToolCalling: true,
+              deadline: aiDeadline
+            }).catch(() => null);
+            rawReply = String(naturalFallback?.reply || naturalFallback?.text || '').trim();
+
+            if (!rawReply) {
+              rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
             }
           }
         }
