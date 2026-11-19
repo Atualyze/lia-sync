@@ -147,6 +147,12 @@ test('continuação com confiança baixa é rebaixada para esclarecimento', asyn
 });
 
 
+test('intenção de saúde reconhece atualização seguida de verificação do sistema', () => {
+  assert.equal(hasExplicitToolIntent('Rodei uma atualização, gostaria de saber se está tudo ok', 'consultar_saude_infra'), true);
+  assert.equal(hasExplicitToolIntent('Depois do deploy, está funcionando normalmente?', 'consultar_saude_infra'), true);
+  assert.equal(hasExplicitToolIntent('Como está o servidor depois da atualização?', 'consultar_saude_infra'), true);
+});
+
 test('intenção explícita: reconhece comandos curtos, mas não transforma dúvidas em ações', () => {
   assert.equal(hasExplicitToolIntent('Pix', 'gerar_cobranca_pix'), true);
   assert.equal(hasExplicitToolIntent('Como funciona o Pix?', 'gerar_cobranca_pix'), false);

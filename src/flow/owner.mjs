@@ -52,7 +52,7 @@ const COPILOT_TASK_PATTERNS = [
   ['crm', /\b(?:crm|atualiz\w*|corrig\w*|cadastro)\b/i],
   ['contact', /\b(?:contato|lead|telefone|hist[oó]rico\s+do\s+cliente)\b/i],
   ['memory', /\b(?:mem[oó]ria|memorize|lembre-se|esque[cç]a|guarde)\b/i],
-  ['infra', /\b(?:infra|servidor\w*|vps|dokku|containers?)\b/i],
+  ['infra', /(?:\b(?:infra|servidor\w*|vps|dokku|containers?)\b|\b(?:rodei|fiz|apliquei|terminei|conclu[ií]|atualizei|atualizamos|publiquei|subi|reiniciei|reiniciamos|deploy)\b.{0,120}\b(?:est[aá]\s+tudo\s+(?:ok|certo|normal)|est[aá]\s+(?:funcionando|normal)|como\s+(?:est[aá]|ficou)|tem\s+(?:algum|alguma)\s+(?:falha|erro|problema)|deu\s+(?:algum\s+)?(?:problema|erro)|est[aá]\s+saud[aá]vel)\b)/i],
   ['web', /\b(?:pesquis\w*|procur\w*|busc\w*\s+(?:na\s+)?web|consulta\w*\s+web)\b/i],
   ['knowledge', /\b(?:base\s+de\s+conhecimento|dossi[eê]|manual\s+operacional)\b/i]
 ];
@@ -89,6 +89,13 @@ function activeCopilotTask(session, nowMs = Date.now()) {
   if (!task || typeof task !== 'object') return null;
   const createdAt = Date.parse(task.createdAt || '');
   if (!Number.isFinite(createdAt) || nowMs - createdAt > COPILOT_PENDING_TTL_MS || nowMs < createdAt - 60_000) {
+    session.pendingCopilotTask = null;
+    return null;
+  }
+  // A generic clarification must never become a sticky task. It can otherwise
+  // contaminate the next independent request and force an unnecessary
+  // continuation-vs-new-request clarification.
+  if (String(task.type || '').trim().toLowerCase() === 'general') {
     session.pendingCopilotTask = null;
     return null;
   }
@@ -290,7 +297,7 @@ export async function handleOwnerSession({
                 : (task && intentTypes.includes(task.type)
                   ? task.type
                   : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general')));
-            if (isClarification && !sSelf.pendingOutboundDispatch) {
+            if (isClarification && !sSelf.pendingOutboundDispatch && taskType !== 'general') {
               const sameTask = task?.type === taskType;
               if (task && !sameTask) {
                 if (task.type === 'payment') sSelf.pendingPixRequest = null;
@@ -1668,12 +1675,15 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 pixHandled = true;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
-              const liveTask = activeCopilotTask(sSelf, now());
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
+              const liveTask = activeCopilotTask(sSelf, now());
               const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
               // A mensagem do turno atual precisa indicar a ação, ou a classificação
               // contextual precisa ter reconhecido uma continuação legítima da tarefa.
               // O tipo e as ferramentas guardadas na tarefa, isoladamente, não autorizam.
+              // Uma tarefa específica pode autorizar a continuação sem exigir a mesma
+              // formulação textual. Tarefas genéricas, porém, não são persistidas e portanto
+              // nunca chegam aqui como autorização implícita.
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
@@ -2246,32 +2256,34 @@ ${errMsg}`;
             const simName = IGNORED_SIM.has(rawSimName.toLowerCase()) ? '' : rawSimName;
             rawReply = buildFriendlyMessage(simName, cleanCommand, { asAudio: true, identity });
           } else {
-            const isGreeting = cleanCommand.length < 25 && new RegExp(`^(?:oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|tudo bom|opa|${escapeText(assistant)})[\\s,!.]*$`, 'i').test(cleanCommand.trim());
-            if (isGreeting) {
-              rawReply = `Olá, ${owner}! Estou por aqui. Como posso te ajudar agora?`;
-            } else if (/\b(?:pix|chave\s*pix|pagamento|cobran[cç]a|infinitepay)\b/i.test(cleanCommand)) {
-              const pixConfigured = Boolean(botConfig?.tools?.settings?.gerar_cobranca_pix?.key || process.env.PIX_KEY);
-              if (ipEnabled) {
-                sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
-                store.markDirty();
-                rawReply = `Para gerar o link de pagamento InfinitePay agora, ${owner}, me diga o *valor* (ex: *150*) e a *descrição*.`;
-              } else {
-                if (pixConfigured) {
-                  sSelf.pendingPixRequest = { requestedAt: new Date(now()).toISOString() };
-                  store.markDirty();
-                  rawReply = `Para gerar a cobrança Pix agora, ${owner}, me diga o *valor* (ex: *Pix de 150*) e a *descrição*, ou me avise se deseja gerar com valor livre.`;
-                } else {
-                  rawReply = `${owner}, a *Chave Pix* ainda não está configurada. Preencha em *Ferramentas & Busca Web → gerar_cobranca_pix → Configurações da ferramenta* e publique para eu gerar QR Code, Copia e Cola e link automaticamente.`;
-                }
-              }
-            } else if (/\b(?:cep|cnpj|feriado)\b/i.test(cleanCommand)) {
-              rawReply = `Pode me passar o *CEP*, *CNPJ* ou a *data/ano* que você quer consultar, ${owner}?`;
-            } else if (/\b(?:planilha|sheets|estoque|tabela)\b/i.test(cleanCommand)) {
-              rawReply = `O que você quer consultar ou buscar na planilha do Google Sheets, ${owner}?`;
-            } else if (/\b(?:drive|cat[aá]logo|contrato|arquivo)\b/i.test(cleanCommand)) {
-              rawReply = `Qual arquivo ou catálogo do Google Drive você quer que eu busque ou envie, ${owner}?`;
-            } else {
-              rawReply = `${owner}, não ficou claro o que você precisa com essa mensagem. Pode me dar um pouco mais de contexto do que gostaria que eu fizesse?`;
+            // Se o modelo não produziu uma resposta, não caia em um menu de frases
+            // baseado em palavras-chave. Fazemos uma última passagem conversacional,
+            // sem ferramentas, para responder ao sentido da mensagem atual.
+            const naturalFallback = await ai?.askAI?.({
+              system: [
+                sys,
+                '',
+                '[FALLBACK_CONVERSACIONAL]',
+                'Responda ao responsável como uma assistente de IA natural e competente.',
+                'Não transforme a resposta em um menu de comandos.',
+                'Não diga que não entendeu apenas porque não houve tool_call.',
+                'Se a mensagem for conversa casual, converse normalmente.',
+                'Se houver uma intenção de ação mas faltarem dados, explique exatamente o que falta em uma pergunta curta.',
+                'Não invente execução, dados ou resultados. Não chame ferramentas nesta etapa.',
+                '[/FALLBACK_CONVERSACIONAL]'
+              ].join('\\n'),
+              history: recentHistory,
+              userText: cleanCommand,
+              botConfig,
+              isOwner: true,
+              autoRouting: false,
+              disableToolCalling: true,
+              deadline: aiDeadline
+            }).catch(() => null);
+            rawReply = String(naturalFallback?.reply || naturalFallback?.text || '').trim();
+
+            if (!rawReply) {
+              rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
             }
           }
         }

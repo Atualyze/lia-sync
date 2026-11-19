@@ -1471,7 +1471,7 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
     origin: 'owner'
   });
   assert.match(first, /o que aconteceu/i);
-  assert.equal(store.get('owner_self').pendingCopilotTask?.type, 'general');
+  assert.equal(store.get('owner_self').pendingCopilotTask, undefined, 'conversa genérica não deve virar tarefa persistente');
 
   const second = await flow.process({
     phone: 'owner_self',
@@ -1481,7 +1481,7 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
   assert.match(second, /atraso na entrega/i);
   assert.ok(receivedHistory.some(item => /situação que aconteceu com um cliente/i.test(item.content)));
   assert.ok(receivedHistory.some(item => /o que aconteceu/i.test(item.content)));
-  assert.match(receivedSystem, /CONTEXTO_CONTINUIDADE_ATIVA/);
-  assert.match(receivedSystem, /Me ajuda a entender uma situação que aconteceu com um cliente/);
-  assert.equal(store.get('owner_self').pendingCopilotTask, null, 'uma resposta concluída pode encerrar o contexto pendente');
+  assert.doesNotMatch(receivedSystem, /CONTEXTO_CONTINUIDADE_ATIVA/);
+  assert.match(receivedHistory.map(item => item.content || '').join('\\n'), /Me ajuda a entender uma situação que aconteceu com um cliente/);
+  assert.equal(store.get('owner_self').pendingCopilotTask, undefined, 'uma resposta concluída pode encerrar o contexto pendente');
 });
