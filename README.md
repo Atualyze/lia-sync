@@ -178,6 +178,17 @@ POST   /api/admin/config/rollback
 
 A configuração é persistida no Supabase em `bot_config_state` e `bot_config_revisions`. O backend mantém `data/bot-config.json` como cópia de fallback/rollback local; ele não é usado como fonte primária quando o runtime Supabase está ativo.
 
+## Automanutenção da Lia
+
+A Lia possui ferramentas internas protegidas para manutenção do próprio sistema:
+
+- `gerenciar_configuracao`: consulta a configuração e altera primeiro o rascunho; publicação exige confirmação explícita.
+- `gerenciar_codigo`: lê arquivos permitidos e pode criar um Pull Request de correção em branch separada; não faz merge nem deploy.
+- Segredos, tokens, senhas, `.env`, `package.json`, arquivos de dados e outros caminhos sensíveis são bloqueados.
+- O fluxo de código depende de `GITHUB_TOKEN` disponível somente no runtime do bot. O token deve ter permissão de escrita no conteúdo do repositório; alterações em workflows também exigem permissão de Workflows. O endpoint de conteúdo do GitHub exige permissões de escrita adequadas. citeturn556493search0turn556493search3
+
+A intenção é: **diagnosticar → corrigir → abrir PR → CI validar → humano decidir merge/deploy**. A Lia não recebe autorização implícita para publicar código em produção.
+
 ## Segurança e dados
 
 Toda resposta passa por `filterReply`. Preços só são aceitos quando vieram literalmente dos planos ativos do CRM. Sessões reais usam `<telefone>` e simulações `sim:<telefone>`. Para um JID `@lid`, o bot usa um número alternativo apenas quando a Evolution o fornece; caso contrário, preserva o JID completo para envio, sem inventar número. Conversas e mensagens vão para `contacts`, `conversations` e `conversation_messages`; `ai_calls` recebe telemetria sem prompts, respostas ou telefones. O backend mantém dual-write local por segurança e cai automaticamente para os JSON se o Supabase ficar indisponível. Para ativar, configure `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, mantendo a última chave somente no ambiente do servidor. `SUPABASE_RUNTIME_ENABLED=false` desliga a migração sem remover o fallback. O arquivo de sessões é retido por 30 dias por padrão e grava atomicamente. Para o volume Docker, use `chown 1000:1000 data`.
