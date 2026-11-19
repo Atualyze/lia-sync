@@ -1488,10 +1488,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           telemetry
         });
         const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nQuando precisar consultar dados, histórico, CRM, bases, planilhas ou executar qualquer ação, emita a chamada em "tool_calls" imediatamente. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
+        const continuityContext = activeTask
+          ? '\n\n[CONTEXTO_CONTINUIDADE_ATIVA]\nExiste uma solicitação ainda em andamento. A mensagem atual pode ser uma resposta curta, uma correção, um complemento por áudio ou uma mudança de rumo. Use o pedido original e a última pergunta abaixo para compreender o sentido, sem exigir palavras-chave ou frases padronizadas. Se a mensagem não esclarecer o próximo passo, explique o que falta e faça uma única pergunta objetiva. Não reutilize dados antigos quando o usuário mudar o assunto. A lista de ferramentas é apenas contexto histórico e nunca autoriza uma execução por si só.\n' + JSON.stringify({ type: activeTask.type, originalRequest: activeTask.originCommand || '', lastClarification: activeTask.lastQuestion || '', allowedTools: activeTask.allowedTools || [] }) + '\n[/CONTEXTO_CONTINUIDADE_ATIVA]'
+          : '';
         const referencesPreviousDocument = /\b(?:anexo|documento\s+que\s+(?:enviei|mandei)|arquivo\s+que\s+(?:enviei|mandei)|documento\s+anterior|arquivo\s+anterior|(?:esse|desse|do)\s+(?:documento|arquivo)|resuma\s+(?:o\s+)?(?:anexo|documento))\b/i.test(cleanCommand);
         const sys = (sSelf.lastAnalyzedDocument && referencesPreviousDocument
           ? `${baseSys}\n\n[ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]\nO usuário enviou anteriormente o arquivo "${sSelf.lastAnalyzedDocument.fileName || 'anexo'}" nesta sessão, cujo conteúdo já foi extraído:\n${JSON.stringify(sSelf.lastAnalyzedDocument)}\nUse esses dados sempre que o usuário pedir para ler, resumir, responder dúvidas ou usar informações do documento/anexo.\n[/ULTIMO_DOCUMENTO_ANALISADO_NA_SESSAO]`
-          : baseSys) + copilotToolRule;
+          : baseSys) + continuityContext + copilotToolRule;
 
         const result = await ai?.askAI?.({
           system: sys,
