@@ -321,7 +321,7 @@ function scoreKbRelevance(kb, queryTokens) {
 }
 
 function selectRelevantParagraphs(section) {
-  const paragraphs = String(section.body || '').split(/\n\s*\n/).map((value, index) => ({
+  const paragraphs = String(section.body || '').split(/\n\s*\n|\n(?=(?:\*|\d+\.)\s+\*\*)/).map((value, index) => ({
     value: value.trim(),
     index
   })).filter(item => item.value);
