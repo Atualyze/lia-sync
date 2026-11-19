@@ -463,7 +463,26 @@ export async function handleClientMessage({
           ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
           : {})
       };
-      const systemPrompt = buildSystemPrompt({ session: promptSession, faq: items, plans: getPlansForPrompt(), now: new Date(now()), botConfig, isOwner: false });
+      const memoryQuery = activeContext.history.slice(-6)
+        .map(entry => \`\${entry.role}: \${entry.content || ''}\`)
+        .concat([clean])
+        .join('\n')
+        .slice(-5000);
+      const promptMemories = await memoryStore.retrieveSemantic({
+        scopeKey: clientMemScope,
+        query: memoryQuery,
+        limit: 6,
+        timeoutMs: 1200
+      });
+      const systemPrompt = buildSystemPrompt({
+        session: promptSession,
+        faq: items,
+        plans: getPlansForPrompt(),
+        now: new Date(now()),
+        botConfig,
+        isOwner: false,
+        memoryItems: promptMemories
+      });
       const prevUserTurns = activeContext.history.slice(0, -1).filter(m => m.role === 'user');
       const lastPrevUser = prevUserTurns[prevUserTurns.length - 1];
       const normCurrent = normalize(clean);
