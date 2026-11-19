@@ -73,3 +73,36 @@ test('não considera sugestão do próprio modelo como autorização automática
   });
   assert.equal(review.decision, 'deny');
 });
+
+
+test('classifica pergunta de esclarecimento como conversa, não como resposta de tarefa', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"clarification","confidence":0.98,"reason":"pergunta sobre a resposta"}' }) },
+    currentMessage: 'O que você não entendeu exatamente?',
+    activeTask: { type: 'payment', originCommand: 'Gerar cobrança Pix', lastQuestion: 'Me informe o valor.' },
+    recentContext: [{ role: 'assistant', content: 'Ainda não entendi o que você quer fazer.' }]
+  });
+  assert.equal(review.intent, 'clarification');
+});
+
+test('classifica resposta curta como continuação quando responde à última pergunta', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: '{"intent":"continue","confidence":0.96,"reason":"valor solicitado"}' }) },
+    currentMessage: '10',
+    activeTask: { type: 'payment', originCommand: 'Gerar cobrança Pix', lastQuestion: 'Qual valor devo cobrar?' },
+    recentContext: [{ role: 'assistant', content: 'Qual valor devo cobrar?' }]
+  });
+  assert.equal(review.intent, 'continue');
+});
+
+test('classificação falha de forma segura quando o avaliador não responde', async () => {
+  const { classifyCopilotTurn } = await import('./copilot-continuity.mjs');
+  const review = await classifyCopilotTurn({
+    ai: { askAI: async () => ({ reply: 'não sei' }) },
+    currentMessage: '10',
+    activeTask: { type: 'payment', originCommand: 'Gerar cobrança Pix' }
+  });
+  assert.equal(review.intent, 'clarification');
+});
