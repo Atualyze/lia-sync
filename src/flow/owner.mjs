@@ -1676,7 +1676,6 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               }
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
-              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
               const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
               // A mensagem do turno atual precisa indicar a ação, ou a classificação
               // contextual precisa ter reconhecido uma continuação legítima da tarefa.
