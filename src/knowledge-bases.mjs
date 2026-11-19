@@ -312,12 +312,12 @@ function scoreKbRelevance(kb, queryTokens) {
   return { kb, score: docScore, scoredSections };
 }
 
-function buildRelevantSnippet(kb, scoredSections, maxChars = 3600) {
+function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections = 3) {
   if (!maxChars || maxChars <= 0) return kb.content;
   const header = `# ${kb.title}\n\n`;
   if (!scoredSections.length) return kb.content.slice(0, maxChars);
   let out = header;
-  for (const sec of scoredSections.slice(0, 3)) {
+  for (const sec of scoredSections.slice(0, Math.max(1, Math.min(12, Number(maxSections) || 3)))) {
     const block = `${sec.heading ? `## ${sec.heading}\n` : ''}${sec.body}\n\n`;
     if (out.length + block.length > maxChars && out.length > header.length) break;
     out += block;
@@ -364,7 +364,7 @@ export function findMatchingKnowledgeBaseSync(
 export function findMatchingKnowledgeBasesSync(
   queryText = '',
   dir = DEFAULT_KB_DIR,
-  { includeCopilotOnly = false, excludeFolders = null, onlyFolders = null, limit = 3, maxChars = 6500 } = {}
+  { includeCopilotOnly = false, excludeFolders = null, onlyFolders = null, limit = 3, maxChars = 6500, maxSections = 8 } = {}
 ) {
   const queryTokens = extractQueryTokens(queryText);
   if (!queryTokens.length) return [];
@@ -384,7 +384,7 @@ export function findMatchingKnowledgeBasesSync(
   return ranked.slice(0, Math.max(1, Math.min(8, Number(limit) || 3))).map(match => ({
     ...match.kb,
     content: maxChars > 0
-      ? buildRelevantSnippet(match.kb, match.scoredSections, maxChars)
+      ? buildRelevantSnippet(match.kb, match.scoredSections, maxChars, maxSections)
       : match.kb.content
   }));
 }
