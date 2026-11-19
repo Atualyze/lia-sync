@@ -67,7 +67,7 @@ function isCheckoutConfigured(botConfig = {}) {
 
 function directPixKeyReply({ key, owner }) {
   return key
-    ? `💳 *Chave Pix para pagamento:*\n\n• *Chave:* \`${key}\`\n• *Favorecido:* ${owner}`
+    ? `💳 *Chave Pix para pagamento:*\n\n• *Chave:* `${key}`\n• *Favorecido:* ${owner}`
     : 'No momento a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.';
 }
 
@@ -89,9 +89,9 @@ function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false
     `💳 *Aqui está seu Pix para pagamento:*`,
     `• *Valor:* ${valorFmt}`,
     `• *Favorecido:* ${toolRes.favorecido || owner}`,
-    (includeKey && pixKey) ? `• *Chave Pix:* \`${pixKey}\`` : '',
+    (includeKey && pixKey) ? `• *Chave Pix:* `${pixKey}`` : '',
     toolRes.paymentUrl ? `• *Link de pagamento:* ${toolRes.paymentUrl}` : '',
-    `• *Copia e Cola:*\n\`\`\`${toolRes.pixCopiaECola}\`\`\``
+    `• *Copia e Cola:*\n```${toolRes.pixCopiaECola}````
   ].filter(Boolean).join('\n\n');
 }
 
@@ -464,7 +464,7 @@ export async function handleClientMessage({
           : {})
       };
       const memoryQuery = activeContext.history.slice(-6)
-        .map(entry => \`\${entry.role}: \${entry.content || ''}\`)
+        .map(entry => `${entry.role}: ${entry.content || ''}`)
         .concat([clean])
         .join('\n')
         .slice(-5000);
@@ -809,13 +809,13 @@ export async function handleClientMessage({
                     s.tags = (Array.isArray(s.tags) ? s.tags : []).filter((t) => t !== 'checkout-pendente');
                     addSessionTags(['pagamento-confirmado']);
                     const valorFmt = toolRes.amount ? `R$ ${(Number(toolRes.amount) / 100).toFixed(2).replace('.', ',')}` : '';
-                    toolReplyOverride = `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido \`${toolRes.orderNsu}\`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`;
+                    toolReplyOverride = `✅ *Pagamento confirmado!*${valorFmt ? ` Recebemos *${valorFmt}*` : ''} (Pedido `${toolRes.orderNsu}`).${toolRes.receiptUrl ? `\n\nComprovante: ${toolRes.receiptUrl}` : ''}`;
                   } else if (toolRes.paid) {
                     // Pagamento localizado, mas não é o pedido deste contato: nunca confirmar por aqui.
                     toolReplyOverride = 'Não localizei esse pedido para este contato. Vou pedir para a equipe verificar com segurança e te retorno por aqui.';
                   } else {
                     toolReplyOverride = pending?.orderNsu
-                      ? `⏳ O pagamento do pedido \`${pending.orderNsu}\` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`
+                      ? `⏳ O pagamento do pedido `${pending.orderNsu}` ainda consta como pendente. Assim que for concluído, eu confirmo por aqui automaticamente!`
                       : '⏳ Ainda não encontrei um pagamento confirmado para este contato. Se você já pagou, me envie o comprovante que a equipe confere por aqui!';
                   }
                 } else if (toolRes?.success) {
@@ -858,7 +858,7 @@ export async function handleClientMessage({
                         includeKey: !pixFallback.valor || askedPixKeyOrFree
                       });
                     } else {
-                      toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${configuredPixKey}\`\n• *Favorecido:* ${owner}`;
+                      toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* `${configuredPixKey}`\n• *Favorecido:* ${owner}`;
                     }
                   } else {
                     toolReplyOverride = toolRes?.error === 'invalid_amount'
