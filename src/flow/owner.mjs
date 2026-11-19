@@ -258,6 +258,16 @@ export async function handleOwnerSession({
           sSelf.pendingPixRequest = null;
         }
 
+        if (!activeTask && sSelf.pendingPixRequest?.requestedAt) {
+          activeTask = {
+            type: 'payment',
+            createdAt: sSelf.pendingPixRequest.requestedAt,
+            originCommand: 'Solicitação de cobrança Pix',
+            lastQuestion: String(sSelf.pendingPixRequest.lastQuestion || ''),
+            allowedTools: ['gerar_cobranca_pix', 'checkout_infinitepay']
+          };
+        }
+
         const recordSelfTurn = (replyText, { preserveTask = false } = {}) => {
           let safeReply = String(replyText || '');
           const timestamp = new Date(now()).toISOString();
@@ -1559,7 +1569,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         // Fallback anti-alucinação ou quando dispatchIntent é de áudio/assunto e o modelo não preencheu tool_calls
-        if (toolCallsToRun.length === 0) {
+        if (toolCallsToRun.length === 0 && !suppressToolExecution) {
           const rawRep = result?.reply || '';
           const claimedSend = /(?:disparo realizado|mensagem enviada|disparada com sucesso|feito! disparo|enviei para|disparei para)/i.test(rawRep);
           const isAffirmative = /^(?:sim|manda|pode enviar|dispara|envia|confirmo|vai|faz isso|mande|pode mandar|ok|beleza)[,\s.!]/i.test(cleanCommand);
