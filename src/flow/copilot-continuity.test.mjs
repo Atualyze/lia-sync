@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCopilotToolReview, reviewCopilotToolCall, hasExplicitToolIntent } from './copilot-continuity.mjs';
+import { parseCopilotToolReview, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 
 test('review semântico reconhece continuação natural sem depender de palavra-chave', async () => {
   let captured = null;
