@@ -1433,3 +1433,50 @@ test('Copiloto explica uma pergunta sem descartar a tarefa que estava em andamen
   assert.equal(self.pendingPixRequest?.description, 'entrega');
   assert.equal(self.pendingPixRequest?.amount, null);
 });
+
+
+test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em linguagem livre', async () => {
+  const store = createMockStore();
+  let turn = 0;
+  let receivedHistory = [];
+  const flow = createFlow({
+    store,
+    isOwnerSender: phone => phone === 'owner_self',
+    ai: {
+      askAI: async ({ history }) => {
+        turn += 1;
+        if (turn === 1) {
+          return {
+            intent: 'chat',
+            reply: 'Claro. Me conta um pouco melhor o que aconteceu para eu entender o contexto.',
+            tool_calls: []
+          };
+        }
+        receivedHistory = history;
+        return {
+          intent: 'chat',
+          reply: 'Entendi. O atraso na entrega é o ponto principal; vou considerar isso daqui para frente.',
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  const first = await flow.process({
+    phone: 'owner_self',
+    text: 'Me ajuda a entender uma situação que aconteceu com um cliente.',
+    origin: 'owner'
+  });
+  assert.match(first, /o que aconteceu/i);
+  assert.equal(store.get('owner_self').pendingCopilotTask?.type, 'general');
+
+  const second = await flow.process({
+    phone: 'owner_self',
+    text: 'A entrega atrasou e ele está cobrando uma posição.',
+    origin: 'owner'
+  });
+  assert.match(second, /atraso na entrega/i);
+  assert.ok(receivedHistory.some(item => /situação que aconteceu com um cliente/i.test(item.content)));
+  assert.ok(receivedHistory.some(item => /o que aconteceu/i.test(item.content)));
+  assert.equal(store.get('owner_self').pendingCopilotTask, null, 'uma resposta concluída pode encerrar o contexto pendente');
+});
