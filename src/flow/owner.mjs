@@ -1263,7 +1263,7 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
               }
               return handlePendingOutboundDispatch();
             } else {
-              // Áudio externo e áudio para o próprio responsável compartilham o despacho transacional.
+              // Áudio externo usa o mesmo despacho transacional e a reserva única do restante do Copiloto.
               // A confirmação atual é reaproveitada; não solicitamos um segundo 'sim'.
               sSelf.pendingAudioConfirmation = pendingAudio;
               let preparedAudio;
@@ -1285,26 +1285,6 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
                 });
               } catch (err) {
                 return recordSelfTurn(filterReply('Não consegui preparar o áudio para envio: ' + err.message + '. A prévia continua pendente; nada foi enviado.', { isCopilot: true }).text);
-              }
-                try {
-                  preparedAudio = await executeToolCall('enviar_mensagem_contato', {
-                    recipient: pendingAudio.recipient,
-                    message: pendingAudio.message,
-                    asAudio: true
-                  }, {
-                    phone: OWNER_SELF_KEY,
-                    clientName: owner + ' (Copiloto)',
-                    store,
-                    reminderStore,
-                    whatsapp,
-                    ai,
-                    botConfig,
-                    session: sSelf,
-                    prepareOnly: true
-                  });
-                } catch (err) {
-                  return recordSelfTurn(filterReply('Não consegui preparar o áudio para envio: ' + err.message + '. A prévia continua pendente; nada foi enviado.', { isCopilot: true }).text);
-                }
               }
 
               if (!preparedAudio?.requiresConfirmation || !preparedAudio.phone) {
