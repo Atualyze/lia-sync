@@ -114,8 +114,8 @@ function buildConfirmationQuestion(classification, pending) {
         ? '**encerrar** o atendimento'
         : 'retomar o atendimento com resposta da **Lia** ao cliente';
     return interpretation
-      ? `Entendi que você quer ${action} sobre *${label}* ("${interpretation}"). Confirma? (sim/não)`
-      : `Entendi que você quer ${action} sobre *${label}*. Confirma? (sim/não)`;
+      ? `Entendi que você quer ${action} sobre *${label}* ("${interpretation}"). Confirma? Responda *sim* ou *não* — ou explique livremente o que deseja.`
+      : `Entendi que você quer ${action} sobre *${label}*. Confirma? Responda *sim* ou *não* — ou explique livremente o que deseja.`;
   }
   return interpretation
     ? `Não entendi totalmente ("${interpretation}") sobre *${label}*. Você quer manter no humano, encerrar o atendimento ou retomar com a Lia?`
@@ -166,13 +166,25 @@ export async function handlePendingReactivationReply({
       return await applyIntent(storedIntent, { store, sTarget, pending, sSelf, owner, now, ai, whatsapp, botConfig, stageOutboundDispatch });
     }
 
-    // "não" ou nova instrução: sai do estado de confirmação e re-classifica abaixo.
+    if (confirmedNo) {
+      pending.awaitingConfirmation = null;
+      sSelf.pendingReactivation = null;
+      store.markDirty?.();
+      return `Tudo bem. Não executei a ação sobre *${pending.contactLabel || pending.phone}* e encerrei essa confirmação.`;
+    }
+
+    // Nova instrução: sai do estado de confirmação e reclassifica abaixo.
     pending.awaitingConfirmation = null;
     store.markDirty?.();
   }
 
   let intent = null;
-  let classification = await classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget, now });
+  // Respostas binárias à pergunta padrão não precisam de nova chamada à IA.
+  // "sim" autoriza a Lia a continuar; "não" mantém o atendimento humano.
+  let classification = null;
+  if (CONFIRM_YES_RE.test(cmd)) intent = 'BOT_CONTINUE';
+  else if (CONFIRM_NO_RE.test(cmd)) intent = 'HUMAN';
+  else classification = await classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget, now });
 
   if (classification) {
     intent = classification.intent;

@@ -31,7 +31,7 @@ function createMockStore() {
   };
 }
 
-test('Prévia de disparo exige ID, aceita uma única confirmação e respeita cancelamento/expiração', async () => {
+test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/expiração', async () => {
   const createDispatchFlow = (store, sent, now) => createFlow({
     store,
     humanPhone: '5588921694598',
@@ -43,29 +43,18 @@ test('Prévia de disparo exige ID, aceita uma única confirmação e respeita ca
     phone: '5588921694598',
     text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
   });
-  const getId = preview => preview.match(/SIM ([A-F0-9]{8})/i)?.[1];
-
   const store = createMockStore();
   store.get('5585991099483').clientName = 'Lima';
   const sent = [];
   const flow = createDispatchFlow(store, sent, () => Date.now());
   const preview = await startDispatch(flow);
-  const id = getId(preview);
-  assert.ok(id);
+  assert.doesNotMatch(preview, /SIM [A-F0-9]{8}/i);
   assert.equal(sent.length, 0);
 
-  const missingId = await flow.process({ phone: '5588921694598', text: 'sim' });
-  assert.match(missingId, /código|SIM/i);
-  assert.equal(sent.length, 0);
-  const wrongId = id === '00000000' ? '11111111' : '00000000';
-  const mismatched = await flow.process({ phone: '5588921694598', text: `SIM ${wrongId}` });
-  assert.match(mismatched, /não corresponde/i);
-  assert.equal(sent.length, 0);
-
-  const confirmed = await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  const confirmed = await flow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(confirmed, /Envio confirmado e concluído/i);
   assert.equal(sent.length, 1);
-  const duplicate = await flow.process({ phone: '5588921694598', text: `SIM ${id}` });
+  const duplicate = await flow.process({ phone: '5588921694598', text: 'sim' });
   assert.equal(sent.length, 1, 'repetir o mesmo ID não repete o envio');
   assert.doesNotMatch(duplicate, /Há um disparo pendente/i, 'ID já consumido não deve reabrir a confirmação pendente');
 
@@ -74,8 +63,7 @@ test('Prévia de disparo exige ID, aceita uma única confirmação e respeita ca
   const cancelSent = [];
   const cancelFlow = createDispatchFlow(cancelStore, cancelSent, () => Date.now());
   const cancelPreview = await startDispatch(cancelFlow);
-  const cancelId = getId(cancelPreview);
-  const cancelled = await cancelFlow.process({ phone: '5588921694598', text: `NÃO ${cancelId}` });
+  const cancelled = await cancelFlow.process({ phone: '5588921694598', text: 'não' });
   assert.match(cancelled, /cancelado/i);
   assert.equal(cancelSent.length, 0);
   assert.ok(!cancelStore.get('owner_self').pendingOutboundDispatch);
@@ -86,9 +74,8 @@ test('Prévia de disparo exige ID, aceita uma única confirmação e respeita ca
   const expireSent = [];
   const expireFlow = createDispatchFlow(expireStore, expireSent, () => nowMs);
   const expirePreview = await startDispatch(expireFlow);
-  const expireId = getId(expirePreview);
   nowMs += 16 * 60 * 1000;
-  const expired = await expireFlow.process({ phone: '5588921694598', text: `SIM ${expireId}` });
+  const expired = await expireFlow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(expired, /expirou/i);
   assert.equal(expireSent.length, 0);
 });
@@ -131,7 +118,7 @@ test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o opera
       phone: '5588921694598',
       text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
     });
-    return { flow, preview, id: preview.match(/SIM ([A-F0-9]{8})/i)?.[1] };
+    return { flow, preview };
   };
 
   const persistenceStore = createMockStore();
@@ -139,7 +126,7 @@ test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o opera
   persistenceStore.flush = async () => { flushCalls += 1; if (flushCalls === 2) throw new Error('disk_down'); };
   const persistenceSent = [];
   const staged = await start(persistenceStore, persistenceSent);
-  const persistenceResult = await staged.flow.process({ phone: '5588921694598', text: `SIM ${staged.id}` });
+  const persistenceResult = await staged.flow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(persistenceResult, /Não consegui persistir a aprovação/i);
   assert.equal(persistenceSent.length, 0);
 
@@ -147,7 +134,7 @@ test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o opera
   claimStore.claimOutboundDispatch = async () => false;
   const claimSent = [];
   const claim = await start(claimStore, claimSent);
-  const claimResult = await claim.flow.process({ phone: '5588921694598', text: `SIM ${claim.id}` });
+  const claimResult = await claim.flow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(claimResult, /reservar este envio de forma única/i);
   assert.equal(claimSent.length, 0);
 
@@ -157,7 +144,6 @@ test('Falha de persistência ou claim de ID bloqueia o envio mesmo após o opera
   remoteFailureStore.remoteError = 'remote_write_failed';
   remoteFailureStore.flush = async () => {};
   const remoteFailure = await start(remoteFailureStore, []);
-  assert.equal(remoteFailure.id, undefined, 'não deve publicar ID de prévia não persistida no Supabase');
   assert.doesNotMatch(remoteFailure.preview, /SIM [A-F0-9]{8}/i);
 });
 
@@ -176,13 +162,12 @@ test('Cancelamento mantém a prévia bloqueada se a reserva externa não puder s
     phone: '5588921694598',
     text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
   });
-  const id = preview.match(/SIM ([A-F0-9]{8})/i)?.[1];
   const pending = store.get('5588921694598').pendingOutboundDispatch;
   assert.ok(pending, `esperava prévia; retorno: ${preview}`);
   pending.source = 'maintenance-follow-up';
   pending.claimToken = 'follow-up-claim-token';
 
-  const result = await flow.process({ phone: '5588921694598', text: `NÃO ${id}` });
+  const result = await flow.process({ phone: '5588921694598', text: 'não' });
   assert.match(result, /não consegui liberar a reserva externa/i);
   assert.equal(store.get('5588921694598').pendingOutboundDispatch.status, 'uncertain');
   assert.equal(sent.length, 0);
@@ -695,9 +680,7 @@ test('Copiloto: gerar PDF pergunta as informações e exige confirmação antes 
   assert.equal(sentDocs.length, 0, 'O PDF não deve ser enviado antes da confirmação');
   assert.match(reply, /Prévia do disparo/i);
   assert.match(reply, /\.pdf/i);
-  const id = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  assert.ok(id);
-  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentDocs.length, 1);
   assert.equal(sentDocs[0].phone, '5588921694598');
   assert.match(sentDocs[0].doc.dataUrl, /^data:application\/pdf;base64,/);
@@ -725,15 +708,13 @@ test('Copiloto: orçamento sem detalhes pergunta; com detalhes gera direto', asy
   const content = await flow.process({ phone: 'owner_self', text: 'Implantação de chatbot com IA, 2 atendentes, prazo de 30 dias, valor R$ 4.500,00' });
   assert.equal(sentDocs.length, 0, 'Resposta com os detalhes prepara o PDF, mas não o envia');
   assert.match(content, /Prévia do disparo/i);
-  let id = content.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentDocs.length, 1);
 
   const direct = await flow.process({ phone: 'owner_self', text: 'gerar orçamento: manutenção mensal do sistema, 10 horas, R$ 2.000,00, prazo 5 dias' });
   assert.equal(sentDocs.length, 1, 'Pedido completo também aguarda confirmação');
   assert.match(direct, /Prévia do disparo/i);
-  id = direct.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  await flow.process({ phone: 'owner_self', text: `SIM ${id}` });
+  await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentDocs.length, 2);
 });
 
@@ -902,9 +883,8 @@ test('Copiloto do Tauan: áudio da resposta só é enviado após confirmação c
   assert.match(speechTextPassed, /para exportar o relatório em HTML/i);
   assert.equal(sentAudios.length, 0, 'não deve enviar antes da confirmação');
   assert.match(reply, /Prévia do disparo/i);
-  const dispatchId = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  assert.ok(dispatchId, 'a prévia deve exibir um ID de confirmação');
-  await flow.process({ phone: 'owner_self', text: `SIM ${dispatchId}` });
+  assert.doesNotMatch(reply, /SIM [A-F0-9]{8}/i, 'a prévia não deve exibir código de confirmação');
+  await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentAudios.length, 1, 'o áudio é enviado após o ID correto');
   assert.equal(sentAudios[0].phone, '5588921694598');
   assert.equal(sentAudios[0].base64, 'AUDIO_BASE64_SIMULADO');
@@ -965,9 +945,7 @@ test('Humanização e Eliminação de Clichês: Lia humaniza perguntas, avisos e
 
   assert.match(sendRes, /Prévia do disparo/i);
   assert.equal(sentTexts.length, 0);
-  const dispatchId = sendRes.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  assert.ok(dispatchId);
-  const confirmed = await flowText.process({ phone: '5588921694598', text: `SIM ${dispatchId}` });
+  const confirmed = await flowText.process({ phone: '5588921694598', text: 'sim' });
   assert.match(confirmed, /Envio confirmado e concluído/i);
   assert.equal(sentTexts.length, 1);
   assert.equal(sentTexts[0].phone, '5585991099483');
@@ -1010,9 +988,7 @@ test('Copiloto: pedido de áudio no chat interno gera prévia e envia só após 
 
   const sSelf = store.get('owner_self');
   assert.equal(sSelf.lastAudioBase64, 'AUDIO_COPILOTO_BASE64');
-  const dispatchId = reply.match(/SIM ([A-F0-9]{8})/i)?.[1];
-  assert.ok(dispatchId);
-  const confirmed = await flow.process({ phone: 'owner_self', text: `SIM ${dispatchId}` });
+  const confirmed = await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentAudios.length, 1);
   assert.equal(sentAudios[0].phone, '5588921694598');
   assert.match(confirmed, /Envio confirmado e concluído/i);

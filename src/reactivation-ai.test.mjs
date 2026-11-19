@@ -127,3 +127,41 @@ test('IA indisponível e sem casamento de regex => pergunta de confirmação e p
   assert.notEqual(self.pendingReactivation, null);
   assert.equal(client.human, false);
 });
+
+test('confirmação direta aceita sim sem código e não chama a IA classificadora', async () => {
+  const client = { phone: '5511999991005', clientName: 'Lia', human: false, history: [{ role: 'user', text: 'Ainda aguardando?' }] };
+  const self = { phone: OWNER_SELF_KEY, history: [] };
+  const store = makeStore({ [OWNER_SELF_KEY]: self, '5511999991005': client });
+  notifyReactivationToInternalChat({ store, session: client, phone: client.phone });
+  const sent = [];
+  let classifyCalls = 0;
+  const ai = { askAI: async args => {
+    if (String(args.system || '').includes('classifica a intenção')) classifyCalls += 1;
+    return { text: 'Oi! Posso continuar.' };
+  } };
+  const reply = await handlePendingReactivationReply({
+    ...BASE, store, ai, sSelf: self, cleanCommand: 'sim, pode continuar',
+    whatsapp: { sendText: async (jid, text) => sent.push({ jid, text }) },
+    stageOutboundDispatch: async prepared => `PREVIEW ${prepared.message}`
+  });
+  assert.match(reply, /PREVIEW/);
+  assert.equal(classifyCalls, 0);
+  assert.equal(sent.length, 0);
+  assert.equal(self.pendingReactivation, null);
+});
+
+test('negação direta aceita não sem código e encerra a confirmação pendente', async () => {
+  const client = { phone: '5511999991006', clientName: 'Bia', human: false, history: [{ role: 'user', text: 'Oi' }] };
+  const self = { phone: OWNER_SELF_KEY, history: [] };
+  const store = makeStore({ [OWNER_SELF_KEY]: self, '5511999991006': client });
+  notifyReactivationToInternalChat({ store, session: client, phone: client.phone });
+  const first = await handlePendingReactivationReply({
+    ...BASE, store, ai: { askAI: async () => null }, sSelf: self, cleanCommand: 'talvez'
+  });
+  assert.match(first, /Não entendi|Confirma/i);
+  const second = await handlePendingReactivationReply({
+    ...BASE, store, ai: { askAI: async () => null }, sSelf: self, cleanCommand: 'não, vou responder pessoalmente'
+  });
+  assert.match(second, /Não executei/i);
+  assert.equal(self.pendingReactivation, null);
+});

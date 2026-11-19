@@ -373,11 +373,11 @@ export async function handleOwnerSession({
           if (pending.status !== 'pending') {
             return recordSelfTurn('Este disparo já está em processamento ou teve resultado incerto. Não vou repeti-lo automaticamente; confira a conversa do destinatário antes de criar outro envio.');
           }
-          if ((approveMatch || cancelMatch) && suppliedId !== id) {
-            return recordSelfTurn(`Esse código não corresponde à prévia pendente. Use *SIM ${id}* para enviar ou *NÃO ${id}* para cancelar.`);
+          if ((approveMatch || cancelMatch) && suppliedId && suppliedId !== id) {
+            return recordSelfTurn('Esse código não corresponde à prévia pendente. Você pode responder apenas *sim* para enviar ou *não* para cancelar.');
           }
           if (!approveMatch && !cancelMatch) {
-            return recordSelfTurn(`Há um disparo pendente para *${pending.recipient}*. Primeiro confirme com *SIM ${id}* ou cancele com *NÃO ${id}*. Não enviei nada ainda.`);
+            return recordSelfTurn(`Há um disparo pendente para *${pending.recipient}*. Confirme com *sim* para enviar ou *não* para cancelar. Não enviei nada ainda.`);
           }
           if (cancelMatch) {
             const released = await releasePendingOutboundEffects(pending);

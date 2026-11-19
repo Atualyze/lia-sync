@@ -35,6 +35,6 @@ export function createOutboundDispatchPreview(session, prepared, {
     ? `📎 *Anexo:* ${pending.document.fileName || 'arquivo'}${pending.document.caption ? `\n*Legenda:* ${pending.document.caption}` : ''}`
     : pending.asAudio ? '🎙️ *Roteiro do áudio:*' : '💬 *Mensagem:*';
   const body = pending.document ? format : `${format}\n> "${pending.message}"`;
-  const preview = `📨 *Prévia do disparo para ${pending.recipient} (${pending.phone}):*\n\n${body}\n\nConfirma o envio exatamente assim? Responda *SIM ${pending.id}* para enviar ou *NÃO ${pending.id}* para cancelar. A prévia expira em 15 minutos.`;
+  const preview = `📨 *Prévia do disparo para ${pending.recipient} (${pending.phone}):*\n\n${body}\n\nConfirma o envio exatamente assim? Responda *sim* para enviar ou *não* para cancelar. Você também pode escrever livremente, como *pode enviar* ou *cancela*. A prévia expira em 15 minutos.`;
   return { pending, preview };
 }
