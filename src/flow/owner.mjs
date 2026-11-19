@@ -1552,7 +1552,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           telemetry,
           memoryItems: ownerMemoryItems
         });
-        const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nQuando precisar consultar dados, histórico, CRM, bases, planilhas ou executar qualquer ação, emita a chamada em "tool_calls" imediatamente. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
+        const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nPrimeiro identifique a intenção atual, confira o contexto, os dados e a autorização. Só então, quando necessário e seguro, emita a chamada em "tool_calls". Aguarde o resultado real antes de afirmar que concluiu. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
         const continuityContext = activeTask
           ? '\n\n[CONTEXTO_CONTINUIDADE_ATIVA]\nExiste uma solicitação ainda em andamento. A mensagem atual pode ser uma resposta curta, uma correção, um complemento por áudio ou uma mudança de rumo. Use o pedido original e a última pergunta abaixo para compreender o sentido, sem exigir palavras-chave ou frases padronizadas. Se a mensagem não esclarecer o próximo passo, explique o que falta e faça uma única pergunta objetiva. Não reutilize dados antigos quando o usuário mudar o assunto. A lista de ferramentas é apenas contexto histórico e nunca autoriza uma execução por si só.\n' + JSON.stringify({ type: activeTask.type, originalRequest: activeTask.originCommand || '', lastClarification: activeTask.lastQuestion || '', allowedTools: activeTask.allowedTools || [] }) + '\n[/CONTEXTO_CONTINUIDADE_ATIVA]'
           : '';
