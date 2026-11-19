@@ -1490,12 +1490,19 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           || /^(?:r\$\s*)?\d{1,3}(?:[.,]\d{1,2})?$/i.test(cleanCommand.trim())
           || /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand)
         ) && /(?:valor|quanto|pix|cobran[cç]a|pagamento|gerar)/i.test(lastAssistantContext);
+        const explicitDispatchContinuation = activeTask?.type === 'dispatch'
+          && Boolean(sSelf.pendingRecipient)
+          && cleanCommand.length > 5
+          && !/\b(?:nao entendi|não entendi|pode explicar|como assim|o que quis dizer|o que vc|o que você)\b/i.test(cleanCommand);
         const explicitTaskContinuation = Boolean(activeTask && (
           inferCopilotTaskTypes(cleanCommand).includes(activeTask.type)
           || isAffirmativeTaskAnswer
           || hasPaymentAmount
+          || explicitDispatchContinuation
         ));
-        const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && !explicitTaskContinuation);
+        const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general'
+          && String(activeTask.lastQuestion || '').trim()
+          && !explicitTaskContinuation);
         if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
             ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
