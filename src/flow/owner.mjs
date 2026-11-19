@@ -950,7 +950,7 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
 
           // Já veio conteúdo no pedido? (texto longo com números/valores além do comando)
           const bodyText = strippedCmd
-            .replace(new RegExp(`^.*?(?:gerar|criar|emitir|fazer|montar|preparar)\\s+(?:um\\s+|uma\\s+)?(?:${palavra})\\b`, 'i'), '')
+            .replace(new RegExp(`^.*?(?:gerar|criar|emitir|fazer|montar|preparar)\\s+(?:um\\s+|uma\\s+)?(?:${palavra})\b`, 'i'), '')
             .replace(/^\s*(?:em\s+pdf|agora|por favor|pra mim|para mim)\s*/i, '')
             .trim();
           const temConteudo = bodyText.length >= 40 && (/\d|R\$/i.test(bodyText));
@@ -1496,11 +1496,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && Boolean(sSelf.pendingRecipient)
           && cleanCommand.length > 5
           && !isCopilotMetaQuestion
-          && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)
+          && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
           && !hasExplicitToolIntent(cleanCommand, 'enviar_mensagem_contato');
         const isShortPaymentAnswer = activeTask?.type === 'payment'
           && hasPaymentAmount
-          && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)
+          && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
@@ -1767,7 +1767,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                       for (const name of knownNames) {
                         if (!name || name.length < 2 || IGNORED_TOOL_RECS.has(name.toLowerCase()) || /^(?:ptbr|pt-br|pt_br|br)$/i.test(name)) continue;
                         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        if (new RegExp(`\\b${escaped}\\b`, 'i').test(histCombined)) {
+                        if (new RegExp(`\b${escaped}\b`, 'i').test(histCombined)) {
                           tc.args.recipient = name;
                           break;
                         }
