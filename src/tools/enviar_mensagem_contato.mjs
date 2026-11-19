@@ -197,6 +197,7 @@ export const toolEnviarMensagemContato = {
     // Dispara via whatsapp.mjs (Evolution API)
     try {
       let isVoice = asAudio === true;
+      let transcriptionSent = null;
       if (isVoice) {
         const synthFn = context.ai?.synthesizeVoice;
         const sendAudioFn = context.whatsapp?.sendWhatsAppAudio || sendWhatsAppAudio;
@@ -223,7 +224,6 @@ export const toolEnviarMensagemContato = {
         }
 
         const sendTranscription = context.botConfig?.voice?.sendTranscriptionWithAudio !== false && context.botConfig?.voice?.deliveryMode !== 'audio_only';
-        let transcriptionSent = null;
         if (sendTranscription) {
           const sendFn = context.whatsapp?.sendText || context.whatsapp?.sendWhatsAppText || sendText;
           try {
