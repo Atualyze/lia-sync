@@ -18,11 +18,35 @@ function normalizedClientText(value = '') {
 }
 
 function paymentChoice(value = '') {
-  const text = normalizedClientText(value);
-  if (/(?:so|só|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+[eé]\s+a\s+chave/.test(text)) return 'key';
-  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|c[oó]digo|br code)/.test(text)) return 'pix';
-  if (/(?:checkout|link|cartao|cartão|infinitepay)/.test(text)) return 'checkout';
+  let text = normalizedClientText(value);
+  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) return null;
+
+  const negativeAt = text.search(/\b(?:nao|nunca|jamais)\b/);
+  if (negativeAt >= 0) {
+    const markers = [' mas ', ' porem ', ' prefiro ', ' quero ', ' escolho ', ' vou de '];
+    const marker = markers
+      .map(value => ({ value, index: text.lastIndexOf(value) }))
+      .filter(item => item.index > negativeAt)
+      .sort((a, b) => b.index - a.index)[0];
+    if (!marker) return null;
+    text = text.slice(marker.index + marker.value.length).trim();
+  }
+
+  if (/(?:so|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+(?:e\s+)?a\s+chave/.test(text)) return 'key';
+  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|br code)/.test(text)) return 'pix';
+  if (/(?:checkout|link|cartao|infinitepay)/.test(text)) return 'checkout';
   return null;
+}
+
+function isPixActionRequest(value = '') {
+  const text = normalizedClientText(value);
+  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) {
+    return false;
+  }
+  const action = /\b(?:quero|preciso|me passa|passa|envia|enviar|manda|mandar|gera|gerar|cria|criar|faz|fazer|cobrar|cobranca|pagar|pagamento|informa|informar)\b/;
+  const paymentTerm = /\b(?:pix|chave|copia|qr code|checkout|infinitepay)\b/;
+  return (action.test(text) && paymentTerm.test(text))
+    || /\b(?:chave pix|copia e cola|qr code|qrcode|checkout infinitepay)\b/.test(text);
 }
 
 function amountFromText(value = '') {
@@ -678,7 +702,7 @@ export async function handleClientMessage({
 
       // Fallback determinístico: seleções curtas, como "só a chave" ou
       // "copia e cola", também funcionam sem depender do contexto anterior.
-      if (isClient && toolCalls.length === 0 && (/\bpix\b/i.test(clean) || currentPaymentChoice) && !pendingPayment) {
+      if (isClient && toolCalls.length === 0 && isPixActionRequest(clean) && !pendingPayment) {
         const choice = paymentChoice(clean);
         const amount = amountFromText(clean);
         if (choice === 'key') {
