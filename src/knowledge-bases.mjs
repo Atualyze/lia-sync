@@ -314,13 +314,24 @@ function scoreKbRelevance(kb, queryTokens) {
 
 function buildRelevantSnippet(kb, scoredSections, maxChars = 3600, maxSections = 3) {
   if (!maxChars || maxChars <= 0) return kb.content;
-  const header = `# ${kb.title}\n\n`;
+  const header = \`# \${kb.title}\n\n\`;
   if (!scoredSections.length) return kb.content.slice(0, maxChars);
+  const selected = scoredSections.slice(0, Math.max(1, Math.min(80, Number(maxSections) || 3)));
   let out = header;
-  for (const sec of scoredSections.slice(0, Math.max(1, Math.min(12, Number(maxSections) || 3)))) {
-    const block = `${sec.heading ? `## ${sec.heading}\n` : ''}${sec.body}\n\n`;
-    if (out.length + block.length > maxChars && out.length > header.length) break;
-    out += block;
+
+  // Reserve space for later matches so one long chapter cannot hide
+  // smaller but equally relevant sections from the same manual.
+  for (let index = 0; index < selected.length && out.length < maxChars; index += 1) {
+    const sec = selected[index];
+    const heading = sec.heading ? \`## \${sec.heading}\n\` : '';
+    const remainingSections = selected.length - index;
+    const remainingChars = Math.max(0, maxChars - out.length);
+    const sectionBudget = remainingSections > 1
+      ? Math.max(240, Math.floor(remainingChars / remainingSections))
+      : remainingChars;
+    const bodyBudget = Math.max(0, sectionBudget - heading.length);
+    const body = String(sec.body || '').slice(0, bodyBudget);
+    out += \`\${heading}\${body}\n\n\`;
   }
   return out.slice(0, maxChars).trim();
 }
