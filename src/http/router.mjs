@@ -5,7 +5,7 @@ import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath } from
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
-import { renderPixPaymentPage } from './pix-page.mjs';
+import { renderPaymentLandingPage, renderPixPaymentPage } from './pix-page.mjs';
 import { handleInfinitePayWebhookRoute } from './infinitepay-webhook.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
 import { handleProspectingRoutes } from './prospecting-routes.mjs';
@@ -78,6 +78,7 @@ export function requiredRole(pathname, method) {
 export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
+    const requestHost = String(req.headers?.host || '').split(':')[0].toLowerCase();
     const requestOrigin = req.headers.origin;
     if (requestOrigin && config.dashboardOrigin && requestOrigin === config.dashboardOrigin && typeof res.setHeader === 'function') {
       res.setHeader('access-control-allow-origin', config.dashboardOrigin);
@@ -113,6 +114,9 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     if (req.method === 'GET' && u.pathname === '/pix') {
       return renderPixPaymentPage(res, u);
+    }
+    if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
+      return renderPaymentLandingPage(res);
     }
     const infinitePayResult = await handleInfinitePayWebhookRoute({ req, res, u, store, getHumanPhone });
     if (infinitePayResult !== NOT_HANDLED) return infinitePayResult;

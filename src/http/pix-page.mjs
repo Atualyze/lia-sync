@@ -144,3 +144,42 @@ export async function renderPixPaymentPage(res, urlObj) {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   return res.end(html);
 }
+
+export function renderPaymentLandingPage(res) {
+  const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#07131a" />
+  <meta name="description" content="Atualyze Pay: pagamentos simples, claros e seguros." />
+  <title>Atualyze Pay · Pagamentos</title>
+  <style>
+    :root { color-scheme: dark; --ink:#effaff; --muted:#a9c0c8; --accent:#62e6c2; --line:rgba(182,232,235,.16); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100dvh; display:grid; place-items:center; color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; background:radial-gradient(circle at 20% 0%,#12475a 0,#07131a 48%,#050b10 100%); }
+    main { width:min(680px,100%); padding:clamp(28px,7vw,72px) clamp(20px,6vw,48px); text-align:center; }
+    .mark { display:grid; place-items:center; width:58px; height:58px; margin:0 auto 22px; border-radius:18px; color:#06211e; background:linear-gradient(135deg,var(--accent),#bbffe8); font-size:30px; font-weight:900; box-shadow:0 16px 40px rgba(98,230,194,.18); }
+    .eyebrow { color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:16px 0 14px; font-size:clamp(36px,8vw,64px); line-height:1; letter-spacing:-.055em; }
+    p { max-width:520px; margin:0 auto; color:var(--muted); font-size:clamp(16px,2.5vw,19px); line-height:1.55; }
+    .card { margin:30px auto 0; padding:20px; max-width:480px; border:1px solid var(--line); border-radius:20px; background:rgba(11,31,41,.78); }
+    .card strong { display:block; margin-bottom:7px; }
+    .card span { color:var(--muted); font-size:14px; line-height:1.5; }
+    .hint { margin-top:24px; color:#78919a; font-size:12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">A</div>
+    <div class="eyebrow">Atualyze Pay</div>
+    <h1>Pagamento simples e seguro.</h1>
+    <p>Esta é a página pública de pagamentos da Atualyze. Para pagar, abra o link de cobrança recebido pelo WhatsApp.</p>
+    <div class="card"><strong>Como funciona?</strong><span>O link de cobrança abrirá o QR Code Pix, a chave Pix, o código Pix e Cola e, quando disponível, o checkout InfinitePay.</span></div>
+    <div class="hint">Nenhum dado de pagamento é solicitado nesta página inicial.</div>
+  </main>
+</body>
+</html>`;
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  return res.end(html);
+}

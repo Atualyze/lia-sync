@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderPixPaymentPage } from './http/pix-page.mjs';
+import { renderPaymentLandingPage, renderPixPaymentPage } from './http/pix-page.mjs';
 import { buildPixPayload } from './tools/gerar_cobranca_pix.mjs';
 
 function responseCapture() {
@@ -42,4 +42,13 @@ test('portal omite InfinitePay em Pix sem valor, mesmo quando recebe uma URL vá
   assert.equal(res.status, 200);
   assert.match(res.body, /Valor livre/);
   assert.doesNotMatch(res.body, /Pagar com InfinitePay/);
+});
+
+test('raiz do Atualyze Pay é pública e orienta a abrir um link de cobrança', () => {
+  const res = responseCapture();
+  renderPaymentLandingPage(res);
+  assert.equal(res.status, 200);
+  assert.match(res.body, /Atualyze Pay/);
+  assert.match(res.body, /link de cobrança recebido pelo WhatsApp/);
+  assert.doesNotMatch(res.body, /dashboard_auth_required/);
 });
