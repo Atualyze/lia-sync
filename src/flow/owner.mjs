@@ -68,7 +68,7 @@ const TOOL_TASK_TYPES = Object.freeze({
   transferir_setor: 'handoff', transferir_para_setor: 'handoff'
 });
 
-const QUESTION_STOP_WORDS = new Set(['qual', 'quais', 'como', 'pode', 'poderia', 'me', 'diga', 'informe', 'informar', 'para', 'por', 'uma', 'um', 'do', 'da', 'de', 'o', 'a', 'e', 'eu', 'voce', 'você', 'quer', 'preciso', 'ainda', 'agora', 'gerar', 'criar']);
+const QUESTION_STOP_WORDS = new Set(['qual', 'quais', 'como', 'pode', 'poderia', 'me', 'diga', 'informe', 'informar', 'para', 'por', 'uma', 'um', 'do', 'da', 'de', 'o', 'a', 'e', 'eu', 'voce', 'você', 'quer', 'preciso', 'ainda', 'agora', 'gerar', 'criar', 'audio', 'áudio', 'voz', 'mensagem', 'recado', 'envio', 'enviar', 'mande', 'mandar', 'gravar', 'grave']);
 
 function inferCopilotTaskTypes(text = '') {
   const value = String(text || '');
@@ -281,7 +281,7 @@ export async function handleOwnerSession({
               ? task.type
               : (task && intentTypes.includes(task.type)
                 ? task.type
-                : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general');
+                : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general'));
             const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
             const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
             if (isClarification && !sSelf.pendingOutboundDispatch) {
@@ -1531,7 +1531,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           dispatchIntent.recipient &&
           /(?:para\s+o|para\s+a|para|pro|pra|ao|lembre|avise|fale\s+com)\s+/i.test(cleanCommand)
         );
-        const asksForAudio = /(?:[aá]udio|voz)\b/i.test(cleanCommand) || /(?:explique|explica|conte|conta|fale|fala|grave|grava)/i.test(cleanCommand);
+        const asksForAudio = /(?:[aá]udio|voz)\b/i.test(cleanCommand)
+          || /\b(?:me\s+grava|grave\s+(?:um\s+)?(?:áudio|audio)|grava(?:r)?\s+(?:um\s+)?(?:áudio|audio)|grava\s+(?:pra|para)\s+mim)\b/i.test(cleanCommand);
         const isAudioForSelf = asksForAudio && (
           !hasExternalTarget ||
           /(?:para\s+mim|pra\s+mim|no\s+chat\s+interno|comigo|me\s+mande|me\s+envie|me\s+grava|me\s+manda|me\s+explique|me\s+explica)\b/i.test(cleanCommand) ||
