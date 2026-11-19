@@ -1267,19 +1267,25 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
               // A confirmação atual é reaproveitada; não solicitamos um segundo 'sim'.
               sSelf.pendingAudioConfirmation = pendingAudio;
               let preparedAudio;
-              if (pendingAudio.forSelf) {
-                const selfTargetPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
-                if (selfTargetPhone.length < 8) {
-                  return recordSelfTurn(filterReply('Não consegui identificar seu número para preparar o áudio. A prévia continua pendente e nada foi enviado.', { isCopilot: true }).text);
-                }
-                preparedAudio = {
-                  requiresConfirmation: true,
-                  phone: selfTargetPhone,
-                  recipient: owner + ' (você)',
+              try {
+                preparedAudio = await executeToolCall('enviar_mensagem_contato', {
+                  recipient: pendingAudio.recipient,
                   message: pendingAudio.message,
                   asAudio: true
-                };
-              } else {
+                }, {
+                  phone: OWNER_SELF_KEY,
+                  clientName: owner + ' (Copiloto)',
+                  store,
+                  reminderStore,
+                  whatsapp,
+                  ai,
+                  botConfig,
+                  session: sSelf,
+                  prepareOnly: true
+                });
+              } catch (err) {
+                return recordSelfTurn(filterReply('Não consegui preparar o áudio para envio: ' + err.message + '. A prévia continua pendente; nada foi enviado.', { isCopilot: true }).text);
+              }
                 try {
                   preparedAudio = await executeToolCall('enviar_mensagem_contato', {
                     recipient: pendingAudio.recipient,
