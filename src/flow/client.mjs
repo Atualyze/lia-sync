@@ -429,7 +429,7 @@ export async function handleClientMessage({
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
         resolvePaymentChoice(clean)
         || isPixActionRequest(clean)
-        || /^(?:r\\$\\s*)?\\d{1,6}(?:[.,]\\d{1,2})?(?:\\s*(?:reais?|conto|contos))?[.!]*$/i.test(String(clean || '').trim())
+        || /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i.test(String(clean || '').trim())
       ));
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
         && (isNaturalAffirmation(clean) || isNaturalNegative(clean)));
