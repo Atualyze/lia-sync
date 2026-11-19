@@ -1025,7 +1025,7 @@ test('Copiloto: pedido de áudio no chat interno gera prévia e envia só após 
   const confirmed = await flow.process({ phone: 'owner_self', text: 'sim' });
   assert.equal(sentAudios.length, 1);
   assert.equal(sentAudios[0].phone, '5588921694598');
-  assert.match(confirmed, /Envio confirmado e concluído/i);
+  assert.match(confirmed, /Áudio gravado e enviado com sucesso/i);
 });
 
 test('Caso do Usuário: "Perfeito, vou precisar que vc mande um áudio e lembre o Lima sobre o monitoramento do pixel..."', async () => {
@@ -1236,7 +1236,7 @@ test('perguntas não cancelam uma prévia pendente; a confirmação explícita c
   });
   const preview = await flow.process({ phone: '5588921694598', text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta' });
   assert.match(preview, /Prévia do disparo/i);
-  const self = store.get('owner_self');
+  const self = store.get('5588921694598');
   for (const text of ['Não entendi, pode explicar?', 'Para quando fica o orçamento?', 'Não precisa explicar isso']) {
     const reply = await flow.process({ phone: '5588921694598', text });
     assert.match(reply, /disparo pendente/i);
@@ -1251,7 +1251,7 @@ test('perguntas não cancelam uma prévia pendente; a confirmação explícita c
 test('áudio legado usa despacho transacional e a falha na transcrição não repete o áudio', async () => {
   const store = createMockStore();
   store.get('5585991099483').clientName = 'Lima';
-  const self = store.get('owner_self');
+  const self = store.get('5588921694598');
   self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
   const audios = [];
   let transcriptAttempts = 0;
@@ -1280,7 +1280,7 @@ test('áudio legado usa despacho transacional e a falha na transcrição não re
 test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry', async () => {
   const store = createMockStore();
   store.get('5585991099483').clientName = 'Lima';
-  const self = store.get('owner_self');
+  const self = store.get('5588921694598');
   self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
   let audioAttempts = 0;
   const flow = createFlow({
