@@ -245,9 +245,6 @@ export async function handleOwnerSession({
         }
         let activeTask = activeCopilotTask(sSelf, now());
         let currentToolSuggestions = [];
-        let currentModelIntent = '';
-        const dispatchContinuationAtStart = activeTask?.type === 'dispatch' && sSelf.pendingRecipient
-          && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
         if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
           sSelf.pendingPixRequest = null;
@@ -264,8 +261,8 @@ export async function handleOwnerSession({
               && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
 
 
-            const isClarification = safeReply.includes('?') || /\\b(?:me informe|me diga|me passa|me conte|me conta|me explique|me explica|me descreva|me descreve|me fale|me fala|conte mais|fale um pouco mais|para eu entender|pra eu entender|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\\b/i.test(safeReply);
-            const isUserClarification = /\\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\\b/i.test(cleanCommand);
+            const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|me conte|me conta|me explique|me explica|me descreva|me descreve|me fale|me fala|conte mais|fale um pouco mais|para eu entender|pra eu entender|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
+            const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
             const suggestedTaskTypes = currentToolSuggestions.map(name => copilotToolTaskType(name)).filter(Boolean);
             const taskType = isUserClarification && task
               ? task.type
@@ -1501,7 +1498,6 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         currentToolSuggestions = (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
           .map(call => String(call?.name || '').trim())
           .filter(Boolean);
-        currentModelIntent = String(result?.intent || '').trim().toLowerCase();
 
         // Se pediu para agendar um lembrete
         if (result?.reminder && reminderStore) {
