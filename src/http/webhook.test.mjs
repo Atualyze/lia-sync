@@ -54,3 +54,50 @@ test('handleWebhookRoutes retorna 401 quando webhookAuthorize retorna { ok: fals
   assert.equal(statusCode, 401);
   assert.ok(body.includes('unauthorized'));
 });
+
+test('comando bot no self-chat segue para o Copiloto em vez do atalho de cliente', async () => {
+  const scheduled = [];
+  const res = { writeHead() {}, end() {} };
+  const payload = {
+    event: 'MESSAGES_UPSERT',
+    data: {
+      key: { id: `cmd-self-${Date.now()}`, remoteJid: '5588992023309@s.whatsapp.net', fromMe: true },
+      message: { conversation: 'bot +55 88 99360-2644' }
+    }
+  };
+  const req = {
+    method: 'POST',
+    url: '/webhook/evolution',
+    headers: {},
+    async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(payload)); }
+  };
+  const store = {
+    rememberLid() {},
+    get() { throw new Error('self-chat não deve usar a sessão numérica do atalho'); }
+  };
+  const f = { isDuplicate: () => false, allowRate: () => true };
+  const webhookEventStore = {
+    async begin() { return { tracked: true, duplicate: false, key: 'k' }; },
+    async finish() {}
+  };
+
+  await handleWebhookRoutes({
+    req,
+    res,
+    u: new URL('http://localhost/webhook/evolution'),
+    webhookAuthorize: () => true,
+    store,
+    f,
+    adminConfig: { active: { human: { phone: '5588992023309' } } },
+    getHumanPhone: () => '5588992023309',
+    getCachedInstanceOwner: () => null,
+    updateInstanceOwner: async () => {},
+    rateMessage: '',
+    webhookEventStore,
+    schedule: async job => scheduled.push(job)
+  });
+
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].phone, 'owner_self');
+  assert.equal(scheduled[0].text, 'bot +55 88 99360-2644');
+});

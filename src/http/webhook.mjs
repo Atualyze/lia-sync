@@ -145,7 +145,11 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
       if (!wasSentByBot(id, item.phone, item.text)) {
         await new Promise(resolve => setTimeout(resolve, 400));
         if (!wasSentByBot(id, item.phone, item.text)) {
-          if (/^[!/#]?(?:bot|reativar)\b/i.test(item.text?.trim())) {
+          // No chat consigo mesmo, `bot <contato>` é um comando do Copiloto.
+          // O atalho abaixo serve apenas para um atendente responder diretamente
+          // no chat de um cliente; se aplicado ao self-chat, ele altera a sessão
+          // da própria conta e retorna sem encaminhar a mensagem ao Copiloto.
+          if (!isSelfChat && /^[!/#]?(?:bot|reativar)\b/i.test(item.text?.trim())) {
             const session = store.get(item.phone);
             if (session) {
               session.human = false;
