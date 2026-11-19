@@ -489,12 +489,18 @@ export async function handleClientMessage({
             && normalize(message.content || '') === normalize(clean);
           return !(sameCurrentText && (!Number.isFinite(createdAt) || Math.abs(currentTime - createdAt) < 120000));
         });
-        const localPriorHistory = s.history.slice(0, -1);
+        const localPriorHistory = s.history.slice(0, -1).map(message => ({
+          ...message,
+          conversationId: message.conversationId || s._conversationId || 'active'
+        }));
         const deduplicated = new Map();
         for (const message of [...historicalOnly, ...localPriorHistory]) {
-          const key = message.id
-            ? `id:${message.id}`
-            : [message.conversationId || 'active', message.role, message.createdAt || '', message.content || ''].join('|');
+          const key = [
+            message.conversationId || 'active',
+            message.role,
+            message.createdAt || '',
+            message.content || ''
+          ].join('|');
           deduplicated.set(key, message);
         }
         historyRecall = selectRelevantConversationContext(
