@@ -8,7 +8,7 @@ import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/in
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
-import { selectActiveClientHistory } from './client-context.mjs';
+import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
@@ -440,25 +440,71 @@ export async function handleClientMessage({
         s.sectorName = null;
         s.sectorCategory = null;
       }
-      const promptSession = {
-        ...s,
-        history: activeContext.history,
-        hasPriorConversation: activeContext.history.length > 1,
-        ...(activeContext.topicBoundary && !hasPendingClientWork
-          ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
-          : {})
-      };
-      const memoryQuery = activeContext.history.slice(-6)
-        .map(entry => `${entry.role}: ${entry.content || ''}`)
-        .concat([clean])
-        .join('\n')
-        .slice(-5000);
+      const memoryQuery = buildMemoryRetrievalQuery(
+        clean,
+        activeContext.history.slice(0, -1),
+        { maxContextMessages: 4, maxChars: 2200 }
+      );
       const promptMemories = await memoryStore.retrieveSemantic({
         scopeKey: clientMemScope,
         query: memoryQuery,
         limit: 6,
         timeoutMs: 1200
       });
+
+      // Conversas antigas são pesquisadas somente quando o cliente pede para
+      // retomar ou recordar um assunto anterior. Esse material nunca substitui
+      // nem se mistura ao histórico ativo do atendimento.
+      const historyRecallRequested = isExplicitHistoryRecallRequest(clean);
+      let historyRecall = { matched: false, messages: [], reason: 'not_requested' };
+      if (historyRecallRequested) {
+        let storedHistory = [];
+        if (typeof store.searchContactConversationHistory === 'function') {
+          try {
+            storedHistory = await store.searchContactConversationHistory(s, {
+              conversationLimit: 20,
+              messageLimit: 400
+            });
+          } catch (error) {
+            logger.warn?.(`[flow:history] busca de conversas anteriores indisponível: ${error?.name || 'Error'}`);
+          }
+        }
+
+        const currentMessageId = String(messageId || '');
+        const currentTime = now();
+        const historicalOnly = storedHistory.filter(message => {
+          if (currentMessageId && String(message.id || '').endsWith(currentMessageId)) return false;
+          const createdAt = Date.parse(message.createdAt || '');
+          const sameCurrentText = message.role === 'user'
+            && normalize(message.content || '') === normalize(clean);
+          return !(sameCurrentText && (!Number.isFinite(createdAt) || Math.abs(currentTime - createdAt) < 120000));
+        });
+        const localPriorHistory = s.history.slice(0, -1);
+        const deduplicated = new Map();
+        for (const message of [...historicalOnly, ...localPriorHistory]) {
+          const key = message.id
+            ? `id:${message.id}`
+            : [message.conversationId || 'active', message.role, message.createdAt || '', message.content || ''].join('|');
+          deduplicated.set(key, message);
+        }
+        historyRecall = selectRelevantConversationContext(
+          [...deduplicated.values()],
+          clean,
+          { maxMessages: 10 }
+        );
+      }
+
+      const promptSession = {
+        ...s,
+        history: activeContext.history,
+        hasPriorConversation: activeContext.history.length > 1,
+        historyRecallRequested,
+        historyRecallMatched: historyRecall.matched,
+        recalledHistory: historyRecall.messages,
+        ...(activeContext.topicBoundary && !hasPendingClientWork
+          ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
+          : {})
+      };
       const systemPrompt = buildSystemPrompt({
         session: promptSession,
         faq: items,
