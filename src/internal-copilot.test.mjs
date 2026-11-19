@@ -1440,11 +1440,12 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
   const store = createMockStore();
   let turn = 0;
   let receivedHistory = [];
+  let receivedSystem = '';
   const flow = createFlow({
     store,
     isOwnerSender: phone => phone === 'owner_self',
     ai: {
-      askAI: async ({ history }) => {
+      askAI: async ({ history, system }) => {
         turn += 1;
         if (turn === 1) {
           return {
@@ -1454,6 +1455,7 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
           };
         }
         receivedHistory = history;
+        receivedSystem = system;
         return {
           intent: 'chat',
           reply: 'Entendi. O atraso na entrega é o ponto principal; vou considerar isso daqui para frente.',
@@ -1479,5 +1481,7 @@ test('Copiloto mantém contexto genérico entre pergunta aberta e resposta em li
   assert.match(second, /atraso na entrega/i);
   assert.ok(receivedHistory.some(item => /situação que aconteceu com um cliente/i.test(item.content)));
   assert.ok(receivedHistory.some(item => /o que aconteceu/i.test(item.content)));
+  assert.match(receivedSystem, /CONTEXTO_CONTINUIDADE_ATIVA/);
+  assert.match(receivedSystem, /Me ajuda a entender uma situação que aconteceu com um cliente/);
   assert.equal(store.get('owner_self').pendingCopilotTask, null, 'uma resposta concluída pode encerrar o contexto pendente');
 });
