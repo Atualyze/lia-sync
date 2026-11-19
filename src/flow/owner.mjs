@@ -244,20 +244,13 @@ export async function handleOwnerSession({
           }
         }
         let activeTask = activeCopilotTask(sSelf, now());
-        const incomingTaskTypes = inferCopilotTaskTypes(cleanCommand);
         let currentToolSuggestions = [];
         let currentModelIntent = '';
         const dispatchContinuationAtStart = activeTask?.type === 'dispatch' && sSelf.pendingRecipient
-          && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
+          && !/^(?:lia[, ]+)?(?:atualiz\\w*|corrig\\w*|consult\\w*|busc\\w*|pesquis\\w*|agend\\w*|cancel\\w*|ger\\w*|cri\\w*|verific\\w*)\\b/i.test(cleanCommand);
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
         if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
           sSelf.pendingPixRequest = null;
-        }
-        if (activeTask && incomingTaskTypes.length && !incomingTaskTypes.includes(activeTask.type) && !dispatchContinuationAtStart) {
-          if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
-          if (activeTask.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
-          sSelf.pendingCopilotTask = null;
-          activeTask = null;
         }
 
         const recordSelfTurn = (replyText, { preserveTask = false } = {}) => {
@@ -269,23 +262,24 @@ export async function handleOwnerSession({
             let task = activeCopilotTask(sSelf, now());
             const dispatchContinuation = task?.type === 'dispatch' && sSelf.pendingRecipient
               && !/^(?:lia[, ]+)?(?:atualiz\w*|corrig\w*|consult\w*|busc\w*|pesquis\w*|agend\w*|cancel\w*|ger\w*|cri\w*|verific\w*)\b/i.test(cleanCommand);
-            if (task && intentTypes.length && !intentTypes.includes(task.type) && !dispatchContinuation) {
-              if (task.type === 'payment') sSelf.pendingPixRequest = null;
-              if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
-              sSelf.pendingCopilotTask = null;
-              task = null;
-            }
 
+
+            const isClarification = safeReply.includes('?') || /\\b(?:me informe|me diga|me passa|me conte|me conta|me explique|me explica|me descreva|me descreve|me fale|me fala|conte mais|fale um pouco mais|para eu entender|pra eu entender|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\\b/i.test(safeReply);
+            const isUserClarification = /\\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\\b/i.test(cleanCommand);
             const suggestedTaskTypes = currentToolSuggestions.map(name => copilotToolTaskType(name)).filter(Boolean);
-            const taskType = dispatchContinuation
+            const taskType = isUserClarification && task
               ? task.type
-              : (task && intentTypes.includes(task.type)
+              : (dispatchContinuation
                 ? task.type
-                : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general'));
-            const isClarification = safeReply.includes('?') || /\b(?:me informe|me diga|me passa|me conte|me conta|me explique|me explica|me descreva|me descreve|me fale|me fala|conte mais|fale um pouco mais|para eu entender|pra eu entender|qual|quais|o que você|preciso de|dado que falta|não ficou claro|nao ficou claro)\b/i.test(safeReply);
-            const isUserClarification = /\b(?:nao entendi|não entendi|pode explicar|pode detalhar|como assim|o que quis dizer|me explica|me explique|não ficou claro|nao ficou claro)\b/i.test(cleanCommand);
+                : (task && intentTypes.includes(task.type)
+                  ? task.type
+                  : (intentTypes[0] || task?.type || suggestedTaskTypes[0] || 'general')));
             if (isClarification && !sSelf.pendingOutboundDispatch) {
               const sameTask = task?.type === taskType;
+              if (task && !sameTask) {
+                if (task.type === 'payment') sSelf.pendingPixRequest = null;
+                if (task.type === 'dispatch') { sSelf.pendingRecipient = null; sSelf.pendingAsAudio = false; }
+              }
               const repeated = sameTask && similarClarification(safeReply, task.lastQuestion || '');
               if (repeated) {
                 // Keep the assistant's actual response. A user may be moving through
