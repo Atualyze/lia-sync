@@ -117,6 +117,10 @@ export class CopilotTaskStore {
     return Boolean(this.client?.enabled && this.mode === 'supabase');
   }
 
+  get available() {
+    return this.remoteEnabled || (this.mode === 'local' && !this.localCorrupt);
+  }
+
   async load() {
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
