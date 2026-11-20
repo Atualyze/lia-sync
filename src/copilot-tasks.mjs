@@ -165,7 +165,9 @@ export class CopilotTaskStore {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     const tmp = `${this.filePath}.${process.pid}.tmp`;
     try {
-      await fs.writeFile(tmp, JSON.stringify(this.tasks.slice(-1000), null, 2), 'utf8');
+      const terminal = this.tasks.filter(task => ['succeeded', 'failed', 'uncertain', 'cancelled'].includes(task.status)).slice(-1000);
+      const active = this.tasks.filter(task => !['succeeded', 'failed', 'uncertain', 'cancelled'].includes(task.status));
+      await fs.writeFile(tmp, JSON.stringify([...terminal, ...active], null, 2), 'utf8');
       await fs.rename(tmp, this.filePath);
     } catch (error) {
       await fs.rm(tmp, { force: true }).catch(() => {});
