@@ -144,8 +144,18 @@ export class CopilotTaskStore {
     if (this.client?.enabled) {
       try {
         await this.client.select('copilot_tasks', 'select=id&limit=1');
-        this.mode = 'supabase';
-        this.remoteError = null;
+        const localPending = this.tasks.some(task =>
+          ['queued', 'running', 'awaiting_input'].includes(task.status)
+          || ['pending', 'sending'].includes(task.notificationStatus)
+        );
+        if (localPending) {
+          this.mode = 'unavailable';
+          this.remoteError = 'copilot_task_local_queue_migration_required';
+          this.logger.error?.('[copilot-tasks] há tarefas locais pendentes; reconcilie a fila local antes de mudar para Supabase. Execução bloqueada para evitar perda ou duplicidade.');
+        } else {
+          this.mode = 'supabase';
+          this.remoteError = null;
+        }
       } catch (error) {
         this.remoteError = error?.message || 'copilot_task_queue_unavailable';
         if (this.allowLocalFallback) {
