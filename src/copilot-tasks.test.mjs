@@ -148,6 +148,16 @@ test('enqueue reconcilia timeout depois de o Supabase já ter confirmado o INSER
   assert.equal(rows.size, 1);
 });
 
+test('fila exige identificador estável da mensagem para garantir idempotência', async () => {
+  const client = { enabled: true, async request() { throw new Error('não deve inserir'); }, async select() { return []; } };
+  const store = new CopilotTaskStore(client, { logger: { warn() {} } });
+  store.ready = true;
+  await assert.rejects(() => store.enqueue({
+    requestText: 'Pesquise a documentação',
+    steps: [{ name: 'consultar_web', args: { query: 'documentação' } }]
+  }), /message_id_required/);
+});
+
 test('fila recusa plano com etapas demais ou efeito externo', async () => {
   const store = new CopilotTaskStore({ enabled: true, async select() { return []; } });
   store.ready = true;
