@@ -89,18 +89,18 @@ export function verifyCopilotToolResult(toolName, result) {
       recovery: getCopilotToolRecovery(toolName, result).action
     };
   }
-  if (result.success === true) {
-    return { state: 'verified', continue: true, recovery: 'none' };
+  if (toolName === 'consultar_saude_infra' && (result.health !== undefined || Array.isArray(result.checks))) {
+    return String(result.health || '').toLowerCase() === 'healthy' || result.healthy === true
+      ? { state: 'verified', continue: true, recovery: 'none' }
+      : { state: 'completed_with_warnings', continue: false, recovery: 'human_review' };
   }
   if (toolName === 'consultar_contato_ou_lead' && typeof result.found === 'boolean') {
     return result.found
       ? { state: 'verified', continue: true, recovery: 'none' }
       : { state: 'no_match', continue: false, recovery: 'ask_for_contact' };
   }
-  if (toolName === 'consultar_saude_infra' && (result.health !== undefined || Array.isArray(result.checks))) {
-    return String(result.health || '').toLowerCase() === 'healthy'
-      ? { state: 'verified', continue: true, recovery: 'none' }
-      : { state: 'completed_with_warnings', continue: false, recovery: 'human_review' };
+  if (result.success === true) {
+    return { state: 'verified', continue: true, recovery: 'none' };
   }
   return { state: 'unverified', continue: false, recovery: 'stop_and_report' };
 }

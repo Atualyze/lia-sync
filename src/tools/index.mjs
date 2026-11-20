@@ -243,10 +243,12 @@ export function validateToolCallArguments(toolName, args = {}) {
 
 function toolAuditStatus(result) {
   if (result?.requiresConfirmation === true) return 'awaiting_confirmation';
+  if (result?.health !== undefined || Array.isArray(result?.checks)) {
+    return result?.health === 'healthy' || result?.healthy === true ? 'diagnostic_completed' : 'completed_with_warnings';
+  }
   if (result?.success === true) return 'completed';
   if (result?.found === true) return 'completed';
   if (result?.found === false) return 'completed_no_match';
-  if (result?.health !== undefined || Array.isArray(result?.checks)) return 'diagnostic_completed';
   if (result?.success === false || result?.error) return 'failed';
   return 'unverified';
 }

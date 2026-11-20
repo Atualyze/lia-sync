@@ -2,7 +2,7 @@ import { filterReply, normalize, isGreeting, detectPriceMentions } from '../safe
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
-import { executeToolCall as executeToolCallRaw, isToolEnabled, getToolCatalog } from '../tools/index.mjs';
+import { executeToolCall as executeToolCallRaw, isToolEnabled } from '../tools/index.mjs';
 import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
@@ -246,7 +246,7 @@ export async function handleOwnerSession({
           actor: context.actor || 'owner',
           isOwner: context.isOwner ?? true,
           operationsStore: context.operationsStore || operationsStore,
-          auditActorLabel: context.auditActorLabel || owner
+          auditActorLabel: context.auditActorLabel || 'responsável'
         });
         const aiDeadline = Date.now() + 35000;
         const sSelf = store.get(phone === OWNER_SELF_KEY ? OWNER_SELF_KEY : phone);

@@ -89,7 +89,7 @@ export async function handleClientMessage({
         ...context,
         actor: context.actor || 'client',
         operationsStore: context.operationsStore || operationsStore,
-        auditActorLabel: context.auditActorLabel || context.clientName || pushName || 'cliente'
+        auditActorLabel: context.auditActorLabel || 'cliente'
       });
       // ==========================================
       // CASO 2: CONTATO / CLIENTE NO WHATSAPP
