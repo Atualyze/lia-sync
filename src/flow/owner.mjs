@@ -1906,8 +1906,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const directPixChoice = activeTask?.type === 'payment'
-          && isDirectPixChoice(cleanCommand, lastAssistantContext)
-          && Boolean(sSelf.pendingPixRequest?.requestedAt);
+          && isDirectPixChoice(cleanCommand, lastAssistantContext);
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
           isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || directPixChoice
         ));
@@ -2067,23 +2066,30 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         // semântica trocar "Pix direto" por checkout nem apagar os dados já coletados.
         if (directPixChoice && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)) {
           const pending = sSelf.pendingPixRequest || {};
-          const pendingAmount = normalizePixAmount(pending.amount);
-          const pendingDescription = isValidPixDescription(pending.description)
-            ? String(pending.description).trim()
-            : '';
-          if (pendingAmount === null || !pendingDescription) {
+          const proposedPix = toolCallsToRun.find(tc => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name))?.args || {};
+          const originalPix = extractCurrentPixArgs(activeTask?.originCommand || '', { allowBareNumber: true });
+          const amount = normalizePixAmount(pending.amount)
+            ?? (originalPix.hasAmountOrFree ? originalPix.valor : null)
+            ?? normalizePixAmount(proposedPix.valor);
+          const description = (isValidPixDescription(pending.description) ? String(pending.description).trim() : '')
+            || (isValidPixDescription(originalPix.descricao) ? originalPix.descricao : '')
+            || (isValidPixDescription(proposedPix.descricao) ? String(proposedPix.descricao).trim() : '');
+          sSelf.pendingPixRequest = {
+            requestedAt: pending.requestedAt || new Date(now()).toISOString(),
+            amount,
+            description
+          };
+          store.markDirty();
+          if (amount === null || !description) {
+            const missing = [amount === null ? '*valor*' : '', !description ? '*descrição*' : ''].filter(Boolean);
             return recordSelfTurn(filterReply(
-              `${owner}, já tenho a escolha pelo Pix direto, mas preciso recuperar o valor e a descrição da cobrança antes de gerar. Não criei nenhuma cobrança nesta etapa.`,
+              `${owner}, entendi que você escolheu o Pix direto. Para gerar sem risco de usar dados errados, ainda preciso de ${missing.join(" e ")}. Nenhuma cobrança foi criada.`,
               { isCopilot: true }
             ).text, { preserveTask: true });
           }
           toolCallsToRun = [{
             name: 'gerar_cobranca_pix',
-            args: {
-              valor: pendingAmount,
-              descricao: pendingDescription,
-              enviarWhatsApp: false
-            }
+            args: { valor: amount, descricao: description, enviarWhatsApp: false }
           }];
           suppressToolExecution = false;
         }
