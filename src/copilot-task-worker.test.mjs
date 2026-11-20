@@ -65,3 +65,43 @@ test('somente consultas explicitamente permitidas entram no worker', () => {
   assert.equal(isBackgroundCopilotTool('checkout_infinitepay', { acao: 'criar_link' }), false);
   assert.equal(isBackgroundCopilotTool('checkout_infinitepay', { acao: 'verificar_pagamento' }), true);
 });
+
+
+test('worker informa falha terminal e não deixa a tarefa silenciosa', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-worker-failure-'));
+  const sent = [];
+  try {
+    const taskStore = new CopilotTaskStore({
+      filePath: path.join(dir, 'tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await taskStore.load();
+    await taskStore.enqueue({
+      taskKey: 'copilot:worker-failure',
+      ownerKey: 'owner_self',
+      targetPhone: '5588999999999',
+      requestSummary: 'Pesquisar um assunto',
+      steps: [{ name: 'consultar_web', args: { query: 'assunto' } }],
+      retryPolicy: 'read_only'
+    });
+    const worker = createCopilotTaskWorker({
+      taskStore,
+      store: { get: () => ({ history: [] }), markDirty() {}, flush: async () => {} },
+      getBotConfig: () => ({}),
+      sendText: async (target, message) => { sent.push({ target, message }); },
+      getHumanPhone: () => '5588999999999',
+      logger: { error() {} },
+      execute: async () => ({ success: false, error: 'source_timeout' })
+    });
+
+    assert.equal(await worker.runOnce(), false);
+    assert.equal(await worker.runOnce(), true);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].message, /não foi concluída/i);
+    const latest = await taskStore.getLatest('owner_self');
+    assert.equal(latest.status, 'failed');
+    assert.equal(latest.notificationStatus, 'sent');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
