@@ -108,11 +108,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   await reminderStore.load();
 
   const copilotTaskStore = new CopilotTaskStore(store.client, {
-    logger,
+    logger: console,
     workerId: `${os.hostname()}:${process.pid}`
   });
   await copilotTaskStore.initialize();
-  const copilotTaskRunner = new createCopilotTaskRunner({
+  const copilotTaskRunner = createCopilotTaskRunner({
     taskStore: copilotTaskStore,
     sessionStore: store,
     ai: { askAI: askAIWithBudget, searchWebWithGemini },
@@ -120,7 +120,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
     operationsStore,
-    logger,
+    logger: console,
     workerId: `${os.hostname()}:${process.pid}`
   });
   if (copilotTaskStore.enabled) {
