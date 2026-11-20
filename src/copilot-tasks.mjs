@@ -409,9 +409,9 @@ export function describeCopilotTaskStatus(task) {
   if (task.status === 'queued') return `A tarefa #${id} está registrada e aguardando execução.`;
   if (task.status === 'running') return `A tarefa #${id} está em execução. Ainda não tenho o resultado confirmado.`;
   if (task.status === 'awaiting_input') return `A tarefa #${id} está aguardando uma informação sua.`;
-  if (task.status === 'succeeded' && task.notificationStatus === 'sent') return `A tarefa #${id} foi concluída e o resultado já foi enviado.${task.resultText ? `\\n\\n${task.resultText}` : ''}`;
+  if (task.status === 'succeeded' && task.notificationStatus === 'sent') return `A tarefa #${id} foi concluída e o resultado já foi enviado.${task.resultText ? `\n\n${task.resultText}` : ''}`;
   if (task.status === 'succeeded' && task.notificationStatus === 'uncertain') return `A tarefa #${id} foi concluída, mas não consegui confirmar a entrega da notificação. Não vou reenviar automaticamente para evitar duplicidade.`;
-  if (task.status === 'succeeded') return `A tarefa #${id} foi concluída e o resultado está pronto para entrega.${task.resultText ? `\\n\\n${task.resultText}` : ''}`;
+  if (task.status === 'succeeded') return `A tarefa #${id} foi concluída e o resultado está pronto para entrega.${task.resultText ? `\n\n${task.resultText}` : ''}`;
   if (task.status === 'uncertain') return `A execução da tarefa #${id} ficou incerta. Interrompi novas tentativas para não duplicar uma ação. É necessária uma conferência antes de continuar.`;
   if (task.status === 'cancelled') return `A tarefa #${id} foi cancelada.`;
   return `A tarefa #${id} terminou sem conclusão (${task.errorCode || task.status}). Nenhuma repetição automática será feita.`;
