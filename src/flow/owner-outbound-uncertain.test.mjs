@@ -51,7 +51,8 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
     },
     ai: {
       askAI: async ({ userText, system }) => {
-        if (system?.includes('Você interpreta a intenção do responsável sobre um disparo WhatsApp que já existe.')) {
+        if (system?.includes('Você interpreta a intenção do responsável sobre um disparo WhatsApp que já existe.')
+          && /marque como concluído/i.test(userText || '')) {
           return { reply: '{"intent":"resolve","confidence":0.96,"reason":"pedido explícito para encerrar a pendência"}' };
         }
         return {
