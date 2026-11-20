@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
+import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 
 const stamp = value => new Date(value).toISOString();
 
@@ -93,4 +93,35 @@ test('memória: consulta usa apenas a mensagem atual e os turnos mais próximos'
   assert.match(query, /Pix copia e cola/);
   assert.match(query, /O que houve/);
   assert.doesNotMatch(query, /oficina|site da oficina/i);
+});
+
+
+test('continuidade de cobrança: número só responde quando a última pergunta pediu o valor Pix', () => {
+  const askedAmount = [
+    { role: 'user', content: 'Quero o código copia e cola' },
+    { role: 'assistant', content: 'Qual é o valor para eu gerar o código copia e cola?' }
+  ];
+  const changedTopic = [
+    ...askedAmount,
+    { role: 'user', content: 'Também queria saber sobre o site da oficina' },
+    { role: 'assistant', content: 'Claro, vamos falar do site e do painel de agendamentos.' }
+  ];
+
+  assert.equal(lastAssistantAskedForPaymentAmount(askedAmount), true);
+  assert.equal(lastAssistantAskedForPaymentAmount(changedTopic), false);
+  assert.equal(lastAssistantAskedForPayment(changedTopic), false);
+});
+
+test('continuidade de agenda: sim ou não só respondem à última pergunta de confirmação de horário', () => {
+  const askedConfirmation = [
+    { role: 'assistant', content: 'Encontrei esse horário. Posso confirmar e agendar para você?' }
+  ];
+  const changedTopic = [
+    ...askedConfirmation,
+    { role: 'user', content: 'Me explica os serviços do painel' },
+    { role: 'assistant', content: 'O painel permite acompanhar os serviços e os agendamentos.' }
+  ];
+
+  assert.equal(lastAssistantAskedForAgendaConfirmation(askedConfirmation), true);
+  assert.equal(lastAssistantAskedForAgendaConfirmation(changedTopic), false);
 });
