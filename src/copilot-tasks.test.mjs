@@ -133,3 +133,21 @@ test('fila local corrompida falha fechada sem sobrescrever o arquivo', async () 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('política de repetição só considera ações Google de leitura como seguras', async () => {
+  await withStore(async store => {
+    const readSheet = await store.enqueue(input({
+      taskKey: 'copilot:sheet-read',
+      steps: [{ name: 'consultar_planilha_google', args: { acao: 'buscar_linhas', busca: 'preço' } }],
+      retryPolicy: 'read_only'
+    }));
+    const writeSheet = await store.enqueue(input({
+      taskKey: 'copilot:sheet-write',
+      steps: [{ name: 'consultar_planilha_google', args: { acao: 'adicionar_linha', valores: ['novo'] } }],
+      retryPolicy: 'read_only'
+    }));
+    assert.equal(readSheet.retryPolicy, 'read_only');
+    assert.equal(writeSheet.retryPolicy, 'never');
+  });
+});
