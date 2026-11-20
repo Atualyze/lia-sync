@@ -41,7 +41,8 @@ Não aplicar a migration automaticamente pelo processo Node. Conferir o históri
 
 Após deploy:
 1. Confirmar que o log indica fila Supabase ativa (não fallback local).
-2. Consultar `/ready` e logs do worker.
+2. Consultar `/ready`: a resposta agora inclui `copilot_tasks`; o status deve ser `ready` e o modo `supabase` para coordenação distribuída.
+3. Consultar logs do worker.
 3. Testar uma consulta web de baixo risco e confirmar que o resultado chega ao responsável.
 4. Perguntar “estou esperando” e confirmar que o estado vem da tabela, não de inferência do modelo.
 5. Testar falha de consulta e confirmar notificação terminal.
