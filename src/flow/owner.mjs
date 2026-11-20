@@ -450,11 +450,24 @@ export async function handleOwnerSession({
 
         if (copilotTaskStore && isCopilotTaskStatusQuestion(cleanCommand)) {
           const activeTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
-          const latestTask = (activeTaskId
-            ? await copilotTaskStore.getById(activeTaskId, ownerTaskKey).catch(() => null)
-            : null) || await copilotTaskStore.getLatest(ownerTaskKey).catch(() => null);
+          let latestTask = null;
+          let statusLookupFailed = false;
+          if (activeTaskId) {
+            try { latestTask = await copilotTaskStore.getById(activeTaskId, ownerTaskKey); }
+            catch { statusLookupFailed = true; }
+          }
+          if (!latestTask) {
+            try { latestTask = await copilotTaskStore.getLatest(ownerTaskKey); }
+            catch { statusLookupFailed = true; }
+          }
           if (latestTask) {
             return recordSelfTurn(filterReply(describeCopilotTaskStatus(latestTask), { isCopilot: true }).text, { preserveTask: true });
+          }
+          if (statusLookupFailed) {
+            return recordSelfTurn(
+              '⚠️ Não consegui consultar a fila de tarefas agora. O estado da solicitação continua *não confirmado*; não vou presumir que terminou nem repetir uma ação externa.',
+              { preserveTask: true }
+            );
           }
         }
 
