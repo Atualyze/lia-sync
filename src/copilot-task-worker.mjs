@@ -39,20 +39,20 @@ function formatPixResult(result = {}) {
     `• *Favorecido:* ${result.favorecido || 'não informado'}`,
     result.txid ? `• *Identificador:* \`${result.txid}\`` : '',
     result.paymentUrl ? `• *Link de pagamento:* ${result.paymentUrl}` : '',
-    result.pixCopiaECola ? `• *Copia e Cola:*\\n\`\`\`\\n${result.pixCopiaECola}\\n\`\`\`` : ''
-  ].filter(Boolean).join('\\n\\n');
+    result.pixCopiaECola ? `• *Copia e Cola:*\n\`\`\`\n${result.pixCopiaECola}\n\`\`\`` : ''
+  ].filter(Boolean).join('\n\n');
 }
 
 function fallbackSummary(steps = []) {
   return steps.map(({ name, result }) => {
     if (result?.found === false) return `• ${name}: nenhum registro correspondente foi encontrado.`;
     if (result?.health || Array.isArray(result?.checks)) {
-      const lines = (result.checks || []).map(check => `- ${check.name}: ${check.status}`).join('\\n');
-      return `• Diagnóstico: ${result.health || 'concluído'}${lines ? `\\n${lines}` : ''}`;
+      const lines = (result.checks || []).map(check => `- ${check.name}: ${check.status}`).join('\n');
+      return `• Diagnóstico: ${result.health || 'concluído'}${lines ? `\n${lines}` : ''}`;
     }
     const message = String(result?.message || result?.resposta || result?.text || '').trim();
     return message ? `• ${name}: ${message.slice(0, 5000)}` : `• ${name}: consulta concluída.`;
-  }).join('\\n\\n');
+  }).join('\n\n');
 }
 
 async function summarizeResults({ ai, botConfig, requestSummary, steps }) {
@@ -72,7 +72,7 @@ async function summarizeResults({ ai, botConfig, requestSummary, steps }) {
           'Quando houver fontes, preserve os links úteis. Quando houver ausência de resultados, diga isso explicitamente.',
           'Nunca diga que algo foi executado se o resultado não comprova isso.',
           'Não chame ferramentas e não prometa ações futuras.'
-        ].join('\\n'),
+        ].join('\n'),
         history: [],
         userText: JSON.stringify({ request: requestSummary, results: payload }).slice(0, 18000),
         botConfig,
