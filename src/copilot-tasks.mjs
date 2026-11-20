@@ -132,19 +132,30 @@ export class CopilotTaskStore {
       updated_at: timestamp
     };
 
-    const inserted = await this.client.request('copilot_tasks', {
-      method: 'POST',
-      query: 'on_conflict=idempotency_key',
-      body: [row],
-      prefer: 'resolution=ignore-duplicates,return=representation'
-    });
+    let inserted = null;
+    let insertError = null;
+    try {
+      inserted = await this.client.request('copilot_tasks', {
+        method: 'POST',
+        query: 'on_conflict=idempotency_key',
+        body: [row],
+        prefer: 'resolution=ignore-duplicates,return=representation'
+      });
+    } catch (error) {
+      insertError = error;
+    }
     if (Array.isArray(inserted) && inserted[0]) return { ...inserted[0], duplicate: false };
 
+    // A PostgREST timeout can happen after the insert committed. Check the
+    // idempotency key before surfacing an error or letting a caller retry.
     const existing = await this.client.select(
       'copilot_tasks',
       'select=*&idempotency_key=eq.' + encodeURIComponent(idempotencyKey) + '&limit=1'
     );
-    if (!existing?.[0]) throw new Error('copilot_task_insert_not_confirmed');
+    if (!existing?.[0]) {
+      if (insertError) throw insertError;
+      throw new Error('copilot_task_insert_not_confirmed');
+    }
     return { ...existing[0], duplicate: true };
   }
 
@@ -206,6 +217,15 @@ export class CopilotTaskStore {
   async getTask(taskId) {
     if (!this.enabled || !taskId) return null;
     const rows = await this.client.select('copilot_tasks', 'select=*&id=eq.' + encodeURIComponent(taskId) + '&limit=1');
+    return rows?.[0] || null;
+  }
+
+  async pendingDelivery() {
+    if (!this.enabled) return null;
+    const rows = await this.client.select(
+      'copilot_tasks',
+      'select=*&delivery_status=eq.pending&status=in.(succeeded,failed,awaiting_input,uncertain)&order=created_at.asc&limit=1'
+    );
     return rows?.[0] || null;
   }
 
