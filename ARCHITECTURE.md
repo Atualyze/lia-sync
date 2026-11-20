@@ -100,3 +100,13 @@ npm run test:contract
 ```
 
 `lint` e `build` executam a verificação de sintaxe dos módulos `.mjs` através de `scripts/check-syntax.mjs`; não exigem ferramentas Unix.
+
+## Persistent Copilot task execution (2.9.0)
+
+The Copilot conversation state and the operational task state are separate. `pendingCopilotTask` preserves conversational continuity; `copilot_tasks` is the durable execution ledger. A tool promise is never evidence that a tool ran.
+
+Eligible plans are validated and persisted with an idempotency key derived from the inbound message identity. The server-owned worker claims jobs through `claim_copilot_task` using a database lease and `FOR UPDATE SKIP LOCKED`, revalidates the current tool policy, executes at most four steps sequentially, checkpoints safe summaries, verifies each result, and stops on the first unverified/no-match result. Terminal success, failure, expiry, and uncertainty are separately persisted and reported to the owner.
+
+The worker allowlist is limited to read-only queries and explicitly authorized Pix creation. Read-only leases may be retried within the configured attempt limit. Pix creation is a single-step task with retry policy `never`, enforced in application code and by database constraints. Ambiguous external effects and ambiguous WhatsApp notification delivery become `uncertain`; neither is automatically replayed. A created Pix charge is not evidence of payment.
+
+Supabase is required when configured: if the task table/RPC is unavailable, queue operations fail closed and `/ready` reports `copilot_tasks` unavailable. Local JSON persistence is used when Supabase is not configured; opting into local fallback with Supabase configured requires `COPILOT_TASK_LOCAL_FALLBACK=true` and exactly one replica. Pending local jobs block cutover to Supabase until reconciled. The local task file is stored under the data directory and included by the recursive data backup.
