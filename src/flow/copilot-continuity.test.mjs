@@ -165,3 +165,21 @@ test('intenção explícita: distingue pedido de nova ação de continuação de
   assert.equal(hasOtherExplicitToolIntent('Mande uma mensagem para o Lima', 'gerar_cobranca_pix'), true);
   assert.equal(hasOtherExplicitToolIntent('Não mande mensagem para o Lima', 'gerar_cobranca_pix'), false);
 });
+
+
+test('escolha Pix direto reconhece resposta curta no contexto da pergunta', async () => {
+  const { isDirectPixChoice } = await import('./copilot-continuity.mjs');
+  const question = 'Você prefere que eu gere o Pix direto (Copia e Cola / QR Code) ou o link do Checkout InfinitePay (Pix e Cartão)?';
+  assert.equal(isDirectPixChoice('Direto', question), true);
+  assert.equal(isDirectPixChoice('Copia e Cola', question), true);
+  assert.equal(isDirectPixChoice('QR Code', question), true);
+  assert.equal(isDirectPixChoice('Direto', 'Qual é o valor da cobrança?'), false);
+});
+
+test('perguntas de status reconhecem estou esperando e onde está', async () => {
+  const { isCopilotTaskStatusQuestion } = await import('./copilot-continuity.mjs');
+  assert.equal(isCopilotTaskStatusQuestion('estou esperando'), true);
+  assert.equal(isCopilotTaskStatusQuestion('Onde está?'), true);
+  assert.equal(isCopilotTaskStatusQuestion('cadê o resultado?'), true);
+  assert.equal(isCopilotTaskStatusQuestion('vamos conversar'), false);
+});
