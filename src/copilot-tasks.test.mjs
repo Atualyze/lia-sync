@@ -151,3 +151,37 @@ test('política de repetição só considera ações Google de leitura como segu
     assert.equal(writeSheet.retryPolicy, 'never');
   });
 });
+
+
+test('Supabase configurado sem migration falha fechado por padrão', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-remote-unavailable-'));
+  try {
+    const store = new CopilotTaskStore({
+      client: { enabled: true, select: async () => { throw new Error('relation does not exist'); } },
+      filePath: path.join(dir, 'tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await store.load();
+    await assert.rejects(store.enqueue(input()), /copilot_task_queue_unavailable/);
+    assert.equal(await store.claimNext('worker-test'), null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('fallback local com Supabase configurado exige opt-in explícito', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-local-opt-in-'));
+  try {
+    const store = new CopilotTaskStore({
+      client: { enabled: true, select: async () => { throw new Error('relation does not exist'); } },
+      filePath: path.join(dir, 'tasks.json'),
+      allowLocalFallback: true,
+      logger: { warn() {}, error() {} }
+    });
+    await store.load();
+    const queued = await store.enqueue(input({ taskKey: 'copilot:local-opt-in' }));
+    assert.equal(queued.status, 'queued');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
