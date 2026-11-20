@@ -108,6 +108,33 @@ test('worker retoma entrega de resultado já persistido sem executar ferramenta 
   assert.equal(calls.deliveries[0][1], 'sent');
 });
 
+test('worker não entrega o resultado quando o lease foi cancelado durante a etapa', async () => {
+  const task = {
+    id: 'task-cancelled',
+    lease_token: 'lease-cancelled',
+    actor_label: 'Responsável',
+    request_text: 'Pesquise algo',
+    task_type: 'web',
+    status: 'running',
+    delivery_status: 'pending',
+    current_step: 0,
+    steps: [{ index: 1, name: 'consultar_web', args: { query: 'teste' }, state: 'pending' }]
+  };
+  const { runner, calls } = fixture({ task });
+  const originalCheckpoint = calls.checkpoints;
+  // A fixture's checkpoint store is replaced below by a lease-revoked behavior.
+  const cancelledFixture = fixture({ task, execute: async () => ({ success: true, text: 'não deve ser entregue' }) });
+  cancelledFixture.taskStore.checkpointStep = async (...args) => {
+    originalCheckpoint.push(args);
+    return false;
+  };
+  cancelledFixture.taskStore.finish = async () => false;
+  assert.equal(await cancelledFixture.runner.tick(), true);
+  assert.equal(cancelledFixture.calls.sends.length, 0);
+  assert.equal(cancelledFixture.calls.finished.length, 0);
+  await runner.stop();
+});
+
 test('resultado de envio incerto não dispara uma segunda tentativa', async () => {
   const pending = {
     id: 'task-uncertain-delivery',
