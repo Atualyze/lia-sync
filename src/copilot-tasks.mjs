@@ -144,7 +144,7 @@ export class CopilotTaskStore {
     if (this.client?.enabled) {
       try {
         await this.client.select('copilot_tasks', 'select=id&limit=1');
-        const localPending = this.tasks.some(task =>
+        const localPending = this.localCorrupt || this.tasks.some(task =>
           ['queued', 'running', 'awaiting_input'].includes(task.status)
           || ['pending', 'sending', 'uncertain'].includes(task.notificationStatus)
         );
