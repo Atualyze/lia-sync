@@ -54,6 +54,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const copilotTaskStore = new CopilotTaskStore({
     client: store.client,
     filePath: path.join(path.dirname(config.dataFile), 'copilot-tasks.json'),
+    allowLocalFallback: process.env.COPILOT_TASK_LOCAL_FALLBACK === 'true',
     logger: console
   });
   await copilotTaskStore.load();
