@@ -187,3 +187,25 @@ test('fallback local com Supabase configurado exige opt-in explícito', async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('não abandona tarefas locais pendentes ao habilitar Supabase', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-migration-'));
+  const filePath = path.join(dir, 'tasks.json');
+  try {
+    const local = new CopilotTaskStore({ filePath, logger: { warn() {}, error() {} } });
+    await local.load();
+    await local.enqueue(input({ taskKey: 'copilot:local-pending' }));
+
+    const remote = new CopilotTaskStore({
+      client: { enabled: true, select: async () => [] },
+      filePath,
+      logger: { warn() {}, error() {} }
+    });
+    await remote.load();
+    assert.equal(remote.available, false);
+    await assert.rejects(remote.enqueue(input({ taskKey: 'copilot:remote-new' })), /copilot_task_queue_unavailable/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
