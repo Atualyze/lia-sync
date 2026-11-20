@@ -251,3 +251,11 @@ export function isCopilotTaskStatusQuestion(message = '') {
   const value = normalizedContinuityText(message).replace(/[.!?]+$/g, '').trim();
   return /^(?:onde (?:esta|ficou)|cade|estou esperando|ainda estou esperando|o que (?:houve|aconteceu)|alguma novidade|ja (?:terminou|concluiu)|conseguiu|teve retorno|tem retorno|e a (?:pesquisa|consulta|busca|tarefa|resultado)|e o (?:resultado|retorno)|status(?: da)? (?:pesquisa|consulta|busca|tarefa)|como esta a (?:pesquisa|consulta|busca|tarefa))\b/.test(value);
 }
+
+
+/** Detects assistant wording that claims a tool is running without proof of execution. */
+export function claimsUnexecutedToolWork(reply = '') {
+  const value = normalizedContinuityText(reply);
+  if (/\b(?:nao|nunca|jamais)\b.{0,30}\b(?:estou|vou|irei)\b/i.test(value)) return false;
+  return /(?:\b(?:estou|vou|irei|ja vou|agora vou)\b.{0,60}\b(?:pesquis\w*|consult\w*|busc\w*|verific\w*|chec\w*|ger\w*|cri\w*|emit\w*|prepar\w*|mont\w*)\b|\b(?:pesquisando|consultando|buscando|verificando|checando|gerando|criando|emitindo|preparando)\b)/i.test(value);
+}
