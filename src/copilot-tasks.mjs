@@ -215,10 +215,16 @@ export class CopilotTaskStore {
         if (task.status === 'running' && Date.parse(task.leaseExpiresAt || '') <= nowMs) {
           if (task.retryPolicy === 'read_only' && task.attemptCount < task.maxAttempts) {
             task.status = 'queued';
+            task.errorCode = 'read_only_lease_expired';
+          } else if (task.retryPolicy === 'read_only') {
+            task.status = 'failed';
+            task.errorCode = 'read_only_attempts_exhausted';
+            task.completedAt = new Date(nowMs).toISOString();
           } else {
             task.status = 'uncertain';
+            task.errorCode = 'worker_lease_expired';
+            task.completedAt = new Date(nowMs).toISOString();
           }
-          task.errorCode = 'worker_lease_expired';
           task.leaseOwner = null;
           task.leaseToken = null;
           task.leaseExpiresAt = null;
