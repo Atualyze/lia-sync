@@ -119,8 +119,15 @@ export class CopilotTaskStore {
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) this.tasks = parsed.map(mapTask);
-      else this.logger.error?.('[copilot-tasks] arquivo local inválido; preservando estado em memória.');
+      const validRows = Array.isArray(parsed) && parsed.every(item => item
+        && typeof item === 'object'
+        && typeof (item.id || item.task_id) === 'string'
+        && typeof (item.taskKey || item.task_key) === 'string');
+      if (validRows) this.tasks = parsed.map(mapTask);
+      else {
+        this.localCorrupt = true;
+        this.logger.error?.('[copilot-tasks] arquivo local inválido; preservando estado em memória e bloqueando novas gravações.');
+      }
     } catch (error) {
       if (error?.code !== 'ENOENT') {
         this.localCorrupt = true;
