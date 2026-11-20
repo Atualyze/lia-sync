@@ -229,3 +229,25 @@ export async function classifyCopilotTurn({
     return { intent: 'clarification', confidence: 0, reason: 'turn_review_failed' };
   }
 }
+
+
+function normalizedContinuityText(value = '') {
+  return String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();
+}
+
+/** Recognizes an explicit payment-method selection in direct answer to the assistant's choice question. */
+export function isDirectPixChoice(message = '', assistantContext = '') {
+  const choice = normalizedContinuityText(message).replace(/[.!?]+$/g, '').trim();
+  if (!/^(?:direto|pix direto|copia e cola|codigo pix|qr code)$/.test(choice)) return false;
+  const context = normalizedContinuityText(assistantContext);
+  const askedForChoice = /(?:prefere|escolhe|escolher|qual opcao|qual forma|quer que eu|voce quer)/.test(context);
+  const offersPixDirect = /(?:pix direto|copia e cola|qr code)/.test(context);
+  const offersCheckout = /(?:checkout|infinitepay|link de pagamento)/.test(context);
+  return askedForChoice && offersPixDirect && offersCheckout;
+}
+
+/** A status question should consult durable task state, not ask the model to guess. */
+export function isCopilotTaskStatusQuestion(message = '') {
+  const value = normalizedContinuityText(message).replace(/[.!?]+$/g, '').trim();
+  return /^(?:onde (?:esta|ficou)|cade|estou esperando|ainda estou esperando|e a (?:pesquisa|consulta|busca|tarefa|resultado)|e o (?:resultado|retorno)|status(?: da)? (?:pesquisa|consulta|busca|tarefa)|como esta a (?:pesquisa|consulta|busca|tarefa))\\b/.test(value);
+}
