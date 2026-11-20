@@ -33,7 +33,7 @@ const input = (overrides = {}) => ({
 });
 
 test('fila local persiste, reivindica, conclui e entrega notificação uma única vez', async () => {
-  await withStore(async (store, now) => {
+  await withStore(async (store, now, setNow, dir) => {
     const queued = await store.enqueue(input());
     assert.equal(queued.created, true);
     const duplicate = await store.enqueue(input());
@@ -55,11 +55,9 @@ test('fila local persiste, reivindica, conclui e entrega notificação uma únic
     assert.equal(await store.finishNotification(notification, 'sent'), true);
     assert.equal(await store.claimPendingNotification(), null);
 
-    const reloaded = new CopilotTaskStore({
-      filePath: path.join(now.dir || '', 'tasks.json'),
-      logger: { warn() {}, error() {} }
-    });
-    assert.ok(reloaded);
+    const reloaded = new CopilotTaskStore({ filePath: path.join(dir, 'tasks.json'), logger: { warn() {}, error() {} } });
+    await reloaded.load();
+    assert.equal((await reloaded.getLatest('owner_self')).status, 'succeeded');
   });
 });
 
@@ -71,6 +69,8 @@ test('lease expirado reprograma somente leitura e torna ação não repetível i
     const retriedRead = await store.claimNext('worker-b', 30);
     assert.equal(retriedRead.id, read.id);
     assert.equal(retriedRead.attemptCount, 2);
+    await store.fail(retriedRead, 'read_test_finished');
+    setNow(getNow() + 1000);
 
     const payment = await store.enqueue(input({
       taskKey: 'copilot:payment',
