@@ -14,6 +14,7 @@ import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mj
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
+import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
@@ -406,6 +407,8 @@ export async function handleOwnerSession({
           return true;
         };
 
+        let semanticPendingOutboundIntent = null;
+
         const handlePendingOutboundDispatch = async () => {
           const pending = sSelf.pendingOutboundDispatch;
           if (!pending) return null;
@@ -426,8 +429,13 @@ export async function handleOwnerSession({
           const id = String(pending.id || '').toUpperCase();
           const approveMatch = matchOutboundApproval(cleanCommand);
           const cancelMatch = matchOutboundCancellation(cleanCommand);
+          const semanticApprove = semanticPendingOutboundIntent?.intent === 'approve' ? ['semantic-approve'] : null;
+          const semanticCancel = semanticPendingOutboundIntent?.intent === 'cancel' ? ['semantic-cancel'] : null;
+          const semanticResolve = semanticPendingOutboundIntent?.intent === 'resolve';
+          const effectiveApprove = approveMatch || semanticApprove;
+          const effectiveCancel = cancelMatch || semanticCancel;
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
-          const hasDecision = Boolean(approveMatch || cancelMatch);
+          const hasDecision = Boolean(effectiveApprove || effectiveCancel || semanticResolve);
           const asksAboutDispatch = /\b(?:disparo|envio|pr[eé]via)\b/i.test(cleanCommand);
 
           // Um registro em processamento/incerto não pode sequestrar mensagens
@@ -458,16 +466,32 @@ export async function handleOwnerSession({
           if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch !== 'function') {
             return recordSelfTurn('Este disparo de prospecção aguarda a conexão de aprovação com a fila de leads. Não enviei nada; peça suporte ao responsável pelo sistema.');
           }
+          if (semanticResolve) {
+            if (pending.status === 'pending') {
+              return recordSelfTurn('Entendi que você quer encerrar essa pendência, mas ela ainda está aguardando confirmação de envio. Posso cancelar a prévia, mas não vou marcar como concluída sem uma decisão explícita.');
+            }
+            const reviewedAt = new Date(now()).toISOString();
+            pending.reviewedAt = reviewedAt;
+            pending.reviewedBy = String(owner || 'responsável').slice(0, 80);
+            pending.reviewNote = 'Responsável solicitou encerramento administrativo; entrega não confirmada.';
+            store.markDirty();
+            try {
+              await store.flush?.();
+            } catch {
+              return recordSelfTurn('Entendi o pedido, mas não consegui persistir a revisão da pendência. Mantive o estado original para não perder a informação.');
+            }
+            return recordSelfTurn('Entendi. Registrei o disparo como *revisado/encerrado administrativamente*. Não marquei como entregue ou concluído porque a entrega não foi confirmada, e também não vou reenviá-lo automaticamente.');
+          }
           if (pending.status !== 'pending') {
             return recordSelfTurn('Este disparo já está em processamento ou teve resultado incerto. Não vou repeti-lo automaticamente; confira a conversa do destinatário antes de criar outro envio.');
           }
           if ((approveMatch || cancelMatch) && suppliedId && suppliedId !== id) {
             return recordSelfTurn('Esse código não corresponde à prévia pendente. Você pode responder apenas *sim* para enviar ou *não* para cancelar.');
           }
-          if (!approveMatch && !cancelMatch) {
+          if (!effectiveApprove && !effectiveCancel) {
             return recordSelfTurn(`Há um disparo pendente para *${pending.recipient}*. Confirme com *sim* para enviar ou *não* para cancelar. Não enviei nada ainda.`);
           }
-          if (cancelMatch) {
+          if (effectiveCancel) {
             const released = await releasePendingOutboundEffects(pending);
             if (!released) {
               pending.status = 'uncertain';
@@ -698,7 +722,18 @@ export async function handleOwnerSession({
           ? null
           : cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
+        if (!adminPixChoice && sSelf.pendingOutboundDispatch && !matchOutboundApproval(cleanCommand) && !matchOutboundCancellation(cleanCommand)) {
+          semanticPendingOutboundIntent = await classifyPendingOutboundIntent({
+            ai,
+            message: cleanCommand,
+            pending: sSelf.pendingOutboundDispatch,
+            recentContext: Array.isArray(sSelf.history) ? sSelf.history.slice(-6) : [],
+            botConfig,
+            deadline: aiDeadline
+          });
+        }
         const pendingOutboundReply = adminPixChoice ? null : await handlePendingOutboundDispatch();
+        semanticPendingOutboundIntent = null;
         if (pendingOutboundReply) return pendingOutboundReply;
 
         // Aprovação de cobrança Pix é um fluxo explícito, separado das confirmações
