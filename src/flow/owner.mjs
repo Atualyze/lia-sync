@@ -867,11 +867,8 @@ export async function handleOwnerSession({
           }
         }
 
-        // Comandos explícitos de gestão de contato têm prioridade sobre uma
-        // confirmação de continuidade pendente; não devem ser classificados
-        // pela IA como uma resposta ambígua à pergunta anterior.
-        const earlyAssumeMatch = cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
-        if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
+        // Comandos explícitos de gestão de contato já foram normalizados antes
+        // do processamento de pendências; as decisões Pix foram tratadas acima.
         const isDirectContactCommand = /^(?:bot|humano|pausar|assuma|assume|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
         const reactivationReply = isDirectContactCommand ? null : await handlePendingReactivationReply({
           store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner, stageOutboundDispatch
