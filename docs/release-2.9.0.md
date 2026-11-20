@@ -43,10 +43,10 @@ Após deploy:
 1. Confirmar que o log indica fila Supabase ativa (não fallback local).
 2. Consultar `/ready`: a resposta agora inclui `copilot_tasks`; o status deve ser `ready` e o modo `supabase` para coordenação distribuída.
 3. Consultar logs do worker.
-3. Testar uma consulta web de baixo risco e confirmar que o resultado chega ao responsável.
-4. Perguntar “estou esperando” e confirmar que o estado vem da tabela, não de inferência do modelo.
-5. Testar falha de consulta e confirmar notificação terminal.
-6. Em ambiente de homologação, testar lease expirado para leitura e para Pix; leitura pode ser retomada, Pix deve ficar incerto sem nova cobrança.
+4. Testar uma consulta web de baixo risco e confirmar que o resultado chega ao responsável.
+5. Perguntar “estou esperando” e confirmar que o estado vem da tabela, não de inferência do modelo.
+6. Testar falha de consulta e confirmar notificação terminal.
+7. Em ambiente de homologação, testar lease expirado para leitura e para Pix; leitura pode ser retomada, Pix deve ficar incerto sem nova cobrança.
 
 ## Limitações conhecidas
 
