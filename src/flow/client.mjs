@@ -689,24 +689,33 @@ export async function handleClientMessage({
             && hasPendingPixChoice
             && requestedPixAmount > 0
           );
+          let adminDecisionNeedsNotify = false;
           if (needsAdminPixDecision) {
-            const requestedAt = new Date(now()).toISOString();
-            s.pendingAdminDecision = {
-              type: 'pix_generation',
-              status: 'pending',
-              amount: requestedPixAmount,
-              description: String(s.pendingClientPayment.args?.descricao || 'Pagamento via Pix').slice(0, 80),
-              paymentMethod: 'pix_copy_paste',
-              requestedAt
-            };
-            store.markDirty();
+            const existingDecision = s.pendingAdminDecision?.type === 'pix_generation'
+              && s.pendingAdminDecision.status === 'pending'
+              ? s.pendingAdminDecision
+              : null;
+            if (!existingDecision || Number(existingDecision.amount) !== requestedPixAmount) {
+              const requestedAt = new Date(now()).toISOString();
+              s.pendingAdminDecision = {
+                type: 'pix_generation',
+                status: 'pending',
+                amount: requestedPixAmount,
+                description: String(s.pendingClientPayment.args?.descricao || 'Pagamento via Pix').slice(0, 80),
+                paymentMethod: 'pix_copy_paste',
+                requestedAt
+              };
+              adminDecisionNeedsNotify = true;
+              store.markDirty();
+            }
           }
 
+          const adminDecisionAmount = Number(s.pendingAdminDecision?.amount) || requestedPixAmount;
           const handoffNotify = needsAdminPixDecision
             ? async message => notify(buildAdminPixDecisionNotice({
               clientName: s.clientName || pushName || 'Cliente',
               phone: s.phone,
-              amount: requestedPixAmount
+              amount: adminDecisionAmount
             }) + `\n\n` + message)
             : notify;
           await triggerHandoff(s, {
@@ -716,7 +725,7 @@ export async function handleClientMessage({
             urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
             now: now(),
             notify: handoffNotify,
-            forceNotify: true,
+            forceNotify: needsAdminPixDecision ? adminDecisionNeedsNotify : true,
             identity
           });
           safeReplyText = needsAdminPixDecision
