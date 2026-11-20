@@ -451,16 +451,20 @@ export async function handleOwnerSession({
         if (copilotTaskStore && isCopilotTaskStatusQuestion(cleanCommand)) {
           const activeTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
           let latestTask = null;
+          let resolvedActiveTaskId = false;
           let statusLookupFailed = false;
           if (activeTaskId) {
-            try { latestTask = await copilotTaskStore.getById(activeTaskId, ownerTaskKey); }
+            try {
+              latestTask = await copilotTaskStore.getById(activeTaskId, ownerTaskKey);
+              resolvedActiveTaskId = Boolean(latestTask);
+            }
             catch { statusLookupFailed = true; }
           }
           if (!latestTask) {
             try { latestTask = await copilotTaskStore.getLatest(ownerTaskKey); }
             catch { statusLookupFailed = true; }
           }
-          if (!activeTaskId && latestTask) {
+          if (!resolvedActiveTaskId && latestTask) {
             const createdAt = Date.parse(latestTask.createdAt || '');
             if (!Number.isFinite(createdAt) || now() - createdAt > 7 * 24 * 60 * 60 * 1000) latestTask = null;
           }
