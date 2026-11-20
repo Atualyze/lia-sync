@@ -97,12 +97,14 @@ export class CopilotTaskStore {
     client = null,
     filePath = './data/copilot-tasks.json',
     logger = console,
-    now = () => Date.now()
+    now = () => Date.now(),
+    allowLocalFallback = false
   } = {}) {
     this.client = client;
     this.filePath = filePath;
     this.logger = logger;
     this.now = now;
+    this.allowLocalFallback = allowLocalFallback === true;
     this.tasks = [];
     this.mode = 'local';
     this.remoteError = null;
@@ -141,9 +143,14 @@ export class CopilotTaskStore {
         this.mode = 'supabase';
         this.remoteError = null;
       } catch (error) {
-        this.mode = 'local';
         this.remoteError = error?.message || 'copilot_task_queue_unavailable';
-        this.logger.warn?.('[copilot-tasks] fila Supabase indisponível; usando fallback local de uma única réplica. Aplique a migration da fila para coordenação distribuída.');
+        if (this.allowLocalFallback) {
+          this.mode = 'local';
+          this.logger.warn?.('[copilot-tasks] fallback local explicitamente habilitado; somente uma réplica pode consumir a fila.');
+        } else {
+          this.mode = 'unavailable';
+          this.logger.error?.('[copilot-tasks] Supabase configurado, mas a fila não está disponível. Aplique a migration; execução bloqueada para evitar split-brain.');
+        }
       }
     }
     this.loaded = true;
@@ -223,7 +230,7 @@ export class CopilotTaskStore {
 
   async claimNext(workerId, leaseSeconds = 180) {
     if (!this.loaded) await this.load();
-    if (!this.remoteEnabled && this.localCorrupt) return null;
+    if (this.mode === 'unavailable' || (!this.remoteEnabled && this.localCorrupt)) return null;
     const worker = String(workerId || '').trim().slice(0, 120) || 'lia-worker';
     const lease = Math.max(30, Math.min(600, Number(leaseSeconds) || 180));
     if (this.remoteEnabled) {
@@ -376,7 +383,7 @@ export class CopilotTaskStore {
 
   async claimPendingNotification() {
     if (!this.loaded) await this.load();
-    if (!this.remoteEnabled && this.localCorrupt) return null;
+    if (this.mode === 'unavailable' || (!this.remoteEnabled && this.localCorrupt)) return null;
     if (this.remoteEnabled) {
       const rows = await this.client.select('copilot_tasks', 'select=*&status=eq.succeeded&notification_status=eq.pending&order=completed_at.asc&limit=10');
       for (const row of Array.isArray(rows) ? rows : []) {
@@ -432,6 +439,7 @@ export class CopilotTaskStore {
 
   async getById(taskId, ownerKey) {
     if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
     if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
     const id = String(taskId || '').trim();
     const owner = String(ownerKey || '').trim();
@@ -451,6 +459,7 @@ export class CopilotTaskStore {
 
   async getLatest(ownerKey) {
     if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
     if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
     const owner = String(ownerKey || '').trim();
     if (!owner) return null;
