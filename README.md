@@ -2,9 +2,19 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.8.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.9.0** (pacote, metadata e documentação sincronizados).
 
-## Novidades da Versão 2.8.0 — Continuidade natural do Copiloto
+## Novidades da Versão 2.9.0 — Execução durável do Copiloto
+
+- **Fila persistente:** pedidos de pesquisa, consultas de leitura e Pix estático entram no Supabase antes de a Lia afirmar que iniciou o trabalho.
+- **Worker recuperável:** execuções ficam com estado, checkpoints e lease; consultas seguras podem continuar após reinício do processo.
+- **Resultado recuperável:** a Lia persiste o resultado antes de enviar a resposta e consulta o andamento por frases como “onde está?” e “estou esperando”.
+- **Pix direto:** “Direto”, “Copia e Cola” e “QR Code” são tratados como escolha de Pix quando respondem à pergunta da modalidade; o valor e a descrição são reaproveitados.
+- **Segurança de efeitos externos:** ações de envio, gravação e checkout externo continuam protegidas por confirmações; timeouts de entrega são marcados como incertos e nunca reenviados cegamente.
+
+Detalhes técnicos e operação: [`docs/release-2.9.0.md`](docs/release-2.9.0.md). Pré-requisito: aplicar [`supabase/migrations/20261120160000_copilot_tasks.sql`](supabase/migrations/20261120160000_copilot_tasks.sql) antes do deploy.
+
+# Novidades da Versão 2.8.0 — Continuidade natural do Copiloto
 
 - **Tarefas em andamento:** o Copiloto preserva o pedido original, a última pergunta, o tipo de tarefa e as ferramentas autorizadas ao longo de respostas curtas, reformulações, correções e mudanças parciais de assunto.
 - **Revisão semântica de ferramentas:** antes de executar uma ferramenta que não esteja explicitamente ligada à mensagem atual, a Lia avalia se é continuação, novo pedido, pedido de esclarecimento ou assunto não relacionado.
