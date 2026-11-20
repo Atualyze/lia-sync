@@ -665,7 +665,9 @@ export async function handleOwnerSession({
         // Comandos explícitos de gestão de contato têm prioridade sobre uma
         // confirmação de continuidade pendente; não devem ser classificados
         // pela IA como uma resposta ambígua à pergunta anterior.
-        const earlyAssumeMatch = cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
+        const earlyAssumeMatch = parseAdminPixDecision(cleanCommand)
+          ? null
+          : cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
         const pendingOutboundReply = await handlePendingOutboundDispatch();
         if (pendingOutboundReply) return pendingOutboundReply;
