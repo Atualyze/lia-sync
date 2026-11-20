@@ -47,7 +47,7 @@ export function lastAssistantAskedForPayment(history = [], pendingQuestion = '')
 }
 
 export function lastAssistantAskedForPaymentAmount(history = [], pendingQuestion = '') {
-  const text = normalizeContextText(pendingQuestion || latestAssistantText(history));
+  const text = normalizeContextText(latestAssistantText(history) || pendingQuestion);
   return /\b(?:valor|quanto)\b/.test(text)
     && /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout)\b/.test(text)
     && (text.includes('?') || /\b(?:informe|me diga|qual)\b/.test(text));
