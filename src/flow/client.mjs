@@ -85,11 +85,15 @@ export async function handleClientMessage({
   operationsStore = null,
   phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
 }) {
+      const auditPhoneDigits = String(phone || '').replace(/\D/g, '');
+      const defaultAuditActorLabel = auditPhoneDigits.length >= 8
+        ? `cliente ${auditPhoneDigits.slice(0, 2)}••••${auditPhoneDigits.slice(-2)}`
+        : 'cliente';
       const executeToolCall = (toolName, args = {}, context = {}) => executeToolCallRaw(toolName, args, {
         ...context,
         actor: context.actor || 'client',
         operationsStore: context.operationsStore || operationsStore,
-        auditActorLabel: context.auditActorLabel || 'cliente'
+        auditActorLabel: context.auditActorLabel || defaultAuditActorLabel
       });
       // ==========================================
       // CASO 2: CONTATO / CLIENTE NO WHATSAPP

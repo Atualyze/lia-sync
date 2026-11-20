@@ -19,6 +19,7 @@ test('catálogo dinâmico reflete todas as ferramentas reais e seus parâmetros'
     assert.deepEqual(item.requiredParameters, tool.parameters.required || []);
     assert.equal(typeof item.enabled, 'boolean');
     assert.ok(item.policy.mode);
+    assert.notEqual(item.policy.mode, 'restricted', 'política ausente para ' + tool.name);
   }
 });
 
@@ -167,4 +168,16 @@ test('metadados de auditoria aceitam identificação da ferramenta e continuam s
   assert.equal(inserted.metadata.phone, undefined);
   assert.equal(inserted.metadata.message, undefined);
   assert.equal(inserted.metadata.actorLabel.includes('5588999999999'), false);
+
+  await store.audit({
+    action: 'tool_execution',
+    entityType: 'tool',
+    metadata: {
+      toolName: 'consultar_contato_ou_lead',
+      actorRole: 'client',
+      actorLabel: 'cliente 55••••85',
+      status: 'completed'
+    }
+  });
+  assert.equal(inserted.metadata.actorLabel, 'cliente 55••••85');
 });

@@ -160,9 +160,9 @@ Política de recuperação:
 
 ### 3.7. Auditoria das chamadas
 
-Quando o OperationsStore tem persistência Supabase disponível, o executor registra na audit_log o nome canônico da ferramenta, papel do solicitante (owner/client), estado observado, duração, etapa do plano e código de motivo quando existe. A identificação individual autenticada é incluída somente quando há um UUID de ator disponível.
+Quando o OperationsStore tem persistência Supabase disponível, o executor registra na audit_log o nome canônico da ferramenta, papel do solicitante (owner/client), estado observado, duração, etapa do plano e código de motivo quando existe. O fluxo de cliente inclui um identificador de telefone parcialmente mascarado (dois primeiros e dois últimos dígitos); o campo de ator autenticado recebe UUID somente quando disponível.
 
-Por privacidade, a trilha não armazena argumentos, conteúdo de mensagens, telefones, segredos ou o payload completo do resultado. A auditoria é **best-effort**: se o Supabase estiver indisponível, a execução não é repetida nem falsamente marcada como auditada. O registro da chamada de ferramenta também não substitui o ledger específico de entrega do WhatsApp ou de confirmação de pagamento.
+Por privacidade, a trilha não armazena argumentos, conteúdo de mensagens, telefones em claro, segredos ou o payload completo do resultado. A auditoria é **best-effort**: se o Supabase estiver indisponível, a execução não é repetida nem falsamente marcada como auditada. O registro da chamada de ferramenta também não substitui o ledger específico de entrega do WhatsApp ou de confirmação de pagamento.
 
 ### 3.8. Limite entre conhecimento e execução
 
