@@ -645,6 +645,17 @@ export async function handleClientMessage({
           ? s.pendingAdminDecision
           : null;
         const sameDecision = existingDecision && Number(existingDecision.amount) === Number(numericAmount.toFixed(2));
+        const snapshot = {
+          pendingAdminDecision: s.pendingAdminDecision,
+          human: s.human,
+          humanSource: s.humanSource,
+          handoffAt: s.handoffAt,
+          handoffReason: s.handoffReason,
+          updatedAt: s.updatedAt
+        };
+        const requestedAt = sameDecision
+          ? existingDecision.requestedAt
+          : new Date(now()).toISOString();
         if (!sameDecision) {
           s.pendingAdminDecision = {
             type: 'pix_generation',
@@ -652,13 +663,40 @@ export async function handleClientMessage({
             amount: Number(numericAmount.toFixed(2)),
             description: String(description || s.pendingClientPayment?.args?.descricao || 'Pagamento via Pix').slice(0, 80),
             paymentMethod: 'pix_copy_paste',
-            requestedAt: new Date(now()).toISOString()
+            requestedAt
           };
-          store.markDirty();
         }
+        const handoffReason = 'aguardando decisão do responsável para gerar cobrança Pix';
+        if (!s.human) {
+          s.human = true;
+          s.humanSource = s.humanSource || 'admin';
+          s.handoffAt = requestedAt;
+          s.handoffReason = handoffReason;
+        }
+        s.updatedAt = new Date(now()).toISOString();
+        store.markDirty();
+        try {
+          await store.flush?.();
+          if (store.client?.enabled && store.persistence !== 'supabase') {
+            throw new Error(store.remoteError || 'Supabase não confirmou a persistência da decisão');
+          }
+        } catch (error) {
+          if (snapshot.pendingAdminDecision === undefined) delete s.pendingAdminDecision;
+          else s.pendingAdminDecision = snapshot.pendingAdminDecision;
+          s.human = snapshot.human;
+          s.humanSource = snapshot.humanSource;
+          s.handoffAt = snapshot.handoffAt;
+          s.handoffReason = snapshot.handoffReason;
+          s.updatedAt = snapshot.updatedAt;
+          store.markDirty();
+          await store.flush?.().catch(() => {});
+          logger.error?.('[flow:payment] Não foi possível persistir a decisão administrativa do Pix:', error?.name || 'Error');
+          return 'Não consegui registrar a solicitação com segurança, então não gerei o Pix nem encaminhei uma autorização. Nossa equipe precisará verificar o atendimento manualmente.';
+        }
+
         adminPixApprovalPending = true;
         await triggerHandoff(s, {
-          reason: 'aguardando decisão do responsável para gerar cobrança Pix',
+          reason: handoffReason,
           urgency: 'normal',
           now: now(),
           notify: async message => notify(buildAdminPixDecisionNotice({
@@ -669,9 +707,11 @@ export async function handleClientMessage({
           forceNotify: !sameDecision,
           identity
         });
-        return 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
-      };
-      if (filtered.blocked) {
+        await store.flush?.().catch(() => {});
+        return s.handoffNotifyFailed
+          ? 'Registrei o valor para validação, mas não consegui confirmar o aviso à equipe. Ainda não gerei o Pix; o atendimento precisa ser verificado manualmente.'
+          : 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
+      };      if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
         const priceContextActive = isPriceViolation && hasActivePriceContext(
