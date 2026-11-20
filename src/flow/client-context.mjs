@@ -38,16 +38,16 @@ function latestAssistantText(history = []) {
   return '';
 }
 
-export function lastAssistantAskedForPayment(history = []) {
-  const text = normalizeContextText(latestAssistantText(history));
+export function lastAssistantAskedForPayment(history = [], pendingQuestion = '') {
+  const text = normalizeContextText(pendingQuestion || latestAssistantText(history));
   const mentionsPayment = /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout|chave)\b/.test(text);
   const asksChoiceOrAmount = /\b(?:qual|quanto|informe|prefere|escolhe|escolher|valor|opcao|opcoes|deseja)\b/.test(text)
     || text.includes('?');
   return mentionsPayment && asksChoiceOrAmount;
 }
 
-export function lastAssistantAskedForPaymentAmount(history = []) {
-  const text = normalizeContextText(latestAssistantText(history));
+export function lastAssistantAskedForPaymentAmount(history = [], pendingQuestion = '') {
+  const text = normalizeContextText(pendingQuestion || latestAssistantText(history));
   return /\b(?:valor|quanto)\b/.test(text)
     && /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout)\b/.test(text)
     && (text.includes('?') || /\b(?:informe|me diga|qual)\b/.test(text));
