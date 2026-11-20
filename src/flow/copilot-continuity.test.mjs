@@ -185,3 +185,12 @@ test('perguntas de status reconhecem estou esperando e onde está', async () => 
   assert.equal(isCopilotTaskStatusQuestion('Alguma novidade?'), true);
   assert.equal(isCopilotTaskStatusQuestion('vamos conversar'), false);
 });
+
+
+test('detecta promessa de execução sem confundir explicação ou recusa', async () => {
+  const { claimsUnexecutedToolWork } = await import('./copilot-continuity.mjs');
+  assert.equal(claimsUnexecutedToolWork('Entendido! Gerando a cobrança Pix agora.'), true);
+  assert.equal(claimsUnexecutedToolWork('Estou consultando a web neste momento.'), true);
+  assert.equal(claimsUnexecutedToolWork('Não vou gerar sem a confirmação necessária.'), false);
+  assert.equal(claimsUnexecutedToolWork('Vou te explicar como funciona o Pix.'), false);
+});
