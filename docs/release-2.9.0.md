@@ -21,12 +21,12 @@ Cada tarefa registra solicitante, destino de retorno, pedido resumido, plano, po
 
 ## Política de execução
 
-O worker só aceita uma allowlist de consultas seguras e operações Pix explicitamente autorizadas pelo fluxo. Revalida se a ferramenta continua habilitada antes de executá-la. A fila não é uma autorização: o fluxo original ainda valida intenção, argumentos, identidade do responsável e política da ferramenta.
+O worker só aceita uma allowlist de consultas seguras (web, contatos, base de conhecimento, saúde, dados públicos, leitura de planilhas, busca/listagem no Drive e consulta/listagem da agenda) e operações Pix explicitamente autorizadas pelo fluxo. Revalida se a ferramenta continua habilitada antes de executá-la. A fila não é uma autorização: o fluxo original ainda valida intenção, argumentos, identidade do responsável e política da ferramenta.
 
 - Consultas somente-leitura podem voltar à fila após expiração de lease, respeitando o limite de tentativas.
 - Criação de cobrança Pix não é repetida automaticamente. Se o lease expirar ou o resultado não puder ser confirmado, a tarefa vira `uncertain`.
 - Mensagens externas, atualizações de CRM, alterações de agenda, publicação de configuração e mudanças de código não são movidas para o worker genérico.
-- Uma falha terminal ou resultado incerto é persistido e notificado. Falha de entrega da notificação também vira `uncertain`; não há reenvio automático após resultado ambíguo.
+- Uma resposta sem correspondência interrompe a cadeia; o worker não executa etapas dependentes com dados ausentes. Uma falha terminal ou resultado incerto é persistido e notificado. Falha de entrega da notificação também vira `uncertain`; não há reenvio automático após resultado ambíguo.
 - A notificação é enviada ao número configurado do responsável em dígitos, nunca ao JID bruto recebido da Evolution.
 
 ## Supabase e fallback
@@ -58,6 +58,7 @@ Após deploy:
 
 A suíte acrescenta cobertura para:
 - escolha curta “Direto” no contexto da pergunta de modalidade;
+- bloqueio de promessas de execução sem chamada de ferramenta;
 - “estou esperando” e consulta de status;
 - idempotência da fila, persistência local, claim, checkpoint e expiração de lease;
 - retomada de leitura sem repetir cobrança;
