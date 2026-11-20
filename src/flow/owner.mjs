@@ -369,15 +369,19 @@ export async function handleOwnerSession({
             name: String(step.name || '').trim(),
             args: { ...(step.args || {}) }
           }));
-          const targetPhone = String(
-            rawItem?.key?.remoteJid
+          // Evolution sendText espera número em dígitos, não JID com @s.whatsapp.net.
+          // Priorize o telefone configurado do responsável para a notificação de conclusão.
+          const rawTargetPhone = String(
+            getHumanPhone()
+            || rawItem?.key?.remoteJid
             || rawItem?.remoteJid
             || rawItem?.jid
             || rawItem?.phone
             || (phone !== OWNER_SELF_KEY ? phone : '')
-            || getHumanPhone()
             || ''
           ).trim();
+          const targetDigits = rawTargetPhone.replace(/\\D/g, '');
+          const targetPhone = targetDigits.length >= 8 && targetDigits.length <= 15 ? targetDigits : '';
           const retryPolicy = normalizedSteps.some(step => step.name === 'gerar_cobranca_pix') ? 'never' : 'read_only';
           const taskKey = createCopilotTaskKey({
             messageId,
