@@ -1469,6 +1469,10 @@ create table if not exists public.copilot_tasks (
   ),
   retry_policy text not null default 'never'
     check (retry_policy in ('read_only', 'never')),
+  constraint copilot_tasks_pix_never_retries check (
+    retry_policy <> 'read_only'
+    or not (steps @> '[{"name":"gerar_cobranca_pix"}]'::jsonb)
+  ),
   status text not null default 'queued'
     check (status in ('queued', 'running', 'awaiting_input', 'succeeded', 'failed', 'uncertain', 'cancelled')),
   result_text text,
