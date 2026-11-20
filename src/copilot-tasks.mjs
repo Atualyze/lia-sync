@@ -224,7 +224,7 @@ export class CopilotTaskStore {
           task.leaseExpiresAt = null;
           task.updatedAt = new Date(nowMs).toISOString();
         }
-        if (task.status === 'succeeded' && task.notificationStatus === 'sending'
+        if (['succeeded', 'failed', 'uncertain'].includes(task.status) && task.notificationStatus === 'sending'
           && nowMs - Date.parse(task.updatedAt || '') > 120000) {
           task.notificationStatus = 'uncertain';
           task.errorCode = 'notification_lease_expired';
