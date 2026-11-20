@@ -2028,7 +2028,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           for (const tc of toolCallsToRun) {
             planIndex += 1;
             if (tc?.name) {
-              if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+              if (tc.name === 'gerar_cobranca_pix' && paymentMethodChoice !== 'pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
                 tc.name = 'checkout_infinitepay';
                 tc.args = { acao: 'criar_link', ...(tc.args || {}) };
               }
@@ -2222,7 +2222,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   return recordSelfTurn(filterReply(`O que você gostaria de enviar${recipientLabel}? Me informe o texto para eu preparar a prévia antes de qualquer envio.`, { isCopilot: true }).text);
                 }
 
-                if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
+                if (tc.name === 'gerar_cobranca_pix' && paymentMethodChoice !== 'pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
                 tc.name = 'checkout_infinitepay';
                 tc.args = { acao: 'criar_link', ...(tc.args || {}) };
               }
@@ -2544,6 +2544,10 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
+        const promisesUnstartedWork = /\b(?:vou|estou|ja estou|já estou|aguarde|so um instante|só um instante)\b.{0,100}\b(?:consultar|pesquisar|buscar|verificar|gerar|criar|puxar|procurar)\b/i.test(String(rawReply || ''));
+        if (promisesUnstartedWork && toolOutputs.length === 0) {
+          rawReply = 'Ainda não iniciei essa operação: nenhuma ferramenta confirmou a execução nesta mensagem. Preciso registrar a tarefa ou executar a ferramenta antes de afirmar que está em andamento.';
+        }
         const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a(?:\s*pix)?|infinitepay|link\s+de\s+pagamento)\b/i.test(cleanCommand);
         const currentPix = extractCurrentPixArgs(cleanCommand, {
           allowBareNumber: Boolean(pendingPixRequest?.requestedAt) || hasPixKeyword
@@ -2580,7 +2584,7 @@ ${errMsg}`;
           && !isAudioForSelf
           && !isClarifyingExistingRequest
           && pixRequestActive && pixParsed.valor !== null && Boolean(pixParsed.desc);
-        if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
+        if (shouldAutoExecutePix && ipEnabled && pendingPixRequest?.choice !== 'pix' && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
           const autoIp = await executeToolCall('checkout_infinitepay', {
             acao: 'criar_link',
