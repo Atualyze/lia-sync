@@ -1097,7 +1097,9 @@ export async function handleOwnerSession({
         const isExplicitCancel = isExplicitCopilotCancellation(strippedCmd, { hasPending: hadPending });
 
         if (isExplicitCancel) {
-          const pendingTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
+          const previousCopilotTask = sSelf.pendingCopilotTask;
+          const pendingTaskId = String(previousCopilotTask?.taskId || '').trim();
+          const hadPendingCopilotTask = Boolean(previousCopilotTask);
           let durableTaskCancelled = false;
           if (pendingTaskId && copilotTaskStore?.enabled) {
             durableTaskCancelled = await copilotTaskStore.cancel(pendingTaskId).catch(() => false);
@@ -1109,18 +1111,21 @@ export async function handleOwnerSession({
           sSelf.pendingPdf = null;
           sSelf.pendingControlAction = null;
           sSelf.pendingReactivation = null;
-          sSelf.pendingCopilotTask = null;
+          sSelf.pendingCopilotTask = pendingTaskId && !durableTaskCancelled ? previousCopilotTask : null;
+          if (hadPendingCopilotTask && previousCopilotTask?.type === 'payment' && (!pendingTaskId || durableTaskCancelled)) {
+            sSelf.pendingPixRequest = null;
+          }
           store.markDirty();
           const cancelMsg = pendingTaskId
             ? (durableTaskCancelled
               ? '🚫 *Tarefa ' + pendingTaskId.split('-')[0].toUpperCase() + ' cancelada.* O worker não continuará as etapas pendentes.'
               : '⚠️ Não consegui confirmar o cancelamento da tarefa ' + pendingTaskId.split('-')[0].toUpperCase() + '. Ela pode já ter sido concluída; consulte “onde está?” antes de solicitar outra execução.')
-            : (sSelf.pendingCopilotTask
+            : (hadPendingCopilotTask
               ? 'Contexto da solicitação descartado. Não havia um ID de tarefa durável para confirmar o cancelamento de uma execução.'
               : hadPending
                 ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
                 : `Tudo bem, ${owner}! Cancelado por aqui. Em que posso te ajudar agora?`);
-          return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text);
+          return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text, { preserveTask: Boolean(pendingTaskId && !durableTaskCancelled) });
         }
 
         // Linguagem natural para controles: só consulta a IA quando há pistas
@@ -1838,7 +1843,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           };
           store.markDirty();
         }
-        const isAffirmativeTaskAnswer = (/^(?:sim|isso|esse mesmo|essa mesma|pode|pode sim|confirmo|confirmado|exatamente|isso mesmo|pode seguir|segue|manda ver)[.!\\s]*$/i.test(normalizedTurn)
+        const isAffirmativeTaskAnswer = (/^(?:sim|isso|esse mesmo|essa mesma|pode|pode sim|confirmo|confirmado|exatamente|isso mesmo|pode seguir|segue|manda ver)[.!\s]*$/i.test(normalizedTurn)
           && /(?:quer que|posso|devo|confirma|confirmar|gerar|continuar|seguir|prosseguir)/i.test(lastAssistantContext))
           || Boolean(paymentMethodChoice);
         const hasPaymentAmount = activeTask?.type === 'payment' && (
