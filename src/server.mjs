@@ -387,9 +387,11 @@ if (isDirectRun) {
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
   // Worker independente: reivindica jobs persistentes com lease no Supabase.
   // O intervalo não sobrepõe execuções locais; concorrência entre réplicas é controlada pela RPC claim_copilot_task.
-  const copilotTaskTimer = setInterval(() => {
+  const runCopilotWorker = () => {
     app.copilotTaskWorker?.runOnce().catch(error => console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error'));
-  }, 1500);
+  };
+  runCopilotWorker();
+  const copilotTaskTimer = setInterval(runCopilotWorker, 3000);
   copilotTaskTimer.unref();
   const stop = async () => {
     clearInterval(maintenanceTimer);
