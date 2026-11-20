@@ -21,6 +21,7 @@ import { isOwnerKey, OWNER_SELF_KEY } from './core/identity.mjs';
 import { createOutboundDispatchPreview } from './outbound-dispatch.mjs';
 import { createChatwootProxy } from './http/proxy.mjs';
 import { createRouter } from './http/router.mjs';
+import { checkReadiness } from './http/readiness.mjs';
 import { deliveryTarget, json } from './http/utils.mjs';
 import { broadcastBridgeEvent } from './http/bridge.mjs';
 import { CampaignStore } from './campaigns.mjs';
@@ -71,6 +72,22 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     operationsStore,
     logger: console
   });
+
+  const baseReadinessCheck = readinessCheck || checkReadiness;
+  const taskQueueReadinessCheck = async () => {
+    const base = await baseReadinessCheck();
+    const queueMode = copilotTaskStore.mode;
+    const queueAvailable = queueMode !== 'unavailable';
+    const queueCheck = {
+      name: 'copilot_tasks',
+      status: queueAvailable ? 'ready' : 'unavailable',
+      mode: queueMode,
+      ...(queueMode === 'local' ? { reason: 'single_instance_local_fallback' } : {})
+    };
+    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck];
+    const ok = Boolean(base?.ok) && queueAvailable;
+    return { ...base, ok, status: ok ? 'ready' : 'not_ready', checks };
+  };
   const faqFor = (botConfig) => async () => {
     const local = await loadFaq();
     const managed = (botConfig()?.knowledge?.faq || []).filter(item => item?.enabled !== false && item?.answer && Array.isArray(item.keys));
@@ -319,7 +336,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getCachedInstanceOwner,
     updateInstanceOwner,
     proxyToChatwoot,
-    readinessCheck,
+    readinessCheck: taskQueueReadinessCheck,
     campaignStore,
     operationsStore,
     webhookEventStore,
