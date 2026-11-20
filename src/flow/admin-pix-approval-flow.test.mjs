@@ -200,3 +200,65 @@ test('Copiloto: mais de uma cobrança pendente exige identificar o cliente', asy
   assert.equal(ana.pendingAdminDecision.status, 'pending');
   assert.equal(bruna.pendingAdminDecision.status, 'pending');
 });
+
+
+test('Copiloto: GERAR PIX sem decisão pendente falha fechado e não consulta a IA', async () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-no-pending-${Date.now()}.json`));
+  let aiCalls = 0;
+  const sentTexts = [];
+  const flow = createFlow({
+    store,
+    getBotConfig: createBotConfig,
+    whatsapp: { sendText: async (phone, text) => sentTexts.push({ phone, text }) },
+    ai: { askAI: async () => { aiCalls += 1; return { reply: 'Não deveria gerar nada.', tool_calls: [] }; } },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  const reply = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'GERAR PIX',
+    origin: 'owner'
+  });
+
+  assert.match(reply, /não há uma cobrança Pix aguardando/i);
+  assert.equal(aiCalls, 0);
+  assert.equal(sentTexts.length, 0);
+});
+
+test('Copiloto: resultado incerto pode ser assumido pelo administrador sem reenviar Pix', async () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-uncertain-${Date.now()}.json`));
+  const customer = store.get(CLIENT_PHONE);
+  customer.clientName = 'Ana';
+  customer.human = true;
+  customer.humanSource = 'admin';
+  customer.pendingClientPayment = { args: {}, choice: 'pix', createdAt: new Date().toISOString() };
+  customer.pendingAdminDecision = {
+    ...pendingDecision(5),
+    status: 'uncertain',
+    error: 'O provedor não confirmou a entrega.'
+  };
+  const sentTexts = [];
+  const sentImages = [];
+  const flow = createFlow({
+    store,
+    getBotConfig: createBotConfig,
+    whatsapp: {
+      sendText: async (phone, text) => sentTexts.push({ phone, text }),
+      sendImage: async (phone, image) => sentImages.push({ phone, image })
+    },
+    ai: { askAI: async () => ({ reply: 'Não deveria precisar consultar a IA.', tool_calls: [] }) },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  const reply = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'ASSUMIR ATENDIMENTO',
+    origin: 'owner'
+  });
+
+  assert.match(reply, /você assumiu o atendimento/i);
+  assert.equal(customer.pendingAdminDecision.status, 'assumed');
+  assert.equal(customer.human, true);
+  assert.equal(sentTexts.length, 0);
+  assert.equal(sentImages.length, 0);
+});
