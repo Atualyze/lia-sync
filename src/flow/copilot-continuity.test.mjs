@@ -181,5 +181,7 @@ test('perguntas de status reconhecem estou esperando e onde está', async () => 
   assert.equal(isCopilotTaskStatusQuestion('estou esperando'), true);
   assert.equal(isCopilotTaskStatusQuestion('Onde está?'), true);
   assert.equal(isCopilotTaskStatusQuestion('cadê o resultado?'), true);
+  assert.equal(isCopilotTaskStatusQuestion('O que houve?'), true);
+  assert.equal(isCopilotTaskStatusQuestion('Alguma novidade?'), true);
   assert.equal(isCopilotTaskStatusQuestion('vamos conversar'), false);
 });
