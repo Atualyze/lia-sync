@@ -21,13 +21,7 @@ export function isBackgroundCopilotTool(name, args = {}) {
 }
 
 function isToolResultSuccessful(name, result) {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
-  if (result.requiresConfirmation === true) return false;
-  if (result.success === false || result.error) return false;
-  if (typeof result.success === 'boolean') return result.success;
-  if (typeof result.found === 'boolean') return true;
-  if (name === 'consultar_saude_infra' && (result.health || Array.isArray(result.checks))) return true;
-  return false;
+  return verifyCopilotToolResult(name, result).state === 'verified';
 }
 
 function formatPixResult(result = {}) {
@@ -219,10 +213,14 @@ export function createCopilotTaskWorker({
           searchWebWithGemini: ai?.searchWebWithGemini,
           planStep: index + 1
         });
-        if (!isToolResultSuccessful(step.name, result)) {
-          const code = String(result?.code || result?.error?.code || result?.error || 'tool_result_not_successful').slice(0, 120);
+        const verification = verifyCopilotToolResult(step.name, result);
+        if (!verification.continue) {
+          const code = String(result?.code || result?.error?.code || result?.error || verification.state || 'tool_result_not_successful').slice(0, 120);
           const partial = completedSteps.length ? `\n\nEtapas anteriores confirmadas:\n${fallbackSummary(completedSteps)}` : '';
-          await taskStore.fail(task, code, `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} não foi concluída: a etapa *${step.name}* não retornou um resultado confirmado. Não vou repetir automaticamente.${partial}`);
+          const reason = verification.state === 'no_match'
+            ? 'não encontrei um registro correspondente e interrompi as próximas etapas'
+            : 'não retornou um resultado confirmado';
+          await taskStore.fail(task, code, `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} não foi concluída: a etapa *${step.name}* ${reason}. Não vou repetir automaticamente.${partial}`);
           return false;
         }
         completedSteps.push({ name: step.name, result });
