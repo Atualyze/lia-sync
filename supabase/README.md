@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **2.5.1**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **2.9.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Este diretório contém o schema do banco do Lia Sync, independente do Supabase do CRM original. O runtime usa o Supabase como fonte primária quando configurado e mantém armazenamento local como fallback compatível.
 
@@ -21,7 +21,7 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 11. `migrations/20261115_prospecting.sql` — listas, cadências, leads e eventos de prospecção
 12. `migrations/20261115_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
 13. `migrations/20261116000000_review_hardening.sql` — RLS nas tabelas `prospect_*` e `reminders`, CHECK de `created_by` removido, lease de manutenção
-14. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+14. `migrations/20261120150000_copilot_task_queue.sql` — fila persistente backend-only do Copiloto, leases, idempotência e notificação de resultados\n15. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 
@@ -63,7 +63,7 @@ O runtime persiste as áreas operacionais no Supabase e mantém arquivos locais 
 sessions.json              -> conversations + conversation_messages + contacts + pets
 bot-config.json             -> bot_config_state + bot_config_revisions
 memória de métricas         -> ai_calls e agregações
-archive/*.json              -> conversations.status = 'archived'
+archive/*.json              -> conversations.status = 'archived'\ncopilot-tasks.json           -> fallback local da fila (somente uma réplica)
 ```
 
 Na primeira inicialização com as variáveis de runtime configuradas, dados locais são importados quando ainda não existem no banco. Não remova os arquivos locais antes de validar a operação e o rollback.
