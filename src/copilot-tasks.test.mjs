@@ -6,6 +6,7 @@ import {
   inferCopilotTaskType,
   isBackgroundCopilotStep,
   isCopilotTaskStatusQuery,
+  isUnstartedActionPromise,
   prepareCopilotTaskSteps,
   resolveCopilotPaymentMethodChoice
 } from './copilot-tasks.mjs';
@@ -20,6 +21,14 @@ test('respostas curtas escolhem o meio de pagamento apenas quando a Lia pergunto
   assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'Bom dia!'), null);
   assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'Eu posso gerar Pix direto ou checkout InfinitePay.'), null);
   assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'O Pix direto usa QR Code.'), null);
+});
+
+test('detector bloqueia promessa sem ferramenta em formas conjugadas e gerúndio', () => {
+  assert.equal(isUnstartedActionPromise('Entendido! Gerando a cobrança Pix com valor livre para você agora.'), true);
+  assert.equal(isUnstartedActionPromise('Estou pesquisando a documentação agora.'), true);
+  assert.equal(isUnstartedActionPromise('Vou verificar isso em seguida.'), true);
+  assert.equal(isUnstartedActionPromise('Resultado da pesquisa: encontrei três fontes.'), false);
+  assert.equal(isUnstartedActionPromise('A tarefa foi concluída.'), false);
 });
 
 test('perguntas de andamento consultam a tarefa persistida, não reabrem a intenção', () => {
