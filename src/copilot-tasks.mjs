@@ -46,10 +46,14 @@ export function inferCopilotTaskType(steps = []) {
   const names = (Array.isArray(steps) ? steps : []).map(step => resolveToolName(step?.name));
   if (names.some(name => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(name))) return 'payment';
   if (names.some(name => name === 'consultar_web')) return 'web';
+  if (names.some(name => name === 'consultar_saude_infra')) return 'infra';
+  if (names.some(name => name === 'consultar_contato_ou_lead')) return 'contact';
+  if (names.some(name => name === 'consultar_base_conhecimento')) return 'knowledge';
+  if (names.some(name => name === 'consultar_dados_brasil')) return 'public_data';
   if (names.some(name => name.includes('agenda'))) return 'agenda';
   if (names.some(name => name.includes('drive'))) return 'drive';
   if (names.some(name => name.includes('planilha'))) return 'sheet';
-  return 'consultation';
+  return 'general';
 }
 
 export function prepareCopilotTaskSteps(steps = [], taskId = '') {
@@ -244,7 +248,7 @@ export function describeCopilotTaskStatus(task = {}) {
   const state = task.status || 'unknown';
   const base = 'Tarefa ' + id;
   if (state === 'queued') return base + ': registrada e aguardando execução (' + steps.length + ' etapa(s)).';
-  if (state === 'running') return base + ': em execução, etapa ' + Math.min(current + 1, steps.length) + ' de ' + steps.length + '.';
+  if (state === 'running') return base + ': em execução, etapa ' + Math.max(1, Math.min(current || 1, steps.length)) + ' de ' + steps.length + '.';
   if (state === 'awaiting_input') return base + ': pausada aguardando uma confirmação ou informação.';
   if (state === 'succeeded') {
     const delivery = task.delivery_status === 'sent'
