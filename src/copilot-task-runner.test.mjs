@@ -58,7 +58,7 @@ function fixture({ task = null, pending = null, sendText = async () => {}, execu
       return execute(name, args, context);
     }
   });
-  return { runner, calls, taskStore, tasks, session };
+  return { runner, calls, taskStore, tasks, session, sessionStore };
 }
 
 test('worker executa etapas em ordem, grava checkpoints e entrega somente após sucesso', async () => {
@@ -89,6 +89,63 @@ test('worker executa etapas em ordem, grava checkpoints e entrega somente após 
   assert.ok(session.history.some(item => item.taskId === 'task-1'));
   assert.equal(await runner.tick(), false);
   assert.equal(calls.sends.length, 1);
+});
+
+test('worker recebe o contexto de runtime usado pelas ferramentas síncronas', async () => {
+  const task = {
+    id: 'task-context',
+    lease_token: 'lease-context',
+    actor_label: 'Responsável',
+    request_text: 'Consulta simples',
+    task_type: 'web',
+    status: 'running',
+    delivery_status: 'pending',
+    current_step: 0,
+    steps: [{ index: 1, name: 'consultar_web', args: { query: 'teste' }, state: 'pending' }]
+  };
+  const { runner, calls, session, sessionStore } = fixture({ task });
+  await runner.tick();
+  const context = calls.executed[0].context;
+  assert.equal(context.store, sessionStore);
+  assert.equal(context.session, session);
+  assert.equal(context.phone, '__owner_self__');
+  assert.equal(context.actor, 'owner');
+  assert.equal(context.isOwner, true);
+  assert.equal(context.userText, 'Consulta simples');
+  assert.ok('reminderStore' in context);
+  assert.ok('adminConfig' in context);
+});
+
+test('Pix no worker preserva Copia e Cola exato e não pede uma reescrita à IA', async () => {
+  const payload = '000201PIX-CODIGO-EXATO-123456789';
+  const task = {
+    id: 'task-pix',
+    lease_token: 'lease-pix',
+    actor_label: 'Responsável',
+    request_text: 'Cobrar R$ 20,00 pelo pão',
+    task_type: 'payment',
+    status: 'running',
+    delivery_status: 'pending',
+    current_step: 0,
+    steps: [{ index: 1, name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'pagamento do pão' }, state: 'pending' }]
+  };
+  let aiCalls = 0;
+  const { runner, calls } = fixture({ task, execute: async () => ({
+    success: true,
+    valor: 20,
+    favorecido: 'Atualyze',
+    pixCopiaECola: payload,
+    paymentUrl: 'https://pay.atualyze.com.br/pix?tx=test',
+    qrCodeDataUrl: 'data:image/png;base64,SHOULD_NOT_BE_STORED'
+  }) });
+  // createCopilotTaskRunner fixture deliberately has no AI provider, so
+  // exact payload is formatted by the deterministic non-LLM branch.
+  await runner.tick();
+  assert.equal(aiCalls, 0);
+  assert.equal(calls.sends.length, 1);
+  assert.ok(calls.sends[0].text.includes(payload));
+  assert.ok(calls.sends[0].text.includes('https://pay.atualyze.com.br/pix?tx=test'));
+  assert.ok(!calls.sends[0].text.includes('SHOULD_NOT_BE_STORED'));
 });
 
 test('worker retoma entrega de resultado já persistido sem executar ferramenta novamente', async () => {
