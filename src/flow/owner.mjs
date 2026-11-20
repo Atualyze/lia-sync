@@ -683,7 +683,7 @@ export async function handleOwnerSession({
                 .join(', ');
               const reason = adminPixChoice.target
                 ? `Não encontrei uma decisão Pix pendente para *${adminPixChoice.target}*. Pendências atuais: ${choices}.`
-                : `Há mais de uma cobrança aguardando sua decisão: ${choices}. Informe o nome ou os quatro últimos dígitos do WhatsApp junto com *GERAR PIX* ou *ASSUMIR ATENDIMENTO*.`;
+                : `Há mais de uma cobrança aguardando sua decisão: ${choices}. Responda, por exemplo, *GERAR PIX PARA ANA* ou *ASSUMIR ATENDIMENTO 2222*.`;
               return recordSelfTurn(filterReply(reason, { isCopilot: true }).text);
             }
 
