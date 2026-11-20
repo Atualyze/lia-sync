@@ -449,7 +449,10 @@ export async function handleOwnerSession({
         };
 
         if (copilotTaskStore && isCopilotTaskStatusQuestion(cleanCommand)) {
-          const latestTask = await copilotTaskStore.getLatest(ownerTaskKey).catch(() => null);
+          const activeTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
+          const latestTask = (activeTaskId
+            ? await copilotTaskStore.getById(activeTaskId, ownerTaskKey).catch(() => null)
+            : null) || await copilotTaskStore.getLatest(ownerTaskKey).catch(() => null);
           if (latestTask) {
             return recordSelfTurn(filterReply(describeCopilotTaskStatus(latestTask), { isCopilot: true }).text, { preserveTask: true });
           }
