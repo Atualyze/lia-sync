@@ -80,7 +80,7 @@ function buildCloudflareBody({ system, history, userText, nativeTools, runtime, 
 
 function isProviderCreditExhaustion(error) {
   const message = String(error?.message || error || '');
-  return /\\b402\\b|payment required|insufficient (?:funds|credit|balance)|no credits? remaining|credit balance|billing (?:issue|disabled)|quota exceeded/i.test(message);
+  return /\b402\b|payment required|insufficient (?:funds|credit|balance)|no credits? remaining|credit balance|billing (?:issue|disabled)|quota exceeded/i.test(message);
 }
 
 function providerCreditExhaustionReply(provider) {
