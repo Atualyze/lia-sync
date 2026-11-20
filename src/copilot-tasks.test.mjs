@@ -18,6 +18,8 @@ test('respostas curtas escolhem o meio de pagamento apenas quando a Lia pergunto
   assert.equal(resolveCopilotPaymentMethodChoice('Checkout', question), 'checkout');
   assert.equal(resolveCopilotPaymentMethodChoice('Cartão', question), 'checkout');
   assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'Bom dia!'), null);
+  assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'Eu posso gerar Pix direto ou checkout InfinitePay.'), null);
+  assert.equal(resolveCopilotPaymentMethodChoice('Direto', 'O Pix direto usa QR Code.'), null);
 });
 
 test('perguntas de andamento consultam a tarefa persistida, não reabrem a intenção', () => {
@@ -38,6 +40,12 @@ test('apenas consultas seguras e Pix estático sem envio entram no worker', () =
   }), false);
   assert.equal(isBackgroundCopilotStep({
     name: 'gerenciar_agenda_google', args: { action: 'consultar_livres' }
+  }), true);
+  assert.equal(isBackgroundCopilotStep({
+    name: 'checkout_infinitepay', args: { acao: 'verificar_pagamento' }
+  }), false);
+  assert.equal(isBackgroundCopilotStep({
+    name: 'checkout_infinitepay', args: { acao: 'verificar_pagamento', orderNsu: 'ORDER-123' }
   }), true);
   assert.equal(isBackgroundCopilotStep({
     name: 'consultar_planilha_google', args: { acao: 'adicionar_linha' }
