@@ -268,11 +268,11 @@ export function createCopilotTaskRunner({
       const safeError = String(error?.message || 'copilot_task_worker_failed').slice(0, 300);
       if (!heartbeatLost && token) {
         const status = isTransientError(safeError) ? 'failed' : 'uncertain';
-        await taskStore.finish(task.id, token, status, {
+        const finalized = await taskStore.finish(task.id, token, status, {
           result: { outputs },
           error: safeError
         }).catch(() => false);
-        await audit('copilot_task_finished', task, status);
+        if (finalized) await audit('copilot_task_finished', task, status);
       }
       logger.error?.('[copilot-tasks] execução interrompida (' + String(error?.name || 'Error') + ')');
     } finally {
