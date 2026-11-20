@@ -47,8 +47,22 @@ function fallbackSummary(steps = []) {
       const lines = (result.checks || []).map(check => `- ${check.name}: ${check.status}`).join('\n');
       return `• Diagnóstico: ${result.health || 'concluído'}${lines ? `\n${lines}` : ''}`;
     }
+    if (Array.isArray(result?.sources) && result.sources.length) {
+      return `• Fontes consultadas:\n${result.sources.slice(0, 8).map(source => `- ${String(source.title || source.name || 'Fonte').slice(0, 180)}${source.url ? ` — ${source.url}` : ''}`).join('\n')}`;
+    }
+    if (Array.isArray(result?.files)) {
+      return `• Arquivos encontrados:\n${result.files.slice(0, 12).map(file => `- ${String(file.name || 'Arquivo').slice(0, 180)}${file.webViewLink ? ` — ${file.webViewLink}` : ''}`).join('\n') || 'Nenhum arquivo encontrado.'}`;
+    }
+    if (Array.isArray(result?.rows)) {
+      return `• Linhas consultadas:\n${result.rows.slice(0, 8).map(row => `- ${JSON.stringify(row).slice(0, 700)}`).join('\n') || 'Nenhuma linha encontrada.'}`;
+    }
+    if (Array.isArray(result?.availableSlots)) {
+      return `• Horários disponíveis: ${result.availableSlots.slice(0, 20).join(', ') || 'nenhum horário retornado.'}`;
+    }
     const message = String(result?.message || result?.resposta || result?.text || '').trim();
-    return message ? `• ${name}: ${message.slice(0, 5000)}` : `• ${name}: consulta concluída.`;
+    if (message) return `• ${name}: ${message.slice(0, 5000)}`;
+    if (result?.data && typeof result.data === 'object') return `• ${name}: ${JSON.stringify(result.data).slice(0, 5000)}`;
+    return `• ${name}: consulta concluída.`;
   }).join('\n\n');
 }
 
