@@ -1,5 +1,6 @@
-import { executeToolCall } from './tools/index.mjs';
+import { executeToolCall, validateToolCallArguments } from './tools/index.mjs';
 import { verifyCopilotToolResult } from './flow/copilot-tool-plan.mjs';
+import { isBackgroundCopilotStep } from './copilot-tasks.mjs';
 import { filterReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
@@ -205,6 +206,30 @@ export function createCopilotTaskRunner({
       for (let index = 0; index < steps.length; index += 1) {
         const step = steps[index] || {};
         const name = String(step.name || '');
+        const invalidArguments = validateToolCallArguments(name, step.args || {});
+        if (!isBackgroundCopilotStep(step) || invalidArguments) {
+          const safeError = !isBackgroundCopilotStep(step)
+            ? 'A etapa deixou de pertencer à allowlist de execução em segundo plano.'
+            : 'Os argumentos da etapa não passaram pela validação atual do catálogo.';
+          const verification = { state: 'failed', continue: false, recovery: 'stop_and_report' };
+          outputs.push({ tool: name || 'unknown', error: safeError, verification });
+          const checkpointed = await taskStore.checkpointStep(task.id, token, index + 1, 'failed', {
+            result: { verification },
+            error: safeError
+          });
+          if (!checkpointed) throw new Error('copilot_task_lease_lost_before_invalid_step_checkpoint');
+          const reply = await buildFinalReply({ ai, task, outputs, botConfig });
+          const persisted = await taskStore.finish(task.id, token, 'failed', {
+            result: { outputs, reply },
+            error: safeError
+          });
+          if (!persisted) throw new Error('copilot_task_finish_not_confirmed_after_validation_failure');
+          const failedTask = { ...task, status: 'failed' };
+          await recordInternalHistory(reply, failedTask);
+          await audit('copilot_task_finished', task, 'failed');
+          await deliver(failedTask, reply);
+          return;
+        }
         if (step.state === 'succeeded' && step.result) {
           outputs.push({
             tool: name,
