@@ -54,6 +54,7 @@ function mapTask(row = {}) {
     updatedAt: row.updated_at || row.updatedAt || null,
     startedAt: row.started_at || row.startedAt || null,
     completedAt: row.completed_at || row.completedAt || null,
+    expiresAt: row.expires_at || row.expiresAt || null,
     notifiedAt: row.notified_at || row.notifiedAt || null,
     leaseOwner: row.lease_owner || row.leaseOwner || null,
     leaseToken: row.lease_token || row.leaseToken || null,
@@ -166,7 +167,8 @@ export class CopilotTaskStore {
       notification_status: 'pending',
       created_at: createdAt,
       updated_at: createdAt,
-      available_at: createdAt
+      available_at: createdAt,
+      expires_at: new Date(this.now() + 6 * 60 * 60 * 1000).toISOString()
     };
 
     if (this.remoteEnabled) {
@@ -212,6 +214,13 @@ export class CopilotTaskStore {
     return this._serial(async () => {
       const nowMs = this.now();
       for (const task of this.tasks) {
+        if (task.status === 'queued' && task.expiresAt && Date.parse(task.expiresAt) <= nowMs) {
+          task.status = 'failed';
+          task.errorCode = 'task_expired_before_execution';
+          task.resultText = 'A tarefa expirou antes de começar. Nenhuma ferramenta foi executada.';
+          task.completedAt = new Date(nowMs).toISOString();
+          task.updatedAt = new Date(nowMs).toISOString();
+        }
         if (task.status === 'running' && Date.parse(task.leaseExpiresAt || '') <= nowMs) {
           if (task.retryPolicy === 'read_only' && task.attemptCount < task.maxAttempts) {
             task.status = 'queued';
@@ -219,10 +228,12 @@ export class CopilotTaskStore {
           } else if (task.retryPolicy === 'read_only') {
             task.status = 'failed';
             task.errorCode = 'read_only_attempts_exhausted';
+            task.resultText = 'A consulta foi interrompida após atingir o limite de tentativas seguras. Nenhuma ação externa foi repetida.';
             task.completedAt = new Date(nowMs).toISOString();
           } else {
             task.status = 'uncertain';
             task.errorCode = 'worker_lease_expired';
+            task.resultText = 'A execução foi interrompida e o resultado ficou incerto. É necessária uma conferência antes de qualquer nova tentativa.';
             task.completedAt = new Date(nowMs).toISOString();
           }
           task.leaseOwner = null;
