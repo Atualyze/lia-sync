@@ -711,7 +711,8 @@ export async function handleClientMessage({
         return s.handoffNotifyFailed
           ? 'Registrei o valor para validação, mas não consegui confirmar o aviso à equipe. Ainda não gerei o Pix; o atendimento precisa ser verificado manualmente.'
           : 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
-      };      if (filtered.blocked) {
+      };
+      if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
         const priceContextActive = isPriceViolation && hasActivePriceContext(
@@ -1262,7 +1263,7 @@ export async function handleClientMessage({
       const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
       const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(clean));
 
-      if (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner) {
+      if (!adminPixApprovalPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
           (userDirectedToOwner ? `Assunto direcionado a ${owner}: "${clean.slice(0, 90)}"` :
             (textHintsHandoff ? `Assunto encaminhado pela ${assistant} a ${owner}: "${clean.slice(0, 90)}"` : `sugerido pela ${assistant} pelo contexto`));
