@@ -1969,7 +1969,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         // do plano. Mensagens externas nunca são enviadas nesta etapa.
         if (toolCallsToRun.length > 0) {
           const inferredOutboundMessage = dispatchIntent.message
-            || cleanCommand.match(/(?:mensagem [ée]|recado [ée]|dizendo que|avisando que)\\s*(.+)/i)?.[1]?.trim()
+            || cleanCommand.match(/(?:mensagem [ée]|recado [ée]|dizendo que|avisando que)\s*(.+)/i)?.[1]?.trim()
             || '';
           toolCallsToRun = toolCallsToRun.map(tc => (
             tc?.name === 'enviar_mensagem_contato' && !String(tc.args?.message || '').trim() && inferredOutboundMessage
