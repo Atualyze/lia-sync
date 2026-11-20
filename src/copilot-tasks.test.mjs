@@ -69,7 +69,12 @@ test('lease expirado reprograma somente leitura e torna ação não repetível i
     const retriedRead = await store.claimNext('worker-b', 30);
     assert.equal(retriedRead.id, read.id);
     assert.equal(retriedRead.attemptCount, 2);
-    await store.fail(retriedRead, 'read_test_finished');
+    setNow(getNow() + 31_000);
+    assert.equal(await store.claimNext('worker-c', 30), null);
+    const exhaustedNotice = await store.claimPendingNotification();
+    assert.equal(exhaustedNotice.status, 'failed');
+    assert.match(exhaustedNotice.resultText, /limite de tentativas/i);
+    await store.finishNotification(exhaustedNotice, 'sent');
     setNow(getNow() + 1000);
 
     const payment = await store.enqueue(input({
