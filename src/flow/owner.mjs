@@ -14,7 +14,9 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent, isDirectPixChoice, isCopilotTaskStatusQuestion } from './copilot-continuity.mjs';
+import { createCopilotTaskKey, describeCopilotTaskStatus } from '../copilot-tasks.mjs';
+import { isBackgroundCopilotTool } from '../copilot-task-worker.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
 import { buildCopilotContext } from './copilot-context.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
@@ -236,7 +238,7 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 }
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, operationsStore = null, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
