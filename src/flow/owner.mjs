@@ -428,7 +428,7 @@ export async function handleOwnerSession({
           const cancelMatch = matchOutboundCancellation(cleanCommand);
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
           const hasDecision = Boolean(approveMatch || cancelMatch);
-          const asksAboutDispatch = /\\b(?:disparo|envio|pr[eé]via)\\b/i.test(cleanCommand);
+          const asksAboutDispatch = /\b(?:disparo|envio|pr[eé]via)\b/i.test(cleanCommand);
 
           // Um registro em processamento/incerto não pode sequestrar mensagens
           // comuns do operador. Só a pergunta sobre o próprio envio ou uma
@@ -450,7 +450,7 @@ export async function handleOwnerSession({
               `• *Estado:* ${stateLabel}.`,
               messageText ? `• *Mensagem preparada:* "${messageText}"` : '',
               'Esse registro já existia; sua mensagem atual não iniciou um disparo. Como a entrega não foi confirmada, não vou repetir o envio automaticamente. Confira a conversa desse destinatário antes de qualquer nova tentativa.'
-            ].filter(Boolean).join('\\n\\n'));
+            ].filter(Boolean).join('\n\n'));
           }
           if (!hasDecision && pending.status !== 'pending') {
             return null;
