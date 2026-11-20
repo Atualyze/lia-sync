@@ -16,7 +16,7 @@ import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCanc
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
-import { describePendingAdminPixDecision, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
+import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
@@ -684,7 +684,9 @@ export async function handleOwnerSession({
         };
         const adminPixChoice = parseAdminPixDecision(cleanCommand);
         if (adminPixChoice) {
-          const pendingPixDecisions = listPendingAdminPixDecisions(store.sessions || {}, { nowMs: now() });
+          const pendingPixDecisions = adminPixChoice.action === 'assume'
+            ? listAdminPixDecisionsForAssumption(store.sessions || {})
+            : listPendingAdminPixDecisions(store.sessions || {}, { nowMs: now() });
           if (pendingPixDecisions.length > 0) {
             const selected = matchPendingAdminPixDecision(pendingPixDecisions, adminPixChoice.target);
             if (!selected) {
@@ -870,6 +872,11 @@ export async function handleOwnerSession({
               { isCopilot: true }
             ).text);
           }
+
+          const noPendingMessage = adminPixChoice.action === 'generate'
+            ? 'Não há uma cobrança Pix aguardando sua autorização. Não gerei nem enviei nenhum Pix. Confira o contato e a solicitação pendente antes de autorizar.'
+            : 'Não encontrei uma decisão Pix pendente ou incerta para assumir. Nenhuma cobrança foi gerada. Para assumir outro contato, use o comando humano com o nome ou WhatsApp do cliente.';
+          return recordSelfTurn(filterReply(noPendingMessage, { isCopilot: true }).text);
         }
 
         // Comandos explícitos de gestão de contato já foram normalizados antes
