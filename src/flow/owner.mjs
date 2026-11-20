@@ -14,7 +14,7 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent, isDirectPixChoice, isCopilotTaskStatusQuestion } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent, isDirectPixChoice, isCopilotTaskStatusQuestion, claimsUnexecutedToolWork } from './copilot-continuity.mjs';
 import { createCopilotTaskKey, describeCopilotTaskStatus } from '../copilot-tasks.mjs';
 import { isBackgroundCopilotTool } from '../copilot-task-worker.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
@@ -2909,6 +2909,13 @@ ${errMsg}`;
               rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
             }
           }
+        }
+
+        if (!toolOutputs.length && claimsUnexecutedToolWork(rawReply)) {
+          return recordSelfTurn(filterReply(
+            '⚠️ Não iniciei essa ação: nenhuma ferramenta confirmou a execução e nenhuma tarefa foi registrada. Não vou afirmar que estou pesquisando ou gerando algo sem ter iniciado de verdade. Envie novamente o pedido para eu tentar iniciar a operação.',
+            { isCopilot: true }
+          ).text, { preserveTask: Boolean(activeTask) });
         }
 
         if (rawReply && /\b(?:pix|cobran[cç]a)\b/i.test(rawReply)
