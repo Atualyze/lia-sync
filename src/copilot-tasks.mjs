@@ -103,6 +103,7 @@ export class CopilotTaskStore {
     this.tasks = [];
     this.mode = 'local';
     this.remoteError = null;
+    this.localCorrupt = false;
     this.loaded = false;
     this.writing = Promise.resolve();
   }
@@ -119,6 +120,7 @@ export class CopilotTaskStore {
       else this.logger.error?.('[copilot-tasks] arquivo local inválido; preservando estado em memória.');
     } catch (error) {
       if (error?.code !== 'ENOENT') {
+        this.localCorrupt = true;
         this.logger.error?.(`[copilot-tasks] falha ao ler ${path.basename(this.filePath)}: ${error.message}`);
       }
     }
@@ -157,6 +159,7 @@ export class CopilotTaskStore {
 
   async enqueue(input = {}) {
     if (!this.loaded) await this.load();
+    if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
     const normalized = normalizeTaskInput(input);
     const createdAt = new Date(this.now()).toISOString();
     const row = {
@@ -210,6 +213,7 @@ export class CopilotTaskStore {
 
   async claimNext(workerId, leaseSeconds = 180) {
     if (!this.loaded) await this.load();
+    if (!this.remoteEnabled && this.localCorrupt) return null;
     const worker = String(workerId || '').trim().slice(0, 120) || 'lia-worker';
     const lease = Math.max(30, Math.min(600, Number(leaseSeconds) || 180));
     if (this.remoteEnabled) {
@@ -362,6 +366,7 @@ export class CopilotTaskStore {
 
   async claimPendingNotification() {
     if (!this.loaded) await this.load();
+    if (!this.remoteEnabled && this.localCorrupt) return null;
     if (this.remoteEnabled) {
       const rows = await this.client.select('copilot_tasks', 'select=*&status=eq.succeeded&notification_status=eq.pending&order=completed_at.asc&limit=10');
       for (const row of Array.isArray(rows) ? rows : []) {
@@ -417,6 +422,7 @@ export class CopilotTaskStore {
 
   async getLatest(ownerKey) {
     if (!this.loaded) await this.load();
+    if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
     const owner = String(ownerKey || '').trim();
     if (!owner) return null;
     if (this.remoteEnabled) {
