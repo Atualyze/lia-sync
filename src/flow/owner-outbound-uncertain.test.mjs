@@ -50,13 +50,19 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
       sendText: async (phone, text) => { sent.push({ phone, text }); }
     },
     ai: {
-      askAI: async ({ userText }) => ({
-        intent: 'chat',
-        reply: userText?.toLowerCase() === 'bom dia'
-          ? 'Bom dia! Estou aqui. Como posso ajudar?'
-          : 'Oi! Estou aqui e pronta para ajudar.',
-        tool_calls: []
-      })
+      askAI: async ({ userText, system }) => {
+        if (system?.includes('Você interpreta a intenção do responsável sobre um disparo WhatsApp que já existe.')
+          && /marque como concluído/i.test(userText || '')) {
+          return { reply: '{"intent":"resolve","confidence":0.96,"reason":"pedido explícito para encerrar a pendência"}' };
+        }
+        return {
+          intent: 'chat',
+          reply: userText?.toLowerCase() === 'bom dia'
+            ? 'Bom dia! Estou aqui. Como posso ajudar?'
+            : 'Oi! Estou aqui e pronta para ajudar.',
+          tool_calls: []
+        };
+      }
     }
   });
 
@@ -81,4 +87,11 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
   assert.match(repeatedApproval, /resultado incerto/i);
   assert.equal(self.pendingOutboundDispatch.status, 'uncertain');
   assert.equal(sent.length, 0, 'nenhuma mensagem pode ser reenviada automaticamente');
+
+  const resolved = await flow.process({ phone: ownerPhone, text: 'Ok, marque como concluído' });
+  assert.match(resolved, /revisado\/encerrado administrativamente/i);
+  assert.match(resolved, /não marquei como entregue ou concluído/i);
+  assert.equal(self.pendingOutboundDispatch.status, 'uncertain');
+  assert.ok(self.pendingOutboundDispatch.reviewedBy);
+  assert.equal(sent.length, 0, 'resolver administrativamente não pode reenviar a mensagem');
 });
