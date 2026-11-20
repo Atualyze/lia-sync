@@ -126,6 +126,7 @@ test('fila local corrompida falha fechada sem sobrescrever o arquivo', async () 
       logger: { warn() {}, error() {} }
     });
     await store.load();
+    assert.equal(store.available, false);
     await assert.rejects(store.enqueue(input()), /copilot_task_local_store_corrupt/);
     assert.equal(await store.claimNext('worker-test'), null);
     assert.equal((await (await import('node:fs/promises')).readFile(filePath, 'utf8')), '{json inválido');
@@ -162,6 +163,7 @@ test('Supabase configurado sem migration falha fechado por padrão', async () =>
       logger: { warn() {}, error() {} }
     });
     await store.load();
+    assert.equal(store.available, false);
     await assert.rejects(store.enqueue(input()), /copilot_task_queue_unavailable/);
     assert.equal(await store.claimNext('worker-test'), null);
   } finally {
