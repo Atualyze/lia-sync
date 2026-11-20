@@ -77,12 +77,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const taskQueueReadinessCheck = async () => {
     const base = await baseReadinessCheck();
     const queueMode = copilotTaskStore.mode;
-    const queueAvailable = queueMode !== 'unavailable';
+    const queueAvailable = copilotTaskStore.available === true;
     const queueCheck = {
       name: 'copilot_tasks',
       status: queueAvailable ? 'ready' : 'unavailable',
       mode: queueMode,
-      ...(queueMode === 'local' ? { reason: 'single_instance_local_fallback' } : {})
+      ...(queueMode === 'local' && copilotTaskStore.localCorrupt ? { reason: 'local_store_corrupt' } : {}),
+      ...(queueMode === 'local' && !copilotTaskStore.localCorrupt ? { reason: 'single_instance_local_fallback' } : {})
     };
     const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck];
     const ok = Boolean(base?.ok) && queueAvailable;
