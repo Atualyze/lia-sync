@@ -420,6 +420,25 @@ export class CopilotTaskStore {
     });
   }
 
+  async getById(taskId, ownerKey) {
+    if (!this.loaded) await this.load();
+    if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
+    const id = String(taskId || '').trim();
+    const owner = String(ownerKey || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) || !owner) return null;
+    if (this.remoteEnabled) {
+      const rows = await this.client.select(
+        'copilot_tasks',
+        `select=*&id=eq.${encodeURIComponent(id)}&owner_key=eq.${encodeURIComponent(owner)}&limit=1`
+      );
+      return Array.isArray(rows) && rows[0] ? mapTask(rows[0]) : null;
+    }
+    return this._serial(async () => {
+      const task = this.tasks.find(item => item.id === id && item.ownerKey === owner);
+      return task ? clone(task) : null;
+    });
+  }
+
   async getLatest(ownerKey) {
     if (!this.loaded) await this.load();
     if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
