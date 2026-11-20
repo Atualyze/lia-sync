@@ -95,3 +95,41 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
   assert.ok(self.pendingOutboundDispatch.reviewedBy);
   assert.equal(sent.length, 0, 'resolver administrativamente não pode reenviar a mensagem');
 });
+
+test('modelo conversacional recebe contexto operacional da pendência ao interpretar referência curta', async () => {
+  const ownerPhone = '5588921694598';
+  const store = createMockStore();
+  const self = store.get(ownerPhone);
+  self.pendingOutboundDispatch = {
+    id: 'DISP5678',
+    phone: '5585991099483',
+    recipient: 'ptbr',
+    message: 'Mensagem preparada para ptbr',
+    source: 'copilot',
+    status: 'uncertain',
+    createdAt: new Date().toISOString()
+  };
+  let conversationalSystem = '';
+  const flow = createFlow({
+    store,
+    humanPhone: ownerPhone,
+    getHumanPhone: () => ownerPhone,
+    whatsapp: { sendText: async () => { throw new Error('não deveria enviar'); } },
+    ai: {
+      askAI: async ({ system = '' }) => {
+        if (system.includes('Você interpreta a intenção do responsável sobre um disparo WhatsApp que já existe.')) {
+          return { reply: '{"intent":"none","confidence":0.99,"reason":"referência sem decisão"}' };
+        }
+        conversationalSystem = system;
+        return { intent: 'chat', reply: 'O contato ptbr tem um disparo com resultado incerto.', tool_calls: [] };
+      }
+    }
+  });
+
+  const reply = await flow.process({ phone: ownerPhone, text: 'ptbr' });
+  assert.match(reply, /ptbr/);
+  assert.match(conversationalSystem, /\[CONTEXTO_OPERACIONAL_ATUAL\]/);
+  assert.match(conversationalSystem, /"status":"uncertain"/);
+  assert.match(conversationalSystem, /"deliveryConfirmed":false/);
+  assert.equal(self.pendingOutboundDispatch.status, 'uncertain');
+});
