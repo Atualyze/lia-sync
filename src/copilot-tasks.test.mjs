@@ -85,6 +85,21 @@ test('fila aplica idempotência por mensagem e recupera conflito depois de respo
   assert.equal(rows.size, 1);
 });
 
+test('cancelamento durável altera a tarefa por RPC e só retorna sucesso confirmado', async () => {
+  const calls = [];
+  const store = new CopilotTaskStore({
+    enabled: true,
+    async select() { return []; },
+    async rpc(name, args) {
+      calls.push({ name, args });
+      return true;
+    }
+  });
+  store.ready = true;
+  assert.equal(await store.cancel('task-id'), true);
+  assert.deepEqual(calls, [{ name: 'cancel_copilot_task', args: { p_task_id: 'task-id' } }]);
+});
+
 test('fila recusa plano com etapas demais ou efeito externo', async () => {
   const store = new CopilotTaskStore({ enabled: true, async select() { return []; } });
   store.ready = true;
