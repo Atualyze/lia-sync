@@ -58,13 +58,13 @@ const checks = [
     const functionCount = copilotTasksMigration.split('create or replace function').length - 1;
     const openCount = copilotTasksMigration.split('as ' + dollar + dollar).length - 1
       + copilotTasksMigration.split('as ' + dollar + 'cancel' + dollar).length - 1;
-    const closeCount = copilotTasksMigration.split('end;\\n' + dollar + dollar + ';').length - 1
-      + copilotTasksMigration.split('end;\\n' + dollar + 'cancel' + dollar + ';').length - 1;
+    const closeCount = copilotTasksMigration.split('end;\n' + dollar + dollar + ';').length - 1
+      + copilotTasksMigration.split('end;\n' + dollar + 'cancel' + dollar + ';').length - 1;
     return copilotTasksMigration.includes('create or replace function public.cancel_copilot_task')
       && copilotTasksMigration.includes('revoke all on function public.cancel_copilot_task(uuid) from public, anon, authenticated')
       && copilotTasksMigration.includes('grant execute on function public.cancel_copilot_task(uuid) to service_role')
       && openCount === functionCount && closeCount === functionCount
-      && !copilotTasksMigration.split('\\n').some(line => line.trim() === 'as ' + dollar || line.trim() === dollar + ';')
+      && !copilotTasksMigration.split('\n').some(line => line.trim() === 'as ' + dollar || line.trim() === dollar + ';')
       && copilotTasks.includes('async cancel(taskId)')
       && copilotOwner.includes('copilotTaskStore.cancel(pendingTaskId)');
   })()],
