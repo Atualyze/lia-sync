@@ -44,6 +44,7 @@ function normalizePixAmount(value) {
 }
 
 const COPILOT_PENDING_TTL_MS = 30 * 60 * 1000;
+const COPILOT_TASK_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000;
 const COPILOT_CONTEXT_LIMIT = 8;
 
 const COPILOT_TASK_PATTERNS = [
@@ -96,7 +97,8 @@ function activeCopilotTask(session, nowMs = Date.now()) {
   const task = session?.pendingCopilotTask;
   if (!task || typeof task !== 'object') return null;
   const createdAt = Date.parse(task.createdAt || '');
-  if (!Number.isFinite(createdAt) || nowMs - createdAt > COPILOT_PENDING_TTL_MS || nowMs < createdAt - 60_000) {
+  const contextTtl = task.taskId ? COPILOT_TASK_CONTEXT_TTL_MS : COPILOT_PENDING_TTL_MS;
+  if (!Number.isFinite(createdAt) || nowMs - createdAt > contextTtl || nowMs < createdAt - 60_000) {
     session.pendingCopilotTask = null;
     return null;
   }
