@@ -196,7 +196,7 @@ export class CopilotTaskStore {
       retry_policy: normalized.retryPolicy,
       status: 'queued',
       result_text: null,
-      result_summary: null,
+      result_summary: {},
       last_error_code: null,
       attempt_count: 0,
       max_attempts: normalized.retryPolicy === 'read_only' ? 2 : 1,
