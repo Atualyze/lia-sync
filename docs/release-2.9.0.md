@@ -33,7 +33,7 @@ O worker só aceita uma allowlist de consultas seguras (web, contatos, base de c
 
 Aplicar a migration `20261120150000_copilot_task_queue.sql` no SQL Editor do projeto Supabase do bot. A tabela `copilot_tasks` tem RLS habilitado, sem acesso para `anon` ou `authenticated`, e grants somente para `service_role`.
 
-Quando o Supabase está configurado e a tabela existe, o banco é a fonte distribuída e a RPC faz o claim atômico entre réplicas. Se a migration ainda não estiver aplicada, o runtime usa `data/copilot-tasks.json` como fallback local de uma única instância e registra aviso. Esse fallback não oferece coordenação multi-réplica.
+Quando o Supabase está configurado e a tabela existe, o banco é a fonte distribuída e a RPC faz o claim atômico entre réplicas. Se o Supabase estiver configurado mas a migration estiver ausente ou indisponível, o runtime falha fechado e não enfileira nem executa tarefas. O fallback `data/copilot-tasks.json` é usado automaticamente apenas sem Supabase configurado; com Supabase configurado, exige opt-in explícito por `COPILOT_TASK_LOCAL_FALLBACK=true` e uma única instância. Esse fallback não oferece coordenação multi-réplica.
 
 Não aplicar a migration automaticamente pelo processo Node. Conferir o histórico do banco e aplicar explicitamente.
 
