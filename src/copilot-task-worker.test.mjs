@@ -156,3 +156,45 @@ test('worker interrompe cadeia quando a primeira consulta não encontra correspo
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('worker bloqueia plano Pix com mais de uma etapa antes de qualquer chamada', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-worker-pix-chain-'));
+  const sent = [];
+  const executed = [];
+  try {
+    const taskStore = new CopilotTaskStore({
+      filePath: path.join(dir, 'tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await taskStore.load();
+    await taskStore.enqueue({
+      taskKey: 'copilot:pix-chain',
+      ownerKey: 'owner_self',
+      targetPhone: '5588999999999',
+      requestSummary: 'Gerar Pix e pesquisar',
+      steps: [
+        { name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste', enviarWhatsApp: false } },
+        { name: 'consultar_web', args: { query: 'teste' } }
+      ],
+      retryPolicy: 'never'
+    });
+    const worker = createCopilotTaskWorker({
+      taskStore,
+      store: { get: () => ({ history: [] }), markDirty() {}, flush: async () => {} },
+      getBotConfig: () => ({}),
+      sendText: async (target, message) => { sent.push(message); },
+      getHumanPhone: () => '5588999999999',
+      logger: { error() {} },
+      execute: async name => { executed.push(name); return { success: true }; }
+    });
+
+    assert.equal(await worker.runOnce(), false);
+    assert.equal(await worker.runOnce(), true);
+    assert.deepEqual(executed, []);
+    assert.match(sent[0], /precisa ser uma tarefa isolada/i);
+    assert.equal((await taskStore.getLatest('owner_self')).status, 'failed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
