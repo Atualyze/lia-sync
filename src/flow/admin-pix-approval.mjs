@@ -62,6 +62,26 @@ function contactLabel(session = {}) {
   return String(session.clientName || session.contactName || session.pushName || '').trim();
 }
 
+/**
+ * Decisions whose external effect is not safe to retry may still be explicitly
+ * taken over by a human. Processing decisions are excluded to avoid racing a
+ * live generation attempt.
+ */
+export function listAdminPixDecisionsForAssumption(sessions = {}) {
+  return Object.entries(sessions || {})
+    .filter(([, session]) => {
+      const decision = session?.pendingAdminDecision;
+      if (!decision || decision.type !== 'pix_generation'
+        || !new Set(['pending', 'uncertain', 'failed', 'expired']).has(decision.status)) return false;
+      const requestedAt = Date.parse(decision.requestedAt || '');
+      return Number.isFinite(requestedAt)
+        && requestedAt <= Date.now() + 60_000
+        && Number.isFinite(Number(decision.amount))
+        && Number(decision.amount) > 0;
+    })
+    .map(([key, session]) => ({ key, session, decision: session.pendingAdminDecision }));
+}
+
 export function matchPendingAdminPixDecision(candidates = [], target = '') {
   const items = Array.isArray(candidates) ? candidates : [];
   if (!target) return items.length === 1 ? items[0] : null;
