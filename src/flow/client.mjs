@@ -435,7 +435,7 @@ export async function handleClientMessage({
       const explicitPaymentAction = /\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|passa|passar|fazer|faz|cobrar|cobrar|pagar|informa|informar)\b.{0,70}\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b/i
         .test(normalize(actionText));
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
-        .test(normalize(clean));
+        .test(normalize(actionText));
       const paymentChoice = resolvePaymentChoice(actionText);
       const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
       const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
@@ -492,7 +492,7 @@ export async function handleClientMessage({
       // Conversas antigas são pesquisadas somente quando o cliente pede para
       // retomar ou recordar um assunto anterior. Esse material nunca substitui
       // nem se mistura ao histórico ativo do atendimento.
-      const historyRecallRequested = isExplicitHistoryRecallRequest(clean);
+      const historyRecallRequested = isExplicitHistoryRecallRequest(actionText);
       let historyRecall = { matched: false, messages: [], reason: 'not_requested' };
       if (historyRecallRequested) {
         let storedHistory = [];
@@ -816,7 +816,7 @@ export async function handleClientMessage({
       let webSearchResult = null;
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
-      const currentPaymentChoice = resolvePaymentChoice(clean);
+      const currentPaymentChoice = resolvePaymentChoice(actionText);
       const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
@@ -946,7 +946,7 @@ export async function handleClientMessage({
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
             if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
-              const directChoice = resolvePaymentChoice(clean);
+              const directChoice = resolvePaymentChoice(actionText);
               if (directChoice === 'key') {
                 s.pendingClientPayment = null;
                 toolReplyOverride = directPixKeyReply({ key: configuredPixKey, owner });
@@ -957,7 +957,7 @@ export async function handleClientMessage({
                 toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
                 continue;
               }
-              if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
+              if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(actionText) > 0)) {
                 s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
                 toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
                 continue;
@@ -1273,7 +1273,7 @@ export async function handleClientMessage({
       const cleanReplyForHint = String(finalReply || '').replace(/[*_~`]/g, '');
       const ownerHint = identityNames(identity).map(normalize).filter(Boolean).map(escapeText).join('|') || 'responsavel|equipe';
       const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
-      const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(clean));
+      const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(actionText));
 
       if (!adminPixApprovalPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
