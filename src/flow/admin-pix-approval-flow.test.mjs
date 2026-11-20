@@ -44,7 +44,7 @@ function pendingDecision(amount = 5) {
   };
 }
 
-test('cliente: valor Pix bloqueado cria decisão administrativa e não gera cobrança', async () => {
+test('cliente: resposta normal da IA não libera Pix; valor informado exige decisão administrativa', async () => {
   const sent = [];
   const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-client-${Date.now()}.json`));
   let aiCalls = 0;
@@ -60,7 +60,7 @@ test('cliente: valor Pix bloqueado cria decisão administrativa e não gera cobr
         aiCalls += 1;
         return aiCalls === 1
           ? { reply: 'Qual é o valor para eu gerar o código copia e cola?', tool_calls: [] }
-          : { reply: 'Vou gerar o Pix de R$ 5,00 agora.', tool_calls: [] };
+          : { reply: 'Certo, vou gerar o código para você.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 5 } }] };
       }
     },
     logger: { log() {}, warn() {}, error() {} }
