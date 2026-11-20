@@ -2006,6 +2006,16 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           ));
           toolPlan = buildCopilotToolPlan(toolCallsToRun, { botConfig, actor: 'owner' });
           if (!toolPlan.canExecute) {
+            const rejectedPix = toolPlan.rejected.find(item =>
+              ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.name)
+              && item.reason === 'invalid_arguments'
+            );
+            if (rejectedPix) {
+              return recordSelfTurn(filterReply(
+                'Não consegui gerar a cobrança Pix porque os argumentos recebidos não passaram pela validação da ferramenta. Nenhuma cobrança foi executada; revise os dados e tente novamente.',
+                { isCopilot: true }
+              ).text);
+            }
             const reasons = toolPlan.rejected.map(item => item.name + ' (' + item.reason + ')').join(', ');
             const detail = toolPlan.truncated
               ? 'O plano ultrapassou o limite de ' + toolPlan.maxSteps + ' etapas.'
