@@ -675,10 +675,17 @@ export async function handleClientMessage({
         }
         s.updatedAt = new Date(now()).toISOString();
         store.markDirty();
+        const hasDurableSessionStore = Boolean(store.file || store.client?.enabled);
+        if (!hasDurableSessionStore) {
+          clearTimeout(store.saveTimer);
+          store.saveTimer = null;
+        }
         try {
-          await store.flush?.();
-          if (store.client?.enabled && store.persistence !== 'supabase') {
-            throw new Error(store.remoteError || 'Supabase não confirmou a persistência da decisão');
+          if (hasDurableSessionStore) {
+            await store.flush?.();
+            if (store.client?.enabled && store.persistence !== 'supabase') {
+              throw new Error(store.remoteError || 'Supabase não confirmou a persistência da decisão');
+            }
           }
         } catch (error) {
           if (snapshot.pendingAdminDecision === undefined) delete s.pendingAdminDecision;
@@ -689,7 +696,8 @@ export async function handleClientMessage({
           s.handoffReason = snapshot.handoffReason;
           s.updatedAt = snapshot.updatedAt;
           store.markDirty();
-          await store.flush?.().catch(() => {});
+          if (hasDurableSessionStore) await store.flush?.().catch(() => {});
+          else { clearTimeout(store.saveTimer); store.saveTimer = null; }
           logger.error?.('[flow:payment] Não foi possível persistir a decisão administrativa do Pix:', error?.name || 'Error');
           return 'Não consegui registrar a solicitação com segurança, então não gerei o Pix nem encaminhei uma autorização. Nossa equipe precisará verificar o atendimento manualmente.';
         }
@@ -707,7 +715,8 @@ export async function handleClientMessage({
           forceNotify: !sameDecision,
           identity
         });
-        await store.flush?.().catch(() => {});
+        if (hasDurableSessionStore) await store.flush?.().catch(() => {});
+        else { clearTimeout(store.saveTimer); store.saveTimer = null; }
         return s.handoffNotifyFailed
           ? 'Registrei o valor para validação, mas não consegui confirmar o aviso à equipe. Ainda não gerei o Pix; o atendimento precisa ser verificado manualmente.'
           : 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
