@@ -159,6 +159,9 @@ export async function handleClientMessage({
         }
       }
 
+      // Ações e confirmações devem vir da mensagem/caption original do cliente,
+      // nunca de texto extraído de uma imagem ou documento.
+      const actionText = clean;
       let mediaAnalyzedForAI = false;
 
       // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
@@ -428,12 +431,12 @@ export async function handleClientMessage({
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
       const barePaymentAmount = /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i
-        .test(String(clean || '').trim());
+        .test(String(actionText || '').trim());
       const explicitPaymentAction = /\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|passa|passar|fazer|faz|cobrar|cobrar|pagar|informa|informar)\b.{0,70}\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b/i
-        .test(normalize(clean));
+        .test(normalize(actionText));
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
         .test(normalize(clean));
-      const paymentChoice = resolvePaymentChoice(clean);
+      const paymentChoice = resolvePaymentChoice(actionText);
       const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
       const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
@@ -446,11 +449,11 @@ export async function handleClientMessage({
       ));
       const pendingAgendaPaused = Boolean(s.pendingClientAgenda?.pausedAt);
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
-        && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
+        && (isNaturalAffirmation(actionText) || isNaturalNegative(actionText))
         && !pendingAgendaPaused
         && lastAssistantAskedForAgendaConfirmation(s.history, s.pendingClientAgenda?.lastQuestion || ''));
       const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
-        .test(normalize(clean));
+        .test(normalize(actionText));
       // Ao mudar de assunto, mantém a operação pendente para uma retomada explícita,
       // mas impede que um número ou "sim" futuro sejam consumidos como resposta antiga.
       if (s.pendingClientPayment && !pendingPaymentAnswer && !asksAboutRecentReply && !explicitPaymentAction && !explicitPaymentAmount) {
@@ -725,13 +728,13 @@ export async function handleClientMessage({
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
         const priceContextActive = isPriceViolation && hasActivePriceContext(
-          clean,
+          actionText,
           activeContext.history,
           Boolean(s.pendingClientPayment || s.pendingCheckout || s.pendingPixRequest)
         );
         let faqPriceReply = null;
-        if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(clean)) {
-          const answer = findDynamicFaq(clean, items);
+        if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(actionText)) {
+          const answer = findDynamicFaq(actionText, items);
           if (answer && detectPriceMentions(answer).length) {
             const faqPrices = new Set([...(allowedPrices || []), ...detectPriceMentions(answer).map(item => item.raw.replace(/\s/g, ''))]);
             const faqFiltered = filterReply(answer, { allowedPrices: faqPrices, strictPrices: true });
@@ -764,7 +767,7 @@ export async function handleClientMessage({
           }
           safeReplyText = repairedReply || 'Desculpe, acho que misturei os assuntos na resposta anterior. O que você gostaria que eu esclarecesse?';
         } else {
-          const requestedPixAmount = amountFromText(clean);
+          const requestedPixAmount = amountFromText(actionText);
           const hasPendingPixChoice = Boolean(
             s.pendingClientPayment
             && s.pendingClientPayment.choice === 'pix'
@@ -834,7 +837,7 @@ export async function handleClientMessage({
           s.pendingClientPayment = null;
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (selected === 'pix' || selected === 'checkout') {
-          const amount = amountFromText(clean) || (!pendingPaymentPaused ? Number(pendingPayment.args?.valor) : 0) || 0;
+          const amount = amountFromText(actionText) || (!pendingPaymentPaused ? Number(pendingPayment.args?.valor) : 0) || 0;
           if (amount <= 0) {
             pendingPayment.choice = selected;
             pendingPayment.lastQuestion = selected === 'checkout'
@@ -870,9 +873,9 @@ export async function handleClientMessage({
 
       // Fallback determinístico: seleções curtas, como "só a chave" ou
       // "copia e cola", também funcionam sem depender do contexto anterior.
-      if (isClient && toolCalls.length === 0 && isPixActionRequest(clean) && !pendingPayment) {
-        const choice = resolvePaymentChoice(clean);
-        const amount = amountFromText(clean);
+      if (isClient && toolCalls.length === 0 && isPixActionRequest(actionText) && !pendingPayment) {
+        const choice = resolvePaymentChoice(actionText);
+        const amount = amountFromText(actionText);
         if (choice === 'key') {
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (choice === 'pix' || choice === 'checkout') {
@@ -907,7 +910,7 @@ export async function handleClientMessage({
           if (adminPixApprovalPending && isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)) continue;
           if (tc?.name && isClientToolAllowed(tc.name)) {
             const configuredPixKey = resolveConfiguredPixKey(botConfig);
-            const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
+            const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(actionText);
             const numericAmount = Number(String(tc.args?.valor ?? '').replace(',', '.'));
             const hasPositiveAmount = Number.isFinite(numericAmount) && numericAmount > 0;
             if (
@@ -922,14 +925,14 @@ export async function handleClientMessage({
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
 
             if (isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc.name)) {
-              const directChoice = resolvePaymentChoice(clean);
+              const directChoice = resolvePaymentChoice(actionText);
               const pendingPixChoice = pendingPayment?.choice === 'pix';
               if (pendingPixChoice && !pendingPaymentAnswer && directChoice !== 'pix') {
                 // Não permita que uma tool_call antiga reative a cobrança após troca de assunto.
                 continue;
               }
               if (directChoice === 'pix' || (pendingPixChoice && pendingPaymentAnswer)) {
-                const amount = amountFromText(clean) || Number(tc.args?.valor) || Number(pendingPayment?.args?.valor) || 0;
+                const amount = amountFromText(actionText) || Number(tc.args?.valor) || Number(pendingPayment?.args?.valor) || 0;
                 if (amount > 0) {
                   toolReplyOverride = await requestAdminPixApproval(
                     amount,
