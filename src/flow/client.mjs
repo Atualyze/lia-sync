@@ -832,10 +832,13 @@ export async function handleClientMessage({
           } else if (choice === 'pix' && amount <= 0) {
             s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
             toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
+          } else if (choice === 'pix') {
+            s.pendingClientPayment = { args: { valor: amount }, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
+            toolReplyOverride = await requestAdminPixApproval(amount, 'Pagamento via Pix');
           } else {
             syntheticToolCalls = [{
-              name: choice === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
-              args: choice === 'checkout' ? { acao: 'criar_link', valor: amount, descricao: '' } : { valor: amount, descricao: '' }
+              name: 'checkout_infinitepay',
+              args: { acao: 'criar_link', valor: amount, descricao: '' }
             }];
             toolCalls = syntheticToolCalls;
           }
