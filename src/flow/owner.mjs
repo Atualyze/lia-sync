@@ -2122,7 +2122,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             const queueNegated = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
             for (const plannedStep of toolPlan.steps) {
               const plannedType = copilotToolTaskType(plannedStep.name, plannedStep.args);
-              const explicitForStep = hasExplicitToolIntent(cleanCommand, plannedStep.name)
+              const explicitForStep = (!isCopilotMetaQuestion && !queueNegated && hasExplicitToolIntent(cleanCommand, plannedStep.name))
                 || Boolean(plannedType && queueCurrentTypes.includes(plannedType) && !isCopilotMetaQuestion && !queueNegated)
                 || (paymentMethodChoice === 'pix' && plannedStep.name === 'gerar_cobranca_pix');
               const continuationForStep = Boolean(queueLiveTask && plannedType && queueLiveTask.type === plannedType
@@ -2220,7 +2220,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               // Uma tarefa específica pode autorizar a continuação sem exigir a mesma
               // formulação textual. Tarefas genéricas, porém, não são persistidas e portanto
               // nunca chegam aqui como autorização implícita.
-              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+              const currentRequestMatches = (!isCopilotMetaQuestion && !negatedAction && hasExplicitToolIntent(cleanCommand, tc.name))
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean((liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
