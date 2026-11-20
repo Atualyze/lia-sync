@@ -135,7 +135,9 @@ export class CopilotTaskStore {
       if (invalid) throw new Error('copilot_task_invalid_arguments');
     }
 
-    const idempotencyKey = messageId ? sha256('whatsapp:' + messageId) : crypto.randomUUID();
+    const stableMessageId = String(messageId || '').trim();
+    if (!stableMessageId) throw new Error('copilot_task_message_id_required');
+    const idempotencyKey = sha256('whatsapp:' + stableMessageId);
     const id = crypto.randomUUID();
     const preparedSteps = prepareCopilotTaskSteps(steps, id);
     const timestamp = isoNow();
