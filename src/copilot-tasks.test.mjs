@@ -39,6 +39,8 @@ test('fila local persiste, reivindica, conclui e entrega notificação uma únic
     const duplicate = await store.enqueue(input());
     assert.equal(duplicate.created, false);
     assert.equal(duplicate.id, queued.id);
+    assert.equal((await store.getById(queued.id, 'owner_self')).id, queued.id);
+    assert.equal(await store.getById(queued.id, 'another_owner'), null);
 
     const claimed = await store.claimNext('worker-test', 60);
     assert.equal(claimed.status, 'running');
