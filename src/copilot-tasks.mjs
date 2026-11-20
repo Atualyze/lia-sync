@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getToolExecutionPolicy, resolveToolName } from './tools/index.mjs';
+import { getToolExecutionPolicy, resolveToolName, validateToolCallArguments } from './tools/index.mjs';
 
 export const COPILOT_TASK_STATES = Object.freeze([
   'queued', 'running', 'awaiting_input', 'succeeded', 'failed', 'uncertain', 'cancelled'
@@ -35,7 +35,7 @@ export function resolveCopilotPaymentMethodChoice(message = '', lastAssistantMes
 export function isBackgroundCopilotStep(step = {}) {
   const name = resolveToolName(step.name);
   const args = step.args && typeof step.args === 'object' && !Array.isArray(step.args) ? step.args : {};
-  const mode = step.policy?.mode || getToolExecutionPolicy(name).mode;
+  const mode = getToolExecutionPolicy(name).mode;
 
   if (SAFE_READ_MODES.has(mode)) return true;
   if (name === 'gerar_cobranca_pix') return true;
@@ -122,6 +122,10 @@ export class CopilotTaskStore {
     if (!this.enabled) throw new Error('copilot_task_store_unavailable');
     if (!Array.isArray(steps) || steps.length < 1 || steps.length > 4 || !steps.every(isBackgroundCopilotStep)) {
       throw new Error('copilot_task_plan_not_background_safe');
+    }
+    for (const step of steps) {
+      const invalid = validateToolCallArguments(step.name, step.args || {});
+      if (invalid) throw new Error('copilot_task_invalid_arguments');
     }
 
     const idempotencyKey = messageId ? sha256('whatsapp:' + messageId) : crypto.randomUUID();
