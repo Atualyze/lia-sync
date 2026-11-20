@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.9.0 - Fila durável e execução retomável do Copiloto
+- **Fila no Supabase:** tarefas executáveis passam a ter ID, idempotência por mensagem, passos, checkpoints, lease, resultado e estado de entrega.
+- **Worker de segundo plano:** consultas seguras e Pix estático são executados fora do ciclo do webhook; o resultado é salvo antes da notificação.
+- **Retomada segura:** tarefas com etapas read-only ou Pix estático podem ser retomadas após lease expirado; etapas já concluídas são preservadas.
+- **Proteção contra duplicidade:** resultado não entregue é recuperado; entrega com estado incerto não recebe retry automático.
+- **Andamento real:** “onde está?” e “estou esperando” consultam o registro da fila e retornam estado e resultado persistidos.
+- **Pix por escolha natural:** “Direto”, “Copia e Cola” e “QR Code” selecionam a cobrança Pix estática quando a Lia acaba de perguntar entre Pix direto e checkout.
+- **Promessas condicionadas a execução:** a Lia não anuncia pesquisa/geração sem resultado de ferramenta ou registro confirmado na fila.
+- **Auditoria e testes:** cobertura para idempotência, escolha do Pix, execução sequencial, retomada da entrega e proteção de timeout.
+
 ## 2.8.0 - Continuidade natural do Copiloto e revisão semântica de tarefas
 - **Contexto ativo:** o Copiloto mantém o pedido original, a última pergunta, o tipo da tarefa, os turnos e as ferramentas permitidas enquanto uma solicitação ainda está em andamento.
 - **Continuidade sem palavras-chave:** respostas curtas, reformulações, correções e mudanças parciais de assunto são avaliadas pelo contexto, não apenas por correspondência literal de palavras.
