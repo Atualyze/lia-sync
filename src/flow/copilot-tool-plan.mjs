@@ -45,7 +45,14 @@ export function buildCopilotToolPlan(toolCalls = [], {
       continue;
     }
 
-    const invalid = validateToolCallArguments(name, args);
+    // O conteúdo de uma mensagem de saída pode ser coletado em uma etapa
+    // conversacional posterior, depois da revisão semântica da intenção.
+    // Ainda validamos todos os demais campos; o executor nunca recebe o
+    // placeholder e só é chamado após o fluxo preencher message.
+    const validationArgs = name === 'enviar_mensagem_contato' && !String(args.message || '').trim()
+      ? { ...args, message: '__PENDING_MESSAGE__' }
+      : args;
+    const invalid = validateToolCallArguments(name, validationArgs);
     if (invalid) {
       rejected.push({ index: index + 1, name, reason: 'invalid_arguments' });
       continue;

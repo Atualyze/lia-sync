@@ -59,6 +59,20 @@ test('planejador mantém a ordem, remove duplicatas e limita a sequência a quat
   assert.equal(deduped.duplicates.length, 1);
 });
 
+test('planejador permite coletar texto de envio depois da revisão, mas valida os demais campos', () => {
+  const deferred = buildCopilotToolPlan([
+    { name: 'enviar_mensagem_contato', args: { recipient: 'ptbr' } }
+  ]);
+  assert.equal(deferred.canExecute, true);
+  assert.equal(deferred.steps[0].args.message, undefined);
+
+  const invalidRecipient = buildCopilotToolPlan([
+    { name: 'enviar_mensagem_contato', args: { recipient: 42 } }
+  ]);
+  assert.equal(invalidRecipient.canExecute, false);
+  assert.equal(invalidRecipient.rejected[0].reason, 'invalid_arguments');
+});
+
 test('planejador bloqueia ferramentas desativadas e argumentos inválidos antes de executar', () => {
   const disabled = buildCopilotToolPlan(
     [{ name: 'consultar_web', args: { query: 'teste' } }],

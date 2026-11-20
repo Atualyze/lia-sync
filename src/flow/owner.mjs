@@ -1976,20 +1976,25 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               ? { ...tc, args: { ...(tc.args || {}), message: inferredOutboundMessage } }
               : tc
           ));
-          const missingOutboundContent = toolCallsToRun.some(tc =>
-            tc?.name === 'enviar_mensagem_contato' && !String(tc.args?.message || '').trim()
-          );
-          if (missingOutboundContent) {
-            if (dispatchIntent.recipient) sSelf.pendingRecipient = dispatchIntent.recipient;
-            sSelf.pendingAsAudio = Boolean(dispatchIntent.asAudio);
-            store.markDirty();
-            const recipientLabel = sSelf.pendingRecipient ? ` para *${sSelf.pendingRecipient}*` : '';
-            return recordSelfTurn(filterReply(`Claro! O que você gostaria de enviar${recipientLabel}? Me informe o texto ou o recado para eu preparar a prévia antes de qualquer envio.`, { isCopilot: true }).text);
-          }
+
         }
 
         let toolPlan = null;
         if (toolCallsToRun.length > 0) {
+          // Normalize valor textual usado pelo schema compartilhado antes de
+          // validar o plano. Valor livre/ausente continua sendo tratado pelo
+          // fluxo de coleta Pix, sem executar a cobrança.
+          toolCallsToRun = toolCallsToRun.map(tc => {
+            if (['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)
+              && typeof tc.args?.valor === 'string') {
+              const normalizedAmount = normalizePixAmount(tc.args.valor);
+              const args = { ...(tc.args || {}) };
+              if (normalizedAmount === null) delete args.valor;
+              else args.valor = normalizedAmount;
+              return { ...tc, args };
+            }
+            return tc;
+          });
           // A troca Pix -> checkout é resolvida antes do plano para validar a
           // disponibilidade da ferramenta que realmente será executada.
           toolCallsToRun = toolCallsToRun.map(tc => (
@@ -2198,6 +2203,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 // Garante que qualquer mensagem para contato seja amigável e acolhedora
                 if (tc.name === 'enviar_mensagem_contato' && !tc.args.asAudio && tc.args.message) {
                   tc.args.message = buildFriendlyMessage(tc.args.recipient, tc.args.message, { asAudio: false, identity });
+                }
+                if (tc.name === 'enviar_mensagem_contato' && !String(tc.args.message || '').trim()) {
+                  if (tc.args.recipient) sSelf.pendingRecipient = tc.args.recipient;
+                  sSelf.pendingAsAudio = false;
+                  store.markDirty();
+                  const recipientLabel = sSelf.pendingRecipient ? ` para *${sSelf.pendingRecipient}*` : '';
+                  return recordSelfTurn(filterReply(`O que você gostaria de enviar${recipientLabel}? Me informe o texto para eu preparar a prévia antes de qualquer envio.`, { isCopilot: true }).text);
                 }
 
                 if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {

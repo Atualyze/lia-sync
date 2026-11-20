@@ -238,7 +238,11 @@ export function validateToolCallArguments(toolName, args = {}) {
   const canonicalName = resolveToolName(toolName);
   const tool = ALL_TOOLS.find(item => item.name === canonicalName);
   if (!tool) return 'Ferramenta não encontrada no catálogo.';
-  return validateToolArguments(tool, stripForeignToolArguments(tool, args));
+  const safeArgs = stripForeignToolArguments(tool, args);
+  if (canonicalName === 'enviar_mensagem_contato' && !String(safeArgs?.message || '').trim()) {
+    return validateToolArguments(tool, { ...safeArgs, message: '__PENDING_MESSAGE__' });
+  }
+  return validateToolArguments(tool, safeArgs);
 }
 
 function toolAuditStatus(result) {
