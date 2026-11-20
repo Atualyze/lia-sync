@@ -726,50 +726,24 @@ export async function handleClientMessage({
             && hasPendingPixChoice
             && requestedPixAmount > 0
           );
-          let adminDecisionNeedsNotify = false;
           if (needsAdminPixDecision) {
-            const existingDecision = s.pendingAdminDecision?.type === 'pix_generation'
-              && s.pendingAdminDecision.status === 'pending'
-              ? s.pendingAdminDecision
-              : null;
-            if (!existingDecision || Number(existingDecision.amount) !== requestedPixAmount) {
-              const requestedAt = new Date(now()).toISOString();
-              s.pendingAdminDecision = {
-                type: 'pix_generation',
-                status: 'pending',
-                amount: requestedPixAmount,
-                description: String(s.pendingClientPayment.args?.descricao || 'Pagamento via Pix').slice(0, 80),
-                paymentMethod: 'pix_copy_paste',
-                requestedAt
-              };
-              adminDecisionNeedsNotify = true;
-              store.markDirty();
-            }
-          }
-
-          const adminDecisionAmount = Number(s.pendingAdminDecision?.amount) || requestedPixAmount;
-          const handoffNotify = needsAdminPixDecision
-            ? async message => notify(buildAdminPixDecisionNotice({
-              clientName: s.clientName || pushName || 'Cliente',
-              phone: s.phone,
-              amount: adminDecisionAmount
-            }) + `\n\n` + message)
-            : notify;
-          await triggerHandoff(s, {
-            reason: needsAdminPixDecision
-              ? 'aguardando decisão do responsável para gerar cobrança Pix'
-              : `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
-            urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
-            now: now(),
-            notify: handoffNotify,
-            forceNotify: needsAdminPixDecision ? adminDecisionNeedsNotify : true,
-            identity
-          });
-          safeReplyText = needsAdminPixDecision
-            ? 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.'
-            : (faqPriceReply || (isPriceViolation
+            safeReplyText = await requestAdminPixApproval(
+              requestedPixAmount,
+              s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
+            );
+          } else {
+            await triggerHandoff(s, {
+              reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
+              urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
+              now: now(),
+              notify,
+              forceNotify: true,
+              identity
+            });
+            safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
-              : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.'));
+              : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+          }
         }
       }
       let finalReply = String(safeReplyText || '')
