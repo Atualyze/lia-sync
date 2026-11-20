@@ -66,7 +66,7 @@ export function createCopilotTaskKey({ messageId = '', ownerKey = '', steps = []
   const source = String(messageId || '').trim();
   const nonce = source || crypto.randomUUID();
   const digest = crypto.createHash('sha256')
-    .update(JSON.stringify({ ownerKey: String(ownerKey), nonce, steps }))
+    .update(JSON.stringify({ ownerKey: String(ownerKey), nonce }))
     .digest('hex');
   return `copilot:${digest}`;
 }
