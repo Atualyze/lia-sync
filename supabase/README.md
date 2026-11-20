@@ -21,7 +21,8 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 11. `migrations/20261115_prospecting.sql` — listas, cadências, leads e eventos de prospecção
 12. `migrations/20261115_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
 13. `migrations/20261116000000_review_hardening.sql` — RLS nas tabelas `prospect_*` e `reminders`, CHECK de `created_by` removido, lease de manutenção
-14. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+14. `migrations/20261120160000_copilot_tasks.sql` — fila persistente do Copiloto, leases, checkpoints, idempotência e estado de entrega.
+15. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 
@@ -167,3 +168,19 @@ profiles
 localStorage.removeItem('lia-sync-session');
 location.reload();
 ```
+
+
+### Fila durável do Copiloto (2.9.0)
+
+Antes de publicar a versão 2.9.0, aplique a migration
+`migrations/20261120160000_copilot_tasks.sql` no SQL Editor do Supabase e confirme que
+`public.copilot_tasks` e as RPCs `claim_copilot_task`,
+`renew_copilot_task_lease`, `checkpoint_copilot_task_step`,
+`finish_copilot_task`, `begin_copilot_task_delivery` e
+`finish_copilot_task_delivery` foram criadas.
+
+A migration é aditiva, habilita RLS sem policies para manter o acesso exclusivo
+ao `service_role` e pode ser reaplicada com segurança. A fila só é ativada
+quando o runtime consegue consultar a tabela; sem a migration, o worker fica
+desativado e o fluxo legado permanece ativo. Não remova a tabela enquanto
+existirem tarefas não finalizadas.
