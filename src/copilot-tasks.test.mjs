@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import { CopilotTaskStore, createCopilotTaskKey } from './copilot-tasks.mjs';
 
@@ -111,4 +111,23 @@ test('plano com cobrança Pix nunca recebe política de repetição somente-leit
     assert.equal(task.retryPolicy, 'never');
     assert.equal(task.maxAttempts, 1);
   });
+});
+
+
+test('fila local corrompida falha fechada sem sobrescrever o arquivo', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-corrupt-'));
+  const filePath = path.join(dir, 'tasks.json');
+  try {
+    await writeFile(filePath, '{json inválido', 'utf8');
+    const store = new CopilotTaskStore({
+      filePath,
+      logger: { warn() {}, error() {} }
+    });
+    await store.load();
+    await assert.rejects(store.enqueue(input()), /copilot_task_local_store_corrupt/);
+    assert.equal(await store.claimNext('worker-test'), null);
+    assert.equal((await (await import('node:fs/promises')).readFile(filePath, 'utf8')), '{json inválido');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
