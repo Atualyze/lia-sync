@@ -30,6 +30,37 @@ function contextTokens(value = '') {
     .filter(token => token.length >= 3 && !CONTEXT_STOP_WORDS.has(token));
 }
 
+function latestAssistantText(history = []) {
+  const items = Array.isArray(history) ? history : [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (items[i]?.role === 'assistant') return String(items[i]?.content || '');
+  }
+  return '';
+}
+
+export function lastAssistantAskedForPayment(history = []) {
+  const text = normalizeContextText(latestAssistantText(history));
+  const mentionsPayment = /\\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout|chave)\\b/.test(text);
+  const asksChoiceOrAmount = /\\b(?:qual|quanto|informe|prefere|escolhe|escolher|valor|opcao|opcoes|deseja)\\b/.test(text)
+    || text.includes('?');
+  return mentionsPayment && asksChoiceOrAmount;
+}
+
+export function lastAssistantAskedForPaymentAmount(history = []) {
+  const text = normalizeContextText(latestAssistantText(history));
+  return /\\b(?:valor|quanto)\\b/.test(text)
+    && /\\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout)\\b/.test(text)
+    && (text.includes('?') || /\\b(?:informe|me diga|qual)\\b/.test(text));
+}
+
+export function lastAssistantAskedForAgendaConfirmation(history = []) {
+  const text = normalizeContextText(latestAssistantText(history));
+  const mentionsAgenda = /\\b(?:agenda|agendar|agendamento|horario|reuniao|compromisso)\\b/.test(text);
+  return mentionsAgenda
+    && /\\b(?:confirmar|confirma|posso|pode|agendar|marcar)\\b/.test(text)
+    && (text.includes('?') || /\\b(?:confirma|posso confirmar)\\b/.test(text));
+}
+
 function messageTime(message) {
   const value = message?.createdAt || message?.created_at || message?.timestamp || null;
   if (!value) return null;
