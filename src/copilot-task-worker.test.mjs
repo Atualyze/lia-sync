@@ -59,6 +59,12 @@ test('worker executa consulta permitida em segundo plano e notifica o resultado'
 test('somente consultas explicitamente permitidas entram no worker', () => {
   assert.equal(isBackgroundCopilotTool('consultar_web'), true);
   assert.equal(isBackgroundCopilotTool('consultar_contato_ou_lead'), true);
+  assert.equal(isBackgroundCopilotTool('consultar_planilha_google', { acao: 'buscar_linhas' }), true);
+  assert.equal(isBackgroundCopilotTool('consultar_planilha_google', { acao: 'adicionar_linha' }), false);
+  assert.equal(isBackgroundCopilotTool('gerenciar_drive_google', { acao: 'buscar_arquivo' }), true);
+  assert.equal(isBackgroundCopilotTool('gerenciar_drive_google', { acao: 'enviar_arquivo_whatsapp' }), false);
+  assert.equal(isBackgroundCopilotTool('gerenciar_agenda_google', { action: 'listar_eventos' }), true);
+  assert.equal(isBackgroundCopilotTool('gerenciar_agenda_google', { action: 'criar_evento' }), false);
   assert.equal(isBackgroundCopilotTool('enviar_mensagem_contato'), false);
   assert.equal(isBackgroundCopilotTool('atualizar_dados_crm'), false);
   assert.equal(isBackgroundCopilotTool('gerar_cobranca_pix'), true);
