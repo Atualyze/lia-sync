@@ -145,8 +145,8 @@ begin
     and expires_at > now()
     and attempt_count < max_attempts
   order by created_at asc
-  for update skip locked
-  limit 1;
+  limit 1
+  for update skip locked;
 
   if v_id is null then
     return;
