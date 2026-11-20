@@ -848,8 +848,13 @@ export async function handleClientMessage({
         }
       }
 
+      if (adminPixApprovalPending) {
+        toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name));
+      }
+
       if (!filtered.blocked && isSuperAgent && toolCalls.length > 0) {
         for (const tc of toolCalls) {
+          if (adminPixApprovalPending && isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)) continue;
           if (tc?.name && isClientToolAllowed(tc.name)) {
             const configuredPixKey = resolveConfiguredPixKey(botConfig);
             const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
@@ -865,6 +870,25 @@ export async function handleClientMessage({
             }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
+
+            if (isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc.name)) {
+              const directChoice = resolvePaymentChoice(clean);
+              const pendingPixChoice = pendingPayment?.choice === 'pix';
+              if (pendingPixChoice && !pendingPaymentAnswer && directChoice !== 'pix') {
+                // Não permita que uma tool_call antiga reative a cobrança após troca de assunto.
+                continue;
+              }
+              if (directChoice === 'pix' || (pendingPixChoice && pendingPaymentAnswer)) {
+                const amount = amountFromText(clean) || Number(tc.args?.valor) || Number(pendingPayment?.args?.valor) || 0;
+                if (amount > 0) {
+                  toolReplyOverride = await requestAdminPixApproval(
+                    amount,
+                    tc.args?.descricao || pendingPayment?.args?.descricao || 'Pagamento via Pix'
+                  );
+                  continue;
+                }
+              }
+            }
 
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
