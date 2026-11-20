@@ -674,6 +674,13 @@ export async function handleOwnerSession({
 
         // Aprovação de cobrança Pix é um fluxo explícito, separado das confirmações
         // genéricas do Copiloto. "Sim", "ok" ou um valor nunca autorizam a cobrança.
+        const persistAdminPixDecision = async () => {
+          if (store.file || store.client?.enabled) await persistAdminPixDecision();
+        };
+        const persistAdminPixDecisionBestEffort = async () => {
+          if (store.file || store.client?.enabled) await persistAdminPixDecisionBestEffort();
+          else { clearTimeout(store.saveTimer); store.saveTimer = null; }
+        };
         const adminPixChoice = parseAdminPixDecision(cleanCommand);
         if (adminPixChoice) {
           const pendingPixDecisions = listPendingAdminPixDecisions(store.sessions || {}, { nowMs: now() });
@@ -718,8 +725,7 @@ export async function handleOwnerSession({
               targetSession.updatedAt = timestamp;
               store.markDirty();
               try {
-                await store.flush?.();
-                assertOutboundStatePersisted();
+                await persistAdminPixDecision();
               } catch (error) {
                 targetSession.pendingAdminDecision = snapshot.decision;
                 targetSession.pendingClientPayment = snapshot.pendingClientPayment;
@@ -729,7 +735,7 @@ export async function handleOwnerSession({
                 targetSession.handoffReason = snapshot.handoffReason;
                 targetSession.updatedAt = snapshot.updatedAt;
                 store.markDirty();
-                await store.flush?.().catch(() => {});
+                await persistAdminPixDecisionBestEffort();
                 return recordSelfTurn(filterReply(
                   `Não consegui persistir sua decisão para ${targetLabel}. Mantive a cobrança sem autorização e não gerei o Pix. ${error?.message || ''}`,
                   { isCopilot: true }
@@ -762,13 +768,12 @@ export async function handleOwnerSession({
             targetSession.updatedAt = timestamp;
             store.markDirty();
             try {
-              await store.flush?.();
-              assertOutboundStatePersisted();
+              await persistAdminPixDecision();
             } catch (error) {
               targetSession.pendingAdminDecision = snapshot;
               targetSession.updatedAt = snapshot.requestedAt;
               store.markDirty();
-              await store.flush?.().catch(() => {});
+              await persistAdminPixDecisionBestEffort();
               return recordSelfTurn(filterReply(
                 `Não consegui registrar sua autorização com segurança para ${targetLabel}. Não iniciei a geração do Pix. Verifique a conexão do banco e tente novamente.`,
                 { isCopilot: true }
@@ -796,7 +801,7 @@ export async function handleOwnerSession({
               decision.error = String(pixResult?.message || pixResult?.error || 'A ferramenta não confirmou a geração do Pix.').replace(/[\r\n]+/g, ' ').slice(0, 180);
               targetSession.updatedAt = new Date(now()).toISOString();
               store.markDirty();
-              await store.flush?.().catch(() => {});
+              await persistAdminPixDecisionBestEffort();
               return recordSelfTurn(filterReply(
                 `Não consegui gerar o Pix para ${targetLabel}: ${decision.error} Nenhuma confirmação de cobrança foi enviada ao cliente. A decisão continua pendente; corrija o problema e autorize novamente, ou assuma o atendimento.`,
                 { isCopilot: true }
@@ -822,7 +827,7 @@ export async function handleOwnerSession({
               targetSession.human = true;
               targetSession.updatedAt = new Date(now()).toISOString();
               store.markDirty();
-              await store.flush?.().catch(() => {});
+              await persistAdminPixDecisionBestEffort();
               return recordSelfTurn(filterReply(
                 `A cobrança Pix foi gerada para ${targetLabel}, mas não tenho confirmação de que a mensagem com o código foi entregue. Marquei o resultado como incerto e não vou reenviar automaticamente. Confira o WhatsApp do cliente antes de qualquer nova tentativa. Detalhe: ${decision.error}`,
                 { isCopilot: true }
@@ -846,14 +851,13 @@ export async function handleOwnerSession({
             targetSession.updatedAt = decision.completedAt;
             store.markDirty();
             try {
-              await store.flush?.();
-              assertOutboundStatePersisted();
+              await persistAdminPixDecision();
             } catch (error) {
               decision.status = 'uncertain';
               decision.error = 'Pix enviado ao cliente, mas o estado final não foi confirmado no banco.';
               targetSession.human = true;
               store.markDirty();
-              await store.flush?.().catch(() => {});
+              await persistAdminPixDecisionBestEffort();
               return recordSelfTurn(filterReply(
                 `O Pix foi enviado para ${targetLabel}, mas não consegui confirmar o estado final no banco. Não repita a cobrança; confira o histórico do cliente antes de qualquer outra ação.`,
                 { isCopilot: true }
