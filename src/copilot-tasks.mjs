@@ -21,7 +21,11 @@ export function resolveCopilotPaymentMethodChoice(message = '', lastAssistantMes
   const normalizeText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const current = normalizeText(message);
   const previous = normalizeText(lastAssistantMessage);
-  if (!/(?:prefere|direto|copia e cola|qr code|checkout|link de pagamento|pix e cartao)/.test(previous)) return null;
+  const asksPreference = /\b(?:prefere|preferia|qual|escolha|escolher|opcao|opcoes|deseja|quer)\b/.test(previous);
+  const mentionsPixOption = /\b(?:pix|copia e cola|qr code)\b/.test(previous);
+  const mentionsCheckoutOption = /\b(?:checkout|infinitepay|link de pagamento|cartao)\b/.test(previous);
+  const separatesChoices = /\bou\b|\b(?:alternativa|opcao|opcoes)\b/.test(previous);
+  if (!asksPreference || !mentionsPixOption || !mentionsCheckoutOption || !separatesChoices) return null;
   if (/^(?:direto|pix direto|pix copia e cola|copia e cola|qr code|qr)$/i.test(current)
     || /\b(?:quero|prefiro|manda|gere|gera|faz|faca)\s+(?:o\s+)?(?:pix\s+)?(?:direto|copia e cola|qr code)\b/.test(current)) return 'pix';
   if (/^(?:checkout|link|infinitepay|pix e cartao|cartao)$/i.test(current)
