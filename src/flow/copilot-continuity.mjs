@@ -257,5 +257,5 @@ export function isCopilotTaskStatusQuestion(message = '') {
 export function claimsUnexecutedToolWork(reply = '') {
   const value = normalizedContinuityText(reply);
   if (/\b(?:nao|nunca|jamais)\b.{0,30}\b(?:estou|vou|irei)\b/i.test(value)) return false;
-  return /(?:\b(?:estou|estamos|vou|irei|iremos|ja vou|agora vou)\b.{0,60}\b(?:pesquis\w*|consult\w*|busc\w*|verific\w*|chec\w*|ger\w*|cri\w*|emit\w*|prepar\w*|mont\w*|process\w*|execut\w*|inici\w*)\b|\b(?:pesquisando|consultando|buscando|verificando|checando|gerando|criando|emitindo|preparando|processando|executando|iniciando)\b|\b(?:pesquisa|consulta|busca|cobranca|pix|tarefa|solicitacao)\b.{0,40}\b(?:em andamento|iniciada|sendo processada|em execucao)\b)/i.test(value);
+  return /(?:\b(?:estou|estamos|vou|irei|iremos|ja vou|agora vou)\b.{0,60}\b(?:pesquis\w*|consult\w*|busc\w*|verific\w*|chec\w*|ger\w*|cri\w*|emit\w*|prepar\w*|mont\w*|process\w*|execut\w*|inici\w*)\b|\b(?:pesquisando|consultando|buscando|verificando|checando|gerando|criando|emitindo|preparando|processando|executando|iniciando)\b|\b(?:iniciei|iniciamos|iniciado|iniciada)\b.{0,40}\b(?:pesquisa|consulta|busca|cobranca|pix|tarefa)\b|\b(?:pesquisa|consulta|busca|cobranca|pix|tarefa|solicitacao)\b.{0,40}\b(?:em andamento|iniciada|sendo processada|sendo gerada|em execucao)\b)/i.test(value);
 }
