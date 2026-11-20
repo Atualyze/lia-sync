@@ -209,7 +209,7 @@ export function createCopilotTaskWorker({
         });
         if (!isToolResultSuccessful(step.name, result)) {
           const code = String(result?.code || result?.error?.code || result?.error || 'tool_result_not_successful').slice(0, 120);
-          const partial = completedSteps.length ? `\\n\\nEtapas anteriores confirmadas:\\n${fallbackSummary(completedSteps)}` : '';
+          const partial = completedSteps.length ? `\n\nEtapas anteriores confirmadas:\n${fallbackSummary(completedSteps)}` : '';
           await taskStore.fail(task, code, `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} não foi concluída: a etapa *${step.name}* não retornou um resultado confirmado. Não vou repetir automaticamente.${partial}`);
           return false;
         }
