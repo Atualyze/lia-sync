@@ -380,7 +380,7 @@ export async function handleOwnerSession({
             || (phone !== OWNER_SELF_KEY ? phone : '')
             || ''
           ).trim();
-          const targetDigits = rawTargetPhone.replace(/\\D/g, '');
+          const targetDigits = rawTargetPhone.replace(/\D/g, '');
           const targetPhone = targetDigits.length >= 8 && targetDigits.length <= 15 ? targetDigits : '';
           const retryPolicy = normalizedSteps.some(step => step.name === 'gerar_cobranca_pix') ? 'never' : 'read_only';
           const taskKey = createCopilotTaskKey({
@@ -442,7 +442,7 @@ export async function handleOwnerSession({
 
           const reply = queued.created === false
             ? describeCopilotTaskStatus(queued)
-            : `🧭 Registrei sua solicitação na fila de execução.\\n\\n• *Tarefa:* #${taskId.slice(0, 8).toUpperCase()}\\n• *Etapas:* ${normalizedSteps.length}\\n• *Estado:* aguardando execução\\n\\nVou executar em segundo plano e enviar o resultado aqui assim que estiver confirmado. Você pode perguntar *“onde está?”* para consultar o estado real.`;
+            : `🧭 Registrei sua solicitação na fila de execução.\n\n• *Tarefa:* #${taskId.slice(0, 8).toUpperCase()}\n• *Etapas:* ${normalizedSteps.length}\n• *Estado:* aguardando execução\n\nVou executar em segundo plano e enviar o resultado aqui assim que estiver confirmado. Você pode perguntar *“onde está?”* para consultar o estado real.`;
           const response = recordSelfTurn(filterReply(reply, { isCopilot: true }).text, { preserveTask: true });
           await store.flush?.().catch(error => logger.error?.('[copilot] tarefa registrada; falha ao sincronizar contexto da conversa.'));
           return response;
@@ -2065,7 +2065,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
         // Escolha de modalidade é uma continuação determinística: não deixe a revisão
         // semântica trocar "Pix direto" por checkout nem apagar os dados já coletados.
-        if (directPixChoice && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)) {
+        if (directPixChoice && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)) {
           const pending = sSelf.pendingPixRequest || {};
           const pendingAmount = normalizePixAmount(pending.amount);
           const pendingDescription = isValidPixDescription(pending.description)
@@ -2161,7 +2161,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               const toolTaskType = copilotToolTaskType(tc.name, tc.args);
               const liveTask = activeCopilotTask(sSelf, now());
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
-              const negatedAction = /\\b(?:nao|nunca|jamais)\\b.{0,45}\\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\\b/i.test(normalizedTurn);
+              const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
               const directPaymentContinuation = directPixChoice && tc.name === 'gerar_cobranca_pix';
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
@@ -2198,7 +2198,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             if (toolCallsToRun[0]?.name === 'gerar_cobranca_pix') {
               const pending = sSelf.pendingPixRequest || {};
               const currentPix = extractCurrentPixArgs(cleanCommand, {
-                allowBareNumber: Boolean(pending.requestedAt) || /\\b(?:pix|cobranca|pagamento|valor)\\b/i.test(normalizedTurn)
+                allowBareNumber: Boolean(pending.requestedAt) || /\b(?:pix|cobranca|pagamento|valor)\b/i.test(normalizedTurn)
               });
               const amountFromPending = normalizePixAmount(pending.amount);
               const amountFromTool = normalizePixAmount(toolCallsToRun[0]?.args?.valor);
@@ -2885,7 +2885,7 @@ ${errMsg}`;
                 'Se houver uma intenção de ação mas faltarem dados, explique exatamente o que falta em uma pergunta curta.',
                 'Não invente execução, dados ou resultados. Não chame ferramentas nesta etapa.',
                 '[/FALLBACK_CONVERSACIONAL]'
-              ].join('\\n'),
+              ].join('\n'),
               history: recentHistory,
               userText: cleanCommand,
               botConfig,
