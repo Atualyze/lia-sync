@@ -84,7 +84,8 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
   assert.equal(self.pendingOutboundDispatch.status, 'uncertain');
 
   const repeatedApproval = await flow.process({ phone: ownerPhone, text: 'sim' });
-  assert.match(repeatedApproval, /resultado incerto/i);
+  assert.match(repeatedApproval, /Oi! Estou aqui/i);
+  assert.doesNotMatch(repeatedApproval, /resultado incerto|não vou repeti-lo automaticamente/i);
   assert.equal(self.pendingOutboundDispatch.status, 'uncertain');
   assert.equal(sent.length, 0, 'nenhuma mensagem pode ser reenviada automaticamente');
 

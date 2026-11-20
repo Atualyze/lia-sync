@@ -572,6 +572,15 @@ export async function handleOwnerSession({
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
           const hasDecision = Boolean(effectiveApprove || effectiveCancel || semanticResolve);
           const asksAboutDispatch = /\b(?:disparo|envio|pr[eé]via)\b/i.test(cleanCommand);
+          const genericConfirmation = /^(?:sim|s|ok|okay|certo|claro|pode|pode sim|isso|isso mesmo|confirmo|confirmado|autorizo|beleza|perfeito|n[aã]o|nao|n|negativo|cancela|cancelar)$/i
+            .test(String(cleanCommand || '').trim().replace(/[.!?]+$/g, ''));
+
+          // Em estado incerto, respostas monossilábicas podem pertencer a outra
+          // conversa (por exemplo, a confirmação de uma pesquisa). Não as trate
+          // como aprovação/cancelamento do envio antigo; deixe o Copiloto responder.
+          if (pending.status !== 'pending' && !semanticResolve && !asksAboutDispatch && genericConfirmation) {
+            return null;
+          }
 
           // Um registro em processamento/incerto não pode sequestrar mensagens
           // comuns do operador. Só a pergunta sobre o próprio envio ou uma
@@ -857,9 +866,12 @@ export async function handleOwnerSession({
           ? null
           : cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
+        const hasExplicitOutboundReference = /\b(?:disparo|envio|pr[eé]via)\b/i.test(cleanCommand);
+        const hasExplicitOutboundResolution = /\b(?:marque(?:m)?\s+como\s+(?:conclu[ií]d[oa]|encerrad[oa]|resolvid[oa])|marcar\s+como\s+(?:conclu[ií]d[oa]|encerrad[oa]|resolvid[oa])|encerr(?:e|ar|ad[oa])|dar\s+baixa|baixa\s+administrativa|revisad[oa])\b/i.test(cleanCommand);
         if (!adminPixChoice && sSelf.pendingOutboundDispatch
           && (sSelf.pendingOutboundDispatch.status === 'pending'
-            || /\b(?:disparo|envio|pr[eé]via)\b/i.test(cleanCommand))) {
+            || hasExplicitOutboundReference
+            || hasExplicitOutboundResolution)) {
           semanticPendingOutboundIntent = await classifyPendingOutboundIntent({
             ai,
             message: cleanCommand,

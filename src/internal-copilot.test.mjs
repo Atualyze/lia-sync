@@ -110,15 +110,19 @@ test('Copiloto: resposta curta não aprova disparo antigo em estado incerto', as
     }
   });
 
-  const reply = await flow.process({
-    phone: 'owner_self',
-    text: 'sim',
-    origin: 'owner'
-  });
+  const replies = [];
+  for (const text of ['sim', 'ok', 'pode']) {
+    replies.push(await flow.process({
+      phone: 'owner_self',
+      text,
+      origin: 'owner'
+    }));
+  }
 
-  assert.equal(aiCalls > 0, true, 'a resposta curta deve seguir para o Copiloto quando o disparo antigo está incerto');
-  assert.match(reply, /tentar a pesquisa novamente/i);
-  assert.doesNotMatch(reply, /resultado incerto|não vou repeti-lo automaticamente/i);
+  assert.equal(aiCalls > 0, true, 'respostas curtas devem seguir para o Copiloto quando o disparo antigo está incerto');
+  for (const reply of replies) {
+    assert.doesNotMatch(reply, /resultado incerto|não vou repeti-lo automaticamente/i);
+  }
   assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
 });
 
@@ -1434,7 +1438,8 @@ test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry'
   assert.equal(audioAttempts, 1);
   assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
   const repeated = await flow.process({ phone: '5588921694598', text: 'sim' });
-  assert.match(repeated, /resultado incerto/i);
+  assert.doesNotMatch(repeated, /resultado incerto|não vou repeti-lo automaticamente/i);
+  assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
   assert.equal(audioAttempts, 1, 'o áudio incerto não pode ser repetido');
 });
 
