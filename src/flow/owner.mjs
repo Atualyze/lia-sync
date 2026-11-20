@@ -2250,7 +2250,6 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                 const verification = verifyCopilotToolResult(tc.name, toolRes);
                 if (toolRes?.success && isPixCreate) {
                   sSelf.pendingPixRequest = null;
-                  sSelf.pendingCopilotTask = null;
                   store.markDirty();
                 }
                 toolOutputs.push({ tool: tc.name, args: tc.args, result: toolRes, verification });
@@ -2268,9 +2267,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
-        if (toolOutputs.some(item => !item.error && item.result?.success)) {
+        const planCompleted = Boolean(
+          toolPlan?.steps?.length
+          && toolOutputs.length === toolPlan.steps.length
+          && toolOutputs.every(item => item.verification?.state === 'verified')
+        );
+        if (planCompleted) {
           sSelf.pendingCopilotTask = null;
-          if (toolOutputs.some(item => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.tool))) sSelf.pendingPixRequest = null;
+          if (toolOutputs.some(item =>
+            ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.tool)
+            && item.result?.success === true
+          )) sSelf.pendingPixRequest = null;
           store.markDirty();
         }
 
