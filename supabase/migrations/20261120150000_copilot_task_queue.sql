@@ -111,7 +111,7 @@ begin
     notification_status = 'uncertain',
     last_error_code = 'notification_lease_expired',
     updated_at = now()
-  where status = 'succeeded'
+  where status in ('succeeded', 'failed', 'uncertain')
     and notification_status = 'sending'
     and updated_at <= now() - interval '2 minutes';
 
