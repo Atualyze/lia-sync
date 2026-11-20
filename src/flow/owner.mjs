@@ -2163,9 +2163,14 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
             let queuedTask;
             try {
+              const durableRequestText = [
+                activeTask?.originCommand ? 'Pedido original: ' + activeTask.originCommand : '',
+                ...recentHistory.slice(-6).map(item => (item?.role === 'assistant' ? 'Lia: ' : 'Responsável: ') + String(item?.content || '').slice(0, 500)),
+                'Mensagem atual: ' + cleanCommand
+              ].filter(Boolean).join('\n').slice(-2000);
               queuedTask = await copilotTaskStore.enqueue({
                 messageId,
-                requestText: cleanCommand,
+                requestText: durableRequestText,
                 taskType: inferCopilotTaskType(toolPlan.steps),
                 steps: toolPlan.steps,
                 actorLabel: owner
