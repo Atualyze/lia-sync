@@ -4,7 +4,7 @@ import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../co
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
-import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
+import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
@@ -82,8 +82,15 @@ export async function handleClientMessage({
   store, ai, whatsapp, faq, reminderStore, logger, now,
   allowClientResume, maxInputChars, notify, isOwnerSender,
   botConfig, identity, messages, owner, assistant, sectors = [],
+  operationsStore = null,
   phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
 }) {
+      const executeToolCall = (toolName, args = {}, context = {}) => executeToolCallRaw(toolName, args, {
+        ...context,
+        actor: context.actor || 'client',
+        operationsStore: context.operationsStore || operationsStore,
+        auditActorLabel: context.auditActorLabel || context.clientName || pushName || 'cliente'
+      });
       // ==========================================
       // CASO 2: CONTATO / CLIENTE NO WHATSAPP
       // ==========================================

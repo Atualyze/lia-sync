@@ -5,7 +5,7 @@ import { failures, opened, PROVIDERS } from './state.mjs';
 import { resolveAIConfig, providers, available, providerDefaultModel, fallbackModelsForProvider, getCircuitBreakers } from './config.mjs';
 import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail, parseAIResponse } from './parsing.mjs';
 import { shouldEnableGoogleSearch } from './search.mjs';
-import { getEnabledTools, getGeminiToolDeclarations } from '../tools/index.mjs';
+import { getEnabledTools, getGeminiToolDeclarations, getToolExecutionPolicy } from '../tools/index.mjs';
 import { resolveAdaptiveTemperature } from '../core/personality.mjs';
 
 function openAIToolSchema(schema = {}) {
@@ -121,7 +121,8 @@ export async function call(provider, {
     ? `\n\n[CATÁLOGO DE FERRAMENTAS ATIVAS (PREENCHA "tool_calls" NO JSON QUANDO NECESSÁRIO)]\n` +
       nativeTools.map(t => {
         const props = t.parameters?.properties ? Object.keys(t.parameters.properties).join(', ') : '';
-        return `• "${t.name}": ${t.description || ''} (args: {${props}})`;
+        const policy = getToolExecutionPolicy(t.name);
+        return `• "${t.name}": ${t.description || ''} (args: {${props}}; modo: ${policy.mode}; autorização: ${policy.approval}; repetição: ${policy.retry})`;
       }).join('\n')
     : '';
   const effectiveSystem = toolCatalogPrompt && !String(system || '').includes('[CATÁLOGO DE FERRAMENTAS ATIVAS')

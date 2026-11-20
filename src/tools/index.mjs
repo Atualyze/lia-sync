@@ -105,6 +105,70 @@ export function getEnabledTools(botConfig = {}, { actor = 'owner' } = {}) {
   return ALL_TOOLS.filter(tool => isToolEnabled(tool.name, botConfig) && (actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name)));
 }
 
+// Perfil de execução: descreve risco e política, mas não substitui as confirmações
+// específicas já implementadas em cada fluxo/ferramenta.
+export const TOOL_EXECUTION_POLICIES = Object.freeze({
+  transferir_para_setor: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'handoff' },
+  agendar_retorno_ou_followup: { mode: 'scheduled_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_reminder' },
+  consultar_contato_ou_lead: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'crm_read' },
+  consultar_base_conhecimento: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'knowledge_read' },
+  atualizar_dados_crm: { mode: 'crm_write', approval: 'explicit_intent', retry: 'never', effects: 'crm_update' },
+  enviar_mensagem_contato: { mode: 'external_delivery', approval: 'explicit_confirmation', retry: 'never', effects: 'whatsapp_message' },
+  consultar_saude_infra: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'infrastructure_read' },
+  gerenciar_agenda_google: { mode: 'conditional', approval: 'action_dependent', retry: 'never', effects: 'calendar_read_or_write' },
+  gerar_documento_pdf: { mode: 'artifact_creation', approval: 'confirmation_before_delivery', retry: 'never', effects: 'pdf_creation' },
+  consultar_web: { mode: 'read_only_untrusted_data', approval: 'none', retry: 'read_only_after_review', effects: 'external_web_read' },
+  consultar_planilha_google: { mode: 'conditional', approval: 'action_dependent', retry: 'never', effects: 'sheets_read_or_write' },
+  gerenciar_drive_google: { mode: 'conditional', approval: 'confirmation_before_delivery', retry: 'never', effects: 'drive_read_or_send' },
+  consultar_dados_brasil: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'public_data_read' },
+  gerar_cobranca_pix: { mode: 'payment_artifact', approval: 'separate_payment_flow', retry: 'never', effects: 'pix_creation' },
+  checkout_infinitepay: { mode: 'payment_checkout', approval: 'separate_payment_flow', retry: 'never', effects: 'checkout_creation_or_status_read' },
+  gerenciar_memoria: { mode: 'memory_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_memory' },
+  gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
+  gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' }
+});
+
+export function getToolExecutionPolicy(toolName) {
+  const canonicalName = resolveToolName(toolName);
+  return TOOL_EXECUTION_POLICIES[canonicalName] || {
+    mode: 'restricted',
+    approval: 'unknown',
+    retry: 'never',
+    effects: 'unknown'
+  };
+}
+
+/**
+ * Catálogo vivo derivado de ALL_TOOLS. Parâmetros/obrigatoriedade vêm dos
+ * JSON Schemas reais; disponibilidade é calculada por ator e configuração.
+ * Ferramentas administrativas nunca aparecem no catálogo de clientes.
+ */
+export function getToolCatalog({ botConfig = {}, actor = 'owner', includeDisabled = true } = {}) {
+  return ALL_TOOLS
+    .filter(tool => actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name))
+    .map(tool => {
+      const properties = tool.parameters?.properties || {};
+      const required = Array.isArray(tool.parameters?.required) ? tool.parameters.required : [];
+      const enabled = isToolEnabled(tool.name, botConfig);
+      const allowedForActor = actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name);
+      return {
+        name: tool.name,
+        aliases: Object.entries(TOOL_NAME_ALIASES)
+          .filter(([, canonical]) => canonical === tool.name)
+          .map(([alias]) => alias),
+        description: tool.description || '',
+        parameters: tool.parameters || { type: 'OBJECT', properties: {} },
+        requiredParameters: [...required],
+        optionalParameters: Object.keys(properties).filter(key => !required.includes(key)),
+        enabled,
+        allowedForActor,
+        available: enabled && allowedForActor,
+        policy: getToolExecutionPolicy(tool.name)
+      };
+    })
+    .filter(item => includeDisabled || item.available);
+}
+
 export {
   toolConsultarContato,
   toolAgendarRetorno,
@@ -147,7 +211,7 @@ function stripForeignToolArguments(tool, args) {
     accepted.has(key) || !declaredByOtherTools.has(key)));
 }
 
-function validateToolArguments(tool, args) {
+export function validateToolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return 'Os argumentos da ferramenta precisam ser um objeto JSON.';
   const schema = tool.parameters || {};
   const properties = schema.properties || {};
@@ -170,30 +234,81 @@ function validateToolArguments(tool, args) {
   return null;
 }
 
+export function validateToolCallArguments(toolName, args = {}) {
+  const canonicalName = resolveToolName(toolName);
+  const tool = ALL_TOOLS.find(item => item.name === canonicalName);
+  if (!tool) return 'Ferramenta não encontrada no catálogo.';
+  return validateToolArguments(tool, stripForeignToolArguments(tool, args));
+}
+
+function toolAuditStatus(result) {
+  if (result?.requiresConfirmation === true) return 'awaiting_confirmation';
+  if (result?.success === true) return 'completed';
+  if (result?.found === true) return 'completed';
+  if (result?.found === false) return 'completed_no_match';
+  if (result?.health !== undefined || Array.isArray(result?.checks)) return 'diagnostic_completed';
+  if (result?.success === false || result?.error) return 'failed';
+  return 'unverified';
+}
+
+async function auditToolExecution(context, toolName, result, startedAt) {
+  const operationsStore = context.operationsStore;
+  if (typeof operationsStore?.audit !== 'function') return;
+  const error = result?.error || result?.message || '';
+  try {
+    await operationsStore.audit({
+      actorId: context.auditActorId || null,
+      action: 'tool_execution',
+      entityType: 'tool',
+      metadata: {
+        source: context.actor === 'client' ? 'client' : 'copilot',
+        toolName,
+        actorRole: context.actor || (context.isOwner === true ? 'owner' : 'system'),
+        actorLabel: context.auditActorLabel || context.clientName || '',
+        status: toolAuditStatus(result),
+        durationMs: Math.max(0, Date.now() - startedAt),
+        reasonCode: result?.code || (error ? 'tool_result_error' : '')
+          || null,
+        planStep: Number.isInteger(context.planStep) ? context.planStep : null
+      }
+    });
+  } catch (auditError) {
+    // Auditoria é best-effort: sua indisponibilidade nunca deve repetir ou
+    // alterar uma ação externa que já foi executada.
+    console.warn('[audit] execução de ferramenta não registrada (' + String(auditError?.code || 'audit_unavailable') + ')');
+  }
+}
+
 /**
- * Executa uma ferramenta pelo nome com os argumentos passados
+ * Executa uma ferramenta pelo nome com validação, política de ator e auditoria
+ * sanitizada. A trilha não armazena argumentos, mensagens, telefones ou retorno.
  */
 export async function executeToolCall(toolName, args = {}, context = {}) {
   const canonicalName = resolveToolName(toolName);
+  const startedAt = Date.now();
+  const finish = async result => {
+    await auditToolExecution(context, canonicalName, result, startedAt);
+    return result;
+  };
   if (!isToolEnabled(canonicalName, context.botConfig || {})) {
-    return { error: `A ferramenta "${canonicalName}" está desativada na configuração publicada.` };
+    return finish({ success: false, code: 'tool_disabled', error: `A ferramenta "${canonicalName}" está desativada na configuração publicada.` });
   }
   if (context.actor === 'client' && !CLIENT_ALLOWED_TOOL_NAMES.has(canonicalName)) {
-    return { error: 'Ferramenta indisponível neste fluxo.' };
+    return finish({ success: false, code: 'tool_not_allowed', error: 'Ferramenta indisponível neste fluxo.' });
   }
   const tool = ALL_TOOLS.find(t => t.name === canonicalName);
   if (!tool) {
-    return { error: 'Ferramenta "' + toolName + '" não encontrada.' };
+    return finish({ success: false, code: 'tool_not_found', error: 'Ferramenta "' + toolName + '" não encontrada.' });
   }
   // Model calls can leak a parameter declared by a different tool (for example
   // `when` from scheduling into a Pix call). Remove only those known foreign
   // parameters; genuinely unknown arguments remain validation errors.
   const safeArgs = stripForeignToolArguments(tool, args);
   const invalid = validateToolArguments(tool, safeArgs);
-  if (invalid) return { success: false, error: invalid, code: 'invalid_tool_arguments' };
+  if (invalid) return finish({ success: false, error: invalid, code: 'invalid_tool_arguments' });
   try {
-    return await tool.execute(safeArgs, context);
+    return await finish(await tool.execute(safeArgs, context));
   } catch (err) {
-    return { error: 'Falha ao executar ' + canonicalName + ': ' + err.message };
+    return finish({ success: false, error: 'Falha ao executar ' + canonicalName + ': ' + err.message, code: 'tool_execution_failed' });
   }
 }

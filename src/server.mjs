@@ -168,6 +168,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     whatsapp: { sendText, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64 },
     getHumanPhone,
     reminderStore,
+    operationsStore,
     getTelemetry,
     getSectors: () => sectorProjection.active(),
     allowClientResume: config.humanAllowClientResume,

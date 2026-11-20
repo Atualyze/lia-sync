@@ -2,7 +2,8 @@ import { filterReply, normalize, isGreeting, detectPriceMentions } from '../safe
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
-import { executeToolCall, isToolEnabled } from '../tools/index.mjs';
+import { executeToolCall as executeToolCallRaw, isToolEnabled, getToolCatalog } from '../tools/index.mjs';
+import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
 import {
@@ -235,11 +236,18 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 }
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
 }) {
+        const executeToolCall = (toolName, args = {}, context = {}) => executeToolCallRaw(toolName, args, {
+          ...context,
+          actor: context.actor || 'owner',
+          isOwner: context.isOwner ?? true,
+          operationsStore: context.operationsStore || operationsStore,
+          auditActorLabel: context.auditActorLabel || owner
+        });
         const aiDeadline = Date.now() + 35000;
         const sSelf = store.get(phone === OWNER_SELF_KEY ? OWNER_SELF_KEY : phone);
         sSelf.human = false;
@@ -1860,7 +1868,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           telemetry,
           memoryItems: ownerMemoryItems
         });
-        const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nPrimeiro identifique a intenção atual, confira o contexto, os dados e a autorização. Só então, quando necessário e seguro, emita a chamada em "tool_calls". Aguarde o resultado real antes de afirmar que concluiu. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado.\n[/REGRA_FERRAMENTAS_COPILOTO]';
+        const copilotToolRule = '\n\n[REGRA_FERRAMENTAS_COPILOTO]\nPrimeiro identifique a intenção atual, confira o contexto, os dados e a autorização. Quando a tarefa exigir mais de uma ferramenta, proponha uma sequência mínima, ordenada por dependência, com no máximo 4 etapas. Não duplique chamadas. A execução é sequencial e será interrompida diante de falha, resultado não verificável ou confirmação pendente. Aguarde o resultado real de cada etapa antes de afirmar que concluiu. Nunca responda dizendo "vou consultar", "puxando agora" ou "só um instante" sem entregar o resultado. Ferramentas com efeitos externos continuam sujeitas às confirmações específicas do fluxo.\n[/REGRA_FERRAMENTAS_COPILOTO]';
         const continuityContext = activeTask
           ? '\n\n[CONTEXTO_CONTINUIDADE_ATIVA]\nExiste uma solicitação ainda em andamento. A mensagem atual pode ser uma resposta curta, uma correção, um complemento por áudio ou uma mudança de rumo. Use o pedido original e a última pergunta abaixo para compreender o sentido, sem exigir palavras-chave ou frases padronizadas. Se a mensagem não esclarecer o próximo passo, explique o que falta e faça uma única pergunta objetiva. Não reutilize dados antigos quando o usuário mudar o assunto. A lista de ferramentas é apenas contexto histórico e nunca autoriza uma execução por si só.\n' + JSON.stringify({ type: activeTask.type, originalRequest: activeTask.originCommand || '', lastClarification: activeTask.lastQuestion || '', allowedTools: activeTask.allowedTools || [] }) + '\n[/CONTEXTO_CONTINUIDADE_ATIVA]'
           : '';
@@ -1957,9 +1965,30 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
+        let toolPlan = null;
         if (toolCallsToRun.length > 0) {
+          // A troca Pix -> checkout é resolvida antes do plano para validar a
+          // disponibilidade da ferramenta que realmente será executada.
+          toolCallsToRun = toolCallsToRun.map(tc => (
+            tc?.name === 'gerar_cobranca_pix'
+              && !isToolEnabled('gerar_cobranca_pix', botConfig)
+              && isToolEnabled('checkout_infinitepay', botConfig)
+              ? { ...tc, name: 'checkout_infinitepay', args: { acao: 'criar_link', ...(tc.args || {}) } }
+              : tc
+          ));
+          toolPlan = buildCopilotToolPlan(toolCallsToRun, { botConfig, actor: 'owner' });
+          if (!toolPlan.canExecute) {
+            const reasons = toolPlan.rejected.map(item => item.name + ' (' + item.reason + ')').join(', ');
+            const detail = toolPlan.truncated
+              ? 'O plano ultrapassou o limite de ' + toolPlan.maxSteps + ' etapas.'
+              : 'Uma ou mais chamadas estão inválidas, desativadas ou indisponíveis para este fluxo.';
+            return recordSelfTurn(filterReply('Não executei nenhuma etapa do plano. ' + detail + (reasons ? '\n\nVerifique: ' + reasons : ''), { isCopilot: true }).text);
+          }
+          toolCallsToRun = toolPlan.steps.map(step => ({ name: step.name, args: step.args }));
           let pixHandled = false;
+          let planIndex = 0;
           for (const tc of toolCallsToRun) {
+            planIndex += 1;
             if (tc?.name) {
               if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
                 tc.name = 'checkout_infinitepay';
@@ -2181,16 +2210,25 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   session: sSelf,
                   adminConfig,
                   userText: cleanCommand,
-                  searchWebWithGemini: ai?.searchWebWithGemini
+                  searchWebWithGemini: ai?.searchWebWithGemini,
+                  planStep: planIndex
                 });
+                const verification = verifyCopilotToolResult(tc.name, toolRes);
                 if (toolRes?.success && isPixCreate) {
                   sSelf.pendingPixRequest = null;
                   sSelf.pendingCopilotTask = null;
                   store.markDirty();
                 }
-                toolOutputs.push({ tool: tc.name, args: tc.args, result: toolRes });
+                toolOutputs.push({ tool: tc.name, args: tc.args, result: toolRes, verification });
+                if (!verification.continue) break;
               } catch (err) {
-                toolOutputs.push({ tool: tc.name, args: tc.args, error: err.message });
+                toolOutputs.push({
+                  tool: tc.name,
+                  args: tc.args,
+                  error: err.message,
+                  verification: { state: 'failed', continue: false, recovery: 'stop_and_escalate' }
+                });
+                break;
               }
             }
           }
@@ -2427,7 +2465,7 @@ ${errMsg}`;
 
         if (toolOutputs.length > 0) {
           const synthRes = await ai?.askAI?.({
-            system: `${sys}\n\n[TOOL_RESULTS_JSON]\nAs ferramentas solicitadas já foram executadas. Use EXCLUSIVAMENTE os resultados reais abaixo para responder ao responsável de forma direta, clara e completa (nunca diga "vou consultar" ou "só um instante").\n${JSON.stringify(toolOutputs)}\n[/TOOL_RESULTS_JSON]`,
+            system: `${sys}\n\n[PLANO_E_VERIFICACAO_DAS_FERRAMENTAS]\nAs etapas foram executadas em sequência. "verification.state" descreve o que o código conseguiu confirmar. Se o estado não for "verified", não declare a operação concluída. "awaiting_confirmation" exige aguardar a confirmação específica; "no_match" exige pedir identificação correta; falhas/estados incertos devem ser relatados sem repetição automática. Nunca trate o plano proposto pelo modelo como prova de execução.\n${JSON.stringify({ maxSteps: toolPlan?.maxSteps || 4, rejected: toolPlan?.rejected || [], duplicates: toolPlan?.duplicates || [], results: toolOutputs })}\n[/PLANO_E_VERIFICACAO_DAS_FERRAMENTAS]\nUse EXCLUSIVAMENTE os resultados reais para responder ao responsável de forma direta, clara e completa.\n[/TOOL_RESULTS_JSON]`
             history: recentHistory,
             userText: cleanCommand,
             botConfig,
