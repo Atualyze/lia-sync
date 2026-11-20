@@ -824,7 +824,7 @@ export async function handleClientMessage({
           s.pendingClientPayment = null;
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (selected === 'pix' || selected === 'checkout') {
-          const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
+          const amount = amountFromText(clean) || (!pendingPaymentPaused ? Number(pendingPayment.args?.valor) : 0) || 0;
           if (amount <= 0) {
             pendingPayment.choice = selected;
             pendingPayment.lastQuestion = selected === 'checkout'
