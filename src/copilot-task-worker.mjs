@@ -31,7 +31,8 @@ function formatPixResult(result = {}) {
   const amount = Number(result.valor || 0);
   const amountLabel = amount > 0 ? `R$ ${amount.toFixed(2).replace('.', ',')}` : 'Valor livre';
   return [
-    '💳 *Cobrança Pix gerada e confirmada!*',
+    '💳 *Cobrança Pix criada com sucesso!*',
+    '• *Status:* cobrança criada; isso não confirma o pagamento do pagador.',
     `• *Valor:* ${amountLabel}`,
     `• *Favorecido:* ${result.favorecido || 'não informado'}`,
     result.txid ? `• *Identificador:* \`${result.txid}\`` : '',
