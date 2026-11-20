@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **2.5.1**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **2.9.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Este diretório contém o schema do banco do Lia Sync, independente do Supabase do CRM original. O runtime usa o Supabase como fonte primária quando configurado e mantém armazenamento local como fallback compatível.
 
@@ -184,3 +184,20 @@ ao `service_role` e pode ser reaplicada com segurança. A fila só é ativada
 quando o runtime consegue consultar a tabela; sem a migration, o worker fica
 desativado e o fluxo legado permanece ativo. Não remova a tabela enquanto
 existirem tarefas não finalizadas.
+
+
+### Fila durável do Copiloto (2.9.0)
+
+Antes de implantar a versão 2.9.0, aplique a migration
+`migrations/20261120160000_copilot_tasks.sql` no SQL Editor do Supabase e confirme
+a tabela `public.copilot_tasks` e as RPCs de claim, lease, checkpoint,
+finalização, cancelamento e entrega.
+
+A fila exige o ID estável da mensagem WhatsApp para criar a chave de idempotência.
+Se a mensagem não tiver ID ou o Supabase não confirmar o registro, a Lia não
+inicia a ferramenta em segundo plano nem faz uma segunda tentativa cega.
+
+A migration é aditiva, habilita RLS sem policies para manter o acesso exclusivo
+ao `service_role` e pode ser reaplicada com segurança. O runtime valida a tabela
+na inicialização; sem a migration, o worker permanece desativado e o fluxo legado
+continua ativo. Não remova a tabela enquanto existirem tarefas não finalizadas.
