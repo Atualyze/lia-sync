@@ -447,7 +447,7 @@ export async function handleClientMessage({
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
         && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
         && !pendingAgendaPaused
-        && lastAssistantAskedForAgendaConfirmation(s.history));
+        && lastAssistantAskedForAgendaConfirmation(s.history, s.pendingClientAgenda?.lastQuestion || ''));
       const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
         .test(normalize(clean));
       // Ao mudar de assunto, mantém a operação pendente para uma retomada explícita,
