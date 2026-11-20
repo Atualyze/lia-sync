@@ -345,7 +345,7 @@ if (isDirectRun) {
       await processMaintenance({
       store,
       send: sendText,
-      stageOutboundDispatch: stageAutomatedOutbound,
+      stageOutboundDispatch: app.stageAutomatedOutbound,
       notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
       reminderStore: app.reminderStore,
       timeZone: config.businessTimeZone,
@@ -358,7 +358,7 @@ if (isDirectRun) {
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
       }).catch(e => console.error('[maintenance]', e.message));
-      return await app.prospecting?.tick({ stageOutboundDispatch: stageAutomatedOutbound });
+      return await app.prospecting?.tick({ stageOutboundDispatch: app.stageAutomatedOutbound });
     } finally {
       maintenanceRunning = false;
     }
