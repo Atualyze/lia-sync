@@ -18,16 +18,16 @@ export function parseAdminPixDecision(value = '') {
   if (!text) return null;
 
   const generate = text.match(
-    /^(?:(?:autorizo|confirmo)\s+)?(?:pode\s+)?(?:gerar|gera|gere)\s+(?:e\s+enviar\s+)?(?:o\s+)?pix(?:\s+(?:para|pro|pra)\s+(.+))?$/
+    /^(?:(?:autorizo|confirmo)\s+)?(?:pode\s+)?(?:gerar|gera|gere)\s+(?:e\s+enviar\s+)?(?:o\s+)?pix(?:\s+(?:(?:para|pro|pra|de|do|da)\s+)?(.+))?$/
   );
   if (generate) {
     return { action: 'generate', target: String(generate[1] || '').trim() || null };
   }
 
   const assume = text.match(
-    /^(?:(?:eu\s+)?(?:vou\s+)?assum(?:ir|o)|assumir|assuma)\s+(?:o\s+)?atendimento(?:\s+(?:de|do|da|para)\s+(.+))?$/
+    /^(?:(?:eu\s+)?(?:vou\s+)?assum(?:ir|o)|assumir|assuma)\s+(?:o\s+)?atendimento(?:\s+(?:(?:de|do|da|para)\s+)?(.+))?$/
   ) || text.match(
-    /^(?:deixa\s+comigo|eu\s+assumo)(?:\s+(?:o\s+)?atendimento)?(?:\s+(?:de|do|da|para)\s+(.+))?$/
+    /^(?:deixa\s+comigo|eu\s+assumo)(?:\s+(?:o\s+)?atendimento)?(?:\s+(?:(?:de|do|da|para)\s+)?(.+))?$/
   );
   if (assume) {
     return { action: 'assume', target: String(assume[1] || '').trim() || null };
