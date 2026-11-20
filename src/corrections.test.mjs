@@ -20,7 +20,7 @@ test('JID @lid sem número alternativo permanece como chave e destino',()=>{cons
 test('webhook falha fechado, readBody limita payload e @lid usa telefone alternativo',async()=>{const {authorized,readBody,deliveryTarget}=await import('./server.mjs');assert.equal(authorized({headers:{}},'segredo'),false);assert.equal(authorized({headers:{authorization:'Bearer segredo'}},'segredo'),true);assert.equal(deliveryTarget({jid:'236425802952777@lid',phone:'5588921694598'}),'5588921694598');assert.equal(deliveryTarget({jid:'5588921694598@s.whatsapp.net',phone:'5588921694598'}),'5588921694598@s.whatsapp.net');const request={async *[Symbol.asyncIterator](){yield Buffer.alloc(10)}};await assert.rejects(()=>readBody(request,5),e=>e.statusCode===413);});
 test('manutenção retoma automaticamente quando configurada',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`auto-${Date.now()}.json`));await store.load();const s=store.get('5586999962542');s.human=true;s.handoffAt=new Date(1700000000000-2*3600000).toISOString();const {processMaintenance}=await import('./maintenance.mjs');await processMaintenance({store,now:()=>1700000000000,humanAutoResumeHours:1});assert.equal(s.human,false);assert.equal(s.humanSource,'auto-resume');});
 test('respostas longas são divididas em no máximo três mensagens',async()=>{const {splitReply}=await import('./safety.mjs');const parts=splitReply(`${'Frase segura. '.repeat(70)}\n\n${'Outra frase. '.repeat(70)}`);assert.ok(parts.length<=3);assert.ok(parts.every(part=>part.length<=700));});
-test('IA indisponível gera fallback e handoff apenas uma vez por hora',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`fallback-${Date.now()}.json`));await store.load();let notified=0;const flow=createFlow({store,faq:async()=>[],ai:{askAI:async()=>null},whatsapp:{sendText:async()=>{notified++;}},humanPhone:'5586888888888'});const first=await flow.process({phone:'5586999962542',text:'uma dúvida sem resposta',origin:'simulation'});assert.match(first,/instabilidade/);assert.equal(store.get('5586999962542','simulation').fallbackHandoffAt!==undefined,true);assert.equal(notified,1);});
+test('IA indisponível gera fallback e handoff apenas uma vez por hora',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`fallback-${Date.now()}.json`));await store.load();let notified=0;const flow=createFlow({store,faq:async()=>[],ai:{askAI:async()=>null},whatsapp:{sendText:async()=>{notified++;}},humanPhone:'5586888888888'});const first=await flow.process({phone:'5586999962542',text:'uma dúvida sem resposta',origin:'simulation'});assert.match(first,/não consegui preparar uma resposta/i);assert.equal(store.get('5586999962542','simulation').fallbackHandoffAt!==undefined,true);assert.equal(notified,1);});
 test('dados coletados pela IA não entram sem evidência no texto do cliente',async()=>{const store=new SessionStore(path.join(os.tmpdir(),`collect-${Date.now()}.json`));await store.load();const flow=createFlow({store,faq:async()=>[],ai:{askAI:async()=>({reply:'ok',intent:'outro',collected:{petName:'Thor',petSpecies:'cao',petAge:'3 anos',neighborhood:'Ininga'}})}});await flow.process({phone:'5586999962542',text:'quero informações',origin:'simulation'});const s=store.get('5586999962542','simulation');assert.equal(s.petName,undefined);assert.equal(s.petSpecies,undefined);assert.equal(s.petAge,undefined);assert.equal(s.neighborhood,undefined);});
 test('dashboard aceita query string em simulate e protege mode/clear',async()=>{const {createApp}=await import('./server.mjs');const http=await import('node:http');const store=new SessionStore(path.join(os.tmpdir(),`api-${Date.now()}.json`));const flow={process:async({phone,text,origin})=>{store.get(phone,origin).history.push({role:'assistant',content:text});return 'ok';},isDuplicate:()=>false,allowRate:()=>true,shouldWarnRate:()=>true};const app=await createApp({store,flow,dashboardAuth:async()=>true});const server=http.createServer((req,res)=>app(req,res));await new Promise(resolve=>server.listen(0,resolve));const port=server.address().port;const post=async(url,body)=>fetch(`http://127.0.0.1:${port}${url}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const simulate=await post('/api/dashboard/simulate?x=1',{phone:'5586999962542',text:'oi'});assert.equal(simulate.status,200);const mode=await post('/api/dashboard/mode',{});assert.equal(mode.status,400);store.get('5586999962542');const clear=await post('/api/dashboard/clear',{phone:'5586999962542'});assert.equal(clear.status,400);await new Promise(resolve=>server.close(resolve));});
 test('config e providers suportam openrouter para modelos gratuitos e fallback',async()=>{const {config}=await import('./config.mjs');assert.equal(typeof config.openrouterBaseUrl,'string');assert.equal(config.openrouterModel, undefined);});
@@ -281,7 +281,7 @@ test('C5: wasSentByBot e recordBotSend evitam corrida do fromMe', async () => {
   assert.equal(wasSentByBot('id-desconhecido', '5586999962542', 'Mensagem do humano'), false);
 });
 
-test('A1: IA fora gera fallback de instabilidade e alerta, sem triagem técnica', async () => {
+test('A1: IA fora gera fallback sem inventar causa técnica e alerta, sem triagem técnica', async () => {
   const store = new SessionStore(path.join(os.tmpdir(), `a1-${Date.now()}.json`));
   await store.load();
   let handoffs = 0;
@@ -294,11 +294,11 @@ test('A1: IA fora gera fallback de instabilidade e alerta, sem triagem técnica'
   });
 
   const r1 = await flow.process({ phone: '5586999962542', text: 'onde vejo minha segunda via?' });
-  assert.match(r1, /instabilidade/i);
+  assert.match(r1, /não consegui preparar uma resposta/i);
   assert.doesNotMatch(r1, /pronto-socorro|Dra\./i);
 
   const r2 = await flow.process({ phone: '5586999962542', text: 'e o prazo de entrega?' });
-  assert.match(r2, /instabilidade/i);
+  assert.match(r2, /não consegui preparar uma resposta/i);
   assert.equal(store.get('5586999962542').human, false);
   assert.ok(handoffs >= 1);
 });
