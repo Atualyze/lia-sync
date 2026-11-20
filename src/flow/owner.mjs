@@ -1901,8 +1901,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && !isCopilotMetaQuestion
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
+        const directPixChoice = activeTask?.type === 'payment'
+          && isDirectPixChoice(cleanCommand, lastAssistantContext)
+          && Boolean(sSelf.pendingPixRequest?.requestedAt);
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
+          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || directPixChoice
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
@@ -2054,6 +2057,31 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               });
             }
           }
+        }
+
+        // Escolha de modalidade é uma continuação determinística: não deixe a revisão
+        // semântica trocar "Pix direto" por checkout nem apagar os dados já coletados.
+        if (directPixChoice && !/\\b(?:nao|nunca|jamais|cancela|cancelar)\\b/i.test(normalizedTurn)) {
+          const pending = sSelf.pendingPixRequest || {};
+          const pendingAmount = normalizePixAmount(pending.amount);
+          const pendingDescription = isValidPixDescription(pending.description)
+            ? String(pending.description).trim()
+            : '';
+          if (pendingAmount === null || !pendingDescription) {
+            return recordSelfTurn(filterReply(
+              `${owner}, já tenho a escolha pelo Pix direto, mas preciso recuperar o valor e a descrição da cobrança antes de gerar. Não criei nenhuma cobrança nesta etapa.`,
+              { isCopilot: true }
+            ).text, { preserveTask: true });
+          }
+          toolCallsToRun = [{
+            name: 'gerar_cobranca_pix',
+            args: {
+              valor: pendingAmount,
+              descricao: pendingDescription,
+              enviarWhatsApp: false
+            }
+          }];
+          suppressToolExecution = false;
         }
 
         // Preserve o fluxo de coleta de conteúdo do disparo antes da validação
