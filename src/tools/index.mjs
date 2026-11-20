@@ -246,10 +246,10 @@ function toolAuditStatus(result) {
   if (result?.health !== undefined || Array.isArray(result?.checks)) {
     return result?.health === 'healthy' || result?.healthy === true ? 'diagnostic_completed' : 'completed_with_warnings';
   }
+  if (result?.success === false || result?.error) return 'failed';
   if (result?.success === true) return 'completed';
   if (result?.found === true) return 'completed';
   if (result?.found === false) return 'completed_no_match';
-  if (result?.success === false || result?.error) return 'failed';
   return 'unverified';
 }
 
