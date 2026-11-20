@@ -203,6 +203,11 @@ export class CopilotTaskStore {
     })) === true;
   }
 
+  async cancel(taskId) {
+    if (!this.enabled || !taskId) return false;
+    return (await this.client.rpc('cancel_copilot_task', { p_task_id: taskId })) === true;
+  }
+
   async beginDelivery(taskId) {
     if (!this.enabled) return false;
     return (await this.client.rpc('begin_copilot_task_delivery', { p_task_id: taskId })) === true;
