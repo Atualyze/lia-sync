@@ -634,6 +634,43 @@ export async function handleClientMessage({
       const allowedPrices = getAllowedPrices();
       const filtered = filterReply(raw, { allowedPrices, strictPrices: true });
       let safeReplyText = String(filtered.text || '');
+      let adminPixApprovalPending = false;
+      const requestAdminPixApproval = async (amount, description = '') => {
+        const numericAmount = Number(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+          return 'Qual é o valor correto para a cobrança Pix?';
+        }
+        const existingDecision = s.pendingAdminDecision?.type === 'pix_generation'
+          && s.pendingAdminDecision.status === 'pending'
+          ? s.pendingAdminDecision
+          : null;
+        const sameDecision = existingDecision && Number(existingDecision.amount) === Number(numericAmount.toFixed(2));
+        if (!sameDecision) {
+          s.pendingAdminDecision = {
+            type: 'pix_generation',
+            status: 'pending',
+            amount: Number(numericAmount.toFixed(2)),
+            description: String(description || s.pendingClientPayment?.args?.descricao || 'Pagamento via Pix').slice(0, 80),
+            paymentMethod: 'pix_copy_paste',
+            requestedAt: new Date(now()).toISOString()
+          };
+          store.markDirty();
+        }
+        adminPixApprovalPending = true;
+        await triggerHandoff(s, {
+          reason: 'aguardando decisão do responsável para gerar cobrança Pix',
+          urgency: 'normal',
+          now: now(),
+          notify: async message => notify(buildAdminPixDecisionNotice({
+            clientName: s.clientName || pushName || 'Cliente',
+            phone: s.phone,
+            amount: Number(s.pendingAdminDecision.amount)
+          }) + `\n\n` + message),
+          forceNotify: !sameDecision,
+          identity
+        });
+        return 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
+      };
       if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
