@@ -125,3 +125,18 @@ test('continuidade de agenda: sim ou não só respondem à última pergunta de c
   assert.equal(lastAssistantAskedForAgendaConfirmation(askedConfirmation), true);
   assert.equal(lastAssistantAskedForAgendaConfirmation(changedTopic), false);
 });
+
+
+test('continuidade: pergunta persistida só serve como fallback quando o histórico foi reidratado vazio', () => {
+  const pendingPaymentQuestion = 'Qual é o valor para eu gerar o código copia e cola?';
+  assert.equal(lastAssistantAskedForPaymentAmount([], pendingPaymentQuestion), true);
+  assert.equal(lastAssistantAskedForPaymentAmount([
+    { role: 'assistant', content: 'O Pix ainda está aguardando a confirmação da equipe.' }
+  ], pendingPaymentQuestion), false);
+
+  const pendingAgendaQuestion = 'Posso confirmar e agendar esse horário para você?';
+  assert.equal(lastAssistantAskedForAgendaConfirmation([], pendingAgendaQuestion), true);
+  assert.equal(lastAssistantAskedForAgendaConfirmation([
+    { role: 'assistant', content: 'Claro, posso explicar os serviços do painel.' }
+  ], pendingAgendaQuestion), false);
+});
