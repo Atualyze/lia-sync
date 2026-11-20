@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFlow } from '../flow.mjs';
+import { OWNER_SELF_KEY } from '../core/identity.mjs';
 
 function createMockStore() {
   const sessions = {};
@@ -30,7 +31,7 @@ function createMockStore() {
 test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova confirmação de envio', async () => {
   const ownerPhone = '5588921694598';
   const store = createMockStore();
-  const self = store.get(ownerPhone);
+  const self = store.get(OWNER_SELF_KEY);
   self.pendingOutboundDispatch = {
     id: 'DISP1234',
     phone: '5585991099483',
