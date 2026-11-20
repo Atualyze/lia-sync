@@ -1805,7 +1805,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         let suppressToolExecution = false;
         const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
         const normalizedTurn = normalize(cleanCommand);
-        const paymentMethodChoice = activeTask?.type === 'payment'
+        const paymentMethodChoice = (activeTask?.type === 'payment' || Boolean(sSelf.pendingPixRequest?.requestedAt))
           ? resolveCopilotPaymentMethodChoice(cleanCommand, lastAssistantContext)
           : null;
         if (paymentMethodChoice === 'pix') {
@@ -1854,9 +1854,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && !isCopilotMetaQuestion
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
-        const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || Boolean(paymentMethodChoice)
-        ));
+        const explicitTaskContinuation = Boolean(
+          (activeTask && !isCopilotMetaQuestion && (isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation))
+          || paymentMethodChoice
+        );
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
           && !explicitTaskContinuation
@@ -1968,7 +1969,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
         }
 
-        if (paymentMethodChoice === 'pix' && activeTask?.type === 'payment') {
+        if (paymentMethodChoice === 'pix' && (activeTask?.type === 'payment' || sSelf.pendingPixRequest?.requestedAt)) {
           toolCallsToRun = toolCallsToRun.filter(tc => !(
             tc?.name === 'checkout_infinitepay' && String(tc?.args?.acao || 'criar_link') !== 'verificar_pagamento'
           ));
@@ -2148,9 +2149,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               // nunca chegam aqui como autorização implícita.
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
-              const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
+              const activeTaskContinuation = Boolean((liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
-                && (explicitTaskContinuation || turnReview?.intent === 'continue'));
+                && (explicitTaskContinuation || turnReview?.intent === 'continue')) || (paymentMethodChoice === 'pix' && tc.name === 'gerar_cobranca_pix'));
               if (!currentRequestMatches && !activeTaskContinuation) {
                 const review = await reviewCopilotToolCall({
                   ai,
