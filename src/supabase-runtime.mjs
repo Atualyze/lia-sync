@@ -22,7 +22,7 @@ const normalizePendingClientPayment = value => {
   if (value.pausedAt) {
     try { pausedAt = iso(value.pausedAt); } catch { pausedAt = null; }
   }
-  return { args, choice, createdAt, lastQuestion, pausedAt };
+  return { args, choice, createdAt, ...(lastQuestion ? { lastQuestion } : {}), ...(pausedAt ? { pausedAt } : {}) };
 };
 const normalizePendingCopilotTask = value => {
   const allowed = new Set(['general', 'payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
