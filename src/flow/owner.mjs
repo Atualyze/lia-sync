@@ -16,6 +16,7 @@ import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCanc
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
+import { describePendingAdminPixDecision, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
 
 const NATURAL_CONTROL_HINT = /(?:\b(?:retom\w*|continu\w*|devolv\w*|reativ\w*|assum\w*|paus\w*\s+(?:o\s+)?(?:bot|atendimento|conversa)|human\w*\s+(?:o\s+)?atendimento)\b|\b(?:quem|quais?)\s+(?:est[aã]o?|aguard\w*).*(?:fila|retorno|resposta)\b|\b(?:mostr\w*|ver)\b.*\b(?:fila|aguard\w*)\b|\b(?:situa[cç][aã]o|sa[uú]de)\b.*\bsistema\b|\b(?:limp\w*|reset\w*)\b.*\b(?:hist[oó]rico|conversa)\b)/i;
 
@@ -668,6 +669,207 @@ export async function handleOwnerSession({
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
         const pendingOutboundReply = await handlePendingOutboundDispatch();
         if (pendingOutboundReply) return pendingOutboundReply;
+
+        // Aprovação de cobrança Pix é um fluxo explícito, separado das confirmações
+        // genéricas do Copiloto. "Sim", "ok" ou um valor nunca autorizam a cobrança.
+        const adminPixChoice = parseAdminPixDecision(cleanCommand);
+        if (adminPixChoice) {
+          const pendingPixDecisions = listPendingAdminPixDecisions(store.sessions || {}, { nowMs: now() });
+          if (pendingPixDecisions.length > 0) {
+            const selected = matchPendingAdminPixDecision(pendingPixDecisions, adminPixChoice.target);
+            if (!selected) {
+              const choices = pendingPixDecisions
+                .map(item => describePendingAdminPixDecision(item).label)
+                .join(', ');
+              const reason = adminPixChoice.target
+                ? `Não encontrei uma decisão Pix pendente para *${adminPixChoice.target}*. Pendências atuais: ${choices}.`
+                : `Há mais de uma cobrança aguardando sua decisão: ${choices}. Informe o nome ou os quatro últimos dígitos do WhatsApp junto com *GERAR PIX* ou *ASSUMIR ATENDIMENTO*.`;
+              return recordSelfTurn(filterReply(reason, { isCopilot: true }).text);
+            }
+
+            const targetSession = selected.session;
+            const decision = targetSession.pendingAdminDecision;
+            const targetAddress = String(targetSession.jid || targetSession.phone || selected.key || '').trim();
+            const targetPhoneDigits = targetAddress.replace(/@.*$/, '').replace(/\D/g, '');
+            const targetName = targetSession.clientName || targetSession.contactName || targetSession.pushName || 'Cliente';
+            const targetLabel = describePendingAdminPixDecision(selected).label;
+            const timestamp = new Date(now()).toISOString();
+
+            if (adminPixChoice.action === 'assume') {
+              const snapshot = {
+                decision: { ...decision },
+                pendingClientPayment: targetSession.pendingClientPayment,
+                human: targetSession.human,
+                humanSource: targetSession.humanSource,
+                handoffAt: targetSession.handoffAt,
+                handoffReason: targetSession.handoffReason,
+                updatedAt: targetSession.updatedAt
+              };
+              decision.status = 'assumed';
+              decision.decidedAt = timestamp;
+              decision.decidedBy = String(owner || 'responsável').slice(0, 80);
+              targetSession.pendingClientPayment = null;
+              targetSession.human = true;
+              targetSession.humanSource = 'admin';
+              targetSession.handoffAt = timestamp;
+              targetSession.handoffReason = `Responsável assumiu a cobrança Pix de ${targetName}`;
+              targetSession.updatedAt = timestamp;
+              store.markDirty();
+              try {
+                await store.flush?.();
+                assertOutboundStatePersisted();
+              } catch (error) {
+                targetSession.pendingAdminDecision = snapshot.decision;
+                targetSession.pendingClientPayment = snapshot.pendingClientPayment;
+                targetSession.human = snapshot.human;
+                targetSession.humanSource = snapshot.humanSource;
+                targetSession.handoffAt = snapshot.handoffAt;
+                targetSession.handoffReason = snapshot.handoffReason;
+                targetSession.updatedAt = snapshot.updatedAt;
+                store.markDirty();
+                await store.flush?.().catch(() => {});
+                return recordSelfTurn(filterReply(
+                  `Não consegui persistir sua decisão para ${targetLabel}. Mantive a cobrança sem autorização e não gerei o Pix. ${error?.message || ''}`,
+                  { isCopilot: true }
+                ).text);
+              }
+              return recordSelfTurn(filterReply(
+                `Entendido. Você assumiu o atendimento de *${targetName}*. Não gerei nem enviei o Pix; a conversa permanece em modo humano para você conduzir.`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            if (!isToolEnabled('gerar_cobranca_pix', botConfig)) {
+              return recordSelfTurn(filterReply(
+                `A ferramenta *gerar_cobranca_pix* está desativada. Não gerei a cobrança de ${targetLabel}. Ative e publique a ferramenta antes de autorizar novamente, ou assuma o atendimento.`,
+                { isCopilot: true }
+              ).text);
+            }
+            if (!targetAddress || targetPhoneDigits.length < 8) {
+              return recordSelfTurn(filterReply(
+                `Não consegui identificar um destino WhatsApp válido para ${targetLabel}. Não gerei o Pix; confira o cadastro antes de autorizar.`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            const snapshot = { ...decision };
+            decision.status = 'processing';
+            decision.decidedAt = timestamp;
+            decision.decidedBy = String(owner || 'responsável').slice(0, 80);
+            delete decision.error;
+            targetSession.updatedAt = timestamp;
+            store.markDirty();
+            try {
+              await store.flush?.();
+              assertOutboundStatePersisted();
+            } catch (error) {
+              targetSession.pendingAdminDecision = snapshot;
+              targetSession.updatedAt = snapshot.requestedAt;
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn(filterReply(
+                `Não consegui registrar sua autorização com segurança para ${targetLabel}. Não iniciei a geração do Pix. Verifique a conexão do banco e tente novamente.`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            const pixResult = await executeToolCall('gerar_cobranca_pix', {
+              valor: Number(decision.amount),
+              descricao: String(decision.description || 'Pagamento via Pix').slice(0, 80)
+            }, {
+              actor: 'owner',
+              phone: OWNER_SELF_KEY,
+              targetPhone: targetAddress,
+              clientName: targetName,
+              store,
+              reminderStore,
+              whatsapp,
+              botConfig,
+              identity,
+              session: sSelf
+            });
+
+            if (pixResult?.success !== true || !String(pixResult.pixCopiaECola || '').trim()) {
+              decision.status = 'pending';
+              decision.error = String(pixResult?.message || pixResult?.error || 'A ferramenta não confirmou a geração do Pix.').replace(/[\r\n]+/g, ' ').slice(0, 180);
+              targetSession.updatedAt = new Date(now()).toISOString();
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn(filterReply(
+                `Não consegui gerar o Pix para ${targetLabel}: ${decision.error} Nenhuma confirmação de cobrança foi enviada ao cliente. A decisão continua pendente; corrija o problema e autorize novamente, ou assuma o atendimento.`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            const valueLabel = Number(pixResult.valor || decision.amount).toFixed(2).replace('.', ',');
+            const clientPaymentMessage = [
+              '💳 *Cobrança Pix autorizada e gerada pela equipe:*',
+              `• *Valor:* R$ ${valueLabel}`,
+              `• *Favorecido:* ${pixResult.favorecido || identity.companyName || owner}`,
+              pixResult.paymentUrl ? `• *Link de pagamento:* ${pixResult.paymentUrl}` : '',
+              `• *Copia e Cola:*\n\`\`\`${pixResult.pixCopiaECola}\`\`\``,
+              pixResult.qrCodeSent ? '_O QR Code também foi enviado._' : ''
+            ].filter(Boolean).join('\n\n');
+
+            try {
+              if (typeof whatsapp?.sendText !== 'function') throw new Error('Envio de mensagem WhatsApp indisponível');
+              await whatsapp.sendText(targetAddress, clientPaymentMessage);
+            } catch (error) {
+              decision.status = 'uncertain';
+              decision.error = String(error?.message || 'O provedor não confirmou a entrega da mensagem.').replace(/[\r\n]+/g, ' ').slice(0, 180);
+              targetSession.human = true;
+              targetSession.updatedAt = new Date(now()).toISOString();
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn(filterReply(
+                `A cobrança Pix foi gerada para ${targetLabel}, mas não tenho confirmação de que a mensagem com o código foi entregue. Marquei o resultado como incerto e não vou reenviar automaticamente. Confira o WhatsApp do cliente antes de qualquer nova tentativa. Detalhe: ${decision.error}`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            decision.status = 'completed';
+            decision.completedAt = new Date(now()).toISOString();
+            decision.error = '';
+            targetSession.pendingClientPayment = null;
+            targetSession.human = false;
+            targetSession.humanSource = null;
+            targetSession.handoffAt = null;
+            targetSession.handoffReason = null;
+            targetSession.handoffUrgency = null;
+            targetSession.handoffNotified = false;
+            targetSession.handoffNotifyFailed = false;
+            targetSession.handoffReminderAt = null;
+            targetSession.awaitingReply = true;
+            targetSession.lastBotAt = decision.completedAt;
+            targetSession.updatedAt = decision.completedAt;
+            store.markDirty();
+            try {
+              await store.flush?.();
+              assertOutboundStatePersisted();
+            } catch (error) {
+              decision.status = 'uncertain';
+              decision.error = 'Pix enviado ao cliente, mas o estado final não foi confirmado no banco.';
+              targetSession.human = true;
+              store.markDirty();
+              await store.flush?.().catch(() => {});
+              return recordSelfTurn(filterReply(
+                `O Pix foi enviado para ${targetLabel}, mas não consegui confirmar o estado final no banco. Não repita a cobrança; confira o histórico do cliente antes de qualquer outra ação.`,
+                { isCopilot: true }
+              ).text);
+            }
+
+            return recordSelfTurn(filterReply(
+              `Autorização concluída: gerei e enviei o Pix copia e cola de *R$ ${valueLabel}* para *${targetName}*. ${pixResult.qrCodeSent ? 'O QR Code também foi enviado.' : 'O QR Code não teve confirmação de envio; o código copia e cola foi enviado.'} A Lia foi reativada para continuar o atendimento.`,
+              { isCopilot: true }
+            ).text);
+          }
+        }
+
+        // Comandos explícitos de gestão de contato têm prioridade sobre uma
+        // confirmação de continuidade pendente; não devem ser classificados
+        // pela IA como uma resposta ambígua à pergunta anterior.
+        const earlyAssumeMatch = cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
+        if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
         const isDirectContactCommand = /^(?:bot|humano|pausar|assuma|assume|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
         const reactivationReply = isDirectContactCommand ? null : await handlePendingReactivationReply({
           store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner, stageOutboundDispatch
