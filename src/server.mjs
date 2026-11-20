@@ -21,6 +21,7 @@ import { isOwnerKey, OWNER_SELF_KEY } from './core/identity.mjs';
 import { createOutboundDispatchPreview } from './outbound-dispatch.mjs';
 import { createChatwootProxy } from './http/proxy.mjs';
 import { createRouter } from './http/router.mjs';
+import { checkReadiness } from './http/readiness.mjs';
 import { deliveryTarget, json } from './http/utils.mjs';
 import { broadcastBridgeEvent } from './http/bridge.mjs';
 import { CampaignStore } from './campaigns.mjs';
@@ -30,6 +31,8 @@ import { WebhookEventStore } from './webhook-events.mjs';
 import { SectorProjection } from './sectors.mjs';
 import { createProspecting } from './prospecting/index.mjs';
 import { IntegrationsStore } from './http/integrations-store.mjs';
+import { CopilotTaskStore } from './copilot-tasks.mjs';
+import { createCopilotTaskWorker } from './copilot-task-worker.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -49,8 +52,43 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   else console.log('[persistence] Supabase runtime ativado e conectado com sucesso.');
   setMetricsPersistenceSink(call => store.recordAICall?.(call));
   const operationsStore = new OperationsStore({ client: store.client });
+  const copilotTaskStore = new CopilotTaskStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'copilot-tasks.json'),
+    allowLocalFallback: process.env.COPILOT_TASK_LOCAL_FALLBACK === 'true',
+    logger: console
+  });
+  await copilotTaskStore.load();
   const budgetGate = new AIBudgetGate({ operationsStore });
   const askAIWithBudget = args => askAI({ ...args, budgetGate });
+  const copilotAI = { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice };
+  const copilotTaskWorker = createCopilotTaskWorker({
+    taskStore: copilotTaskStore,
+    store,
+    ai: copilotAI,
+    getBotConfig: () => adminConfig.active,
+    sendText,
+    getHumanPhone,
+    operationsStore,
+    logger: console
+  });
+
+  const baseReadinessCheck = readinessCheck || checkReadiness;
+  const taskQueueReadinessCheck = async () => {
+    const base = await baseReadinessCheck();
+    const queueMode = copilotTaskStore.mode;
+    const queueAvailable = copilotTaskStore.available === true;
+    const queueCheck = {
+      name: 'copilot_tasks',
+      status: queueAvailable ? 'ready' : 'unavailable',
+      mode: queueMode,
+      ...(queueMode === 'local' && copilotTaskStore.localCorrupt ? { reason: 'local_store_corrupt' } : {}),
+      ...(queueMode === 'local' && !copilotTaskStore.localCorrupt ? { reason: 'single_instance_local_fallback' } : {})
+    };
+    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck];
+    const ok = Boolean(base?.ok) && queueAvailable;
+    return { ...base, ok, status: ok ? 'ready' : 'not_ready', checks };
+  };
   const faqFor = (botConfig) => async () => {
     const local = await loadFaq();
     const managed = (botConfig()?.knowledge?.faq || []).filter(item => item?.enabled !== false && item?.answer && Array.isArray(item.keys));
@@ -161,7 +199,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const f = flow || createFlow({
     store,
-    ai: { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice },
+    ai: copilotAI,
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
     adminConfig,
@@ -169,6 +207,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getHumanPhone,
     reminderStore,
     operationsStore,
+    copilotTaskStore,
     getTelemetry,
     getSectors: () => sectorProjection.active(),
     allowClientResume: config.humanAllowClientResume,
@@ -298,7 +337,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getCachedInstanceOwner,
     updateInstanceOwner,
     proxyToChatwoot,
-    readinessCheck,
+    readinessCheck: taskQueueReadinessCheck,
     campaignStore,
     operationsStore,
     webhookEventStore,
@@ -308,7 +347,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     askAI: askAIWithBudget,
     integrationsStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -365,8 +404,17 @@ if (isDirectRun) {
     }
   };
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
+  // Worker independente: reivindica jobs persistentes com lease no Supabase.
+  // O intervalo não sobrepõe execuções locais; concorrência entre réplicas é controlada pela RPC claim_copilot_task.
+  const runCopilotWorker = () => {
+    app.copilotTaskWorker?.runOnce().catch(error => console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error'));
+  };
+  runCopilotWorker();
+  const copilotTaskTimer = setInterval(runCopilotWorker, 3000);
+  copilotTaskTimer.unref();
   const stop = async () => {
     clearInterval(maintenanceTimer);
+    clearInterval(copilotTaskTimer);
     for (const [phone, job] of pending.entries()) {
       clearTimeout(job.timer);
       pending.delete(phone);

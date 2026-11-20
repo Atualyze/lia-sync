@@ -18,6 +18,15 @@ const bridgeStatus = await readFile('src/http/bridge-config-status.mjs', 'utf8')
 const adminConfigSchema = await readFile('src/admin-config.mjs', 'utf8');
 const sectorsProjection = await readFile('src/sectors.mjs', 'utf8');
 const clientFlow = await readFile('src/flow/client.mjs', 'utf8');
+const copilotTasks = await readFile('src/copilot-tasks.mjs', 'utf8');
+const copilotWorker = await readFile('src/copilot-task-worker.mjs', 'utf8');
+const copilotTaskMigration = await readFile('supabase/migrations/20261120150000_copilot_task_queue.sql', 'utf8');
+const copilotTaskSchema = await readFile('supabase/complete_schema_migration.sql', 'utf8');
+const copilotOwnerFlow = await readFile('src/flow/owner.mjs', 'utf8');
+const copilotContinuity = await readFile('src/flow/copilot-continuity.mjs', 'utf8');
+const copilotServer = await readFile('src/server.mjs', 'utf8');
+const copilotFlow = await readFile('src/flow.mjs', 'utf8');
+const supabaseRuntime = await readFile('src/supabase-runtime.mjs', 'utf8');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
   ['campaign claims and retry state are persisted', observabilityMigration.includes("'sending'") && observabilityMigration.includes('attempt_count') && campaigns.includes('status=in.(pending,paused)') && campaigns.includes("status: 'sending'")],
@@ -45,6 +54,14 @@ const checks = [
   ['safe integration test is simulation-only by default', index.includes('Simulador Isolado') && (index.includes('Nenhuma dessas ações envia WhatsApp real') || index.includes('sem envio real no WhatsApp')) && app.includes("/api/dashboard/ping-ai")],
   ['critical overview elements exist', ['overview-health', 'overview-costs', 'overview-models', 'overview-operations', 'admin-publish'].every(id => index.includes(`id="${id}"`))],
   ['Supabase captcha payload uses GoTrue metadata', supabaseClient.includes('gotrue_meta_security: { captcha_token: captchaToken }') && !supabaseClient.includes('...(captchaToken ? { captcha_token: captchaToken } : {})')],
+  ['Copilot task queue persists idempotent jobs and fails closed on corrupt local state', copilotTasks.includes('createCopilotTaskKey') && copilotTasks.includes('getById') && copilotTasks.includes('localCorrupt') && copilotTasks.includes("this.mode === 'unavailable'") && copilotTasks.includes('claimPendingNotification') && copilotTasks.includes('get available()') && copilotTasks.includes('result_summary: {}')],
+  ['Copilot worker revalidates plans and stops on unverified results', copilotWorker.includes('buildCopilotToolPlan') && copilotWorker.includes('verifyCopilotToolResult') && copilotWorker.includes('pix_task_must_be_single_step')],
+  ['Copilot queue migration is backend-only and claims jobs atomically with valid PostgreSQL clause order', copilotTaskMigration.includes('enable row level security') && !copilotTaskMigration.includes('create policy') && copilotTaskMigration.includes('for update skip locked') && copilotTaskMigration.includes('limit 1\n  for update skip locked') && copilotTaskMigration.includes('copilot_tasks_pix_never_retries') && copilotTaskMigration.includes('copilot_tasks_pix_single_step')],
+  ['complete Supabase schema includes the current Copilot queue migration', copilotTaskSchema.includes('-- ======== 20261120150000_copilot_task_queue.sql ========') && copilotTaskSchema.includes('copilot_tasks_pix_single_step')],
+  ['owner flow queues eligible tasks, reads active task status, and blocks unsupported execution promises', copilotOwnerFlow.includes('enqueueBackgroundTask') && copilotOwnerFlow.includes('getById(activeTaskId') && copilotOwnerFlow.includes('claimsUnexecutedToolWork(rawReply)') && copilotOwnerFlow.includes('COPILOT_TASK_CONTEXT_TTL_MS')],
+  ['Copilot continuity handles direct Pix choices, status questions, and unsupported promises', copilotContinuity.includes('isDirectPixChoice') && copilotContinuity.includes('isCopilotTaskStatusQuestion') && copilotContinuity.includes('claimsUnexecutedToolWork')],
+  ['persistent Copilot worker is injected through flow and started/stopped with server lifecycle', copilotFlow.includes('copilotTaskStore = null') && copilotServer.includes('createCopilotTaskWorker') && copilotServer.includes('taskQueueReadinessCheck') && copilotServer.includes('name: \'copilot_tasks\'') && copilotServer.includes('copilotTaskTimer') && copilotServer.includes('clearInterval(copilotTaskTimer)') && copilotServer.includes('COPILOT_TASK_LOCAL_FALLBACK')],
+  ['Supabase conversation metadata preserves the active durable task identity across restarts', supabaseRuntime.includes('taskId: value.taskId') && supabaseRuntime.includes('taskStatus: value.taskStatus')],
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);

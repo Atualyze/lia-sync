@@ -64,7 +64,13 @@ const normalizePendingCopilotTask = value => {
     turns: Math.max(0, Math.min(10, Number(value.turns) || 0)),
     allowedTools: Array.isArray(value.allowedTools)
       ? [...new Set(value.allowedTools.filter(name => typeof name === 'string' && /^[a-z][a-z0-9_]{0,63}$/i.test(name)))].slice(0, 8)
-      : []
+      : [],
+    ...(typeof value.taskId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.taskId)
+      ? { taskId: value.taskId }
+      : {}),
+    ...(['queued', 'running', 'awaiting_input', 'succeeded', 'failed', 'uncertain', 'cancelled'].includes(value.taskStatus)
+      ? { taskStatus: value.taskStatus }
+      : {})
   };
 };
 // Logs não podem conter telefone completo (regra do projeto).

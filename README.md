@@ -2,7 +2,19 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.8.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 2.9.0** (pacote, metadata e documentação sincronizados).
+
+## Novidades da Versão 2.9.0 — Execução persistente de tarefas do Copiloto
+
+- **Fila durável:** solicitações de consulta e tarefas elegíveis são registradas no Supabase com chave idempotente, estados, etapas, checkpoints e leases.
+- **Worker independente:** o servidor reivindica tarefas em segundo plano e entrega o resultado ao responsável mesmo depois de encerrada a requisição original.
+- **Continuidade determinística:** respostas curtas como “Direto” são interpretadas no contexto da pergunta anterior; “estou esperando” consulta o estado real da tarefa.
+- **Falhas visíveis:** tarefas concluídas, falhas e resultados incertos geram uma notificação de estado; nenhuma ação externa incerta é repetida automaticamente.
+- **Segurança:** a fila é backend-only, limitada a quatro etapas, revalida disponibilidade das ferramentas e preserva políticas de confirmação e auditoria.
+
+A migration `20261120150000_copilot_task_queue.sql` deve ser aplicada no Supabase antes do deploy. Se o Supabase estiver configurado mas a fila não existir, o runtime falha fechado; fallback local exige `COPILOT_TASK_LOCAL_FALLBACK=true` e uma única instância.
+
+Detalhes: [`docs/release-2.9.0.md`](docs/release-2.9.0.md).
 
 ## Novidades da Versão 2.8.0 — Continuidade natural do Copiloto
 

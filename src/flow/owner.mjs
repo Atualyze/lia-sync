@@ -14,7 +14,9 @@ import { handlePendingReactivationReply } from './reactivation-reply.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outbound-dispatch.mjs';
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
-import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
+import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent, isDirectPixChoice, isCopilotTaskStatusQuestion, claimsUnexecutedToolWork } from './copilot-continuity.mjs';
+import { createCopilotTaskKey, describeCopilotTaskStatus } from '../copilot-tasks.mjs';
+import { isBackgroundCopilotTool } from '../copilot-task-worker.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
 import { buildCopilotContext } from './copilot-context.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
@@ -42,6 +44,8 @@ function normalizePixAmount(value) {
 }
 
 const COPILOT_PENDING_TTL_MS = 30 * 60 * 1000;
+const COPILOT_TASK_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000;
+const COPILOT_PIX_CONTEXT_TTL_MS = 2 * 60 * 60 * 1000;
 const COPILOT_CONTEXT_LIMIT = 8;
 
 const COPILOT_TASK_PATTERNS = [
@@ -94,7 +98,12 @@ function activeCopilotTask(session, nowMs = Date.now()) {
   const task = session?.pendingCopilotTask;
   if (!task || typeof task !== 'object') return null;
   const createdAt = Date.parse(task.createdAt || '');
-  if (!Number.isFinite(createdAt) || nowMs - createdAt > COPILOT_PENDING_TTL_MS || nowMs < createdAt - 60_000) {
+  const contextTtl = task.taskId
+    ? COPILOT_TASK_CONTEXT_TTL_MS
+    : session?.pendingPixRequest?.requestedAt
+      ? COPILOT_PIX_CONTEXT_TTL_MS
+      : COPILOT_PENDING_TTL_MS;
+  if (!Number.isFinite(createdAt) || nowMs - createdAt > contextTtl || nowMs < createdAt - 60_000) {
     session.pendingCopilotTask = null;
     return null;
   }
@@ -236,7 +245,7 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 }
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, operationsStore = null, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
@@ -275,7 +284,7 @@ export async function handleOwnerSession({
         let activeTask = activeCopilotTask(sSelf, now());
         let currentToolSuggestions = [];
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
-        if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
+        if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PIX_CONTEXT_TTL_MS)) {
           sSelf.pendingPixRequest = null;
         }
 
@@ -359,6 +368,123 @@ export async function handleOwnerSession({
           store.markDirty();
           return safeReply;
         };
+
+        const ownerTaskKey = String(sSelf.phone || phone || OWNER_SELF_KEY);
+        const enqueueBackgroundTask = async (steps = [], taskType = 'general') => {
+          if (!copilotTaskStore || !Array.isArray(steps) || !steps.length) return null;
+          const normalizedSteps = steps.map(step => ({
+            name: String(step.name || '').trim(),
+            args: { ...(step.args || {}) }
+          }));
+          // Evolution sendText espera número em dígitos, não JID com @s.whatsapp.net.
+          // Priorize o telefone configurado do responsável para a notificação de conclusão.
+          const rawTargetPhone = String(
+            getHumanPhone()
+            || rawItem?.key?.remoteJid
+            || rawItem?.remoteJid
+            || rawItem?.jid
+            || rawItem?.phone
+            || (phone !== OWNER_SELF_KEY ? phone : '')
+            || ''
+          ).trim();
+          const targetDigits = rawTargetPhone.replace(/\D/g, '');
+          const targetPhone = targetDigits.length >= 8 && targetDigits.length <= 15 ? targetDigits : '';
+          const retryPolicy = normalizedSteps.some(step => step.name === 'gerar_cobranca_pix') ? 'never' : 'read_only';
+          const taskKey = createCopilotTaskKey({
+            messageId,
+            ownerKey: ownerTaskKey,
+            steps: normalizedSteps
+          });
+          let queued;
+          try {
+            queued = await copilotTaskStore.enqueue({
+              taskKey,
+              ownerKey: ownerTaskKey,
+              targetPhone,
+              actorLabel: 'responsável',
+              requestSummary: cleanCommand.slice(0, 500),
+              steps: normalizedSteps,
+              retryPolicy
+            });
+          } catch (error) {
+            logger.error?.('[copilot] não foi possível registrar a tarefa; nenhuma ferramenta foi executada.');
+            return recordSelfTurn(
+              '⚠️ Não consegui registrar sua solicitação na fila persistente. Nenhuma ferramenta foi executada. Verifique a conexão da fila e tente novamente.',
+              { preserveTask: true }
+            );
+          }
+
+          const timestamp = new Date(now()).toISOString();
+          const previousTask = activeCopilotTask(sSelf, now());
+          const taskId = String(queued.id || '');
+          sSelf.pendingCopilotTask = {
+            type: taskType || previousTask?.type || copilotToolTaskType(normalizedSteps[0]?.name) || 'general',
+            createdAt: previousTask?.createdAt || timestamp,
+            updatedAt: timestamp,
+            originCommand: previousTask?.originCommand || cleanCommand.slice(0, 500),
+            lastQuestion: '',
+            repeatCount: 0,
+            turns: Number(previousTask?.turns) || 0,
+            allowedTools: [...new Set([
+              ...(Array.isArray(previousTask?.allowedTools) ? previousTask.allowedTools : []),
+              ...normalizedSteps.map(step => step.name)
+            ])].slice(0, 8),
+            taskId,
+            taskStatus: queued.status || 'queued'
+          };
+          store.markDirty();
+
+          await operationsStore?.audit?.({
+            action: 'copilot_task_queued',
+            entityType: 'copilot_task',
+            metadata: {
+              source: 'copilot',
+              toolName: normalizedSteps[0]?.name || 'unknown',
+              actorRole: 'owner',
+              actorLabel: 'responsável',
+              status: queued.status || 'queued',
+              planStep: normalizedSteps.length
+            }
+          }).catch(() => {});
+
+          const reply = queued.created === false
+            ? describeCopilotTaskStatus(queued)
+            : `🧭 Registrei sua solicitação na fila de execução.\n\n• *Tarefa:* #${taskId.slice(0, 8).toUpperCase()}\n• *Etapas:* ${normalizedSteps.length}\n• *Estado:* aguardando execução\n\nVou executar em segundo plano e enviar o resultado aqui assim que estiver confirmado. Você pode perguntar *“onde está?”* para consultar o estado real.`;
+          const response = recordSelfTurn(filterReply(reply, { isCopilot: true }).text, { preserveTask: true });
+          await store.flush?.().catch(error => logger.error?.('[copilot] tarefa registrada; falha ao sincronizar contexto da conversa.'));
+          return response;
+        };
+
+        if (copilotTaskStore && isCopilotTaskStatusQuestion(cleanCommand)) {
+          const activeTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
+          let latestTask = null;
+          let resolvedActiveTaskId = false;
+          let statusLookupFailed = false;
+          if (activeTaskId) {
+            try {
+              latestTask = await copilotTaskStore.getById(activeTaskId, ownerTaskKey);
+              resolvedActiveTaskId = Boolean(latestTask);
+            }
+            catch { statusLookupFailed = true; }
+          }
+          if (!latestTask) {
+            try { latestTask = await copilotTaskStore.getLatest(ownerTaskKey); }
+            catch { statusLookupFailed = true; }
+          }
+          if (!resolvedActiveTaskId && latestTask) {
+            const createdAt = Date.parse(latestTask.createdAt || '');
+            if (!Number.isFinite(createdAt) || now() - createdAt > 7 * 24 * 60 * 60 * 1000) latestTask = null;
+          }
+          if (latestTask) {
+            return recordSelfTurn(filterReply(describeCopilotTaskStatus(latestTask), { isCopilot: true }).text, { preserveTask: true });
+          }
+          if (statusLookupFailed) {
+            return recordSelfTurn(
+              '⚠️ Não consegui consultar a fila de tarefas agora. O estado da solicitação continua *não confirmado*; não vou presumir que terminou nem repetir uma ação externa.',
+              { preserveTask: true }
+            );
+          }
+        }
 
         if (audioTranscriptionFailed) {
           return recordSelfTurn('Recebi seu áudio, mas não consegui transcrever o conteúdo com segurança. Pode enviar novamente ou me resumir por texto; não vou presumir o que foi dito.', {
@@ -1810,8 +1936,10 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && !isCopilotMetaQuestion
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
+        const directPixChoice = activeTask?.type === 'payment'
+          && isDirectPixChoice(cleanCommand, lastAssistantContext);
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
+          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || directPixChoice
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
@@ -1965,6 +2093,38 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
+        // Escolha de modalidade é uma continuação determinística: não deixe a revisão
+        // semântica trocar "Pix direto" por checkout nem apagar os dados já coletados.
+        if (directPixChoice && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)) {
+          const pending = sSelf.pendingPixRequest || {};
+          const proposedPix = toolCallsToRun.find(tc => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name))?.args || {};
+          const originalPix = extractCurrentPixArgs(activeTask?.originCommand || '', { allowBareNumber: true });
+          const amount = normalizePixAmount(pending.amount)
+            ?? (originalPix.hasAmountOrFree ? originalPix.valor : null)
+            ?? normalizePixAmount(proposedPix.valor);
+          const description = (isValidPixDescription(pending.description) ? String(pending.description).trim() : '')
+            || (isValidPixDescription(originalPix.descricao) ? originalPix.descricao : '')
+            || (isValidPixDescription(proposedPix.descricao) ? String(proposedPix.descricao).trim() : '');
+          sSelf.pendingPixRequest = {
+            requestedAt: pending.requestedAt || new Date(now()).toISOString(),
+            amount,
+            description
+          };
+          store.markDirty();
+          if (amount === null || !description) {
+            const missing = [amount === null ? '*valor*' : '', !description ? '*descrição*' : ''].filter(Boolean);
+            return recordSelfTurn(filterReply(
+              `${owner}, entendi que você escolheu o Pix direto. Para gerar sem risco de usar dados errados, ainda preciso de ${missing.join(" e ")}. Nenhuma cobrança foi criada.`,
+              { isCopilot: true }
+            ).text, { preserveTask: true });
+          }
+          toolCallsToRun = [{
+            name: 'gerar_cobranca_pix',
+            args: { valor: amount, descricao: description, enviarWhatsApp: false }
+          }];
+          suppressToolExecution = false;
+        }
+
         // Preserve o fluxo de coleta de conteúdo do disparo antes da validação
         // do plano. Mensagens externas nunca são enviadas nesta etapa.
         if (toolCallsToRun.length > 0) {
@@ -2023,6 +2183,98 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             return recordSelfTurn(filterReply('Não executei nenhuma etapa do plano. ' + detail + (reasons ? '\n\nVerifique: ' + reasons : ''), { isCopilot: true }).text);
           }
           toolCallsToRun = toolPlan.steps.map(step => ({ name: step.name, args: step.args }));
+
+          const backgroundPlanAllowed = Boolean(
+            copilotTaskStore
+            && toolCallsToRun.length > 0
+            && toolCallsToRun.length <= 4
+            && toolCallsToRun.every(tc => isBackgroundCopilotTool(tc.name, tc.args))
+            && (!toolCallsToRun.some(tc => tc.name === 'gerar_cobranca_pix') || toolCallsToRun.length === 1)
+          );
+          if (backgroundPlanAllowed) {
+            // Antes de persistir, cada etapa precisa estar ligada ao pedido atual
+            // ou a uma continuação explícita; o catálogo não é autorização.
+            for (const tc of toolCallsToRun) {
+              const toolTaskType = copilotToolTaskType(tc.name, tc.args);
+              const liveTask = activeCopilotTask(sSelf, now());
+              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
+              const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
+              const directPaymentContinuation = directPixChoice && tc.name === 'gerar_cobranca_pix';
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
+              const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
+                && !isCopilotMetaQuestion && !negatedAction
+                && (explicitTaskContinuation || turnReview?.intent === 'continue' || directPaymentContinuation));
+              if (!currentRequestMatches && !activeTaskContinuation) {
+                const review = await reviewCopilotToolCall({
+                  ai,
+                  currentMessage: cleanCommand,
+                  activeTask: liveTask,
+                  toolCall: tc,
+                  recentContext: recentHistory,
+                  botConfig,
+                  deadline: aiDeadline
+                });
+                if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                  const question = review.question || 'Você quer que eu continue a solicitação anterior?';
+                  if (review.decision === 'clarify' && liveTask) {
+                    sSelf.pendingCopilotTask = {
+                      ...liveTask,
+                      updatedAt: new Date(now()).toISOString(),
+                      lastQuestion: question.slice(0, 500)
+                    };
+                    store.markDirty();
+                  }
+                  return recordSelfTurn(filterReply(question, { isCopilot: true }).text, { preserveTask: Boolean(liveTask) });
+                }
+              }
+            }
+
+            // Reidrata parâmetros Pix do pedido salvo. Uma escolha de modalidade
+            // nunca substitui "pagamento do pão" por "Direto".
+            if (toolCallsToRun[0]?.name === 'gerar_cobranca_pix') {
+              const pending = sSelf.pendingPixRequest || {};
+              const currentPix = extractCurrentPixArgs(cleanCommand, {
+                allowBareNumber: Boolean(pending.requestedAt) || /\b(?:pix|cobranca|pagamento|valor)\b/i.test(normalizedTurn)
+              });
+              const amountFromPending = normalizePixAmount(pending.amount);
+              const amountFromTool = normalizePixAmount(toolCallsToRun[0]?.args?.valor);
+              const amount = currentPix.hasAmountOrFree
+                ? currentPix.valor
+                : (amountFromPending ?? amountFromTool);
+              const parsedDescription = directPixChoice ? '' : currentPix.descricao;
+              const description = (isValidPixDescription(parsedDescription) ? parsedDescription : '')
+                || (isValidPixDescription(pending.description) ? String(pending.description).trim() : '')
+                || (isValidPixDescription(toolCallsToRun[0]?.args?.descricao) ? String(toolCallsToRun[0].args.descricao).trim() : '')
+                || (amount !== null ? 'Cobrança Pix' : '');
+              if (amount === null || !description) {
+                const missing = [amount === null ? '*valor* (ou *valor livre*)' : '', !description ? '*descrição*' : ''].filter(Boolean);
+                return recordSelfTurn(filterReply(
+                  `${owner}, para registrar a cobrança Pix, ainda preciso de ${missing.join(' e ')}. Não gerei a cobrança.`,
+                  { isCopilot: true }
+                ).text, { preserveTask: true });
+              }
+              toolCallsToRun[0] = {
+                ...toolCallsToRun[0],
+                args: {
+                  ...(toolCallsToRun[0].args || {}),
+                  valor: amount,
+                  descricao: description.slice(0, 80),
+                  enviarWhatsApp: false
+                }
+              };
+              if (isDirectPixChoice(cleanCommand, lastAssistantContext)) {
+                // Direct choice only continues an active payment task.
+                if (!pending.requestedAt || amount === null || !isValidPixDescription(description)) {
+                  return recordSelfTurn(filterReply('Não consegui recuperar os dados completos da cobrança anterior. Não gerei outro Pix.', { isCopilot: true }).text, { preserveTask: true });
+                }
+              }
+            }
+
+            const backgroundTaskType = activeTask?.type || copilotToolTaskType(toolCallsToRun[0]?.name) || 'general';
+            return enqueueBackgroundTask(toolCallsToRun, backgroundTaskType);
+          }
+
           let pixHandled = false;
           let planIndex = 0;
           for (const tc of toolCallsToRun) {
@@ -2670,7 +2922,7 @@ ${errMsg}`;
                 'Se houver uma intenção de ação mas faltarem dados, explique exatamente o que falta em uma pergunta curta.',
                 'Não invente execução, dados ou resultados. Não chame ferramentas nesta etapa.',
                 '[/FALLBACK_CONVERSACIONAL]'
-              ].join('\\n'),
+              ].join('\n'),
               history: recentHistory,
               userText: cleanCommand,
               botConfig,
@@ -2685,6 +2937,20 @@ ${errMsg}`;
               rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
             }
           }
+        }
+
+        const activeOperationalTask = activeTask && (
+          activeTask.type !== 'general'
+          || (Array.isArray(activeTask.allowedTools) && activeTask.allowedTools.length > 0)
+        );
+        const explicitOperationalIntent = Boolean(activeOperationalTask)
+          || hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
+          || hasOtherExplicitToolIntent(cleanCommand);
+        if (!toolOutputs.length && explicitOperationalIntent && claimsUnexecutedToolWork(rawReply)) {
+          return recordSelfTurn(filterReply(
+            '⚠️ Não iniciei essa ação: nenhuma ferramenta confirmou a execução e nenhuma tarefa foi registrada. Não vou afirmar que estou pesquisando ou gerando algo sem ter iniciado de verdade. Envie novamente o pedido para eu tentar iniciar a operação.',
+            { isCopilot: true }
+          ).text, { preserveTask: Boolean(activeTask) });
         }
 
         if (rawReply && /\b(?:pix|cobran[cç]a)\b/i.test(rawReply)
