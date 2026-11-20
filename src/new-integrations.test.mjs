@@ -738,8 +738,9 @@ test('Cliente Pix: falha de geração não repete pedido de valor/descrição se
   const originalPixKey = process.env.PIX_KEY;
   delete process.env.PIX_KEY;
   try {
+    const store = new SessionStore();
     const flow = createFlow({
-      store: new SessionStore(),
+      store,
       getBotConfig: () => createPixBotConfig(''),
       ai: { askAI: async () => null }
     });
@@ -750,7 +751,8 @@ test('Cliente Pix: falha de geração não repete pedido de valor/descrição se
     });
     assert.match(reply, /ainda não gerei o Pix/i);
     assert.doesNotMatch(reply, /qual.*valor.*descri[cç][aã]o/i);
-    assert.equal(flow && true, true);
+    assert.equal(store.get('5511976543210').pendingAdminDecision.status, 'pending');
+    assert.equal(store.get('5511976543210').pendingAdminDecision.amount, 10);
   } finally {
     if (originalPixKey === undefined) delete process.env.PIX_KEY;
     else process.env.PIX_KEY = originalPixKey;
