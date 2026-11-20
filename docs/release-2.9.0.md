@@ -6,13 +6,14 @@ Fechar a lacuna entre a IA entender uma solicitação, a ferramenta realmente ex
 
 ## O que muda
 
-- **Fila persistente no Supabase:** cada tarefa tem ID, chave de idempotência por mensagem WhatsApp, solicitante, pedido original, etapas, estado, resultado, tentativa, lease e estado de entrega.
+- **Fila persistente no Supabase:** cada tarefa tem ID, chave de idempotência derivada de um ID estável da mensagem WhatsApp, solicitante, pedido original, etapas, estado, resultado, tentativa, lease e estado de entrega. Sem ID de mensagem, a fila recusa o registro.
 - **Worker de segundo plano:** o servidor reivindica tarefas atomicamente, executa etapas sequenciais e grava checkpoints. Uma tarefa não depende de o webhook original permanecer aberto.
 - **Retomada após reinício:** consultas de leitura e criação de Pix estático podem ser recuperadas após expiração de lease. Etapas já concluídas não são executadas novamente.
 - **Entrega recuperável:** resultado concluído fica salvo antes de a resposta ser enviada. Se o processo cair entre conclusão e envio, o worker recupera a entrega pendente. Uma entrega que ficou em estado \`sending\` além do prazo passa a \`uncertain\` e não é reenviada.
 - **Consulta de andamento:** “onde está?”, “estou esperando” e variações consultam o último registro real da fila e apresentam estado/resultado. Não dependem de o modelo adivinhar a etapa.
-- **Escolha Pix determinística:** “Direto”, “Pix direto”, “Copia e Cola” e “QR Code” são reconhecidos como resposta à pergunta de modalidade Pix/checkout. O contexto preservado fornece valor e descrição; a escolha direta não é convertida para InfinitePay.
-- **Promessas verificáveis:** quando nenhuma ferramenta executou nem tarefa foi registrada, a Lia não pode responder como se estivesse pesquisando/gerando.
+- **Escolha Pix determinística:** “Direto”, “Pix direto”, “Copia e Cola” e “QR Code” são reconhecidos como resposta à pergunta de modalidade Pix/checkout, somente quando a mensagem anterior realmente oferece as duas opções. O contexto preservado fornece valor e descrição; a escolha direta não é convertida para InfinitePay.
+- **Promessas verificáveis:** formas conjugadas e gerúndios como “estou gerando” ou “entendido, pesquisando” não são apresentados como operação iniciada sem resultado de ferramenta ou ID de tarefa persistida.
+- **Cancelamento:** o responsável pode cancelar a tarefa ativa; o cancelamento só é confirmado após a RPC atualizar o estado e invalidar o lease. Se o cancelamento não for confirmado, o contexto permanece visível.
 
 ## Estados da tarefa
 
