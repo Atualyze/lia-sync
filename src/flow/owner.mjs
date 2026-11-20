@@ -427,6 +427,34 @@ export async function handleOwnerSession({
           const approveMatch = matchOutboundApproval(cleanCommand);
           const cancelMatch = matchOutboundCancellation(cleanCommand);
           const suppliedId = String(approveMatch?.[1] || cancelMatch?.[1] || '').toUpperCase();
+          const hasDecision = Boolean(approveMatch || cancelMatch);
+          const asksAboutDispatch = /\\b(?:disparo|envio|pr[eé]via)\\b/i.test(cleanCommand);
+
+          // Um registro em processamento/incerto não pode sequestrar mensagens
+          // comuns do operador. Só a pergunta sobre o próprio envio ou uma
+          // decisão explícita deve entrar neste fluxo de segurança.
+          if (!hasDecision && asksAboutDispatch) {
+            const stateLabel = pending.status === 'pending'
+              ? 'aguardando sua confirmação'
+              : pending.status === 'sending'
+                ? 'em processamento, sem confirmação final'
+                : pending.status === 'uncertain'
+                  ? 'com resultado incerto'
+                  : `registrado como ${pending.status || 'desconhecido'}`;
+            const messageText = String(pending.message || '').trim();
+            const createdAtLabel = Number.isFinite(Date.parse(pending.createdAt || ''))
+              ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(pending.createdAt))
+              : 'data não disponível';
+            return recordSelfTurn([
+              `Há um registro de envio para *${pending.recipient || 'destinatário não identificado'}* (${pending.phone || 'telefone não identificado'}), criado em ${createdAtLabel}.`,
+              `• *Estado:* ${stateLabel}.`,
+              messageText ? `• *Mensagem preparada:* "${messageText}"` : '',
+              'Esse registro já existia; sua mensagem atual não iniciou um disparo. Como a entrega não foi confirmada, não vou repetir o envio automaticamente. Confira a conversa desse destinatário antes de qualquer nova tentativa.'
+            ].filter(Boolean).join('\\n\\n'));
+          }
+          if (!hasDecision && pending.status !== 'pending') {
+            return null;
+          }
           if (pending.source === 'prospecting' && typeof store.resolveProspectingDispatch !== 'function') {
             return recordSelfTurn('Este disparo de prospecção aguarda a conexão de aprovação com a fila de leads. Não enviei nada; peça suporte ao responsável pelo sistema.');
           }
