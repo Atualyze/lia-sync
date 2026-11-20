@@ -368,8 +368,20 @@ export async function handleOwnerSession({
         }
 
         if (copilotTaskStore?.enabled && isCopilotTaskStatusQuery(cleanCommand)) {
-          const recentTasks = await copilotTaskStore.latest({ limit: 5 }).catch(() => []);
-          const latestTask = (recentTasks || [])[0] || null;
+          const pendingTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
+          let latestTask = pendingTaskId
+            ? await copilotTaskStore.getTask(pendingTaskId).catch(() => null)
+            : null;
+          if (!pendingTaskId && sSelf.pendingCopilotTask) {
+            const contextReply = 'A solicitação atual ainda está no contexto conversacional, mas não há um registro de execução durável associado a ela. Não vou afirmar que uma ferramenta está trabalhando sem esse registro. Último estado conhecido: ' + String(sSelf.pendingCopilotTask.lastQuestion || 'aguardando interpretação ou informação') + '.';
+            return recordSelfTurn(filterReply(contextReply, { isCopilot: true }).text, { preserveTask: true });
+          }
+          if (!pendingTaskId) {
+            const recentTasks = await copilotTaskStore.latest({ limit: 10 }).catch(() => []);
+            latestTask = (recentTasks || []).find(task =>
+              ['queued', 'running', 'awaiting_input', 'uncertain'].includes(task.status)
+            ) || (recentTasks || [])[0] || null;
+          }
           if (latestTask) {
             let taskReply = describeCopilotTaskStatus(latestTask);
             if (latestTask.status === 'succeeded' && latestTask.result?.reply) {
@@ -378,6 +390,9 @@ export async function handleOwnerSession({
               taskReply += '\n\nÚltimos dados registrados (não representam confirmação de entrega):\n' + String(latestTask.result.reply).slice(0, 6000);
             }
             return recordSelfTurn(filterReply(taskReply, { isCopilot: true }).text, { preserveTask: true });
+          }
+          if (pendingTaskId) {
+            return recordSelfTurn('Não localizei o registro durável da tarefa ' + pendingTaskId.split('-')[0].toUpperCase() + '. Não vou iniciar uma nova execução automaticamente; é necessário conferir o armazenamento antes de repetir a ação.', { preserveTask: true });
           }
         }
 
@@ -2102,6 +2117,50 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
           toolCallsToRun = toolPlan.steps.map(step => ({ name: step.name, args: step.args }));
           if (copilotTaskStore?.enabled && toolPlan.steps.every(isBackgroundCopilotStep)) {
+            const queueLiveTask = activeCopilotTask(sSelf, now());
+            const queueCurrentTypes = inferCopilotTaskTypes(cleanCommand);
+            const queueNegated = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
+            for (const plannedStep of toolPlan.steps) {
+              const plannedType = copilotToolTaskType(plannedStep.name, plannedStep.args);
+              const explicitForStep = hasExplicitToolIntent(cleanCommand, plannedStep.name)
+                || Boolean(plannedType && queueCurrentTypes.includes(plannedType) && !isCopilotMetaQuestion && !queueNegated)
+                || (paymentMethodChoice === 'pix' && plannedStep.name === 'gerar_cobranca_pix');
+              const continuationForStep = Boolean(queueLiveTask && plannedType && queueLiveTask.type === plannedType
+                && !isCopilotMetaQuestion && !queueNegated && explicitTaskContinuation);
+              if (explicitForStep || continuationForStep) continue;
+
+              const review = await reviewCopilotToolCall({
+                ai,
+                currentMessage: cleanCommand,
+                activeTask: queueLiveTask,
+                toolCall: plannedStep,
+                recentContext: recentHistory,
+                botConfig,
+                deadline: aiDeadline
+              });
+              if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                const question = review.question || 'Não consegui confirmar que esta etapa pertence ao pedido atual. Você quer continuar a solicitação anterior ou explicar novamente o que devo consultar?';
+                const timestamp = new Date(now()).toISOString();
+                if (review.decision === 'clarify' && review.relation === 'continuation' && queueLiveTask) {
+                  sSelf.pendingCopilotTask = { ...queueLiveTask, updatedAt: timestamp, lastQuestion: question.slice(0, 500) };
+                  store.markDirty();
+                } else if (review.decision === 'clarify' && review.relation === 'new_request') {
+                  sSelf.pendingCopilotTask = {
+                    type: plannedType || 'general',
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                    originCommand: cleanCommand.slice(0, 500),
+                    lastQuestion: question.slice(0, 500),
+                    repeatCount: 0,
+                    turns: 0,
+                    allowedTools: [plannedStep.name].slice(0, 8)
+                  };
+                  store.markDirty();
+                }
+                return recordSelfTurn(filterReply(question, { isCopilot: true }).text, { preserveTask: true });
+              }
+            }
+
             let queuedTask;
             try {
               queuedTask = await copilotTaskStore.enqueue({
