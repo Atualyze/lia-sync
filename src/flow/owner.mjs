@@ -362,6 +362,95 @@ export async function handleOwnerSession({
           return safeReply;
         };
 
+        const ownerTaskKey = String(sSelf.phone || phone || OWNER_SELF_KEY);
+        const enqueueBackgroundTask = async (steps = [], taskType = 'general') => {
+          if (!copilotTaskStore || !Array.isArray(steps) || !steps.length) return null;
+          const normalizedSteps = steps.map(step => ({
+            name: String(step.name || '').trim(),
+            args: { ...(step.args || {}) }
+          }));
+          const targetPhone = String(
+            rawItem?.key?.remoteJid
+            || rawItem?.remoteJid
+            || rawItem?.jid
+            || rawItem?.phone
+            || (phone !== OWNER_SELF_KEY ? phone : '')
+            || getHumanPhone()
+            || ''
+          ).trim();
+          const retryPolicy = normalizedSteps.some(step => step.name === 'gerar_cobranca_pix') ? 'never' : 'read_only';
+          const taskKey = createCopilotTaskKey({
+            messageId,
+            ownerKey: ownerTaskKey,
+            steps: normalizedSteps
+          });
+          let queued;
+          try {
+            queued = await copilotTaskStore.enqueue({
+              taskKey,
+              ownerKey: ownerTaskKey,
+              targetPhone,
+              actorLabel: 'responsável',
+              requestSummary: cleanCommand.slice(0, 500),
+              steps: normalizedSteps,
+              retryPolicy
+            });
+          } catch (error) {
+            logger.error?.('[copilot] não foi possível registrar a tarefa; nenhuma ferramenta foi executada.');
+            return recordSelfTurn(
+              '⚠️ Não consegui registrar sua solicitação na fila persistente. Nenhuma ferramenta foi executada. Verifique a conexão da fila e tente novamente.',
+              { preserveTask: true }
+            );
+          }
+
+          const timestamp = new Date(now()).toISOString();
+          const previousTask = activeCopilotTask(sSelf, now());
+          const taskId = String(queued.id || '');
+          sSelf.pendingCopilotTask = {
+            type: taskType || previousTask?.type || copilotToolTaskType(normalizedSteps[0]?.name) || 'general',
+            createdAt: previousTask?.createdAt || timestamp,
+            updatedAt: timestamp,
+            originCommand: previousTask?.originCommand || cleanCommand.slice(0, 500),
+            lastQuestion: '',
+            repeatCount: 0,
+            turns: Number(previousTask?.turns) || 0,
+            allowedTools: [...new Set([
+              ...(Array.isArray(previousTask?.allowedTools) ? previousTask.allowedTools : []),
+              ...normalizedSteps.map(step => step.name)
+            ])].slice(0, 8),
+            taskId,
+            taskStatus: queued.status || 'queued'
+          };
+          store.markDirty();
+
+          await operationsStore?.audit?.({
+            action: 'copilot_task_queued',
+            entityType: 'copilot_task',
+            metadata: {
+              source: 'copilot',
+              toolName: normalizedSteps[0]?.name || 'unknown',
+              actorRole: 'owner',
+              actorLabel: 'responsável',
+              status: queued.status || 'queued',
+              planStep: normalizedSteps.length
+            }
+          }).catch(() => {});
+
+          const reply = queued.created === false
+            ? describeCopilotTaskStatus(queued)
+            : `🧭 Registrei sua solicitação na fila de execução.\\n\\n• *Tarefa:* #${taskId.slice(0, 8).toUpperCase()}\\n• *Etapas:* ${normalizedSteps.length}\\n• *Estado:* aguardando execução\\n\\nVou executar em segundo plano e enviar o resultado aqui assim que estiver confirmado. Você pode perguntar *“onde está?”* para consultar o estado real.`;
+          const response = recordSelfTurn(filterReply(reply, { isCopilot: true }).text, { preserveTask: true });
+          await store.flush?.().catch(error => logger.error?.('[copilot] tarefa registrada; falha ao sincronizar contexto da conversa.'));
+          return response;
+        };
+
+        if (copilotTaskStore && isCopilotTaskStatusQuestion(cleanCommand)) {
+          const latestTask = await copilotTaskStore.getLatest(ownerTaskKey).catch(() => null);
+          if (latestTask) {
+            return recordSelfTurn(filterReply(describeCopilotTaskStatus(latestTask), { isCopilot: true }).text, { preserveTask: true });
+          }
+        }
+
         if (audioTranscriptionFailed) {
           return recordSelfTurn('Recebi seu áudio, mas não consegui transcrever o conteúdo com segurança. Pode enviar novamente ou me resumir por texto; não vou presumir o que foi dito.', {
             preserveTask: Boolean(activeTask)
