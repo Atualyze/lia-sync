@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFlow, isTalkToOwnerRequest } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
+import { OWNER_SELF_KEY } from './core/identity.mjs';
 
 function createMockStore() {
   const sessions = {};
@@ -302,14 +303,14 @@ test('Cancelamento mantém a prévia bloqueada se a reserva externa não puder s
     phone: '5588921694598',
     text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta'
   });
-  const pending = store.get('5588921694598').pendingOutboundDispatch;
+  const pending = store.get(OWNER_SELF_KEY).pendingOutboundDispatch;
   assert.ok(pending, `esperava prévia; retorno: ${preview}`);
   pending.source = 'maintenance-follow-up';
   pending.claimToken = 'follow-up-claim-token';
 
   const result = await flow.process({ phone: '5588921694598', text: 'não' });
   assert.match(result, /não consegui liberar a reserva externa/i);
-  assert.equal(store.get('5588921694598').pendingOutboundDispatch.status, 'uncertain');
+  assert.equal(store.get(OWNER_SELF_KEY).pendingOutboundDispatch.status, 'uncertain');
   assert.equal(sent.length, 0);
 });
 
@@ -507,12 +508,12 @@ test('Conversa interna: mantém intenção natural pendente até receber o conta
 
   const question = await flow.process({ phone: '5588921694598', text: 'Apenas dê continuidade' });
   assert.match(question, /nome ou o número/i);
-  assert.equal(store.get('5588921694598').pendingControlAction?.intent, 'resume_bot');
+  assert.equal(store.get(OWNER_SELF_KEY).pendingControlAction?.intent, 'resume_bot');
 
   const resumed = await flow.process({ phone: '5588921694598', text: '88993602644' });
   assert.match(resumed, /Bot reativado com sucesso/i);
   assert.equal(client.human, false);
-  assert.equal(store.get('5588921694598').pendingControlAction, null);
+  assert.equal(store.get(OWNER_SELF_KEY).pendingControlAction, null);
 });
 
 test('Conversa interna: frases comuns com "aguardando", "quem" ou "lista" não abrem a fila por engano', async () => {
@@ -1376,7 +1377,7 @@ test('perguntas não cancelam uma prévia pendente; a confirmação explícita c
   });
   const preview = await flow.process({ phone: '5588921694598', text: 'Lia, manda uma mensagem pro Lima avisando que a proposta ficou pronta' });
   assert.match(preview, /Prévia do disparo/i);
-  const self = store.get('5588921694598');
+  const self = store.get(OWNER_SELF_KEY);
   for (const text of ['Não entendi, pode explicar?', 'Para quando fica o orçamento?', 'Não precisa explicar isso']) {
     const reply = await flow.process({ phone: '5588921694598', text });
     assert.match(reply, /disparo pendente/i);
@@ -1391,7 +1392,7 @@ test('perguntas não cancelam uma prévia pendente; a confirmação explícita c
 test('áudio legado usa despacho transacional e a falha na transcrição não repete o áudio', async () => {
   const store = createMockStore();
   store.get('5585991099483').clientName = 'Lima';
-  const self = store.get('5588921694598');
+  const self = store.get(OWNER_SELF_KEY);
   self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
   const audios = [];
   let transcriptAttempts = 0;
@@ -1420,7 +1421,7 @@ test('áudio legado usa despacho transacional e a falha na transcrição não re
 test('resultado incerto de áudio mantém o despacho bloqueado e não faz retry', async () => {
   const store = createMockStore();
   store.get('5585991099483').clientName = 'Lima';
-  const self = store.get('5588921694598');
+  const self = store.get(OWNER_SELF_KEY);
   self.pendingAudioConfirmation = { recipient: 'Lima', message: 'Oi, Lima! A proposta ficou pronta.', forSelf: false };
   let audioAttempts = 0;
   const flow = createFlow({
