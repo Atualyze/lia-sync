@@ -54,7 +54,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const copilotTaskStore = new CopilotTaskStore({
     client: store.client,
     filePath: path.join(path.dirname(config.dataFile), 'copilot-tasks.json'),
-    logger
+    logger: console
   });
   await copilotTaskStore.load();
   const budgetGate = new AIBudgetGate({ operationsStore });
@@ -68,7 +68,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     sendText,
     getHumanPhone,
     operationsStore,
-    logger
+    logger: console
   });
   const faqFor = (botConfig) => async () => {
     const local = await loadFaq();
