@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { executeToolCall, isToolEnabled } from './tools/index.mjs';
-import { verifyCopilotToolResult } from './flow/copilot-tool-plan.mjs';
+import { buildCopilotToolPlan } from './flow/copilot-tool-plan.mjs';
 import { filterReply, splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
@@ -178,8 +178,18 @@ export function createCopilotTaskWorker({
         await taskStore.fail(task, 'invalid_persisted_plan', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque o plano salvo não passou pela validação. Nenhuma ferramenta foi executada.`);
         return false;
       }
-      for (let index = 0; index < task.steps.length; index += 1) {
-        const step = task.steps[index];
+      const validatedPlan = buildCopilotToolPlan(task.steps, { botConfig, actor: 'owner' });
+      if (!validatedPlan.canExecute) {
+        await taskStore.fail(task, 'persisted_plan_revalidation_failed', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque a validação de segurança atual rejeitou uma ou mais etapas. Nenhuma etapa foi executada.`);
+        return false;
+      }
+      const hasPixCreation = validatedPlan.steps.some(step => step.name === 'gerar_cobranca_pix');
+      if (hasPixCreation && task.retryPolicy !== 'never') {
+        await taskStore.fail(task, 'unsafe_retry_policy', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi bloqueada: cobranças Pix nunca podem ter repetição automática. Nenhuma cobrança foi criada.`);
+        return false;
+      }
+      for (let index = 0; index < validatedPlan.steps.length; index += 1) {
+        const step = validatedPlan.steps[index];
         if (!isBackgroundCopilotTool(step.name, step.args)) {
           await taskStore.fail(task, 'background_tool_not_allowed', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque continha uma ação que não pode ser executada em segundo plano. Nenhuma ação adicional foi iniciada.`);
           return false;
