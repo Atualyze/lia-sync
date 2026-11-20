@@ -17,6 +17,7 @@ import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCanc
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
 import { buildCopilotContext } from './copilot-context.mjs';
+import { describeCopilotTaskStatus, inferCopilotTaskType, isBackgroundCopilotStep, isCopilotTaskStatusQuery, resolveCopilotPaymentMethodChoice } from '../copilot-tasks.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
@@ -236,7 +237,7 @@ async function classifyNaturalControl({ ai, botConfig, text, pendingReactivation
 }
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, operationsStore = null, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
@@ -364,6 +365,23 @@ export async function handleOwnerSession({
           return recordSelfTurn('Recebi seu áudio, mas não consegui transcrever o conteúdo com segurança. Pode enviar novamente ou me resumir por texto; não vou presumir o que foi dito.', {
             preserveTask: Boolean(activeTask)
           });
+        }
+
+        if (copilotTaskStore?.enabled && isCopilotTaskStatusQuery(cleanCommand)) {
+          const recentTasks = await copilotTaskStore.latest({ limit: 5 }).catch(() => []);
+          const latestTask = (recentTasks || []).find(task => {
+            const age = now() - Date.parse(task.created_at || '');
+            return Number.isFinite(age) && age >= 0 && age <= 24 * 60 * 60 * 1000;
+          });
+          if (latestTask) {
+            let taskReply = describeCopilotTaskStatus(latestTask);
+            if (latestTask.status === 'succeeded' && latestTask.result?.reply) {
+              taskReply += '\n\n' + String(latestTask.result.reply).slice(0, 12000);
+            } else if (latestTask.status === 'uncertain' && latestTask.result?.reply) {
+              taskReply += '\n\nÚltimos dados registrados (não representam confirmação de entrega):\n' + String(latestTask.result.reply).slice(0, 6000);
+            }
+            return recordSelfTurn(filterReply(taskReply, { isCopilot: true }).text, { preserveTask: true });
+          }
         }
 
         const assertOutboundStatePersisted = () => {
@@ -1787,8 +1805,34 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         let suppressToolExecution = false;
         const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
         const normalizedTurn = normalize(cleanCommand);
-        const isAffirmativeTaskAnswer = /^(?:sim|isso|esse mesmo|essa mesma|pode|pode sim|confirmo|confirmado|exatamente|isso mesmo|pode seguir|segue|manda ver)[.!\s]*$/i.test(normalizedTurn)
-          && /(?:quer que|posso|devo|confirma|confirmar|gerar|continuar|seguir|prosseguir)/i.test(lastAssistantContext);
+        const paymentMethodChoice = activeTask?.type === 'payment'
+          ? resolveCopilotPaymentMethodChoice(cleanCommand, lastAssistantContext)
+          : null;
+        if (paymentMethodChoice === 'pix') {
+          const existingPix = sSelf.pendingPixRequest || {};
+          const historyText = [activeTask?.originCommand || '', ...recentHistory.filter(item => item?.role === 'user').map(item => item.content || '')].join('\n');
+          const recoveredPix = extractCurrentPixArgs(historyText, { allowBareNumber: true });
+          const cleanRecoveredDescription = String(recoveredPix.descricao || '')
+            .replace(/\b(?:\+?55)?\d{10,13}\b/g, ' ')
+            .replace(/\b(?:para|pro|pra)?\s*(?:o\s+)?(?:n[uú]mero|telefone|celular)?\s*$/i, '')
+            .replace(/\s+/g, ' ').trim();
+          const recoveredAmount = existingPix.amount !== null && existingPix.amount !== undefined
+            ? normalizePixAmount(existingPix.amount)
+            : (recoveredPix.hasAmountOrFree ? recoveredPix.valor : null);
+          const recoveredDescription = isValidPixDescription(existingPix.description)
+            ? String(existingPix.description).trim()
+            : (isValidPixDescription(cleanRecoveredDescription) ? cleanRecoveredDescription : '');
+          sSelf.pendingPixRequest = {
+            requestedAt: existingPix.requestedAt || new Date(now()).toISOString(),
+            amount: recoveredAmount,
+            description: recoveredDescription,
+            choice: 'pix'
+          };
+          store.markDirty();
+        }
+        const isAffirmativeTaskAnswer = (/^(?:sim|isso|esse mesmo|essa mesma|pode|pode sim|confirmo|confirmado|exatamente|isso mesmo|pode seguir|segue|manda ver)[.!\\s]*$/i.test(normalizedTurn)
+          && /(?:quer que|posso|devo|confirma|confirmar|gerar|continuar|seguir|prosseguir)/i.test(lastAssistantContext))
+          || Boolean(paymentMethodChoice);
         const hasPaymentAmount = activeTask?.type === 'payment' && (
           detectPriceMentions(cleanCommand).length > 0
           || /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?$/i.test(cleanCommand.trim())
@@ -1811,7 +1855,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
           && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
-          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation
+          isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || Boolean(paymentMethodChoice)
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
@@ -1924,6 +1968,20 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
         }
 
+        if (paymentMethodChoice === 'pix' && activeTask?.type === 'payment') {
+          toolCallsToRun = toolCallsToRun.filter(tc => !(
+            tc?.name === 'checkout_infinitepay' && String(tc?.args?.acao || 'criar_link') !== 'verificar_pagamento'
+          ));
+          const pixRequest = sSelf.pendingPixRequest || {};
+          const hasPixCall = toolCallsToRun.some(tc => tc?.name === 'gerar_cobranca_pix');
+          if (!hasPixCall && pixRequest.amount !== null && pixRequest.amount !== undefined && isValidPixDescription(pixRequest.description)) {
+            toolCallsToRun.push({
+              name: 'gerar_cobranca_pix',
+              args: { valor: normalizePixAmount(pixRequest.amount), descricao: String(pixRequest.description).slice(0, 80) }
+            });
+          }
+        }
+
         // Fallback anti-alucinação ou quando dispatchIntent é de áudio/assunto e o modelo não preencheu tool_calls
         if (toolCallsToRun.length === 0 && !suppressToolExecution) {
           const rawRep = result?.reply || '';
@@ -1979,6 +2037,12 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
         }
 
+        if (toolCallsToRun.length === 0 && !suppressToolExecution
+          && hasExplicitToolIntent(cleanCommand, 'consultar_web')
+          && isToolEnabled('consultar_web', botConfig)) {
+          toolCallsToRun.push({ name: 'consultar_web', args: { query: cleanCommand } });
+        }
+
         let toolPlan = null;
         if (toolCallsToRun.length > 0) {
           // Normalize valor textual usado pelo schema compartilhado antes de
@@ -2023,6 +2087,42 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             return recordSelfTurn(filterReply('Não executei nenhuma etapa do plano. ' + detail + (reasons ? '\n\nVerifique: ' + reasons : ''), { isCopilot: true }).text);
           }
           toolCallsToRun = toolPlan.steps.map(step => ({ name: step.name, args: step.args }));
+          if (copilotTaskStore?.enabled && toolPlan.steps.every(isBackgroundCopilotStep)) {
+            let queuedTask;
+            try {
+              queuedTask = await copilotTaskStore.enqueue({
+                messageId,
+                requestText: cleanCommand,
+                taskType: inferCopilotTaskType(toolPlan.steps),
+                steps: toolPlan.steps,
+                actorLabel: owner
+              });
+            } catch (error) {
+              logger.error?.('[copilot-tasks] não foi possível confirmar o registro da tarefa: ' + String(error?.name || 'Error'));
+              return recordSelfTurn(filterReply(
+                '⚠️ Não consegui confirmar o registro da tarefa no armazenamento durável. Não vou afirmar que iniciei a consulta nem executar uma segunda tentativa automaticamente. Confira o estado da fila antes de solicitar novamente.',
+                { isCopilot: true }
+              ).text, { preserveTask: true });
+            }
+            const queuedAt = new Date(now()).toISOString();
+            const queuedType = inferCopilotTaskType(toolPlan.steps);
+            sSelf.pendingCopilotTask = {
+              type: queuedType,
+              createdAt: queuedAt,
+              updatedAt: queuedAt,
+              originCommand: cleanCommand.slice(0, 500),
+              lastQuestion: 'Tarefa registrada na fila durável; aguardando execução.',
+              repeatCount: 0,
+              turns: 0,
+              allowedTools: toolPlan.steps.map(step => step.name).slice(0, 8)
+            };
+            store.markDirty();
+            const shortId = String(queuedTask.id || '').split('-')[0].toUpperCase();
+            const queuedReply = queuedTask.duplicate
+              ? 'Já existe uma tarefa registrada para esta mensagem. ID: ' + shortId + '. ' + describeCopilotTaskStatus(queuedTask)
+              : '✅ Registrei sua solicitação como tarefa ' + shortId + '. Vou executar as etapas em segundo plano e enviar o resultado quando terminar. Você pode perguntar “onde está?” para consultar o andamento.';
+            return recordSelfTurn(filterReply(queuedReply, { isCopilot: true }).text, { preserveTask: true });
+          }
           let pixHandled = false;
           let planIndex = 0;
           for (const tc of toolCallsToRun) {
