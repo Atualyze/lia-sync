@@ -128,7 +128,9 @@ export function createCopilotTaskWorker({
         if (session.history.length > 100) session.history = session.history.slice(-100);
       }
       if (clearTask && session.pendingCopilotTask?.taskId === task.id) session.pendingCopilotTask = null;
-      if (task.steps?.some(step => step.name === 'gerar_cobranca_pix') && task.status === 'succeeded') {
+      if (task.steps?.some(step => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(step.name))) {
+        // A tarefa terminal, inclusive incerta, não pode reabrir a cobrança antiga
+        // como autorização implícita para uma segunda emissão.
         session.pendingPixRequest = null;
       }
       session.lastBotAt = new Date(now()).toISOString();
@@ -173,17 +175,17 @@ export function createCopilotTaskWorker({
     const completedSteps = [];
     try {
       if (!Array.isArray(task.steps) || !task.steps.length || task.steps.length > 4) {
-        await taskStore.fail(task, 'invalid_persisted_plan');
+        await taskStore.fail(task, 'invalid_persisted_plan', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque o plano salvo não passou pela validação. Nenhuma ferramenta foi executada.`);
         return false;
       }
       for (let index = 0; index < task.steps.length; index += 1) {
         const step = task.steps[index];
         if (!isBackgroundCopilotTool(step.name, step.args)) {
-          await taskStore.fail(task, 'background_tool_not_allowed');
+          await taskStore.fail(task, 'background_tool_not_allowed', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque continha uma ação que não pode ser executada em segundo plano. Nenhuma ação adicional foi iniciada.`);
           return false;
         }
         if (!isToolEnabled(step.name, botConfig)) {
-          await taskStore.fail(task, 'tool_disabled_before_execution');
+          await taskStore.fail(task, 'tool_disabled_before_execution', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} não foi concluída porque a ferramenta *${step.name}* está desativada. Nenhuma repetição automática será feita.`);
           return false;
         }
         const args = { ...(step.args || {}) };
@@ -206,7 +208,9 @@ export function createCopilotTaskWorker({
           planStep: index + 1
         });
         if (!isToolResultSuccessful(step.name, result)) {
-          await taskStore.fail(task, result?.code || result?.error?.code || result?.error || 'tool_result_not_successful');
+          const code = String(result?.code || result?.error?.code || result?.error || 'tool_result_not_successful').slice(0, 120);
+          const partial = completedSteps.length ? `\\n\\nEtapas anteriores confirmadas:\\n${fallbackSummary(completedSteps)}` : '';
+          await taskStore.fail(task, code, `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} não foi concluída: a etapa *${step.name}* não retornou um resultado confirmado. Não vou repetir automaticamente.${partial}`);
           return false;
         }
         completedSteps.push({ name: step.name, result });
@@ -234,9 +238,9 @@ export function createCopilotTaskWorker({
     } catch (error) {
       const code = String(error?.code || error?.name || 'copilot_worker_error').slice(0, 120);
       if (task.retryPolicy === 'read_only') {
-        await taskStore.fail(task, code).catch(() => {});
+        await taskStore.fail(task, code, `⚠️ A consulta da tarefa #${String(task.id).slice(0, 8).toUpperCase()} falhou (${code}). Nenhuma repetição automática foi feita; posso tentar novamente quando você solicitar.`).catch(() => {});
       } else {
-        await taskStore.uncertain(task, code).catch(() => {});
+        await taskStore.uncertain(task, code, `⚠️ A execução da tarefa #${String(task.id).slice(0, 8).toUpperCase()} ficou incerta (${code}). Pode ter ocorrido um efeito externo; não vou repetir a ação até que o resultado seja conferido.`).catch(() => {});
       }
       logger.error?.(`[copilot-worker] tarefa ${String(task.id).slice(0, 8)} interrompida (${code}).`);
       return false;
