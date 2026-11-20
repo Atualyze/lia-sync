@@ -11,6 +11,7 @@ Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, int
 - **Resultado recuperável:** a Lia persiste o resultado antes de enviar a resposta e consulta o andamento por frases como “onde está?” e “estou esperando”.
 - **Pix direto:** “Direto”, “Copia e Cola” e “QR Code” são tratados como escolha de Pix quando respondem à pergunta da modalidade; o valor e a descrição são reaproveitados.
 - **Segurança de efeitos externos:** ações de envio, gravação e checkout externo continuam protegidas por confirmações; timeouts de entrega são marcados como incertos e nunca reenviados cegamente.
+- **Idempotência e cancelamento:** a fila exige ID estável da mensagem e suporta cancelamento confirmado por RPC; se o estado for incerto, a Lia preserva o contexto e não inicia outra execução.
 
 Detalhes técnicos e operação: [`docs/release-2.9.0.md`](docs/release-2.9.0.md). Pré-requisito: aplicar [`supabase/migrations/20261120160000_copilot_tasks.sql`](supabase/migrations/20261120160000_copilot_tasks.sql) antes do deploy.
 
