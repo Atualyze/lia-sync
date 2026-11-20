@@ -43,7 +43,8 @@ test('worker executa consulta permitida em segundo plano e notifica o resultado'
       }
     });
 
-    assert.equal(await worker.runOnce(), true);
+    assert.equal(await worker.runOnce(), true); // executa e conclui a tarefa
+    assert.equal(await worker.runOnce(), true); // reivindica e envia a notificação pendente
     assert.equal(sent.length, 1);
     assert.equal(sent[0].target, '5588999999999');
     assert.match(sent[0].message, /informações relevantes/i);
