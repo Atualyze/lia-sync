@@ -263,7 +263,23 @@ export class CopilotTaskStore {
     return this._serial(async () => {
       const current = this.tasks.find(item => item.id === task.id && item.status === 'running' && item.leaseToken === task.leaseToken);
       if (!current) return null;
-      Object.assign(current, patch, { updatedAt: new Date(this.now()).toISOString() });
+      const aliases = {
+        result_text: 'resultText',
+        result_summary: 'resultSummary',
+        last_error_code: 'errorCode',
+        completed_at: 'completedAt',
+        notification_status: 'notificationStatus',
+        lease_owner: 'leaseOwner',
+        lease_token: 'leaseToken',
+        lease_expires_at: 'leaseExpiresAt',
+        current_step: 'currentStep',
+        notified_at: 'notifiedAt',
+        started_at: 'startedAt'
+      };
+      for (const [key, value] of Object.entries(patch)) {
+        current[aliases[key] || key] = value;
+      }
+      current.updatedAt = new Date(this.now()).toISOString();
       await this._saveLocal();
       return clone(current);
     });
