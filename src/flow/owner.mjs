@@ -665,11 +665,12 @@ export async function handleOwnerSession({
         // Comandos explícitos de gestão de contato têm prioridade sobre uma
         // confirmação de continuidade pendente; não devem ser classificados
         // pela IA como uma resposta ambígua à pergunta anterior.
-        const earlyAssumeMatch = parseAdminPixDecision(cleanCommand)
+        const adminPixChoice = parseAdminPixDecision(cleanCommand);
+        const earlyAssumeMatch = adminPixChoice
           ? null
           : cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
-        const pendingOutboundReply = await handlePendingOutboundDispatch();
+        const pendingOutboundReply = adminPixChoice ? null : await handlePendingOutboundDispatch();
         if (pendingOutboundReply) return pendingOutboundReply;
 
         // Aprovação de cobrança Pix é um fluxo explícito, separado das confirmações
@@ -682,7 +683,6 @@ export async function handleOwnerSession({
           if (store.file || store.client?.enabled) await store.flush?.().catch(() => {});
           else { clearTimeout(store.saveTimer); store.saveTimer = null; }
         };
-        const adminPixChoice = parseAdminPixDecision(cleanCommand);
         if (adminPixChoice) {
           const pendingPixDecisions = adminPixChoice.action === 'assume'
             ? listAdminPixDecisionsForAssumption(store.sessions || {})
