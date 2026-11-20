@@ -191,6 +191,8 @@ test('detecta promessa de execução sem confundir explicação ou recusa', asyn
   const { claimsUnexecutedToolWork } = await import('./copilot-continuity.mjs');
   assert.equal(claimsUnexecutedToolWork('Entendido! Gerando a cobrança Pix agora.'), true);
   assert.equal(claimsUnexecutedToolWork('Estou consultando a web neste momento.'), true);
+  assert.equal(claimsUnexecutedToolWork('O Pix está sendo gerado agora.'), true);
+  assert.equal(claimsUnexecutedToolWork('A pesquisa está em andamento.'), true);
   assert.equal(claimsUnexecutedToolWork('Não vou gerar sem a confirmação necessária.'), false);
   assert.equal(claimsUnexecutedToolWork('Vou te explicar como funciona o Pix.'), false);
 });
