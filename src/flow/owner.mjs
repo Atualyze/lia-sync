@@ -15,6 +15,7 @@ import { createOutboundDispatchPreview, OUTBOUND_DISPATCH_TTL_MS } from '../outb
 import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCancellation } from './outbound-confirmation.mjs';
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
+import { buildCopilotContext } from './copilot-context.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
@@ -727,7 +728,16 @@ export async function handleOwnerSession({
             ai,
             message: cleanCommand,
             pending: sSelf.pendingOutboundDispatch,
-            recentContext: Array.isArray(sSelf.history) ? sSelf.history.slice(-6) : [],
+            recentContext: Array.isArray(sSelf.history) ? sSelf.history.slice(-12) : [],
+            context: buildCopilotContext({
+              session: sSelf,
+              latestMessage: cleanCommand,
+              owner,
+              identity,
+              now: now()
+            }),
+            owner,
+            identity,
             botConfig,
             deadline: aiDeadline
           });
