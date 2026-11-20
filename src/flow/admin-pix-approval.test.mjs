@@ -37,8 +37,10 @@ test('decisão Pix do administrador exige comando explícito', () => {
   assert.deepEqual(parseAdminPixDecision('GERAR PIX'), { action: 'generate', target: null });
   assert.deepEqual(parseAdminPixDecision('Autorizo gerar o Pix'), { action: 'generate', target: null });
   assert.deepEqual(parseAdminPixDecision('Pode gerar Pix para Ana'), { action: 'generate', target: 'ana' });
+  assert.deepEqual(parseAdminPixDecision('GERAR PIX 2222'), { action: 'generate', target: '2222' });
   assert.deepEqual(parseAdminPixDecision('ASSUMIR ATENDIMENTO'), { action: 'assume', target: null });
   assert.deepEqual(parseAdminPixDecision('Vou assumir o atendimento da Ana'), { action: 'assume', target: 'ana' });
+  assert.deepEqual(parseAdminPixDecision('ASSUMIR ATENDIMENTO 2222'), { action: 'assume', target: '2222' });
   assert.deepEqual(parseAdminPixDecision('Deixa comigo'), { action: 'assume', target: null });
 
   for (const ambiguous of ['sim', 'ok', 'pode', '5', 'confirma', 'gera', 'assume']) {
