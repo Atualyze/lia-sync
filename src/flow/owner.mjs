@@ -722,7 +722,7 @@ export async function handleOwnerSession({
           ? null
           : cleanCommand.match(/^(?:assuma|assume|assumir)\s+(.+)$/i);
         if (earlyAssumeMatch) cleanCommand = `humano ${earlyAssumeMatch[1].trim()}`;
-        if (!adminPixChoice && sSelf.pendingOutboundDispatch && !matchOutboundApproval(cleanCommand) && !matchOutboundCancellation(cleanCommand)) {
+        if (!adminPixChoice && sSelf.pendingOutboundDispatch) {
           semanticPendingOutboundIntent = await classifyPendingOutboundIntent({
             ai,
             message: cleanCommand,
