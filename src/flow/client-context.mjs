@@ -40,25 +40,25 @@ function latestAssistantText(history = []) {
 
 export function lastAssistantAskedForPayment(history = []) {
   const text = normalizeContextText(latestAssistantText(history));
-  const mentionsPayment = /\\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout|chave)\\b/.test(text);
-  const asksChoiceOrAmount = /\\b(?:qual|quanto|informe|prefere|escolhe|escolher|valor|opcao|opcoes|deseja)\\b/.test(text)
+  const mentionsPayment = /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout|chave)\b/.test(text);
+  const asksChoiceOrAmount = /\b(?:qual|quanto|informe|prefere|escolhe|escolher|valor|opcao|opcoes|deseja)\b/.test(text)
     || text.includes('?');
   return mentionsPayment && asksChoiceOrAmount;
 }
 
 export function lastAssistantAskedForPaymentAmount(history = []) {
   const text = normalizeContextText(latestAssistantText(history));
-  return /\\b(?:valor|quanto)\\b/.test(text)
-    && /\\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout)\\b/.test(text)
-    && (text.includes('?') || /\\b(?:informe|me diga|qual)\\b/.test(text));
+  return /\b(?:valor|quanto)\b/.test(text)
+    && /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout)\b/.test(text)
+    && (text.includes('?') || /\b(?:informe|me diga|qual)\b/.test(text));
 }
 
 export function lastAssistantAskedForAgendaConfirmation(history = []) {
   const text = normalizeContextText(latestAssistantText(history));
-  const mentionsAgenda = /\\b(?:agenda|agendar|agendamento|horario|reuniao|compromisso)\\b/.test(text);
+  const mentionsAgenda = /\b(?:agenda|agendar|agendamento|horario|reuniao|compromisso)\b/.test(text);
   return mentionsAgenda
-    && /\\b(?:confirmar|confirma|posso|pode|agendar|marcar)\\b/.test(text)
-    && (text.includes('?') || /\\b(?:confirma|posso confirmar)\\b/.test(text));
+    && /\b(?:confirmar|confirma|posso|pode|agendar|marcar)\b/.test(text)
+    && (text.includes('?') || /\b(?:confirma|posso confirmar)\b/.test(text));
 }
 
 function messageTime(message) {
