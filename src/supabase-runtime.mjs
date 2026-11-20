@@ -17,7 +17,12 @@ const normalizePendingClientPayment = value => {
   const description = typeof sourceArgs.descricao === 'string' ? sourceArgs.descricao.trim().slice(0, 80) : '';
   if (description) args.descricao = description;
   const choice = value.choice === 'pix' || value.choice === 'checkout' ? value.choice : null;
-  return { args, choice, createdAt };
+  const lastQuestion = typeof value.lastQuestion === 'string' ? value.lastQuestion.slice(0, 320) : '';
+  let pausedAt = null;
+  if (value.pausedAt) {
+    try { pausedAt = iso(value.pausedAt); } catch { pausedAt = null; }
+  }
+  return { args, choice, createdAt, lastQuestion, pausedAt };
 };
 const normalizePendingCopilotTask = value => {
   const allowed = new Set(['general', 'payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
