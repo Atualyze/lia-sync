@@ -460,6 +460,10 @@ export async function handleOwnerSession({
             try { latestTask = await copilotTaskStore.getLatest(ownerTaskKey); }
             catch { statusLookupFailed = true; }
           }
+          if (!activeTaskId && latestTask) {
+            const createdAt = Date.parse(latestTask.createdAt || '');
+            if (!Number.isFinite(createdAt) || now() - createdAt > 7 * 24 * 60 * 60 * 1000) latestTask = null;
+          }
           if (latestTask) {
             return recordSelfTurn(filterReply(describeCopilotTaskStatus(latestTask), { isCopilot: true }).text, { preserveTask: true });
           }
