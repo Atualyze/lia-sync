@@ -21,7 +21,8 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 11. `migrations/20261115_prospecting.sql` — listas, cadências, leads e eventos de prospecção
 12. `migrations/20261115_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
 13. `migrations/20261116000000_review_hardening.sql` — RLS nas tabelas `prospect_*` e `reminders`, CHECK de `created_by` removido, lease de manutenção
-14. `migrations/20261120150000_copilot_task_queue.sql` — fila persistente backend-only do Copiloto, leases, idempotência e notificação de resultados\n15. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+14. `migrations/20261120150000_copilot_task_queue.sql` — fila persistente backend-only do Copiloto, leases, idempotência e notificação de resultados
+15. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 
