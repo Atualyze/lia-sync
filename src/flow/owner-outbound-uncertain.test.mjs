@@ -101,7 +101,7 @@ test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova 
 test('modelo conversacional recebe contexto operacional da pendência ao interpretar referência curta', async () => {
   const ownerPhone = '5588921694598';
   const store = createMockStore();
-  const self = store.get(ownerPhone);
+  const self = store.get(OWNER_SELF_KEY);
   self.pendingOutboundDispatch = {
     id: 'DISP5678',
     phone: '5585991099483',
