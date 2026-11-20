@@ -17,6 +17,11 @@ const bridgeRoutes = await readFile('src/http/bridge-routes.mjs', 'utf8');
 const bridgeStatus = await readFile('src/http/bridge-config-status.mjs', 'utf8');
 const adminConfigSchema = await readFile('src/admin-config.mjs', 'utf8');
 const sectorsProjection = await readFile('src/sectors.mjs', 'utf8');
+const copilotTasksMigration = await readFile('supabase/migrations/20261120160000_copilot_tasks.sql', 'utf8');
+const copilotTasks = await readFile('src/copilot-tasks.mjs', 'utf8');
+const copilotTaskRunner = await readFile('src/copilot-task-runner.mjs', 'utf8');
+const copilotOwner = await readFile('src/flow/owner.mjs', 'utf8');
+const copilotServer = await readFile('src/server.mjs', 'utf8');
 const clientFlow = await readFile('src/flow/client.mjs', 'utf8');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
@@ -45,6 +50,11 @@ const checks = [
   ['safe integration test is simulation-only by default', index.includes('Simulador Isolado') && (index.includes('Nenhuma dessas ações envia WhatsApp real') || index.includes('sem envio real no WhatsApp')) && app.includes("/api/dashboard/ping-ai")],
   ['critical overview elements exist', ['overview-health', 'overview-costs', 'overview-models', 'overview-operations', 'admin-publish'].every(id => index.includes(`id="${id}"`))],
   ['Supabase captcha payload uses GoTrue metadata', supabaseClient.includes('gotrue_meta_security: { captcha_token: captchaToken }') && !supabaseClient.includes('...(captchaToken ? { captcha_token: captchaToken } : {})')],
+  ['Copilot task queue is service-role-only and has idempotent task records', copilotTasksMigration.includes('create table if not exists public.copilot_tasks') && copilotTasksMigration.includes('idempotency_key text not null unique') && copilotTasksMigration.includes('enable row level security') && copilotTasksMigration.includes('grant all on table public.copilot_tasks to service_role') && !copilotTasksMigration.toLowerCase().includes('create policy')],
+  ['Copilot task claims are atomic and have lease/checkpoint/finish RPCs', copilotTasksMigration.includes('for update skip locked') && copilotTasksMigration.includes('renew_copilot_task_lease') && copilotTasksMigration.includes('checkpoint_copilot_task_step') && copilotTasksMigration.includes('finish_copilot_task')],
+  ['Copilot worker persists results before delivery and recovers pending delivery without retrying uncertain sends', copilotTaskRunner.includes('taskStore.finish(task.id, token, \'succeeded\'') && copilotTaskRunner.includes('taskStore.pendingDelivery?.()') && copilotTaskRunner.includes('taskStore.beginDelivery(task.id)') && copilotTaskRunner.includes('finishDelivery(task.id, \'uncertain\'') ],
+  ['Copilot only queues allowlisted background steps and recognizes real progress queries', copilotTasks.includes('isBackgroundCopilotStep') && copilotTasks.includes('isCopilotTaskStatusQuery') && copilotTasks.includes('resolveCopilotPaymentMethodChoice') && copilotOwner.includes('copilotTaskStore.enqueue') && copilotOwner.includes('describeCopilotTaskStatus')],
+  ['Copilot server initializes and schedules durable task worker', copilotServer.includes('new CopilotTaskStore') && copilotServer.includes('createCopilotTaskRunner') && copilotServer.includes('copilotTaskTimer')],
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);
