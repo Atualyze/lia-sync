@@ -39,7 +39,11 @@ export function isBackgroundCopilotStep(step = {}) {
 
   if (SAFE_READ_MODES.has(mode)) return true;
   if (name === 'gerar_cobranca_pix') return true;
-  if (name === 'checkout_infinitepay') return String(args.acao || 'criar_link').toLowerCase() === 'verificar_pagamento';
+  if (name === 'checkout_infinitepay') {
+    const hasStableOrderReference = ['orderNsu', 'transactionNsu', 'slug']
+      .some(key => String(args[key] || '').trim().length > 0);
+    return String(args.acao || '').toLowerCase() === 'verificar_pagamento' && hasStableOrderReference;
+  }
   if (name === 'gerenciar_agenda_google') return ['consultar_livres', 'listar_eventos'].includes(String(args.action || ''));
   if (name === 'consultar_planilha_google') return ['ler_intervalo', 'buscar_linhas'].includes(String(args.acao || ''));
   if (name === 'gerenciar_drive_google') return ['listar_arquivos', 'buscar_arquivo'].includes(String(args.acao || ''));
