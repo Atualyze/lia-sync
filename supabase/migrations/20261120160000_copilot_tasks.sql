@@ -30,7 +30,9 @@ create table if not exists public.copilot_tasks (
     check (delivery_status in ('pending','sending','sent','uncertain','skipped')),
   constraint copilot_tasks_current_step_nonnegative check (current_step >= 0),
   constraint copilot_tasks_attempt_nonnegative check (attempt_count >= 0),
-  constraint copilot_tasks_steps_array check (jsonb_typeof(steps) = 'array')
+  constraint copilot_tasks_steps_array check (
+    jsonb_typeof(steps) = 'array' and jsonb_array_length(steps) between 1 and 4
+  )
 );
 
 create index if not exists copilot_tasks_queue_idx
@@ -181,7 +183,7 @@ begin
           || jsonb_build_object(
             'state', p_state,
             'updated_at', now(),
-            'started_at', case when p_state = 'running' then now() else coalesce(t.steps -> v_index -> 'started_at', to_jsonb(now())) end,
+            'started_at', case when p_state = 'running' then to_jsonb(now()) else coalesce(t.steps -> v_index -> 'started_at', to_jsonb(now())) end,
             'completed_at', case when p_state in ('succeeded','failed','uncertain','awaiting_input') then to_jsonb(now()) else t.steps -> v_index -> 'completed_at' end,
             'result', case when p_result is null then t.steps -> v_index -> 'result' else p_result end,
             'error', nullif(left(coalesce(p_error, ''), 500), '')
