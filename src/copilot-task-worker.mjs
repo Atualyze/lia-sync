@@ -197,6 +197,10 @@ export function createCopilotTaskWorker({
         return false;
       }
       const hasPixCreation = validatedPlan.steps.some(step => step.name === 'gerar_cobranca_pix');
+      if (hasPixCreation && validatedPlan.steps.length !== 1) {
+        await taskStore.fail(task, 'pix_task_must_be_single_step', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi bloqueada porque a criação de cobrança Pix precisa ser uma tarefa isolada. Nenhuma cobrança foi criada.`);
+        return false;
+      }
       if (hasPixCreation && task.retryPolicy !== 'never') {
         await taskStore.fail(task, 'unsafe_retry_policy', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi bloqueada: cobranças Pix nunca podem ter repetição automática. Nenhuma cobrança foi criada.`);
         return false;
