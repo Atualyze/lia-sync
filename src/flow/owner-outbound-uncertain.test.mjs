@@ -30,7 +30,7 @@ function createMockStore() {
 test('Copiloto mantém conversa normal com despacho incerto e só bloqueia nova confirmação de envio', async () => {
   const ownerPhone = '5588921694598';
   const store = createMockStore();
-  const self = store.get('owner_self');
+  const self = store.get(ownerPhone);
   self.pendingOutboundDispatch = {
     id: 'DISP1234',
     phone: '5585991099483',
