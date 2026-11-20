@@ -9,7 +9,10 @@ const READ_ONLY_TASK_TOOLS = new Set([
   'consultar_saude_infra', 'consultar_dados_brasil'
 ]);
 const isReadOnlyTaskStep = step => READ_ONLY_TASK_TOOLS.has(step.name)
-  || (step.name === 'checkout_infinitepay' && String(step.args?.acao || '') === 'verificar_pagamento');
+  || (step.name === 'checkout_infinitepay' && String(step.args?.acao || '') === 'verificar_pagamento')
+  || (step.name === 'consultar_planilha_google' && ['ler_intervalo', 'buscar_linhas'].includes(String(step.args?.acao || '')))
+  || (step.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo'].includes(String(step.args?.acao || '')))
+  || (step.name === 'gerenciar_agenda_google' && ['consultar_livres', 'listar_eventos'].includes(String(step.args?.action || '')));
 const NOTIFICATION_STATES = new Set(['pending', 'sending', 'sent', 'uncertain', 'unaddressable']);
 const iso = value => {
   const date = new Date(value);
