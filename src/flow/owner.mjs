@@ -1965,6 +1965,29 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
+        // Preserve o fluxo de coleta de conteúdo do disparo antes da validação
+        // do plano. Mensagens externas nunca são enviadas nesta etapa.
+        if (toolCallsToRun.length > 0) {
+          const inferredOutboundMessage = dispatchIntent.message
+            || cleanCommand.match(/(?:mensagem [ée]|recado [ée]|dizendo que|avisando que)\\s*(.+)/i)?.[1]?.trim()
+            || '';
+          toolCallsToRun = toolCallsToRun.map(tc => (
+            tc?.name === 'enviar_mensagem_contato' && !String(tc.args?.message || '').trim() && inferredOutboundMessage
+              ? { ...tc, args: { ...(tc.args || {}), message: inferredOutboundMessage } }
+              : tc
+          ));
+          const missingOutboundContent = toolCallsToRun.some(tc =>
+            tc?.name === 'enviar_mensagem_contato' && !String(tc.args?.message || '').trim()
+          );
+          if (missingOutboundContent) {
+            if (dispatchIntent.recipient) sSelf.pendingRecipient = dispatchIntent.recipient;
+            sSelf.pendingAsAudio = Boolean(dispatchIntent.asAudio);
+            store.markDirty();
+            const recipientLabel = sSelf.pendingRecipient ? ` para *${sSelf.pendingRecipient}*` : '';
+            return recordSelfTurn(filterReply(`Claro! O que você gostaria de enviar${recipientLabel}? Me informe o texto ou o recado para eu preparar a prévia antes de qualquer envio.`, { isCopilot: true }).text);
+          }
+        }
+
         let toolPlan = null;
         if (toolCallsToRun.length > 0) {
           // A troca Pix -> checkout é resolvida antes do plano para validar a
