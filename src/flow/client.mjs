@@ -622,12 +622,12 @@ export async function handleClientMessage({
       }
 
       if (!result || !raw) {
-        raw = `Tive uma leve instabilidade de conexão aqui no sistema! 📶\n\nMas posso ajudar você por aqui ou te colocar direto em contato com ${owner}. Como prefere seguir?`;
+        raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
         const oneHourAgo = now() - 3600000;
         const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
         if (lastFallback < oneHourAgo) {
           s.fallbackHandoffAt = new Date(now()).toISOString();
-          await notify(`[Alerta ${assistant}] Instabilidade de conexão/IA para ${s.phone}: "${clean}"`);
+          await notify(`[Alerta ${assistant}] Falha ao produzir uma resposta para ${s.phone}: "${clean}"`);
         }
       }
 
