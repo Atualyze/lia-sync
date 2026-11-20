@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildAdminPixDecisionNotice,
   describePendingAdminPixDecision,
+  listAdminPixDecisionsForAssumption,
   listPendingAdminPixDecisions,
   matchPendingAdminPixDecision,
   parseAdminPixDecision
@@ -105,4 +106,22 @@ test('notificação interna oferece exatamente as duas decisões sem alegar Pix 
     amount: 5,
     requestedAt: new Date(now - 60000).toISOString()
   });
+});
+
+
+test('decisão com envio incerto pode ser assumida por humano, mas nunca reaparece para gerar Pix', () => {
+  const uncertain = candidate('uncertain', 'Carlos', '5588999994444').session;
+  uncertain.pendingAdminDecision.status = 'uncertain';
+  const sessions = { uncertain };
+  assert.equal(listPendingAdminPixDecisions(sessions, { nowMs: now }).length, 0);
+  const assumable = listAdminPixDecisionsForAssumption(sessions);
+  assert.equal(assumable.length, 1);
+  assert.equal(assumable[0].decision.status, 'uncertain');
+});
+
+test('decisão Pix vencida pode ser assumida manualmente, mas não autorizada para nova geração', () => {
+  const expired = candidate('expired', 'Bruna', '5588999995555', 10, 90).session;
+  const sessions = { expired };
+  assert.equal(listPendingAdminPixDecisions(sessions, { nowMs: now }).length, 0);
+  assert.equal(listAdminPixDecisionsForAssumption(sessions).length, 1);
 });
