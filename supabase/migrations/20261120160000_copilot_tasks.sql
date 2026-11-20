@@ -231,6 +231,29 @@ begin
 end;
 $$;
 
+create or replace function public.cancel_copilot_task(p_task_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $
+declare v_rows integer;
+begin
+  update public.copilot_tasks
+  set status = 'cancelled',
+      last_error = 'Cancelada explicitamente pelo responsável.',
+      completed_at = now(),
+      lease_token = null,
+      lease_expires_at = null,
+      worker_id = null,
+      updated_at = now()
+  where id = p_task_id
+    and status in ('queued','running','awaiting_input');
+  get diagnostics v_rows = row_count;
+  return v_rows = 1;
+end;
+$;
+
 create or replace function public.begin_copilot_task_delivery(p_task_id uuid)
 returns boolean
 language plpgsql
@@ -277,6 +300,7 @@ revoke all on function public.claim_copilot_task(text, integer) from public, ano
 revoke all on function public.renew_copilot_task_lease(uuid, uuid, integer) from public, anon, authenticated;
 revoke all on function public.checkpoint_copilot_task_step(uuid, uuid, integer, text, jsonb, text) from public, anon, authenticated;
 revoke all on function public.finish_copilot_task(uuid, uuid, text, jsonb, text) from public, anon, authenticated;
+revoke all on function public.cancel_copilot_task(uuid) from public, anon, authenticated;
 revoke all on function public.begin_copilot_task_delivery(uuid) from public, anon, authenticated;
 revoke all on function public.finish_copilot_task_delivery(uuid, text, text) from public, anon, authenticated;
 
@@ -284,6 +308,7 @@ grant execute on function public.claim_copilot_task(text, integer) to service_ro
 grant execute on function public.renew_copilot_task_lease(uuid, uuid, integer) to service_role;
 grant execute on function public.checkpoint_copilot_task_step(uuid, uuid, integer, text, jsonb, text) to service_role;
 grant execute on function public.finish_copilot_task(uuid, uuid, text, jsonb, text) to service_role;
+grant execute on function public.cancel_copilot_task(uuid) to service_role;
 grant execute on function public.begin_copilot_task_delivery(uuid) to service_role;
 grant execute on function public.finish_copilot_task_delivery(uuid, text, text) to service_role;
 
