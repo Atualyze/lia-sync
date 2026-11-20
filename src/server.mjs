@@ -30,6 +30,8 @@ import { WebhookEventStore } from './webhook-events.mjs';
 import { SectorProjection } from './sectors.mjs';
 import { createProspecting } from './prospecting/index.mjs';
 import { IntegrationsStore } from './http/integrations-store.mjs';
+import { CopilotTaskStore } from './copilot-tasks.mjs';
+import { createCopilotTaskRunner } from './copilot-task-runner.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -104,6 +106,28 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const reminderStore = new ReminderStore(path.join(path.dirname(config.dataFile), 'reminders.json'), { client: supabaseRuntime.client });
   await reminderStore.load();
+
+  const copilotTaskStore = new CopilotTaskStore(store.client, {
+    logger,
+    workerId: `${os.hostname()}:${process.pid}`
+  });
+  await copilotTaskStore.initialize();
+  const copilotTaskRunner = new createCopilotTaskRunner({
+    taskStore: copilotTaskStore,
+    sessionStore: store,
+    ai: { askAI: askAIWithBudget, searchWebWithGemini },
+    whatsapp: { sendText },
+    getBotConfig: () => adminConfig.active,
+    getHumanPhone,
+    operationsStore,
+    logger,
+    workerId: `${os.hostname()}:${process.pid}`
+  });
+  if (copilotTaskStore.enabled) {
+    console.log('[copilot-tasks] fila durável do Copiloto conectada ao Supabase.');
+  } else {
+    console.warn('[copilot-tasks] fila durável indisponível; fluxo legado permanece ativo até aplicar a migration.');
+  }
   // Projeção de runtime dos setores do Chatwoot: nunca entra em rascunho/revisão do painel.
   const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'), { client: supabaseRuntime.client });
   await sectorProjection.load();
@@ -169,6 +193,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getHumanPhone,
     reminderStore,
     operationsStore,
+    copilotTaskStore,
     getTelemetry,
     getSectors: () => sectorProjection.active(),
     allowClientResume: config.humanAllowClientResume,
@@ -308,7 +333,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     askAI: askAIWithBudget,
     integrationsStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskRunner = copilotTaskRunner; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -365,8 +390,15 @@ if (isDirectRun) {
     }
   };
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
+  const copilotTaskTimer = setInterval(() => {
+    void app.copilotTaskRunner?.tick();
+  }, 1000);
+  copilotTaskTimer.unref();
+  void app.copilotTaskRunner?.tick();
   const stop = async () => {
     clearInterval(maintenanceTimer);
+    clearInterval(copilotTaskTimer);
+    await app.copilotTaskRunner?.stop().catch(() => {});
     for (const [phone, job] of pending.entries()) {
       clearTimeout(job.timer);
       pending.delete(phone);
