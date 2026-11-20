@@ -148,6 +148,8 @@ export function createCopilotTaskWorker({
     const target = claimed.targetPhone || getHumanPhone();
     if (!target || typeof sendText !== 'function') {
       await taskStore.finishNotification(claimed, 'uncertain', 'notification_target_missing');
+      await appendTaskResultToSession(claimed, claimed.resultText, { clearTask: true }).catch(() => {});
+      logger.error?.('[copilot-worker] tarefa concluída sem destino de notificação; resultado preservado na sessão.');
       return false;
     }
     const safe = filterReply(claimed.resultText, { isCopilot: true }).text;
@@ -268,6 +270,8 @@ export function createCopilotTaskWorker({
           const target = pendingNotification.targetPhone || getHumanPhone();
           if (!target || typeof sendText !== 'function') {
             await taskStore.finishNotification(pendingNotification, 'uncertain', 'notification_target_missing');
+            await appendTaskResultToSession(pendingNotification, pendingNotification.resultText, { clearTask: true }).catch(() => {});
+            logger.error?.('[copilot-worker] tarefa concluída sem destino de notificação; resultado preservado na sessão.');
             return false;
           }
           const safe = filterReply(pendingNotification.resultText, { isCopilot: true }).text;
