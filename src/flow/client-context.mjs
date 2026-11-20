@@ -39,7 +39,7 @@ function latestAssistantText(history = []) {
 }
 
 export function lastAssistantAskedForPayment(history = [], pendingQuestion = '') {
-  const text = normalizeContextText(pendingQuestion || latestAssistantText(history));
+  const text = normalizeContextText(latestAssistantText(history) || pendingQuestion);
   const mentionsPayment = /\b(?:pix|copia e cola|codigo|cobranca|pagamento|checkout|chave)\b/.test(text);
   const asksChoiceOrAmount = /\b(?:qual|quanto|informe|prefere|escolhe|escolher|valor|opcao|opcoes|deseja)\b/.test(text)
     || text.includes('?');
