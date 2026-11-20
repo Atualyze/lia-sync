@@ -105,7 +105,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   };
   updateInstanceOwner().catch(() => {});
 
-  const getHumanPhone = () => {
+  function getHumanPhone() {
     const humanCfg = adminConfig.active.human || {};
     if (humanCfg.enabled === false) return '';
     if (humanCfg.alertDestination === 'same_as_bot') {
@@ -114,7 +114,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     const cfgPhone = String(humanCfg.phone || '').replace(/\D/g, '');
     const raw = cfgPhone || cachedInstanceOwner || config.humanPhone || '';
     return String(raw).replace(/\D/g, '');
-  };
+  }
 
   const stageAutomatedOutbound = async (prepared, options = {}) => {
     const operatorPhone = getHumanPhone();

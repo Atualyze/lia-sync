@@ -192,6 +192,7 @@ export class CopilotTaskStore {
 
   async enqueue(input = {}) {
     if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
     if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
     const normalized = normalizeTaskInput(input);
     const createdAt = new Date(this.now()).toISOString();

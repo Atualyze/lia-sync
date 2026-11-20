@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { executeToolCall, isToolEnabled } from './tools/index.mjs';
-import { buildCopilotToolPlan } from './flow/copilot-tool-plan.mjs';
+import { buildCopilotToolPlan, verifyCopilotToolResult } from './flow/copilot-tool-plan.mjs';
 import { filterReply, splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
