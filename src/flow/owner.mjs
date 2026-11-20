@@ -17,7 +17,7 @@ import { matchOutboundApproval, matchOutboundCancellation, isExplicitCopilotCanc
 import { classifyCopilotTurn, reviewCopilotToolCall, hasExplicitToolIntent, hasOtherExplicitToolIntent } from './copilot-continuity.mjs';
 import { classifyPendingOutboundIntent } from './copilot-dispatch-intent.mjs';
 import { buildCopilotContext } from './copilot-context.mjs';
-import { describeCopilotTaskStatus, inferCopilotTaskType, isBackgroundCopilotStep, isCopilotTaskStatusQuery, resolveCopilotPaymentMethodChoice } from '../copilot-tasks.mjs';
+import { describeCopilotTaskStatus, inferCopilotTaskType, isBackgroundCopilotStep, isCopilotTaskStatusQuery, isUnstartedActionPromise, resolveCopilotPaymentMethodChoice } from '../copilot-tasks.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
@@ -365,6 +365,13 @@ export async function handleOwnerSession({
           return recordSelfTurn('Recebi seu áudio, mas não consegui transcrever o conteúdo com segurança. Pode enviar novamente ou me resumir por texto; não vou presumir o que foi dito.', {
             preserveTask: Boolean(activeTask)
           });
+        }
+
+        if (!copilotTaskStore?.enabled && isCopilotTaskStatusQuery(cleanCommand)) {
+          const noQueueReply = sSelf.pendingCopilotTask
+            ? 'Tenho apenas o contexto da solicitação anterior, mas a fila durável não está disponível. Não consigo confirmar que uma ferramenta continua executando; nenhuma nova tentativa será iniciada por esta pergunta.'
+            : 'Não encontrei uma tarefa durável em andamento. Também não vou presumir que uma pesquisa ou cobrança foi iniciada apenas pelo histórico da conversa.';
+          return recordSelfTurn(filterReply(noQueueReply, { isCopilot: true }).text, { preserveTask: true });
         }
 
         if (copilotTaskStore?.enabled && isCopilotTaskStatusQuery(cleanCommand)) {
@@ -2723,8 +2730,7 @@ ${errMsg}`;
         }
 
         let rawReply = result?.reply;
-        const promisesUnstartedWork = /\b(?:vou|estou|ja estou|já estou|aguarde|so um instante|só um instante)\b.{0,100}\b(?:consultar|pesquisar|buscar|verificar|gerar|criar|puxar|procurar)\b/i.test(String(rawReply || ''));
-        if (promisesUnstartedWork && toolOutputs.length === 0) {
+        if (isUnstartedActionPromise(rawReply) && toolOutputs.length === 0) {
           rawReply = 'Ainda não iniciei essa operação: nenhuma ferramenta confirmou a execução nesta mensagem. Preciso registrar a tarefa ou executar a ferramenta antes de afirmar que está em andamento.';
         }
         const hasPixKeyword = /\b(?:pix|chave\s*pix|cobran[cç]a(?:\s*pix)?|infinitepay|link\s+de\s+pagamento)\b/i.test(cleanCommand);
