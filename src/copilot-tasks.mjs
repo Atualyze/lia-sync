@@ -346,7 +346,7 @@ export class CopilotTaskStore {
       status: 'failed',
       result_text: String(resultText || 'A tarefa não foi concluída. Nenhuma repetição automática será feita.').slice(0, 16000),
       notification_status: 'pending',
-      last_error_code: String(errorCode || 'tool_execution_failed').toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/\d{7,}/g, '[redacted]').slice(0, 120),
+      last_error_code: String(errorCode || 'tool_execution_failed').replace(/\d{7,}/g, '[redacted]').toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 120),
       completed_at: new Date(this.now()).toISOString(),
       lease_owner: null,
       lease_token: null,
