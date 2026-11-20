@@ -369,10 +369,7 @@ export async function handleOwnerSession({
 
         if (copilotTaskStore?.enabled && isCopilotTaskStatusQuery(cleanCommand)) {
           const recentTasks = await copilotTaskStore.latest({ limit: 5 }).catch(() => []);
-          const latestTask = (recentTasks || []).find(task => {
-            const age = now() - Date.parse(task.created_at || '');
-            return Number.isFinite(age) && age >= 0 && age <= 24 * 60 * 60 * 1000;
-          });
+          const latestTask = (recentTasks || [])[0] || null;
           if (latestTask) {
             let taskReply = describeCopilotTaskStatus(latestTask);
             if (latestTask.status === 'succeeded' && latestTask.result?.reply) {
@@ -1096,10 +1093,15 @@ export async function handleOwnerSession({
 
         // 1.0 Cancelamento Geral Imediato (prioridade máxima antes de qualquer processamento)
         // Só intercepta cancelamentos inequívocos; perguntas e negativas explicativas seguem para a IA.
-        const hadPending = Boolean(sSelf.pendingOutboundDispatch || sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf);
+        const hadPending = Boolean(sSelf.pendingOutboundDispatch || sSelf.pendingAudioConfirmation || sSelf.pendingRecipient || sSelf.pendingAsAudio || sSelf.pendingPdf || sSelf.pendingCopilotTask);
         const isExplicitCancel = isExplicitCopilotCancellation(strippedCmd, { hasPending: hadPending });
 
         if (isExplicitCancel) {
+          const pendingTaskId = String(sSelf.pendingCopilotTask?.taskId || '').trim();
+          let durableTaskCancelled = false;
+          if (pendingTaskId && copilotTaskStore?.enabled) {
+            durableTaskCancelled = await copilotTaskStore.cancel(pendingTaskId).catch(() => false);
+          }
           sSelf.pendingOutboundDispatch = null;
           sSelf.pendingAudioConfirmation = null;
           sSelf.pendingRecipient = null;
@@ -1109,9 +1111,15 @@ export async function handleOwnerSession({
           sSelf.pendingReactivation = null;
           sSelf.pendingCopilotTask = null;
           store.markDirty();
-          const cancelMsg = hadPending
-            ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
-            : `Tudo bem, ${owner}! Cancelado por aqui. Em que posso te ajudar agora?`;
+          const cancelMsg = pendingTaskId
+            ? (durableTaskCancelled
+              ? '🚫 *Tarefa ' + pendingTaskId.split('-')[0].toUpperCase() + ' cancelada.* O worker não continuará as etapas pendentes.'
+              : '⚠️ Não consegui confirmar o cancelamento da tarefa ' + pendingTaskId.split('-')[0].toUpperCase() + '. Ela pode já ter sido concluída; consulte “onde está?” antes de solicitar outra execução.')
+            : (sSelf.pendingCopilotTask
+              ? 'Contexto da solicitação descartado. Não havia um ID de tarefa durável para confirmar o cancelamento de uma execução.'
+              : hadPending
+                ? '🚫 *Envio cancelado com sucesso!* A mensagem foi descartada e não será enviada. Se precisar de algo ou quiser mandar outro recado, estou à disposição.'
+                : `Tudo bem, ${owner}! Cancelado por aqui. Em que posso te ajudar agora?`);
           return recordSelfTurn(filterReply(cancelMsg, { isCopilot: true }).text);
         }
 
@@ -2108,6 +2116,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             const queuedAt = new Date(now()).toISOString();
             const queuedType = inferCopilotTaskType(toolPlan.steps);
             sSelf.pendingCopilotTask = {
+              taskId: queuedTask.id,
               type: queuedType,
               createdAt: queuedAt,
               updatedAt: queuedAt,
