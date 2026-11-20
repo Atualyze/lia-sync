@@ -2142,6 +2142,98 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             return recordSelfTurn(filterReply('Não executei nenhuma etapa do plano. ' + detail + (reasons ? '\n\nVerifique: ' + reasons : ''), { isCopilot: true }).text);
           }
           toolCallsToRun = toolPlan.steps.map(step => ({ name: step.name, args: step.args }));
+
+          const backgroundPlanAllowed = Boolean(
+            copilotTaskStore
+            && toolCallsToRun.length > 0
+            && toolCallsToRun.length <= 4
+            && toolCallsToRun.every(tc => isBackgroundCopilotTool(tc.name, tc.args))
+            && (!toolCallsToRun.some(tc => tc.name === 'gerar_cobranca_pix') || toolCallsToRun.length === 1)
+          );
+          if (backgroundPlanAllowed) {
+            // Antes de persistir, cada etapa precisa estar ligada ao pedido atual
+            // ou a uma continuação explícita; o catálogo não é autorização.
+            for (const tc of toolCallsToRun) {
+              const toolTaskType = copilotToolTaskType(tc.name, tc.args);
+              const liveTask = activeCopilotTask(sSelf, now());
+              const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
+              const negatedAction = /\\b(?:nao|nunca|jamais)\\b.{0,45}\\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\\b/i.test(normalizedTurn);
+              const directPaymentContinuation = directPixChoice && tc.name === 'gerar_cobranca_pix';
+              const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
+              const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
+                && !isCopilotMetaQuestion && !negatedAction
+                && (explicitTaskContinuation || turnReview?.intent === 'continue' || directPaymentContinuation));
+              if (!currentRequestMatches && !activeTaskContinuation) {
+                const review = await reviewCopilotToolCall({
+                  ai,
+                  currentMessage: cleanCommand,
+                  activeTask: liveTask,
+                  toolCall: tc,
+                  recentContext: recentHistory,
+                  botConfig,
+                  deadline: aiDeadline
+                });
+                if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                  const question = review.question || 'Você quer que eu continue a solicitação anterior?';
+                  if (review.decision === 'clarify' && liveTask) {
+                    sSelf.pendingCopilotTask = {
+                      ...liveTask,
+                      updatedAt: new Date(now()).toISOString(),
+                      lastQuestion: question.slice(0, 500)
+                    };
+                    store.markDirty();
+                  }
+                  return recordSelfTurn(filterReply(question, { isCopilot: true }).text, { preserveTask: Boolean(liveTask) });
+                }
+              }
+            }
+
+            // Reidrata parâmetros Pix do pedido salvo. Uma escolha de modalidade
+            // nunca substitui "pagamento do pão" por "Direto".
+            if (toolCallsToRun[0]?.name === 'gerar_cobranca_pix') {
+              const pending = sSelf.pendingPixRequest || {};
+              const currentPix = extractCurrentPixArgs(cleanCommand, {
+                allowBareNumber: Boolean(pending.requestedAt) || /\\b(?:pix|cobranca|pagamento|valor)\\b/i.test(normalizedTurn)
+              });
+              const amountFromPending = normalizePixAmount(pending.amount);
+              const amountFromTool = normalizePixAmount(toolCallsToRun[0]?.args?.valor);
+              const amount = currentPix.hasAmountOrFree
+                ? currentPix.valor
+                : (amountFromPending ?? amountFromTool);
+              const parsedDescription = directPixChoice ? '' : currentPix.descricao;
+              const description = (isValidPixDescription(parsedDescription) ? parsedDescription : '')
+                || (isValidPixDescription(pending.description) ? String(pending.description).trim() : '')
+                || (isValidPixDescription(toolCallsToRun[0]?.args?.descricao) ? String(toolCallsToRun[0].args.descricao).trim() : '')
+                || (amount !== null ? 'Cobrança Pix' : '');
+              if (amount === null || !description) {
+                const missing = [amount === null ? '*valor* (ou *valor livre*)' : '', !description ? '*descrição*' : ''].filter(Boolean);
+                return recordSelfTurn(filterReply(
+                  `${owner}, para registrar a cobrança Pix, ainda preciso de ${missing.join(' e ')}. Não gerei a cobrança.`,
+                  { isCopilot: true }
+                ).text, { preserveTask: true });
+              }
+              toolCallsToRun[0] = {
+                ...toolCallsToRun[0],
+                args: {
+                  ...(toolCallsToRun[0].args || {}),
+                  valor: amount,
+                  descricao: description.slice(0, 80),
+                  enviarWhatsApp: false
+                }
+              };
+              if (isDirectPixChoice(cleanCommand, lastAssistantContext)) {
+                // Direct choice only continues an active payment task.
+                if (!pending.requestedAt || amount === null || !isValidPixDescription(description)) {
+                  return recordSelfTurn(filterReply('Não consegui recuperar os dados completos da cobrança anterior. Não gerei outro Pix.', { isCopilot: true }).text, { preserveTask: true });
+                }
+              }
+            }
+
+            const backgroundTaskType = activeTask?.type || copilotToolTaskType(toolCallsToRun[0]?.name) || 'general';
+            return enqueueBackgroundTask(toolCallsToRun, backgroundTaskType);
+          }
+
           let pixHandled = false;
           let planIndex = 0;
           for (const tc of toolCallsToRun) {
