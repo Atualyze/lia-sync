@@ -795,12 +795,17 @@ export async function handleClientMessage({
             toolReplyOverride = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
               : 'Qual é o valor para eu gerar o código copia e cola?';
+          } else if (selected === 'pix') {
+            toolReplyOverride = await requestAdminPixApproval(
+              amount,
+              pendingPayment.args?.descricao || 'Pagamento via Pix'
+            );
           } else {
             const args = { ...(pendingPayment.args || {}), valor: amount };
             s.pendingClientPayment = null;
             syntheticToolCalls = [{
-              name: selected === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
-              args: selected === 'checkout' ? { acao: 'criar_link', ...args } : args
+              name: 'checkout_infinitepay',
+              args: { acao: 'criar_link', ...args }
             }];
           }
         }
