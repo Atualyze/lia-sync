@@ -17,7 +17,7 @@
 - [x] **Verificação do resultado:** status estrutural separado da resposta do modelo; sucesso textual ou intenção não são prova de execução.
 - [x] **Recuperação segura:** falhas transitórias de leitura podem recomendar nova consulta após revisão. Nenhuma ferramenta com efeito externo/financeiro ou mutação recebe retry automático.
 - [x] **Autonomia com limites:** perfil por ferramenta informa modo, efeitos, autorização e política de retry; proteções específicas de envio, pagamento, configuração e PR continuam obrigatórias.
-- [x] **Auditoria sanitizada:** executeToolCall registra ferramenta, papel, estado, duração e etapa do plano em audit_log quando o Supabase está disponível. Não persiste argumentos, conteúdo, telefone ou payload do resultado; falha de auditoria não provoca repetição da operação.
+- [x] **Auditoria sanitizada:** executeToolCall registra ferramenta, papel, identificador de cliente parcialmente mascarado quando disponível, estado, duração e etapa do plano em audit_log quando o Supabase está disponível. Não persiste argumentos, conteúdo, telefone em claro ou payload do resultado; falha de auditoria não provoca repetição da operação.
 - [ ] **Próxima fase:** planejamento persistente para tarefas longas, dependências explícitas entre etapas, idempotência por operação, revisão humana unificada e reconciliação de resultados externos (entrega WhatsApp/pagamento) com ledger/auditoria. Não habilitar retries automáticos para efeitos externos sem idempotência verificável.
 
 ## Evidências
