@@ -2932,7 +2932,14 @@ ${errMsg}`;
           }
         }
 
-        if (!toolOutputs.length && claimsUnexecutedToolWork(rawReply)) {
+        const activeOperationalTask = activeTask && (
+          activeTask.type !== 'general'
+          || (Array.isArray(activeTask.allowedTools) && activeTask.allowedTools.length > 0)
+        );
+        const explicitOperationalIntent = Boolean(activeOperationalTask)
+          || hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
+          || hasOtherExplicitToolIntent(cleanCommand);
+        if (!toolOutputs.length && explicitOperationalIntent && claimsUnexecutedToolWork(rawReply)) {
           return recordSelfTurn(filterReply(
             '⚠️ Não iniciei essa ação: nenhuma ferramenta confirmou a execução e nenhuma tarefa foi registrada. Não vou afirmar que estou pesquisando ou gerando algo sem ter iniciado de verdade. Envie novamente o pedido para eu tentar iniciar a operação.',
             { isCopilot: true }
