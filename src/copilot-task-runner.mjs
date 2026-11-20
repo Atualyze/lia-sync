@@ -135,12 +135,15 @@ export function createCopilotTaskRunner({
     try {
       const session = sessionStore.get(OWNER_SELF_KEY);
       session.history ??= [];
-      session.history.push({
-        role: 'assistant',
-        content: reply,
-        createdAt: new Date().toISOString(),
-        taskId: task.id
-      });
+      const alreadyRecorded = session.history.some(item => item?.taskId === task.id);
+      if (!alreadyRecorded) {
+        session.history.push({
+          role: 'assistant',
+          content: reply,
+          createdAt: new Date().toISOString(),
+          taskId: task.id
+        });
+      }
       if (session.history.length > 100) session.history = session.history.slice(-80);
       session.lastBotAt = new Date().toISOString();
       session.updatedAt = new Date().toISOString();
@@ -157,13 +160,13 @@ export function createCopilotTaskRunner({
   };
 
   const deliver = async (task, reply) => {
+    const claimed = await taskStore.beginDelivery(task.id);
+    if (!claimed) return 'not_claimed';
     const target = String(getHumanPhone() || '').replace(/\D/g, '');
     if (!target || target.length < 8) {
       await taskStore.finishDelivery(task.id, 'skipped', 'Destino interno não configurado; consulte a tarefa pelo Copiloto.');
       return 'skipped';
     }
-    const claimed = await taskStore.beginDelivery(task.id);
-    if (!claimed) return 'not_claimed';
 
     try {
       const filtered = filterReply(reply, { isCopilot: true });
@@ -234,11 +237,11 @@ export function createCopilotTaskRunner({
             result: { result: safeResult, verification },
             error: result?.error || result?.message || verification.state
           });
+          const reply = await buildFinalReply({ ai, task, outputs, botConfig });
           await taskStore.finish(task.id, token, terminalStepState, {
-            result: { outputs, reply: null },
+            result: { outputs, reply },
             error: result?.error || result?.message || verification.state
           });
-          const reply = await buildFinalReply({ ai, task, outputs, botConfig });
           const updatedTask = { ...task, status: terminalStepState };
           await recordInternalHistory(reply, updatedTask);
           await audit('copilot_task_finished', task, terminalStepState);
@@ -281,6 +284,22 @@ export function createCopilotTaskRunner({
     if (stopped || running || !taskStore?.enabled) return false;
     running = true;
     activePromise = (async () => {
+      const pending = await taskStore.pendingDelivery?.();
+      if (pending) {
+        const reply = String(pending.result?.reply || await buildFinalReply({
+          ai,
+          task: pending,
+          outputs: Array.isArray(pending.result?.outputs) ? pending.result.outputs : [],
+          botConfig: getBotConfig() || {}
+        })).trim();
+        if (reply) {
+          await recordInternalHistory(reply, pending);
+          await deliver(pending, reply);
+          return true;
+        }
+        await taskStore.finishDelivery(pending.id, 'skipped', 'A tarefa não possui resposta recuperável.');
+      }
+
       const task = await taskStore.claimNext(workerId);
       if (!task) return false;
       await audit('copilot_task_started', task, 'running');
