@@ -249,5 +249,5 @@ export function isDirectPixChoice(message = '', assistantContext = '') {
 /** A status question should consult durable task state, not ask the model to guess. */
 export function isCopilotTaskStatusQuestion(message = '') {
   const value = normalizedContinuityText(message).replace(/[.!?]+$/g, '').trim();
-  return /^(?:onde (?:esta|ficou)|cade|estou esperando|ainda estou esperando|e a (?:pesquisa|consulta|busca|tarefa|resultado)|e o (?:resultado|retorno)|status(?: da)? (?:pesquisa|consulta|busca|tarefa)|como esta a (?:pesquisa|consulta|busca|tarefa))\b/.test(value);
+  return /^(?:onde (?:esta|ficou)|cade|estou esperando|ainda estou esperando|o que (?:houve|aconteceu)|alguma novidade|ja (?:terminou|concluiu)|conseguiu|teve retorno|tem retorno|e a (?:pesquisa|consulta|busca|tarefa|resultado)|e o (?:resultado|retorno)|status(?: da)? (?:pesquisa|consulta|busca|tarefa)|como esta a (?:pesquisa|consulta|busca|tarefa))\b/.test(value);
 }
