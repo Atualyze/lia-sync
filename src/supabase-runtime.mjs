@@ -17,7 +17,12 @@ const normalizePendingClientPayment = value => {
   const description = typeof sourceArgs.descricao === 'string' ? sourceArgs.descricao.trim().slice(0, 80) : '';
   if (description) args.descricao = description;
   const choice = value.choice === 'pix' || value.choice === 'checkout' ? value.choice : null;
-  return { args, choice, createdAt };
+  const lastQuestion = typeof value.lastQuestion === 'string' ? value.lastQuestion.slice(0, 320) : '';
+  let pausedAt = null;
+  if (value.pausedAt) {
+    try { pausedAt = iso(value.pausedAt); } catch { pausedAt = null; }
+  }
+  return { args, choice, createdAt, ...(lastQuestion ? { lastQuestion } : {}), ...(pausedAt ? { pausedAt } : {}) };
 };
 const normalizePendingCopilotTask = value => {
   const allowed = new Set(['general', 'payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
@@ -194,6 +199,7 @@ function rowToSession(row, messages = []) {
     archiveReason: row.archive_reason || undefined,
     legalHold: Boolean(meta.legalHold || meta.legal_hold),
     _conversationId: row.id,
+    _contactId: row.contact_id || null,
     _externalKey: key
   };
 }
@@ -298,6 +304,72 @@ export class SupabaseSessionStore extends SessionStore {
       existing.jid = cleanJid;
       this.markDirty?.();
     }
+  }
+
+  /**
+   * Loads a bounded amount of prior conversation history for the same contact.
+   * This method is called only after an explicit request to revisit an old topic.
+   */
+  async searchContactConversationHistory(session, {
+    conversationLimit = 20,
+    messageLimit = 400
+  } = {}) {
+    const contactId = String(session?._contactId || '').trim();
+    if (!this.client?.enabled || !contactId) return [];
+
+    const maxConversations = Math.max(1, Math.min(30, Number(conversationLimit) || 20));
+    const maxMessages = Math.max(20, Math.min(600, Number(messageLimit) || 400));
+    let conversations;
+    try {
+      conversations = await this.client.select(
+        'conversations',
+        `select=id,updated_at,status&contact_id=eq.${encodeURIComponent(contactId)}&origin=eq.real&deleted_at=is.null&order=updated_at.desc&limit=${maxConversations}`
+      );
+    } catch {
+      conversations = await this.client.select(
+        'conversations',
+        `select=id,updated_at,status&contact_id=eq.${encodeURIComponent(contactId)}&origin=eq.real&order=updated_at.desc&limit=${maxConversations}`
+      ).catch(error => {
+        this.logger.warn?.(`[supabase] falha ao localizar conversas anteriores do contato: ${error?.name || 'Error'}`);
+        return [];
+      });
+    }
+
+    const conversationIds = [...new Set((Array.isArray(conversations) ? conversations : [])
+      .map(row => String(row?.id || '').trim())
+      .filter(Boolean))];
+    if (session?._conversationId && !conversationIds.includes(String(session._conversationId))) {
+      conversationIds.unshift(String(session._conversationId));
+    }
+    if (!conversationIds.length) return [];
+
+    const ids = conversationIds.slice(0, maxConversations).join(',');
+    let messages;
+    try {
+      messages = await this.client.select(
+        'conversation_messages',
+        `select=conversation_id,external_id,role,content,created_at,deleted_at&conversation_id=in.(${ids})&deleted_at=is.null&order=created_at.desc&limit=${maxMessages}`
+      );
+    } catch {
+      messages = await this.client.select(
+        'conversation_messages',
+        `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${ids})&order=created_at.desc&limit=${maxMessages}`
+      ).catch(error => {
+        this.logger.warn?.(`[supabase] falha ao recuperar histórico anterior do contato: ${error?.name || 'Error'}`);
+        return [];
+      });
+    }
+
+    return (Array.isArray(messages) ? messages : [])
+      .filter(message => message?.conversation_id && String(message.content || '').trim())
+      .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+      .map(message => ({
+        role: message.role === 'assistant' ? 'assistant' : 'user',
+        content: String(message.content || '').slice(0, 1200),
+        createdAt: message.created_at || null,
+        ...(message.external_id ? { id: message.external_id } : {}),
+        conversationId: String(message.conversation_id)
+      }));
   }
 
   async purgeArchives() {

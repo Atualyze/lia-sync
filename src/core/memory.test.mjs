@@ -87,3 +87,47 @@ test('memória: corrigir conteúdo atualiza o vetor semântico anterior', async 
   assert.deepEqual(corrected.memory.embedding, [0, 1, 0]);
   assert.match(corrected.memory.content, /atualizado/i);
 });
+
+
+test('memória: projetos antigos não aparecem quando não têm relação com o assunto atual', t => {
+  const store = tempStore(t);
+  store.remember({
+    scopeKey: 'tenant:client-a',
+    type: 'project',
+    content: 'Projeto de site e painel para oficina de motos',
+    importance: 1
+  });
+  store.remember({
+    scopeKey: 'tenant:client-a',
+    type: 'preference',
+    content: 'Prefere respostas curtas e objetivas',
+    importance: 0.9
+  });
+
+  const result = store.retrieve({
+    scopeKey: 'tenant:client-a',
+    query: 'O cliente informou 5 para o Pix copia e cola e aguarda confirmação da equipe',
+    limit: 6
+  });
+
+  assert.deepEqual(result.map(item => item.type), ['preference']);
+});
+
+test('memória: projeto antigo volta a ser recuperado quando o assunto atual é relevante', t => {
+  const store = tempStore(t);
+  store.remember({
+    scopeKey: 'tenant:client-a',
+    type: 'project',
+    content: 'Projeto de site e painel para oficina de motos',
+    importance: 0.9
+  });
+
+  const result = store.retrieve({
+    scopeKey: 'tenant:client-a',
+    query: 'Quero retomar o site da oficina de motos',
+    limit: 6
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].type, 'project');
+});

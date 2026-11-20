@@ -8,7 +8,7 @@ import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/in
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
-import { selectActiveClientHistory } from './client-context.mjs';
+import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
@@ -426,12 +426,45 @@ export async function handleClientMessage({
       const hasPendingClientWork = Boolean(
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
+      const barePaymentAmount = /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i
+        .test(String(clean || '').trim());
+      const explicitPaymentAction = /\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|passa|passar|fazer|faz|cobrar|cobrar|pagar|informa|informar)\b.{0,70}\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b/i
+        .test(normalize(clean));
+      const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
+        .test(normalize(clean));
+      const paymentChoice = resolvePaymentChoice(clean);
+      const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
+      const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
+      const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
+        explicitPaymentAction
+        || explicitPaymentAmount
+        || (!pendingPaymentPaused && paymentChoice
+          && lastAssistantAskedForPayment(s.history, pendingPaymentQuestion))
+        || (!pendingPaymentPaused && barePaymentAmount
+          && lastAssistantAskedForPaymentAmount(s.history, pendingPaymentQuestion))
+      ));
+      const pendingAgendaPaused = Boolean(s.pendingClientAgenda?.pausedAt);
+      const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
+        && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
+        && !pendingAgendaPaused
+        && lastAssistantAskedForAgendaConfirmation(s.history, s.pendingClientAgenda?.lastQuestion || ''));
+      const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
+        .test(normalize(clean));
+      // Ao mudar de assunto, mantém a operação pendente para uma retomada explícita,
+      // mas impede que um número ou "sim" futuro sejam consumidos como resposta antiga.
+      if (s.pendingClientPayment && !pendingPaymentAnswer && !asksAboutRecentReply && !explicitPaymentAction && !explicitPaymentAmount) {
+        s.pendingClientPayment.pausedAt ||= new Date(now()).toISOString();
+      }
+      if (s.pendingClientAgenda && !pendingAgendaAnswer && !asksAboutRecentReply) {
+        s.pendingClientAgenda.pausedAt ||= new Date(now()).toISOString();
+      }
+      const pendingContextContinuation = pendingPaymentAnswer || pendingAgendaAnswer || asksAboutRecentReply;
       const activeContext = selectActiveClientHistory(s.history, {
         maxTurns: contextTurns,
         nowMs: now(),
-        preservePendingContext: hasPendingClientWork
+        preservePendingContext: hasPendingClientWork && pendingContextContinuation
       });
-      if (activeContext.topicBoundary && !hasPendingClientWork) {
+      if (activeContext.topicBoundary && !pendingContextContinuation) {
         s.contextSummary = null;
         s.conversationState = null;
         s.subject = null;
@@ -440,25 +473,77 @@ export async function handleClientMessage({
         s.sectorName = null;
         s.sectorCategory = null;
       }
-      const promptSession = {
-        ...s,
-        history: activeContext.history,
-        hasPriorConversation: activeContext.history.length > 1,
-        ...(activeContext.topicBoundary && !hasPendingClientWork
-          ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
-          : {})
-      };
-      const memoryQuery = activeContext.history.slice(-6)
-        .map(entry => `${entry.role}: ${entry.content || ''}`)
-        .concat([clean])
-        .join('\n')
-        .slice(-5000);
+      const memoryQuery = buildMemoryRetrievalQuery(
+        clean,
+        activeContext.history.slice(0, -1),
+        { maxContextMessages: 4, maxChars: 2200 }
+      );
       const promptMemories = await memoryStore.retrieveSemantic({
         scopeKey: clientMemScope,
         query: memoryQuery,
         limit: 6,
         timeoutMs: 1200
       });
+
+      // Conversas antigas são pesquisadas somente quando o cliente pede para
+      // retomar ou recordar um assunto anterior. Esse material nunca substitui
+      // nem se mistura ao histórico ativo do atendimento.
+      const historyRecallRequested = isExplicitHistoryRecallRequest(clean);
+      let historyRecall = { matched: false, messages: [], reason: 'not_requested' };
+      if (historyRecallRequested) {
+        let storedHistory = [];
+        if (typeof store.searchContactConversationHistory === 'function') {
+          try {
+            storedHistory = await store.searchContactConversationHistory(s, {
+              conversationLimit: 20,
+              messageLimit: 400
+            });
+          } catch (error) {
+            logger.warn?.(`[flow:history] busca de conversas anteriores indisponível: ${error?.name || 'Error'}`);
+          }
+        }
+
+        const currentMessageId = String(messageId || '');
+        const currentTime = now();
+        const historicalOnly = storedHistory.filter(message => {
+          if (currentMessageId && String(message.id || '').endsWith(currentMessageId)) return false;
+          const createdAt = Date.parse(message.createdAt || '');
+          const sameCurrentText = message.role === 'user'
+            && normalize(message.content || '') === normalize(clean);
+          return !(sameCurrentText && (!Number.isFinite(createdAt) || Math.abs(currentTime - createdAt) < 120000));
+        });
+        const localPriorHistory = s.history.slice(0, -1).map(message => ({
+          ...message,
+          conversationId: message.conversationId || s._conversationId || 'active'
+        }));
+        const deduplicated = new Map();
+        for (const message of [...historicalOnly, ...localPriorHistory]) {
+          const key = [
+            message.conversationId || 'active',
+            message.role,
+            message.createdAt || '',
+            message.content || ''
+          ].join('|');
+          deduplicated.set(key, message);
+        }
+        historyRecall = selectRelevantConversationContext(
+          [...deduplicated.values()],
+          clean,
+          { maxMessages: 10 }
+        );
+      }
+
+      const promptSession = {
+        ...s,
+        history: activeContext.history,
+        hasPriorConversation: activeContext.history.length > 1,
+        historyRecallRequested,
+        historyRecallMatched: historyRecall.matched,
+        recalledHistory: historyRecall.messages,
+        ...(activeContext.topicBoundary && !pendingContextContinuation
+          ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
+          : {})
+      };
       const systemPrompt = buildSystemPrompt({
         session: promptSession,
         faq: items,
@@ -630,13 +715,13 @@ export async function handleClientMessage({
         : null;
 
       // Respostas curtas continuam o pedido pendente sem depender de a IA repetir a tool_call.
-      if (pendingAgenda && isNaturalNegative(clean)) {
+      if (pendingAgenda && pendingAgendaAnswer && isNaturalNegative(clean)) {
         s.pendingClientAgenda = null;
         toolReplyOverride = 'Tudo bem, não vou agendar esse horário. Se quiser, posso consultar outra opção.';
-      } else if (pendingAgenda && isNaturalAffirmation(clean)) {
+      } else if (pendingAgenda && pendingAgendaAnswer && isNaturalAffirmation(clean)) {
         syntheticToolCalls = [{ name: 'gerenciar_agenda_google', args: pendingAgenda.args || {} }];
         s.pendingClientAgenda = null;
-      } else if (pendingPayment) {
+      } else if (pendingPayment && pendingPaymentAnswer) {
         const selected = currentPaymentChoice || pendingPayment.choice;
         if (selected === 'key') {
           s.pendingClientPayment = null;
@@ -645,6 +730,10 @@ export async function handleClientMessage({
           const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
           if (amount <= 0) {
             pendingPayment.choice = selected;
+            pendingPayment.lastQuestion = selected === 'checkout'
+              ? 'Para gerar o checkout, qual é o valor do pagamento?'
+              : 'Qual é o valor para eu gerar o código copia e cola?';
+            delete pendingPayment.pausedAt;
             s.pendingClientPayment = pendingPayment;
             toolReplyOverride = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
@@ -676,10 +765,10 @@ export async function handleClientMessage({
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (choice === 'pix' || choice === 'checkout') {
           if (choice === 'checkout' && amount <= 0) {
-            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
             toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
           } else if (choice === 'pix' && amount <= 0) {
-            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
             toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
           } else {
             syntheticToolCalls = [{
@@ -689,7 +778,7 @@ export async function handleClientMessage({
             toolCalls = syntheticToolCalls;
           }
         } else {
-          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
           toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
         }
       }
@@ -722,17 +811,17 @@ export async function handleClientMessage({
                 continue;
               }
               if (!pendingPayment && !directChoice) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
                 toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
                 continue;
               }
               if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
                 toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
                 continue;
               }
               if (!pendingPayment && directChoice === 'pix' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'pix', createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'pix', createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
                 toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
                 continue;
               }
@@ -741,7 +830,7 @@ export async function handleClientMessage({
             // Consultar disponibilidade é seguro; criar evento altera a agenda e exige
             // confirmação final do cliente, mesmo que o pedido inicial tenha sido direto.
             if (isClient && tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && !syntheticToolCalls.includes(tc)) {
-              s.pendingClientAgenda = { args: { ...(tc.args || {}) }, createdAt: new Date(now()).toISOString() };
+              s.pendingClientAgenda = { args: { ...(tc.args || {}) }, createdAt: new Date(now()).toISOString(), lastQuestion: 'Posso confirmar e agendar esse horário para você?' };
               const date = tc.args?.date || tc.args?.start || 'a data informada';
               const time = tc.args?.startTime || tc.args?.time || '';
               toolReplyOverride = `Encontrei o horário de atendimento para ${date}${time ? ` às ${time}` : ''}. Posso confirmar e agendar para você?`;
