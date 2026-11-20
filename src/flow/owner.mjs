@@ -258,7 +258,7 @@ export async function handleOwnerSession({
           auditActorLabel: context.auditActorLabel || 'responsável'
         });
         const aiDeadline = Date.now() + 35000;
-        const sSelf = store.get(phone === OWNER_SELF_KEY ? OWNER_SELF_KEY : phone);
+        const sSelf = store.get(OWNER_SELF_KEY);
         sSelf.human = false;
         sSelf.isInternalChat = true;
         sSelf.clientName = `${owner} (Copiloto)`;
