@@ -108,6 +108,37 @@ test('cancelamento durável altera a tarefa por RPC e só retorna sucesso confir
   assert.deepEqual(calls, [{ name: 'cancel_copilot_task', args: { p_task_id: 'task-id' } }]);
 });
 
+test('enqueue reconcilia timeout depois de o Supabase já ter confirmado o INSERT', async () => {
+  const rows = new Map();
+  let threwAfterCommit = false;
+  const client = {
+    enabled: true,
+    async select(_table, query) {
+      const key = decodeURIComponent(query.match(/idempotency_key=eq\.([^&]+)/)?.[1] || '');
+      return key && rows.has(key) ? [rows.get(key)] : [];
+    },
+    async request(_table, { body }) {
+      const row = body[0];
+      rows.set(row.idempotency_key, row);
+      if (!threwAfterCommit) {
+        threwAfterCommit = true;
+        throw new Error('Supabase POST timeout after commit');
+      }
+      return [row];
+    },
+    async rpc() { return null; }
+  };
+  const store = new CopilotTaskStore(client, { logger: { warn() {} } });
+  await store.initialize();
+  const result = await store.enqueue({
+    messageId: 'wa-message-response-lost',
+    requestText: 'Pesquise a documentação oficial',
+    steps: [{ name: 'consultar_web', args: { query: 'documentação oficial' } }]
+  });
+  assert.equal(result.duplicate, true);
+  assert.equal(rows.size, 1);
+});
+
 test('fila recusa plano com etapas demais ou efeito externo', async () => {
   const store = new CopilotTaskStore({ enabled: true, async select() { return []; } });
   store.ready = true;
