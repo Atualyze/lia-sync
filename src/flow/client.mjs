@@ -12,6 +12,7 @@ import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistan
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
+import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 
 function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
@@ -676,17 +677,53 @@ export async function handleClientMessage({
           }
           safeReplyText = repairedReply || 'Desculpe, acho que misturei os assuntos na resposta anterior. O que você gostaria que eu esclarecesse?';
         } else {
+          const requestedPixAmount = amountFromText(clean);
+          const hasPendingPixChoice = Boolean(
+            s.pendingClientPayment
+            && s.pendingClientPayment.choice === 'pix'
+            && !s.pendingClientPayment.pausedAt
+          );
+          const needsAdminPixDecision = Boolean(
+            isPriceViolation
+            && priceContextActive
+            && hasPendingPixChoice
+            && requestedPixAmount > 0
+          );
+          if (needsAdminPixDecision) {
+            const requestedAt = new Date(now()).toISOString();
+            s.pendingAdminDecision = {
+              type: 'pix_generation',
+              status: 'pending',
+              amount: requestedPixAmount,
+              description: String(s.pendingClientPayment.args?.descricao || 'Pagamento via Pix').slice(0, 80),
+              paymentMethod: 'pix_copy_paste',
+              requestedAt
+            };
+            store.markDirty();
+          }
+
+          const handoffNotify = needsAdminPixDecision
+            ? async message => notify(buildAdminPixDecisionNotice({
+              clientName: s.clientName || pushName || 'Cliente',
+              phone: s.phone,
+              amount: requestedPixAmount
+            }) + `\n\n` + message)
+            : notify;
           await triggerHandoff(s, {
-            reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
+            reason: needsAdminPixDecision
+              ? 'aguardando decisão do responsável para gerar cobrança Pix'
+              : `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
             urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
             now: now(),
-            notify,
+            notify: handoffNotify,
             forceNotify: true,
             identity
           });
-          safeReplyText = faqPriceReply || (isPriceViolation
-            ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Já solicitei essa verificação e retorno por aqui.'
-            : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+          safeReplyText = needsAdminPixDecision
+            ? 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.'
+            : (faqPriceReply || (isPriceViolation
+              ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
+              : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.'));
         }
       }
       let finalReply = String(safeReplyText || '')
