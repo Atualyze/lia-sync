@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.8.0**
+Versão: **2.9.0**
 
 ## Objetivo
 
@@ -100,3 +100,38 @@ npm run test:contract
 ```
 
 `lint` e `build` executam a verificação de sintaxe dos módulos `.mjs` através de `scripts/check-syntax.mjs`; não exigem ferramentas Unix.
+
+
+## Execução durável do Copiloto (2.9.0)
+
+O histórico da conversa e a tarefa executável são estados separados. `pendingCopilotTask`
+mantém contexto conversacional; `public.copilot_tasks` registra operações que
+precisam continuar mesmo depois do encerramento do webhook ou reinício do processo.
+
+- `src/copilot-tasks.mjs`: estado da fila, idempotência por ID de mensagem,
+  allowlist de etapas seguras, escolha determinística de modalidade Pix e status.
+- `src/copilot-task-runner.mjs`: worker sequencial, heartbeat de lease,
+  checkpoints, resumo a partir dos resultados reais, histórico interno e saída WhatsApp.
+- `src/server.mjs`: inicializa o store e executa o worker em loop; o claim SQL
+  é distribuído e impede que duas réplicas reivindiquem a mesma tarefa.
+- `supabase/migrations/20261120160000_copilot_tasks.sql`: tabela privada,
+  RLS sem policies e RPCs atômicas de claim/renew/checkpoint/finish/delivery.
+
+O worker aceita apenas planos validados (até quatro etapas) com operações
+explicitamente seguras: consultas read-only, leitura de agenda/Sheets/Drive,
+busca web, saúde/CRM/base de conhecimento e Pix estático. Para Pix, o worker
+gera TXID determinístico por task ID e força `enviarWhatsApp=false`; ele
+entrega o código/link no resultado, evitando efeito incidental ao executar
+mais de uma vez após um lease expirado.
+
+Criação de checkout externo, gravações, agenda mutável, envio de mensagens ou
+arquivos, configuração e código permanecem nos fluxos com confirmação já
+existentes, não na fila genérica. Entrega WhatsApp tem estado separado:
+`pending` pode ser recuperado; `sending` vencido vira `uncertain` e não é
+reenviado automaticamente. Isso evita duplicar mensagens quando o provedor
+aceitou a entrega mas a confirmação se perdeu.
+
+O Copiloto consulta a fila para perguntas como “onde está?” e “estou esperando”.
+A resposta mostra estado/resultado persistido, não uma inferência do modelo.
+A migration precisa ser aplicada antes do deploy; se a tabela ainda não existir,
+a fila fica desativada com log explícito e o fluxo legado permanece ativo.
