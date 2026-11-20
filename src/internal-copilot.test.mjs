@@ -80,6 +80,48 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   assert.equal(expireSent.length, 0);
 });
 
+test('Copiloto: resposta curta não aprova disparo antigo em estado incerto', async () => {
+  const store = createMockStore();
+  const self = store.get('owner_self');
+  self.pendingOutboundDispatch = {
+    id: 'A1B2C3D4',
+    status: 'uncertain',
+    recipient: 'Lima',
+    phone: '5585991099483',
+    message: 'Mensagem antiga',
+    createdAt: new Date().toISOString()
+  };
+
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    isOwnerSender: phone => phone === 'owner_self',
+    whatsapp: { sendText: async () => { throw new Error('não deveria enviar'); } },
+    ai: {
+      askAI: async () => {
+        aiCalls += 1;
+        return {
+          reply: 'Claro. Posso tentar a pesquisa novamente.',
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: 'owner_self',
+    text: 'sim',
+    origin: 'owner'
+  });
+
+  assert.equal(aiCalls > 0, true, 'a resposta curta deve seguir para o Copiloto quando o disparo antigo está incerto');
+  assert.match(reply, /tentar a pesquisa novamente/i);
+  assert.doesNotMatch(reply, /resultado incerto|não vou repeti-lo automaticamente/i);
+  assert.equal(self.pendingOutboundDispatch?.status, 'uncertain');
+});
+
 test('Copiloto: ferramenta incompatível pede contexto sem apagar a tarefa ativa', async () => {
   const store = createMockStore();
   const self = store.get('owner_self');
