@@ -34,3 +34,6 @@
 
 - [x] **Portal Atualyze Pay:** página pública responsiva em `/pix` com QR Code, cópia da chave Pix, cópia do código Pix e Cola, feedback de cópia e botão opcional para abrir o checkout InfinitePay. Os fluxos Pix e InfinitePay passam a retornar `paymentUrl` unificado quando há chave Pix configurada; URLs de checkout são validadas antes de aparecerem na página.
 - [ ] **DNS e TLS do portal:** criar o registro DNS `pay.atualyze.com.br` apontando para a VPS e emitir certificado HTTPS no Nginx; a implementação da aplicação está pronta, mas o domínio ainda não resolve publicamente.
+
+- [x] **Fila persistente do Copiloto (2.9.0 / PR #15):** jobs idempotentes no Supabase, worker com lease, retomada segura, consulta de status, notificação de falha/resultado incerto, bloqueio de promessas sem ferramenta e isolamento de criação Pix sem retry. **Antes do deploy:** aguardar CI verde e aplicar `20261120150000_copilot_task_queue.sql` no Supabase; verificar `/ready` com `copilot_tasks: ready`.
+- [ ] **Operação de tarefas incertas:** definir procedimento administrativo no painel para reconciliar cobranças/entregas marcadas como `uncertain`, sem replay automático.
