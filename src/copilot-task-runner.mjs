@@ -57,6 +57,8 @@ function fallbackReply(requestText, outputs = []) {
 
 async function buildFinalReply({ ai, task, outputs, botConfig }) {
   if (!outputs.length) return 'A tarefa foi encerrada sem resultados executáveis. Não considerei a solicitação concluída.';
+  // Pix Copia e Cola é um artefato exato: não o reescrever nem resumir com IA.
+  if (outputs.some(item => item.tool === 'gerar_cobranca_pix')) return fallbackReply(task.request_text, outputs);
   if (ai?.askAI) {
     try {
       const result = await ai.askAI({
@@ -101,6 +103,8 @@ export function createCopilotTaskRunner({
   whatsapp = {},
   getBotConfig = () => ({}),
   getHumanPhone = () => '',
+  reminderStore = null,
+  adminConfig = null,
   operationsStore = null,
   logger = console,
   workerId = String(process.pid),
@@ -149,7 +153,10 @@ export function createCopilotTaskRunner({
       session.updatedAt = new Date().toISOString();
       if (task.task_type === 'payment' && task.status === 'succeeded') session.pendingPixRequest = null;
       const pending = session.pendingCopilotTask;
-      if (pending && String(pending.originCommand || '') === String(task.request_text || '')) {
+      if (pending && (
+        pending.taskId === task.id
+        || (!pending.taskId && String(pending.originCommand || '') === String(task.request_text || ''))
+      )) {
         session.pendingCopilotTask = null;
       }
       sessionStore.markDirty();
@@ -216,8 +223,15 @@ export function createCopilotTaskRunner({
           isOwner: true,
           clientName: String(task.actor_label || 'responsável') + ' (Copiloto)',
           botConfig,
+          adminConfig,
+          store: sessionStore,
+          session: sessionStore?.get?.(OWNER_SELF_KEY),
+          reminderStore,
           whatsapp,
+          ai,
           operationsStore,
+          userText: String(task.request_text || ''),
+          auditActorLabel: String(task.actor_label || 'responsável').slice(0, 80),
           searchWebWithGemini: ai?.searchWebWithGemini,
           planStep: index + 1
         };
