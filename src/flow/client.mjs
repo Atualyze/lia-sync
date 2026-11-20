@@ -8,7 +8,7 @@ import { executeToolCall, isClientToolAllowed, isToolEnabled } from '../tools/in
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
-import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
+import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
@@ -426,13 +426,22 @@ export async function handleClientMessage({
       const hasPendingClientWork = Boolean(
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
+      const barePaymentAmount = /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i
+        .test(String(clean || '').trim());
+      const explicitPaymentAction = /\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|passa|passar|fazer|faz|cobrar|cobrar|pagar|informa|informar)\b.{0,70}\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b/i
+        .test(normalize(clean));
+      const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
+        .test(normalize(clean));
+      const paymentChoice = resolvePaymentChoice(clean);
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
-        resolvePaymentChoice(clean)
-        || isPixActionRequest(clean)
-        || /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i.test(String(clean || '').trim())
+        explicitPaymentAction
+        || explicitPaymentAmount
+        || (paymentChoice && lastAssistantAskedForPayment(s.history))
+        || (barePaymentAmount && lastAssistantAskedForPaymentAmount(s.history))
       ));
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
-        && (isNaturalAffirmation(clean) || isNaturalNegative(clean)));
+        && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
+        && lastAssistantAskedForAgendaConfirmation(s.history));
       const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
         .test(normalize(clean));
       const pendingContextContinuation = pendingPaymentAnswer || pendingAgendaAnswer || asksAboutRecentReply;
@@ -692,10 +701,10 @@ export async function handleClientMessage({
         : null;
 
       // Respostas curtas continuam o pedido pendente sem depender de a IA repetir a tool_call.
-      if (pendingAgenda && isNaturalNegative(clean)) {
+      if (pendingAgenda && pendingAgendaAnswer && isNaturalNegative(clean)) {
         s.pendingClientAgenda = null;
         toolReplyOverride = 'Tudo bem, não vou agendar esse horário. Se quiser, posso consultar outra opção.';
-      } else if (pendingAgenda && isNaturalAffirmation(clean)) {
+      } else if (pendingAgenda && pendingAgendaAnswer && isNaturalAffirmation(clean)) {
         syntheticToolCalls = [{ name: 'gerenciar_agenda_google', args: pendingAgenda.args || {} }];
         s.pendingClientAgenda = null;
       } else if (pendingPayment && pendingPaymentAnswer) {
