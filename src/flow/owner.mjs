@@ -1103,7 +1103,8 @@ export async function handleOwnerSession({
         // Comandos explícitos de gestão de contato já foram normalizados antes
         // do processamento de pendências; as decisões Pix foram tratadas acima.
         const isDirectContactCommand = /^(?:bot|humano|pausar|assuma|assume|assumir|limpar|reset|resetar)\b/i.test(cleanCommand);
-        const reactivationReply = isDirectContactCommand ? null : await handlePendingReactivationReply({
+        const isWaitingListInquiry = /\bfila\b|^\s*lista(?:\s+completa)?\s*[?!.,]*$|\bquem\b.*\b(?:esperando|aguardando|espera)\b|\b(?:tem|h[aá])\s+algu[eé]m\b.*\b(?:fila|esperando|aguardando)\b/i.test(cleanCommand);
+        const reactivationReply = (isDirectContactCommand || isWaitingListInquiry) ? null : await handlePendingReactivationReply({
           store, ai, whatsapp, botConfig, sSelf, cleanCommand, findSessionByTarget, now, owner, stageOutboundDispatch
         });
         if (reactivationReply) {
