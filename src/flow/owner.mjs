@@ -675,10 +675,11 @@ export async function handleOwnerSession({
         // Aprovação de cobrança Pix é um fluxo explícito, separado das confirmações
         // genéricas do Copiloto. "Sim", "ok" ou um valor nunca autorizam a cobrança.
         const persistAdminPixDecision = async () => {
-          if (store.file || store.client?.enabled) await persistAdminPixDecision();
+          if (store.file || store.client?.enabled) await store.flush?.();
+          assertOutboundStatePersisted();
         };
         const persistAdminPixDecisionBestEffort = async () => {
-          if (store.file || store.client?.enabled) await persistAdminPixDecisionBestEffort();
+          if (store.file || store.client?.enabled) await store.flush?.().catch(() => {});
           else { clearTimeout(store.saveTimer); store.saveTimer = null; }
         };
         const adminPixChoice = parseAdminPixDecision(cleanCommand);
