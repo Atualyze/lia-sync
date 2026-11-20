@@ -99,3 +99,16 @@ test('chave de tarefa é estável para a mesma mensagem e plano', () => {
   assert.equal(createCopilotTaskKey(args), createCopilotTaskKey({ ...args, steps: [{ name: 'consultar_web', args: { query: 'alterado' } }] }));
   assert.notEqual(createCopilotTaskKey(args), createCopilotTaskKey({ ...args, messageId: 'wamid-456' }));
 });
+
+
+test('plano com cobrança Pix nunca recebe política de repetição somente-leitura', async () => {
+  await withStore(async store => {
+    const task = await store.enqueue(input({
+      taskKey: 'copilot:pix-never-retry',
+      steps: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste' } }],
+      retryPolicy: 'read_only'
+    }));
+    assert.equal(task.retryPolicy, 'never');
+    assert.equal(task.maxAttempts, 1);
+  });
+});
