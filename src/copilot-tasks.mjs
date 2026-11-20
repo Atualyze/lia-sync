@@ -45,7 +45,16 @@ export function isBackgroundCopilotStep(step = {}) {
   const mode = getToolExecutionPolicy(name).mode;
 
   if (SAFE_READ_MODES.has(mode)) return true;
-  if (name === 'gerar_cobranca_pix') return true;
+  if (name === 'gerar_cobranca_pix') {
+    const hasExplicitAmount = Object.prototype.hasOwnProperty.call(args, 'valor')
+      && typeof args.valor === 'number'
+      && Number.isFinite(args.valor)
+      && args.valor >= 0;
+    const hasDescription = typeof args.descricao === 'string'
+      && args.descricao.trim().length >= 2
+      && args.descricao.trim().length <= 80;
+    return hasExplicitAmount && hasDescription;
+  }
   if (name === 'checkout_infinitepay') {
     const hasStableOrderReference = ['orderNsu', 'transactionNsu', 'slug']
       .some(key => String(args[key] || '').trim().length > 0);
