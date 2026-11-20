@@ -238,7 +238,7 @@ returns boolean
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $
+as $cancel$
 declare v_rows integer;
 begin
   update public.copilot_tasks
@@ -254,7 +254,7 @@ begin
   get diagnostics v_rows = row_count;
   return v_rows = 1;
 end;
-$;
+$cancel$;
 
 create or replace function public.begin_copilot_task_delivery(p_task_id uuid)
 returns boolean
