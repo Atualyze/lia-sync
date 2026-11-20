@@ -17,6 +17,13 @@ export function isCopilotTaskStatusQuery(message = '') {
   return /\b(?:onde esta|cade|estou esperando|ainda estou esperando|e a (?:pesquisa|consulta|tarefa|cobranca)|como esta (?:a|essa|aquela)? ?(?:tarefa|pesquisa|consulta)|status da tarefa|resultado da consulta|ja terminou|terminou a pesquisa)\b/i.test(text);
 }
 
+export function isUnstartedActionPromise(reply = '') {
+  const text = String(reply || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+  const action = '(?:consultar|consultando|pesquisar|pesquisando|buscar|buscando|verificar|verificando|gerar|gerando|criar|criando|puxar|puxando|procurar|procurando)';
+  if (new RegExp('\\\\b(?:vou|ja vou|estou|ja estou|aguarde|so um instante)\\\\b.{0,100}\\\\b' + action + '\\\\b', 'i').test(text)) return true;
+  return /^\\s*(?:entendido[.!]\\s*)?(?:consultando|pesquisando|buscando|verificando|gerando|criando|puxando|procurando)\\b/i.test(text);
+}
+
 export function resolveCopilotPaymentMethodChoice(message = '', lastAssistantMessage = '') {
   const normalizeText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const current = normalizeText(message);
