@@ -111,3 +111,48 @@ test('worker informa falha terminal e não deixa a tarefa silenciosa', async () 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('worker interrompe cadeia quando a primeira consulta não encontra correspondência', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-worker-no-match-'));
+  const sent = [];
+  const executed = [];
+  try {
+    const taskStore = new CopilotTaskStore({
+      filePath: path.join(dir, 'tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await taskStore.load();
+    await taskStore.enqueue({
+      taskKey: 'copilot:worker-no-match',
+      ownerKey: 'owner_self',
+      targetPhone: '5588999999999',
+      requestSummary: 'Consultar contato e depois pesquisar',
+      steps: [
+        { name: 'consultar_contato_ou_lead', args: { phone: '5588999999999' } },
+        { name: 'consultar_web', args: { query: 'assunto relacionado' } }
+      ],
+      retryPolicy: 'read_only'
+    });
+    const worker = createCopilotTaskWorker({
+      taskStore,
+      store: { get: () => ({ history: [] }), markDirty() {}, flush: async () => {} },
+      getBotConfig: () => ({}),
+      sendText: async (target, message) => { sent.push(message); },
+      getHumanPhone: () => '5588999999999',
+      logger: { error() {} },
+      execute: async name => {
+        executed.push(name);
+        return { success: true, found: false };
+      }
+    });
+
+    assert.equal(await worker.runOnce(), false);
+    assert.equal(await worker.runOnce(), true);
+    assert.deepEqual(executed, ['consultar_contato_ou_lead']);
+    assert.match(sent[0], /não encontrei um registro correspondente/i);
+    assert.equal((await taskStore.getLatest('owner_self')).status, 'failed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
