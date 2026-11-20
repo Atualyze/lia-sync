@@ -18,17 +18,16 @@ export function isCopilotTaskStatusQuery(message = '') {
 }
 
 export function resolveCopilotPaymentMethodChoice(message = '', lastAssistantMessage = '') {
-  const normalizeText = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+  const normalizeText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const current = normalizeText(message);
   const previous = normalizeText(lastAssistantMessage);
   if (!/(?:prefere|direto|copia e cola|qr code|checkout|link de pagamento|pix e cartao)/.test(previous)) return null;
   if (/^(?:direto|pix direto|pix copia e cola|copia e cola|qr code|qr)$/i.test(current)
-    || /\\b(?:quero|prefiro|manda|gere|gera|faz|faca)\\s+(?:o\\s+)?(?:pix\\s+)?(?:direto|copia e cola|qr code)\\b/.test(current)) return 'pix';
+    || /\b(?:quero|prefiro|manda|gere|gera|faz|faca)\s+(?:o\s+)?(?:pix\s+)?(?:direto|copia e cola|qr code)\b/.test(current)) return 'pix';
   if (/^(?:checkout|link|infinitepay|pix e cartao|cartao)$/i.test(current)
-    || /\\b(?:checkout|link infinitepay|pix e cartao)\\b/.test(current)) return 'checkout';
+    || /\b(?:checkout|link infinitepay|pix e cartao)\b/.test(current)) return 'checkout';
   return null;
 }
-
 export function isBackgroundCopilotStep(step = {}) {
   const name = resolveToolName(step.name);
   const args = step.args && typeof step.args === 'object' && !Array.isArray(step.args) ? step.args : {};
