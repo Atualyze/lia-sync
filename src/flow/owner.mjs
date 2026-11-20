@@ -284,7 +284,7 @@ export async function handleOwnerSession({
         let activeTask = activeCopilotTask(sSelf, now());
         let currentToolSuggestions = [];
         const pendingPixAt = Date.parse(sSelf.pendingPixRequest?.requestedAt || '');
-        if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PENDING_TTL_MS)) {
+        if (sSelf.pendingPixRequest && (!Number.isFinite(pendingPixAt) || now() - pendingPixAt > COPILOT_PIX_CONTEXT_TTL_MS)) {
           sSelf.pendingPixRequest = null;
         }
 
