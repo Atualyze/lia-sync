@@ -26,6 +26,7 @@ const copilotOwnerFlow = await readFile('src/flow/owner.mjs', 'utf8');
 const copilotContinuity = await readFile('src/flow/copilot-continuity.mjs', 'utf8');
 const copilotServer = await readFile('src/server.mjs', 'utf8');
 const copilotFlow = await readFile('src/flow.mjs', 'utf8');
+const supabaseRuntime = await readFile('src/supabase-runtime.mjs', 'utf8');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
   ['campaign claims and retry state are persisted', observabilityMigration.includes("'sending'") && observabilityMigration.includes('attempt_count') && campaigns.includes('status=in.(pending,paused)') && campaigns.includes("status: 'sending'")],
@@ -60,6 +61,7 @@ const checks = [
   ['owner flow queues eligible tasks, reads active task status, and blocks unsupported execution promises', copilotOwnerFlow.includes('enqueueBackgroundTask') && copilotOwnerFlow.includes('getById(activeTaskId') && copilotOwnerFlow.includes('claimsUnexecutedToolWork(rawReply)')],
   ['Copilot continuity handles direct Pix choices, status questions, and unsupported promises', copilotContinuity.includes('isDirectPixChoice') && copilotContinuity.includes('isCopilotTaskStatusQuestion') && copilotContinuity.includes('claimsUnexecutedToolWork')],
   ['persistent Copilot worker is injected through flow and started/stopped with server lifecycle', copilotFlow.includes('copilotTaskStore = null') && copilotServer.includes('createCopilotTaskWorker') && copilotServer.includes('copilotTaskTimer') && copilotServer.includes('clearInterval(copilotTaskTimer)') && copilotServer.includes('COPILOT_TASK_LOCAL_FALLBACK')],
+  ['Supabase conversation metadata preserves the active durable task identity across restarts', supabaseRuntime.includes('taskId: value.taskId') && supabaseRuntime.includes('taskStatus: value.taskStatus')],
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);
