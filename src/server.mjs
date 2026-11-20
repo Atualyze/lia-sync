@@ -119,6 +119,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     whatsapp: { sendText },
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
+    reminderStore,
+    adminConfig,
     operationsStore,
     logger: console,
     workerId: `${os.hostname()}:${process.pid}`
