@@ -12,6 +12,7 @@ import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistan
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
+import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 
 function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
@@ -158,6 +159,9 @@ export async function handleClientMessage({
         }
       }
 
+      // Ações e confirmações devem vir da mensagem/caption original do cliente,
+      // nunca de texto extraído de uma imagem ou documento.
+      const actionText = clean;
       let mediaAnalyzedForAI = false;
 
       // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
@@ -427,12 +431,12 @@ export async function handleClientMessage({
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
       const barePaymentAmount = /^(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?(?:\s*(?:reais?|conto|contos))?[.!]*$/i
-        .test(String(clean || '').trim());
+        .test(String(actionText || '').trim());
       const explicitPaymentAction = /\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|passa|passar|fazer|faz|cobrar|cobrar|pagar|informa|informar)\b.{0,70}\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b/i
-        .test(normalize(clean));
+        .test(normalize(actionText));
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
-        .test(normalize(clean));
-      const paymentChoice = resolvePaymentChoice(clean);
+        .test(normalize(actionText));
+      const paymentChoice = resolvePaymentChoice(actionText);
       const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
       const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
@@ -445,11 +449,11 @@ export async function handleClientMessage({
       ));
       const pendingAgendaPaused = Boolean(s.pendingClientAgenda?.pausedAt);
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
-        && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
+        && (isNaturalAffirmation(actionText) || isNaturalNegative(actionText))
         && !pendingAgendaPaused
         && lastAssistantAskedForAgendaConfirmation(s.history, s.pendingClientAgenda?.lastQuestion || ''));
       const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
-        .test(normalize(clean));
+        .test(normalize(actionText));
       // Ao mudar de assunto, mantém a operação pendente para uma retomada explícita,
       // mas impede que um número ou "sim" futuro sejam consumidos como resposta antiga.
       if (s.pendingClientPayment && !pendingPaymentAnswer && !asksAboutRecentReply && !explicitPaymentAction && !explicitPaymentAmount) {
@@ -488,7 +492,7 @@ export async function handleClientMessage({
       // Conversas antigas são pesquisadas somente quando o cliente pede para
       // retomar ou recordar um assunto anterior. Esse material nunca substitui
       // nem se mistura ao histórico ativo do atendimento.
-      const historyRecallRequested = isExplicitHistoryRecallRequest(clean);
+      const historyRecallRequested = isExplicitHistoryRecallRequest(actionText);
       let historyRecall = { matched: false, messages: [], reason: 'not_requested' };
       if (historyRecallRequested) {
         let storedHistory = [];
@@ -621,29 +625,116 @@ export async function handleClientMessage({
       }
 
       if (!result || !raw) {
-        raw = `Tive uma leve instabilidade de conexão aqui no sistema! 📶\n\nMas posso ajudar você por aqui ou te colocar direto em contato com ${owner}. Como prefere seguir?`;
+        raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
         const oneHourAgo = now() - 3600000;
         const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
         if (lastFallback < oneHourAgo) {
           s.fallbackHandoffAt = new Date(now()).toISOString();
-          await notify(`[Alerta ${assistant}] Instabilidade de conexão/IA para ${s.phone}: "${clean}"`);
+          await notify(`[Alerta ${assistant}] Falha ao produzir uma resposta para ${s.phone}: "${clean}"`);
         }
       }
 
       const allowedPrices = getAllowedPrices();
       const filtered = filterReply(raw, { allowedPrices, strictPrices: true });
       let safeReplyText = String(filtered.text || '');
+      let adminPixApprovalPending = false;
+      const requestAdminPixApproval = async (amount, description = '') => {
+        const numericAmount = Number(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+          return 'Qual é o valor correto para a cobrança Pix?';
+        }
+        const existingDecision = s.pendingAdminDecision?.type === 'pix_generation'
+          && s.pendingAdminDecision.status === 'pending'
+          ? s.pendingAdminDecision
+          : null;
+        const sameDecision = existingDecision && Number(existingDecision.amount) === Number(numericAmount.toFixed(2));
+        const snapshot = {
+          pendingAdminDecision: s.pendingAdminDecision,
+          human: s.human,
+          humanSource: s.humanSource,
+          handoffAt: s.handoffAt,
+          handoffReason: s.handoffReason,
+          updatedAt: s.updatedAt
+        };
+        const requestedAt = sameDecision
+          ? existingDecision.requestedAt
+          : new Date(now()).toISOString();
+        if (!sameDecision) {
+          s.pendingAdminDecision = {
+            type: 'pix_generation',
+            status: 'pending',
+            amount: Number(numericAmount.toFixed(2)),
+            description: String(description || s.pendingClientPayment?.args?.descricao || 'Pagamento via Pix').slice(0, 80),
+            paymentMethod: 'pix_copy_paste',
+            requestedAt
+          };
+        }
+        const handoffReason = 'aguardando decisão do responsável para gerar cobrança Pix';
+        if (!s.human) {
+          s.human = true;
+          s.humanSource = s.humanSource || 'admin';
+          s.handoffAt = requestedAt;
+          s.handoffReason = handoffReason;
+        }
+        s.updatedAt = new Date(now()).toISOString();
+        store.markDirty();
+        const hasDurableSessionStore = Boolean(store.file || store.client?.enabled);
+        if (!hasDurableSessionStore) {
+          clearTimeout(store.saveTimer);
+          store.saveTimer = null;
+        }
+        try {
+          if (hasDurableSessionStore) {
+            await store.flush?.();
+            if (store.client?.enabled && store.persistence !== 'supabase') {
+              throw new Error(store.remoteError || 'Supabase não confirmou a persistência da decisão');
+            }
+          }
+        } catch (error) {
+          if (snapshot.pendingAdminDecision === undefined) delete s.pendingAdminDecision;
+          else s.pendingAdminDecision = snapshot.pendingAdminDecision;
+          s.human = snapshot.human;
+          s.humanSource = snapshot.humanSource;
+          s.handoffAt = snapshot.handoffAt;
+          s.handoffReason = snapshot.handoffReason;
+          s.updatedAt = snapshot.updatedAt;
+          store.markDirty();
+          if (hasDurableSessionStore) await store.flush?.().catch(() => {});
+          else { clearTimeout(store.saveTimer); store.saveTimer = null; }
+          logger.error?.('[flow:payment] Não foi possível persistir a decisão administrativa do Pix:', error?.name || 'Error');
+          return 'Não consegui registrar a solicitação com segurança, então não gerei o Pix nem encaminhei uma autorização. Nossa equipe precisará verificar o atendimento manualmente.';
+        }
+
+        adminPixApprovalPending = true;
+        await triggerHandoff(s, {
+          reason: handoffReason,
+          urgency: 'normal',
+          now: now(),
+          notify: async message => notify(buildAdminPixDecisionNotice({
+            clientName: s.clientName || pushName || 'Cliente',
+            phone: s.phone,
+            amount: Number(s.pendingAdminDecision.amount)
+          }) + `\n\n` + message),
+          forceNotify: !sameDecision,
+          identity
+        });
+        if (hasDurableSessionStore) await store.flush?.().catch(() => {});
+        else { clearTimeout(store.saveTimer); store.saveTimer = null; }
+        return s.handoffNotifyFailed
+          ? 'Registrei o valor para validação, mas não consegui confirmar o aviso à equipe. Ainda não gerei o Pix; o atendimento precisa ser verificado manualmente.'
+          : 'Obrigado! Registrei o valor informado para validação da equipe. Ainda não gerei o Pix. A equipe vai decidir se autoriza que eu gere e envie o código ou se assume o atendimento.';
+      };
       if (filtered.blocked) {
         s.violationsCount = (s.violationsCount || 0) + 1;
         const isPriceViolation = filtered.violations.includes('preco');
         const priceContextActive = isPriceViolation && hasActivePriceContext(
-          clean,
+          actionText,
           activeContext.history,
           Boolean(s.pendingClientPayment || s.pendingCheckout || s.pendingPixRequest)
         );
         let faqPriceReply = null;
-        if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(clean)) {
-          const answer = findDynamicFaq(clean, items);
+        if (isPriceViolation && /\b(?:pre[cç]o|valor|plano|mensalidade|custa|custam)\b/i.test(actionText)) {
+          const answer = findDynamicFaq(actionText, items);
           if (answer && detectPriceMentions(answer).length) {
             const faqPrices = new Set([...(allowedPrices || []), ...detectPriceMentions(answer).map(item => item.raw.replace(/\s/g, ''))]);
             const faqFiltered = filterReply(answer, { allowedPrices: faqPrices, strictPrices: true });
@@ -676,17 +767,36 @@ export async function handleClientMessage({
           }
           safeReplyText = repairedReply || 'Desculpe, acho que misturei os assuntos na resposta anterior. O que você gostaria que eu esclarecesse?';
         } else {
-          await triggerHandoff(s, {
-            reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
-            urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
-            now: now(),
-            notify,
-            forceNotify: true,
-            identity
-          });
-          safeReplyText = faqPriceReply || (isPriceViolation
-            ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Já solicitei essa verificação e retorno por aqui.'
-            : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+          const requestedPixAmount = amountFromText(actionText);
+          const hasPendingPixChoice = Boolean(
+            s.pendingClientPayment
+            && s.pendingClientPayment.choice === 'pix'
+            && !s.pendingClientPayment.pausedAt
+          );
+          const needsAdminPixDecision = Boolean(
+            isPriceViolation
+            && priceContextActive
+            && hasPendingPixChoice
+            && requestedPixAmount > 0
+          );
+          if (needsAdminPixDecision) {
+            safeReplyText = await requestAdminPixApproval(
+              requestedPixAmount,
+              s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
+            );
+          } else {
+            await triggerHandoff(s, {
+              reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
+              urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
+              now: now(),
+              notify,
+              forceNotify: true,
+              identity
+            });
+            safeReplyText = faqPriceReply || (isPriceViolation
+              ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
+              : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+          }
         }
       }
       let finalReply = String(safeReplyText || '')
@@ -706,7 +816,7 @@ export async function handleClientMessage({
       let webSearchResult = null;
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
-      const currentPaymentChoice = resolvePaymentChoice(clean);
+      const currentPaymentChoice = resolvePaymentChoice(actionText);
       const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
@@ -727,7 +837,7 @@ export async function handleClientMessage({
           s.pendingClientPayment = null;
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (selected === 'pix' || selected === 'checkout') {
-          const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
+          const amount = amountFromText(actionText) || (!pendingPaymentPaused ? Number(pendingPayment.args?.valor) : 0) || 0;
           if (amount <= 0) {
             pendingPayment.choice = selected;
             pendingPayment.lastQuestion = selected === 'checkout'
@@ -738,12 +848,17 @@ export async function handleClientMessage({
             toolReplyOverride = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
               : 'Qual é o valor para eu gerar o código copia e cola?';
+          } else if (selected === 'pix') {
+            toolReplyOverride = await requestAdminPixApproval(
+              amount,
+              pendingPayment.args?.descricao || 'Pagamento via Pix'
+            );
           } else {
             const args = { ...(pendingPayment.args || {}), valor: amount };
             s.pendingClientPayment = null;
             syntheticToolCalls = [{
-              name: selected === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
-              args: selected === 'checkout' ? { acao: 'criar_link', ...args } : args
+              name: 'checkout_infinitepay',
+              args: { acao: 'criar_link', ...args }
             }];
           }
         }
@@ -758,9 +873,9 @@ export async function handleClientMessage({
 
       // Fallback determinístico: seleções curtas, como "só a chave" ou
       // "copia e cola", também funcionam sem depender do contexto anterior.
-      if (isClient && toolCalls.length === 0 && isPixActionRequest(clean) && !pendingPayment) {
-        const choice = resolvePaymentChoice(clean);
-        const amount = amountFromText(clean);
+      if (isClient && toolCalls.length === 0 && isPixActionRequest(actionText) && !pendingPayment) {
+        const choice = resolvePaymentChoice(actionText);
+        const amount = amountFromText(actionText);
         if (choice === 'key') {
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (choice === 'pix' || choice === 'checkout') {
@@ -770,10 +885,13 @@ export async function handleClientMessage({
           } else if (choice === 'pix' && amount <= 0) {
             s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
             toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
+          } else if (choice === 'pix') {
+            s.pendingClientPayment = { args: { valor: amount }, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
+            toolReplyOverride = await requestAdminPixApproval(amount, 'Pagamento via Pix');
           } else {
             syntheticToolCalls = [{
-              name: choice === 'checkout' ? 'checkout_infinitepay' : 'gerar_cobranca_pix',
-              args: choice === 'checkout' ? { acao: 'criar_link', valor: amount, descricao: '' } : { valor: amount, descricao: '' }
+              name: 'checkout_infinitepay',
+              args: { acao: 'criar_link', valor: amount, descricao: '' }
             }];
             toolCalls = syntheticToolCalls;
           }
@@ -783,11 +901,16 @@ export async function handleClientMessage({
         }
       }
 
+      if (adminPixApprovalPending) {
+        toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name));
+      }
+
       if (!filtered.blocked && isSuperAgent && toolCalls.length > 0) {
         for (const tc of toolCalls) {
+          if (adminPixApprovalPending && isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)) continue;
           if (tc?.name && isClientToolAllowed(tc.name)) {
             const configuredPixKey = resolveConfiguredPixKey(botConfig);
-            const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
+            const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(actionText);
             const numericAmount = Number(String(tc.args?.valor ?? '').replace(',', '.'));
             const hasPositiveAmount = Number.isFinite(numericAmount) && numericAmount > 0;
             if (
@@ -801,10 +924,29 @@ export async function handleClientMessage({
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
 
+            if (isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc.name)) {
+              const directChoice = resolvePaymentChoice(actionText);
+              const pendingPixChoice = pendingPayment?.choice === 'pix';
+              if (pendingPixChoice && !pendingPaymentAnswer && directChoice !== 'pix') {
+                // Não permita que uma tool_call antiga reative a cobrança após troca de assunto.
+                continue;
+              }
+              if (directChoice === 'pix' || (pendingPixChoice && pendingPaymentAnswer)) {
+                const amount = amountFromText(actionText) || Number(tc.args?.valor) || Number(pendingPayment?.args?.valor) || 0;
+                if (amount > 0) {
+                  toolReplyOverride = await requestAdminPixApproval(
+                    amount,
+                    tc.args?.descricao || pendingPayment?.args?.descricao || 'Pagamento via Pix'
+                  );
+                  continue;
+                }
+              }
+            }
+
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
             if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
-              const directChoice = resolvePaymentChoice(clean);
+              const directChoice = resolvePaymentChoice(actionText);
               if (directChoice === 'key') {
                 s.pendingClientPayment = null;
                 toolReplyOverride = directPixKeyReply({ key: configuredPixKey, owner });
@@ -815,7 +957,7 @@ export async function handleClientMessage({
                 toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
                 continue;
               }
-              if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
+              if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(actionText) > 0)) {
                 s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
                 toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
                 continue;
@@ -1131,9 +1273,9 @@ export async function handleClientMessage({
       const cleanReplyForHint = String(finalReply || '').replace(/[*_~`]/g, '');
       const ownerHint = identityNames(identity).map(normalize).filter(Boolean).map(escapeText).join('|') || 'responsavel|equipe';
       const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
-      const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(clean));
+      const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(actionText));
 
-      if (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner) {
+      if (!adminPixApprovalPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
           (userDirectedToOwner ? `Assunto direcionado a ${owner}: "${clean.slice(0, 90)}"` :
             (textHintsHandoff ? `Assunto encaminhado pela ${assistant} a ${owner}: "${clean.slice(0, 90)}"` : `sugerido pela ${assistant} pelo contexto`));

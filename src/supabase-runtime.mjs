@@ -24,6 +24,30 @@ const normalizePendingClientPayment = value => {
   }
   return { args, choice, createdAt, ...(lastQuestion ? { lastQuestion } : {}), ...(pausedAt ? { pausedAt } : {}) };
 };
+const normalizePendingAdminDecision = value => {
+  const statuses = new Set(['pending', 'processing', 'completed', 'assumed', 'failed', 'uncertain', 'expired']);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.type !== 'pix_generation' || !statuses.has(value.status)) return null;
+  let requestedAt;
+  try { requestedAt = iso(value.requestedAt); } catch { return null; }
+  const amount = Number(value.amount);
+  if (!requestedAt || !Number.isFinite(amount) || amount <= 0) return null;
+  const optionalIso = key => {
+    if (!value[key]) return undefined;
+    try { return iso(value[key]) || undefined; } catch { return undefined; }
+  };
+  return {
+    type: 'pix_generation',
+    status: value.status,
+    amount: Number(amount.toFixed(2)),
+    description: String(value.description || 'Pagamento via Pix').trim().slice(0, 80),
+    paymentMethod: 'pix_copy_paste',
+    requestedAt,
+    ...(optionalIso('decidedAt') ? { decidedAt: optionalIso('decidedAt') } : {}),
+    ...(optionalIso('completedAt') ? { completedAt: optionalIso('completedAt') } : {}),
+    ...(typeof value.decidedBy === 'string' && value.decidedBy.trim() ? { decidedBy: value.decidedBy.trim().slice(0, 80) } : {}),
+    ...(typeof value.error === 'string' && value.error.trim() ? { error: value.error.trim().slice(0, 180) } : {})
+  };
+};
 const normalizePendingCopilotTask = value => {
   const allowed = new Set(['general', 'payment', 'followup', 'dispatch', 'agenda', 'document', 'drive', 'sheet', 'public_data', 'crm', 'contact', 'memory', 'infra', 'web', 'knowledge', 'handoff']);
   if (!value || typeof value !== 'object' || Array.isArray(value) || !allowed.has(value.type)) return null;
@@ -168,6 +192,7 @@ function rowToSession(row, messages = []) {
       ? { ...meta.pendingOutboundDispatch }
       : null,
     pendingClientPayment: normalizePendingClientPayment(meta.pendingClientPayment),
+    pendingAdminDecision: normalizePendingAdminDecision(meta.pendingAdminDecision),
     pendingCheckout: meta.pendingCheckout && typeof meta.pendingCheckout === 'object' && !Array.isArray(meta.pendingCheckout)
       ? { ...meta.pendingCheckout }
       : null,
@@ -270,6 +295,7 @@ function sessionToConversation(key, session, contactId) {
         ? { ...session.pendingOutboundDispatch }
         : null,
       pendingClientPayment: normalizePendingClientPayment(session.pendingClientPayment),
+      pendingAdminDecision: normalizePendingAdminDecision(session.pendingAdminDecision),
       pendingCheckout: session.pendingCheckout && typeof session.pendingCheckout === 'object'
         ? { ...session.pendingCheckout }
         : null,

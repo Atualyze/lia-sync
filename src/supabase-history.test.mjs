@@ -70,3 +70,57 @@ test('SupabaseSessionStore não tenta buscar histórico remoto sem cliente ou co
   assert.deepEqual(await store.searchContactConversationHistory({ _contactId: 'contact-123' }), []);
   assert.deepEqual(await store.searchContactConversationHistory({ _contactId: null }), []);
 });
+
+
+test('SupabaseSessionStore persiste e restaura uma decisão administrativa de Pix', async () => {
+  let conversationRow = null;
+  const client = {
+    enabled: true,
+    async select(table, query = '') {
+      if (table === 'conversations') {
+        if (query.includes('status=eq.archived')) return [];
+        return conversationRow ? [conversationRow] : [];
+      }
+      if (table === 'conversation_messages') return [];
+      return [];
+    },
+    async upsert(table, rows) {
+      if (table === 'contacts') return [{ id: 'contact-admin-pix' }];
+      if (table === 'conversations') {
+        conversationRow = {
+          ...rows[0],
+          id: 'conversation-admin-pix',
+          updated_at: new Date().toISOString(),
+          contacts: { phone: rows[0].external_key }
+        };
+        return [{ id: 'conversation-admin-pix' }];
+      }
+      return [];
+    }
+  };
+  const file = path.join(os.tmpdir(), `lia-admin-pix-${Date.now()}.json`);
+  const requestedAt = new Date().toISOString();
+  const pending = {
+    type: 'pix_generation',
+    status: 'pending',
+    amount: 5,
+    description: 'Pagamento via Pix',
+    paymentMethod: 'pix_copy_paste',
+    requestedAt
+  };
+  const store = new SupabaseSessionStore(file, { client, logger: { warn() {} } });
+  const session = store.get('5588999991111');
+  session.clientName = 'Ana';
+  session.pendingAdminDecision = pending;
+  session.updatedAt = requestedAt;
+  store.markDirty();
+  await store.flush();
+
+  assert.deepEqual(conversationRow.metadata.pendingAdminDecision, pending);
+  const restoredStore = new SupabaseSessionStore(
+    path.join(os.tmpdir(), `lia-admin-pix-restored-${Date.now()}.json`),
+    { client, logger: { warn() {} } }
+  );
+  const restored = await restoredStore.syncSession('5588999991111');
+  assert.deepEqual(restored.pendingAdminDecision, pending);
+});

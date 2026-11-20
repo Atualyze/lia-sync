@@ -573,7 +573,7 @@ test('Copiloto Pix: sem chave Pix configurada pergunta naturalmente qual chave u
   }
 });
 
-test('Cliente Pix: executa gerar_cobranca_pix, envia imagem no WhatsApp do cliente e retorna link + Copia e Cola', async () => {
+test('Cliente Pix: proposta da IA pede autorização do administrador e não envia cobrança automaticamente', async () => {
   const store = new SessionStore();
   const sentImages = [];
   const botConfig = createPixBotConfig('88998340085');
@@ -603,11 +603,11 @@ test('Cliente Pix: executa gerar_cobranca_pix, envia imagem no WhatsApp do clien
   assert.match(first, /chave Pix|copia e cola/i);
   assert.equal(sentImages.length, 0);
   const res = await flow.process({ phone: '5585999991111', text: 'Pode gerar o copia e cola', origin: 'client' });
-  assert.match(res, /Aqui está seu Pix para pagamento/i);
-  assert.match(res, /R\$ 50,00/);
-  assert.match(res, /000201/);
-  assert.equal(sentImages.length, 1);
-  assert.equal(sentImages[0].phone, '5585999991111');
+  assert.match(res, /ainda não gerei o Pix/i);
+  assert.equal(sentImages.length, 0);
+  assert.equal(store.get('5585999991111').pendingAdminDecision.status, 'pending');
+  assert.equal(store.get('5585999991111').pendingAdminDecision.amount, 50);
+  assert.equal(store.get('5585999991111').human, true);
 });
 
 test('Cliente Pix: pergunta o formato antes de gerar e entende "copia e cola" no turno seguinte', async () => {
@@ -636,9 +636,11 @@ test('Cliente Pix: pergunta o formato antes de gerar e entende "copia e cola" no
   assert.equal(sentImages.length, 0);
 
   const second = await flow.process({ phone: '5585999992222', text: 'prefiro o código copia e cola', origin: 'client' });
-  assert.match(second, /Aqui está seu Pix para pagamento/i);
-  assert.match(second, /R\$ 50,00/);
-  assert.equal(sentImages.length, 1);
+  assert.match(second, /ainda não gerei o Pix/i);
+  assert.equal(sentImages.length, 0);
+  assert.equal(store.get('5585999992222').pendingAdminDecision.status, 'pending');
+  assert.equal(store.get('5585999992222').pendingAdminDecision.amount, 50);
+  assert.equal(store.get('5585999992222').human, true);
 });
 
 test('Cliente Pix: reidrata pedido, escolha de copia e cola e valor em processos diferentes', async (t) => {
@@ -701,13 +703,13 @@ test('Cliente Pix: reidrata pedido, escolha de copia e cola e valor em processos
   const rehydrated = await thirdStore.syncSession(phone);
   assert.deepEqual(rehydrated.pendingClientPayment, secondStore.get(phone).pendingClientPayment);
   const third = await createClientFlow(thirdStore).process({ phone, text: '10', origin: 'client' });
-  assert.match(third, /Aqui está seu Pix para pagamento/i);
-  assert.match(third, /R\$ 10,00/);
-  assert.match(third, /000201/);
-  assert.equal(sentImages.length, 1);
-  assert.equal(sentImages[0].target, phone);
-  assert.equal(thirdStore.get(phone).pendingClientPayment, null);
+  assert.match(third, /ainda não gerei o Pix/i);
+  assert.equal(sentImages.length, 0);
+  assert.equal(thirdStore.get(phone).pendingAdminDecision.status, 'pending');
+  assert.equal(thirdStore.get(phone).pendingAdminDecision.amount, 10);
+  assert.equal(thirdStore.get(phone).human, true);
   await thirdStore.flush();
+  assert.deepEqual(conversationRows.get(phone).metadata.pendingAdminDecision, thirdStore.get(phone).pendingAdminDecision);
 });
 
 test('Cliente Pix: “só a chave” é reconhecido deterministicamente mesmo sem contexto anterior', async () => {
@@ -736,8 +738,9 @@ test('Cliente Pix: falha de geração não repete pedido de valor/descrição se
   const originalPixKey = process.env.PIX_KEY;
   delete process.env.PIX_KEY;
   try {
+    const store = new SessionStore();
     const flow = createFlow({
-      store: new SessionStore(),
+      store,
       getBotConfig: () => createPixBotConfig(''),
       ai: { askAI: async () => null }
     });
@@ -746,8 +749,10 @@ test('Cliente Pix: falha de geração não repete pedido de valor/descrição se
       text: 'Gere o código copia e cola de 10 reais',
       origin: 'client'
     });
-    assert.match(reply, /chave Pix ainda não está configurada/i);
+    assert.match(reply, /ainda não gerei o Pix/i);
     assert.doesNotMatch(reply, /qual.*valor.*descri[cç][aã]o/i);
+    assert.equal(store.get('5511976543210').pendingAdminDecision.status, 'pending');
+    assert.equal(store.get('5511976543210').pendingAdminDecision.amount, 10);
   } finally {
     if (originalPixKey === undefined) delete process.env.PIX_KEY;
     else process.env.PIX_KEY = originalPixKey;
