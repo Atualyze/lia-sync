@@ -154,35 +154,7 @@ export function createCopilotTaskWorker({
     else await update();
   };
 
-  const deliverNotification = async task => {
-    const claimed = await taskStore.claimPendingNotification();
-    if (!claimed || claimed.id !== task.id) return false;
-    const target = claimed.targetPhone || getHumanPhone();
-    if (!target || typeof sendText !== 'function') {
-      await taskStore.finishNotification(claimed, 'uncertain', 'notification_target_missing');
-      await appendTaskResultToSession(claimed, claimed.resultText, { clearTask: true }).catch(() => {});
-      logger.error?.('[copilot-worker] tarefa concluída sem destino de notificação; resultado preservado na sessão.');
-      return false;
-    }
-    const safe = filterReply(claimed.resultText, { isCopilot: true }).text;
-    const parts = splitReply(formatOutgoingMessage(safe));
-    try {
-      for (let i = 0; i < parts.length; i += 1) {
-        if (i) await new Promise(resolve => setTimeout(resolve, 400));
-        await sendText(target, parts[i]);
-      }
-      const delivered = await taskStore.finishNotification(claimed, 'sent');
-      if (delivered) await appendTaskResultToSession(claimed, safe);
-      return delivered;
-    } catch (error) {
-      // A transport timeout can happen after the provider accepted a message.
-      // Never re-send a notification with an ambiguous delivery outcome.
-      await taskStore.finishNotification(claimed, 'uncertain', error?.code || error?.name || 'notification_delivery_uncertain');
-      await appendTaskResultToSession(claimed, safe, { clearTask: true }).catch(() => {});
-      logger.error?.('[copilot-worker] entrega do resultado ficou incerta; não haverá reenvio automático.');
-      return false;
-    }
-  };
+
 
   const runClaimedTask = async task => {
     const botConfig = getBotConfig() || {};
@@ -265,7 +237,7 @@ export function createCopilotTaskWorker({
         resultSummary: safeResultSummary(completedSteps)
       });
       if (!completed) return false;
-      await deliverNotification(completed);
+      // A notificação será reivindicada pelo próximo ciclo, sempre com o ID que foi efetivamente claimado.
       return true;
     } catch (error) {
       const code = String(error?.code || error?.name || 'copilot_worker_error').slice(0, 120);
