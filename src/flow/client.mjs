@@ -733,7 +733,7 @@ export async function handleClientMessage({
             pendingPayment.lastQuestion = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
               : 'Qual é o valor para eu gerar o código copia e cola?';
-            pendingPayment.pausedAt = null;
+            delete pendingPayment.pausedAt;
             s.pendingClientPayment = pendingPayment;
             toolReplyOverride = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
