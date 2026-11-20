@@ -1549,6 +1549,11 @@ begin
       when retry_policy = 'read_only' then 'read_only_attempts_exhausted'
       else 'execution_lease_expired'
     end,
+    result_text = case
+      when retry_policy = 'read_only' and attempt_count < max_attempts then result_text
+      when retry_policy = 'read_only' then 'A consulta foi interrompida após atingir o limite de tentativas seguras. Nenhuma ação externa foi repetida.'
+      else 'A execução foi interrompida e o resultado ficou incerto. É necessária uma conferência antes de qualquer nova tentativa.'
+    end,
     lease_owner = null,
     lease_token = null,
     lease_expires_at = null,
@@ -1575,6 +1580,7 @@ begin
   set
     status = 'failed',
     last_error_code = 'task_expired_before_execution',
+    result_text = 'A tarefa expirou antes de começar. Nenhuma ferramenta foi executada.',
     completed_at = now(),
     updated_at = now()
   where status = 'queued'
