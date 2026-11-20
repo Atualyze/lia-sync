@@ -12,7 +12,7 @@ Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, int
 - **Falhas visíveis:** tarefas concluídas, falhas e resultados incertos geram uma notificação de estado; nenhuma ação externa incerta é repetida automaticamente.
 - **Segurança:** a fila é backend-only, limitada a quatro etapas, revalida disponibilidade das ferramentas e preserva políticas de confirmação e auditoria.
 
-A migration `20261120150000_copilot_task_queue.sql` deve ser aplicada no Supabase antes de habilitar coordenação distribuída. Sem ela, o runtime usa fallback local de uma única instância e registra o aviso correspondente.
+A migration `20261120150000_copilot_task_queue.sql` deve ser aplicada no Supabase antes do deploy. Se o Supabase estiver configurado mas a fila não existir, o runtime falha fechado; fallback local exige `COPILOT_TASK_LOCAL_FALLBACK=true` e uma única instância.
 
 Detalhes: [`docs/release-2.9.0.md`](docs/release-2.9.0.md).
 
