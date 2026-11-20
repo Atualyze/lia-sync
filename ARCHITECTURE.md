@@ -37,6 +37,9 @@ Evolution / Chatwoot / Dashboard
 | `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento, ferramentas permitidas e resposta segura com retorno explícito de agenda/lembretes. |
 | `flow/owner.mjs` | Comandos do Copiloto, ações operacionais e confirmação de envio. |
 | `flow/copilot-continuity.mjs` | Revisão semântica de tool calls: continuação, novo pedido, esclarecimento ou assunto não relacionado. |
+| `flow/copilot-tool-plan.mjs` | Valida planos sequenciais do Copiloto, limita a quatro etapas, deduplica chamadas e verifica resultados/recuperação sem retry automático. |
+| `tools/index.mjs` | Registro executável `ALL_TOOLS`, schemas reais, aliases, allowlist de cliente, catálogo dinâmico e perfis de risco/autorização. |
+| `operations.mjs` | Persistência de auditoria administrativa e de chamadas de ferramentas com metadados sanitizados. |
 | `flow/media.mjs` | Transcrição de áudio recebido e resposta em voz. |
 | `flow/pdf.mjs` | Entrega de PDF gerado como documento no WhatsApp. |
 | `flow/text.mjs` | Normalização, intenção e humanização de mensagens. |
@@ -69,6 +72,10 @@ Aliases e textos históricos são aceitos somente para migrar dados e conversas 
 - Handoff usa `triggerHandoff`; o fluxo não envia transferências diretamente.
 - PDFs e áudios são entregues por adaptadores específicos. Envios de áudio não são repetidos automaticamente quando o resultado da entrega é incerto, evitando duplicidade.
 - O Copiloto preserva tarefas ativas com pedido original, última pergunta e ferramentas permitidas; esclarecimentos não executam ações sem relação. Áudios do responsável são transcritos antes de interpretar comandos, e falha de transcrição é tratada sem adivinhação.
+- O catálogo de ferramentas é derivado de `ALL_TOOLS`, schemas reais, configuração publicada e permissão do ator; não há inventário de parâmetros paralelo como fonte de execução.
+- Planos do Copiloto são limitados a quatro etapas, validados antes da execução, executados sequencialmente e interrompidos diante de falha, não correspondência, alerta de saúde, confirmação pendente ou retorno não verificável.
+- A verificação usa retornos estruturados das ferramentas; contexto e texto do modelo não substituem a confirmação do executor. Falhas de leitura podem recomendar revisão antes de nova consulta; ferramentas com efeitos externos não são repetidas automaticamente.
+- Chamadas de ferramentas são auditadas em `audit_log` com metadados sanitizados quando o `OperationsStore`/Supabase está disponível. Argumentos, conteúdo de mensagens, telefones e payloads completos não entram nessa trilha; auditoria indisponível não é reportada como sucesso.
 - Follow-ups exigem claim atômica no Supabase e confirmação da entrega; sem claim distribuída, o envio é bloqueado.
 - Agenda e retornos nunca são confirmados apenas pela intenção da IA: o cliente recebe o resultado da ferramenta, e falhas de consulta/persistência podem acionar `triggerHandoff`.
 - Limites mensais podem ser definidos por provedor/modelo. A reserva e liquidação distribuídas são serializadas no banco; consumo ou tarifa desconhecidos não são tratados como custo zero.
