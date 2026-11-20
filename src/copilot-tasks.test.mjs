@@ -96,5 +96,6 @@ test('lease expirado reprograma somente leitura e torna ação não repetível i
 test('chave de tarefa é estável para a mesma mensagem e plano', () => {
   const args = { messageId: 'wamid-123', ownerKey: 'owner_self', steps: [{ name: 'consultar_web', args: { query: 'x' } }] };
   assert.equal(createCopilotTaskKey(args), createCopilotTaskKey(args));
+  assert.equal(createCopilotTaskKey(args), createCopilotTaskKey({ ...args, steps: [{ name: 'consultar_web', args: { query: 'alterado' } }] }));
   assert.notEqual(createCopilotTaskKey(args), createCopilotTaskKey({ ...args, messageId: 'wamid-456' }));
 });
