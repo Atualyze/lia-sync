@@ -115,8 +115,8 @@ begin
     from public.copilot_tasks
     where status = 'queued'
     order by created_at asc
-    for update skip locked
     limit 1
+    for update skip locked
   )
   update public.copilot_tasks t
   set status = 'running',
