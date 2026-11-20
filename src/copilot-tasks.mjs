@@ -4,6 +4,12 @@ import path from 'node:path';
 
 const STATES = new Set(['queued', 'running', 'awaiting_input', 'succeeded', 'failed', 'uncertain', 'cancelled']);
 const RETRY_POLICIES = new Set(['read_only', 'never']);
+const READ_ONLY_TASK_TOOLS = new Set([
+  'consultar_web', 'consultar_contato_ou_lead', 'consultar_base_conhecimento',
+  'consultar_saude_infra', 'consultar_dados_brasil'
+]);
+const isReadOnlyTaskStep = step => READ_ONLY_TASK_TOOLS.has(step.name)
+  || (step.name === 'checkout_infinitepay' && String(step.args?.acao || '') === 'verificar_pagamento');
 const NOTIFICATION_STATES = new Set(['pending', 'sending', 'sent', 'uncertain', 'unaddressable']);
 const iso = value => {
   const date = new Date(value);
@@ -22,7 +28,11 @@ function normalizeStep(step = {}) {
 function normalizeTaskInput(input = {}) {
   const steps = (Array.isArray(input.steps) ? input.steps : []).slice(0, 4).map(normalizeStep);
   if (!steps.length || steps.length !== (input.steps || []).length) throw new Error('invalid_copilot_task_steps');
-  const retryPolicy = RETRY_POLICIES.has(input.retryPolicy) ? input.retryPolicy : 'never';
+  const requestedRetryPolicy = RETRY_POLICIES.has(input.retryPolicy) ? input.retryPolicy : 'never';
+  // Política de repetição é derivada do plano, nunca confiada ao chamador.
+  const retryPolicy = requestedRetryPolicy === 'read_only' && steps.every(isReadOnlyTaskStep)
+    ? 'read_only'
+    : 'never';
   const taskKey = String(input.taskKey || '').trim().slice(0, 160);
   if (!taskKey) throw new Error('missing_copilot_task_key');
   const ownerKey = String(input.ownerKey || '').trim().slice(0, 160);
