@@ -54,7 +54,7 @@ export function lastAssistantAskedForPaymentAmount(history = [], pendingQuestion
 }
 
 export function lastAssistantAskedForAgendaConfirmation(history = [], pendingQuestion = '') {
-  const text = normalizeContextText(pendingQuestion || latestAssistantText(history));
+  const text = normalizeContextText(latestAssistantText(history) || pendingQuestion);
   const mentionsAgenda = /\b(?:agenda|agendar|agendamento|horario|reuniao|compromisso)\b/.test(text);
   return mentionsAgenda
     && /\b(?:confirmar|confirma|posso|pode|agendar|marcar)\b/.test(text)
