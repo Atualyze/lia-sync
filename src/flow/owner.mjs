@@ -2051,6 +2051,17 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                     ? 'Você quer continuar a solicitação anterior ou começar outra coisa?'
                     : 'Não consegui entender com segurança o que você quer fazer. Pode me explicar com suas palavras?');
 
+                  // Se uma etapa anterior já produziu efeito, não esconda o
+                  // resultado parcial com uma pergunta nem continue a cadeia.
+                  if (toolOutputs.length > 0) {
+                    toolOutputs.push({
+                      tool: tc.name,
+                      error: 'Etapa interrompida antes da execução: intenção/continuidade precisa de esclarecimento.',
+                      verification: { state: 'unverified', continue: false, recovery: 'clarify_before_continue' }
+                    });
+                    break;
+                  }
+
                   if (review.decision === 'clarify') {
                     const timestamp = new Date(now()).toISOString();
                     if (review.relation === 'continuation' && liveTask) {
