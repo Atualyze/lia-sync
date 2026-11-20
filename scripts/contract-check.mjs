@@ -76,12 +76,3 @@ const checks = [
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);
-).length - 1 === copilotTasksMigration.split('create or replace function').length - 1 && !copilotTasksMigration.split('\n').some(line => line.trim() === 'as $' || line.trim() === '$;') && copilotTasks.includes('async cancel(taskId)') && copilotOwner.includes('copilotTaskStore.cancel(pendingTaskId)')],
-  ['Copilot semantic preflight reviews each proposed background step before enqueue', copilotOwner.includes('for (const plannedStep of toolPlan.steps)') && copilotOwner.includes('reviewCopilotToolCall({') && copilotOwner.includes('copilotTaskStore.enqueue')],
-  ['Copilot worker persists results before delivery and recovers pending delivery without retrying uncertain sends', copilotTaskRunner.includes('taskStore.finish(task.id, token, \'succeeded\'') && copilotTaskRunner.includes('taskStore.pendingDelivery?.()') && copilotTaskRunner.includes('taskStore.beginDelivery(task.id)') && copilotTaskRunner.includes('finishDelivery(task.id, \'uncertain\'') ],
-  ['Copilot only queues allowlisted background steps and recognizes real progress queries', copilotTasks.includes('isBackgroundCopilotStep') && copilotTasks.includes('isCopilotTaskStatusQuery') && copilotTasks.includes('resolveCopilotPaymentMethodChoice') && copilotOwner.includes('copilotTaskStore.enqueue') && copilotOwner.includes('describeCopilotTaskStatus')],
-  ['Copilot server initializes and schedules durable task worker', copilotServer.includes('new CopilotTaskStore') && copilotServer.includes('createCopilotTaskRunner') && copilotServer.includes('copilotTaskTimer')],
-  ['Copilot payment verification background work requires a stable order reference', copilotTasks.includes('hasStableOrderReference') && copilotTasks.includes("args.acao || '').toLowerCase() === 'verificar_pagamento'")],
-];
-for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
-if (checks.some(([, passed]) => !passed)) process.exit(1);
