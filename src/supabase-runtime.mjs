@@ -62,6 +62,7 @@ const normalizePendingCopilotTask = value => {
     lastQuestion: typeof value.lastQuestion === 'string' ? value.lastQuestion.slice(0, 500) : '',
     repeatCount: Math.max(0, Math.min(2, Number(value.repeatCount) || 0)),
     turns: Math.max(0, Math.min(10, Number(value.turns) || 0)),
+    taskId: typeof value.taskId === 'string' && /^[0-9a-f-]{36}$/i.test(value.taskId) ? value.taskId : null,
     allowedTools: Array.isArray(value.allowedTools)
       ? [...new Set(value.allowedTools.filter(name => typeof name === 'string' && /^[a-z][a-z0-9_]{0,63}$/i.test(name)))].slice(0, 8)
       : []
