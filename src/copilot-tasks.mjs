@@ -307,9 +307,11 @@ export class CopilotTaskStore {
     });
   }
 
-  async fail(task, errorCode = 'tool_execution_failed') {
+  async fail(task, errorCode = 'tool_execution_failed', resultText = '') {
     return this._patchRunning(task, {
       status: 'failed',
+      result_text: String(resultText || 'A tarefa não foi concluída. Nenhuma repetição automática será feita.').slice(0, 16000),
+      notification_status: 'pending',
       last_error_code: String(errorCode || 'tool_execution_failed').slice(0, 120),
       completed_at: new Date(this.now()).toISOString(),
       lease_owner: null,
@@ -318,9 +320,11 @@ export class CopilotTaskStore {
     });
   }
 
-  async uncertain(task, errorCode = 'execution_result_uncertain') {
+  async uncertain(task, errorCode = 'execution_result_uncertain', resultText = '') {
     return this._patchRunning(task, {
       status: 'uncertain',
+      result_text: String(resultText || 'A execução ficou incerta. É necessária uma conferência antes de qualquer nova tentativa.').slice(0, 16000),
+      notification_status: 'pending',
       last_error_code: String(errorCode || 'execution_result_uncertain').slice(0, 120),
       completed_at: new Date(this.now()).toISOString(),
       lease_owner: null,
@@ -336,7 +340,7 @@ export class CopilotTaskStore {
       for (const row of Array.isArray(rows) ? rows : []) {
         const claimed = await this.client.request('copilot_tasks', {
           method: 'PATCH',
-          query: `id=eq.${encodeURIComponent(row.id)}&status=eq.succeeded&notification_status=eq.pending`,
+          query: `id=eq.${encodeURIComponent(row.id)}&status=in.(succeeded,failed,uncertain)&notification_status=eq.pending`,
           body: { notification_status: 'sending', updated_at: new Date(this.now()).toISOString() },
           prefer: 'return=representation'
         });
@@ -346,7 +350,7 @@ export class CopilotTaskStore {
     }
     return this._serial(async () => {
       const task = this.tasks
-        .filter(item => item.status === 'succeeded' && item.notificationStatus === 'pending')
+        .filter(item => ['succeeded', 'failed', 'uncertain'].includes(item.status) && item.notificationStatus === 'pending')
         .sort((a, b) => Date.parse(a.completedAt || 0) - Date.parse(b.completedAt || 0))[0];
       if (!task) return null;
       task.notificationStatus = 'sending';
@@ -361,7 +365,7 @@ export class CopilotTaskStore {
     if (this.remoteEnabled) {
       const rows = await this.client.request('copilot_tasks', {
         method: 'PATCH',
-        query: `id=eq.${encodeURIComponent(task.id)}&status=eq.succeeded&notification_status=eq.sending`,
+        query: `id=eq.${encodeURIComponent(task.id)}&status=in.(succeeded,failed,uncertain)&notification_status=eq.sending`,
         body: {
           notification_status: status,
           notified_at: status === 'sent' ? new Date(this.now()).toISOString() : null,
@@ -373,7 +377,7 @@ export class CopilotTaskStore {
       return Array.isArray(rows) && rows.length === 1;
     }
     return this._serial(async () => {
-      const current = this.tasks.find(item => item.id === task.id && item.status === 'succeeded' && item.notificationStatus === 'sending');
+      const current = this.tasks.find(item => item.id === task.id && ['succeeded', 'failed', 'uncertain'].includes(item.status) && item.notificationStatus === 'sending');
       if (!current) return false;
       current.notificationStatus = status;
       current.notifiedAt = status === 'sent' ? new Date(this.now()).toISOString() : null;
