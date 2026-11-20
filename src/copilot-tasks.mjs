@@ -62,7 +62,7 @@ function mapTask(row = {}) {
   };
 }
 
-export function createCopilotTaskKey({ messageId = '', ownerKey = '', steps = [] } = {}) {
+export function createCopilotTaskKey({ messageId = '', ownerKey = '' } = {}) {
   const source = String(messageId || '').trim();
   const nonce = source || crypto.randomUUID();
   const digest = crypto.createHash('sha256')
