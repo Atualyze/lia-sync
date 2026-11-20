@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCopilotTaskRunner } from './copilot-task-runner.mjs';
 
-function fixture({ task = null, pending = null, sendText = async () => {}, execute = async () => ({ success: true }) } = {}) {
+function fixture({ task = null, pending = null, sendText = async () => {}, execute = async () => ({ success: true }), ai = {} } = {})
   const calls = { executed: [], checkpoints: [], finished: [], deliveries: [], sends: [] };
   const tasks = { task, pending };
   const session = { history: [] };
@@ -42,7 +42,7 @@ function fixture({ task = null, pending = null, sendText = async () => {}, execu
   const runner = createCopilotTaskRunner({
     taskStore,
     sessionStore,
-    ai: {},
+    ai,
     whatsapp: {
       async sendText(phone, text) {
         calls.sends.push({ phone, text });
@@ -130,7 +130,7 @@ test('Pix no worker preserva Copia e Cola exato e não pede uma reescrita à IA'
     steps: [{ index: 1, name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'pagamento do pão' }, state: 'pending' }]
   };
   let aiCalls = 0;
-  const { runner, calls } = fixture({ task, execute: async () => ({
+  const { runner, calls } = fixture({ task, ai: { async askAI() { aiCalls += 1; return { reply: 'não pode reescrever o Pix' }; } }, execute: async () => ({
     success: true,
     valor: 20,
     favorecido: 'Atualyze',
