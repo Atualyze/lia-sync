@@ -433,17 +433,31 @@ export async function handleClientMessage({
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
         .test(normalize(clean));
       const paymentChoice = resolvePaymentChoice(clean);
+      const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
+      const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
         explicitPaymentAction
         || explicitPaymentAmount
-        || (paymentChoice && lastAssistantAskedForPayment(s.history))
-        || (barePaymentAmount && lastAssistantAskedForPaymentAmount(s.history))
+        || (!pendingPaymentPaused && paymentChoice
+          && lastAssistantAskedForPayment(s.history, pendingPaymentQuestion))
+        || (!pendingPaymentPaused && barePaymentAmount
+          && lastAssistantAskedForPaymentAmount(s.history, pendingPaymentQuestion))
       ));
+      const pendingAgendaPaused = Boolean(s.pendingClientAgenda?.pausedAt);
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
         && (isNaturalAffirmation(clean) || isNaturalNegative(clean))
+        && !pendingAgendaPaused
         && lastAssistantAskedForAgendaConfirmation(s.history));
       const asksAboutRecentReply = /^(?:o que houve|o que aconteceu|por que|porque|pq|como assim|qual o problema|aconteceu algo|teve algum problema)[?! .]*$/i
         .test(normalize(clean));
+      // Ao mudar de assunto, mantém a operação pendente para uma retomada explícita,
+      // mas impede que um número ou "sim" futuro sejam consumidos como resposta antiga.
+      if (s.pendingClientPayment && !pendingPaymentAnswer && !asksAboutRecentReply && !explicitPaymentAction && !explicitPaymentAmount) {
+        s.pendingClientPayment.pausedAt ||= new Date(now()).toISOString();
+      }
+      if (s.pendingClientAgenda && !pendingAgendaAnswer && !asksAboutRecentReply) {
+        s.pendingClientAgenda.pausedAt ||= new Date(now()).toISOString();
+      }
       const pendingContextContinuation = pendingPaymentAnswer || pendingAgendaAnswer || asksAboutRecentReply;
       const activeContext = selectActiveClientHistory(s.history, {
         maxTurns: contextTurns,
@@ -716,6 +730,10 @@ export async function handleClientMessage({
           const amount = amountFromText(clean) || Number(pendingPayment.args?.valor) || 0;
           if (amount <= 0) {
             pendingPayment.choice = selected;
+            pendingPayment.lastQuestion = selected === 'checkout'
+              ? 'Para gerar o checkout, qual é o valor do pagamento?'
+              : 'Qual é o valor para eu gerar o código copia e cola?';
+            pendingPayment.pausedAt = null;
             s.pendingClientPayment = pendingPayment;
             toolReplyOverride = selected === 'checkout'
               ? 'Para gerar o checkout, qual é o valor do pagamento?'
@@ -747,10 +765,10 @@ export async function handleClientMessage({
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
         } else if (choice === 'pix' || choice === 'checkout') {
           if (choice === 'checkout' && amount <= 0) {
-            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
             toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
           } else if (choice === 'pix' && amount <= 0) {
-            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString() };
+            s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
             toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
           } else {
             syntheticToolCalls = [{
@@ -760,7 +778,7 @@ export async function handleClientMessage({
             toolCalls = syntheticToolCalls;
           }
         } else {
-          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
           toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
         }
       }
@@ -793,17 +811,17 @@ export async function handleClientMessage({
                 continue;
               }
               if (!pendingPayment && !directChoice) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
                 toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
                 continue;
               }
               if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'checkout', createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
                 toolReplyOverride = 'Para gerar o checkout, qual é o valor do pagamento?';
                 continue;
               }
               if (!pendingPayment && directChoice === 'pix' && !(Number(tc.args?.valor) > 0 || amountFromText(clean) > 0)) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'pix', createdAt: new Date(now()).toISOString() };
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: 'pix', createdAt: new Date(now()).toISOString(), lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?' };
                 toolReplyOverride = 'Qual é o valor para eu gerar o código copia e cola?';
                 continue;
               }
@@ -812,7 +830,7 @@ export async function handleClientMessage({
             // Consultar disponibilidade é seguro; criar evento altera a agenda e exige
             // confirmação final do cliente, mesmo que o pedido inicial tenha sido direto.
             if (isClient && tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && !syntheticToolCalls.includes(tc)) {
-              s.pendingClientAgenda = { args: { ...(tc.args || {}) }, createdAt: new Date(now()).toISOString() };
+              s.pendingClientAgenda = { args: { ...(tc.args || {}) }, createdAt: new Date(now()).toISOString(), lastQuestion: 'Posso confirmar e agendar esse horário para você?' };
               const date = tc.args?.date || tc.args?.start || 'a data informada';
               const time = tc.args?.startTime || tc.args?.time || '';
               toolReplyOverride = `Encontrei o horário de atendimento para ${date}${time ? ` às ${time}` : ''}. Posso confirmar e agendar para você?`;
