@@ -68,7 +68,7 @@ test('Gemini 402 informa falta de saldo/créditos em vez de retornar fallback ge
   });
 
   assert.equal(result?.provider_error, 'AI_PROVIDER_CREDITS_EXHAUSTED');
-  assert.match(result?.reply || '', /Gemini.*sem saldo\\/créditos/i);
+  assert.match(result?.reply || '', /Gemini.*sem saldo\/créditos/i);
   assert.match(result?.reply || '', /faturamento e os créditos/i);
   assert.equal(calls.length, 1, '402 não deve disparar tentativas em modelos Gemini alternativos');
 });
