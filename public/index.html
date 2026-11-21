@@ -349,11 +349,33 @@
                   <strong>Provedores de IA</strong>
                   <span>Status das conexões e contingência</span>
                 </div>
-                <button class="icon-btn btn-sm" id="overview-ping-quick" data-role="operator" title="Testar Ping IA" aria-label="Testar Ping IA">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                </button>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <button type="button" class="btn-secondary btn-sm" id="overview-providers-toggle" data-role="admin" title="Cadastrar provedor ou configurar chaves de API">⚙ Provedores &amp; API</button>
+                  <button class="icon-btn btn-sm" id="overview-ping-quick" data-role="operator" title="Testar Ping IA" aria-label="Testar Ping IA">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  </button>
+                </div>
               </div>
               <div id="overview-models" class="ops-list"></div>
+              <div id="overview-providers-manager" class="hidden" data-role="admin" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,.1))">
+                <div id="overview-providers-feedback" class="admin-feedback hidden" role="status"></div>
+                <h4 style="margin:0 0 8px">Cadastrar Novo Provedor OpenAI-Compatible (Groq, DeepSeek, Mistral, xAI, Ollama…)</h4>
+                <form id="custom-provider-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:10px">
+                  <input type="text" id="cp-id" placeholder="ID (ex: groq, deepseek)" pattern="[a-z][a-z0-9_-]{1,31}" required>
+                  <input type="text" id="cp-name" placeholder="Nome (ex: Groq Cloud)" required>
+                  <input type="url" id="cp-url" placeholder="Base URL (ex: https://api.groq.com/openai/v1)" required>
+                  <input type="password" id="cp-key" placeholder="API Key (write-only)" required>
+                  <input type="text" id="cp-model" placeholder="Modelo padrão (ex: llama-3.3-70b-versatile)" required>
+                  <input type="number" step="0.001" min="0" id="cp-rate-in" placeholder="USD / 1M input (opcional)">
+                  <input type="number" step="0.001" min="0" id="cp-rate-out" placeholder="USD / 1M output (opcional)">
+                  <button type="submit" class="btn-primary">Salvar Provedor</button>
+                </form>
+                <div id="custom-providers-list" class="stack-list" style="margin-bottom:10px"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <span class="muted" style="font-size:12px">Para editar chaves de Gemini, OpenRouter, Qwen, OpenAI ou Cloudflare em hot-reload:</span>
+                  <button type="button" class="btn-secondary btn-sm" id="overview-go-api-settings">Abrir Chaves &amp; APIs</button>
+                </div>
+              </div>
             </section>
           </div>
 

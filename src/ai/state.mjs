@@ -2,6 +2,7 @@
 
 export const failures = new Map();
 export const opened = new Map();
+export const lastErrors = new Map();
 // Em indisponibilidade do Gemini, Cloudflare costuma responder mais rápido
 // que os modelos gratuitos do OpenRouter; OpenRouter permanece como fallback.
 export const PROVIDERS = ['gemini', 'cloudflare', 'openrouter', 'qwen', 'openai'];

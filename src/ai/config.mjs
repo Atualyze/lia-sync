@@ -1,5 +1,6 @@
 import { config } from '../config.mjs';
-import { failures, opened, PROVIDERS } from './state.mjs';
+import { failures, opened, lastErrors, PROVIDERS } from './state.mjs';
+import { getCustomProvider, listCustomProviders } from './custom-providers.mjs';
 
 export function resolveAIConfig(botConfig = {}) {
   const ai = botConfig?.ai || botConfig || {};
@@ -23,9 +24,18 @@ export function resolveAIConfig(botConfig = {}) {
 }
 
 export const providers = (botConfig = {}) => {
-  const p = resolveAIConfig(botConfig).provider;
-  const others = PROVIDERS.filter(x => x !== p && Boolean(available(x)));
-  const ordered = [p, ...others].filter(x => PROVIDERS.includes(x) && Boolean(available(x)));
+  const aiCfg = resolveAIConfig(botConfig);
+  const p = aiCfg.provider;
+  const customIds = listCustomProviders().filter(cp => cp.enabled && cp.apiKey && cp.baseUrl).map(cp => cp.id);
+  const allKnown = [...new Set([...PROVIDERS, ...customIds])];
+  // Respeita a ordem explícita dos provedores configurados em fallbackModels antes dos demais.
+  const fallbackProviderOrder = (aiCfg.fallbackModels || [])
+    .map(parseFallbackModel)
+    .map(item => item.provider)
+    .filter(prov => prov && prov !== p && allKnown.includes(prov) && Boolean(available(prov)));
+  const remaining = allKnown.filter(x => x !== p && !fallbackProviderOrder.includes(x) && Boolean(available(x)));
+  const ordered = [...new Set([p, ...fallbackProviderOrder, ...remaining])]
+    .filter(x => allKnown.includes(x) && Boolean(available(x)));
   const now = Date.now();
   return ordered.sort((a, b) => {
     const aOpen = (opened.get(a) || 0) > now;
@@ -35,19 +45,27 @@ export const providers = (botConfig = {}) => {
   });
 };
 
-export const available = provider =>
-  provider === 'gemini' ? config.geminiKey :
-  provider === 'openrouter' ? config.openrouterKey :
-  provider === 'qwen' ? config.qwenKey :
-  provider === 'cloudflare' ? (config.cloudflareAccountId && config.cloudflareApiToken) :
-  config.openaiKey;
+export const available = provider => {
+  if (provider === 'gemini') return config.geminiKey;
+  if (provider === 'openrouter') return config.openrouterKey;
+  if (provider === 'qwen') return config.qwenKey;
+  if (provider === 'cloudflare') return (config.cloudflareAccountId && config.cloudflareApiToken);
+  if (provider === 'openai') return config.openaiKey;
+  const custom = getCustomProvider(provider);
+  return Boolean(custom && custom.enabled && custom.apiKey && custom.baseUrl);
+};
 
-const PROVIDER_PREFIX = /^(gemini|openrouter|qwen|openai|cloudflare):(.*)$/i;
+const PROVIDER_PREFIX = /^([a-z][a-z0-9_-]{1,31}):(.+)$/i;
 
 export function parseFallbackModel(value) {
   const raw = String(value || '').trim();
   const explicit = raw.match(PROVIDER_PREFIX);
-  if (explicit) return { provider: explicit[1].toLowerCase(), model: explicit[2].trim() };
+  if (explicit) {
+    const prefix = explicit[1].toLowerCase();
+    if (PROVIDERS.includes(prefix) || getCustomProvider(prefix)) {
+      return { provider: prefix, model: explicit[2].trim() };
+    }
+  }
   if (/^@cf\//i.test(raw)) return { provider: 'cloudflare', model: raw };
   if (/^gemini[-\w.]/i.test(raw)) return { provider: 'gemini', model: raw };
   if (/^(?:gpt-|o[1-9](?:-|$)|chatgpt-)/i.test(raw)) return { provider: 'openai', model: raw };
@@ -64,19 +82,27 @@ export function fallbackModelsForProvider(aiConfig, provider) {
 }
 
 export function getCircuitBreakers() {
-  const all = ['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare'];
+  const customList = listCustomProviders();
+  const all = [...new Set(['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customList.map(c => c.id)])];
   const res = {};
   const now = Date.now();
   for (const p of all) {
+    const custom = getCustomProvider(p);
     const isAvail = Boolean(available(p));
     const failCount = failures.get(p) || 0;
     const openUntil = opened.get(p) || 0;
     const isQuarantine = openUntil > now;
+    const errInfo = lastErrors.get(p) || null;
     res[p] = {
       configured: isAvail,
+      isCustom: Boolean(custom),
+      ...(custom ? { name: custom.name, defaultModel: custom.defaultModel, baseUrl: custom.baseUrl } : {}),
       status: !isAvail ? 'nao_configurado' : (isQuarantine ? 'aberto' : (failCount > 0 ? 'degradado' : 'operacional')),
       failures: failCount,
-      quarantineSeconds: isQuarantine ? Math.max(0, Math.ceil((openUntil - now) / 1000)) : 0
+      quarantineSeconds: isQuarantine ? Math.max(0, Math.ceil((openUntil - now) / 1000)) : 0,
+      lastError: errInfo?.message || null,
+      lastErrorCode: errInfo?.code || null,
+      lastErrorAt: errInfo?.at || null
     };
   }
   return res;
@@ -221,5 +247,7 @@ export function providerDefaultModel(provider, aiConfig, fixedModel) {
   if (configuredFallback) return configuredFallback;
   if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
   if (provider === 'cloudflare') return '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+  const custom = getCustomProvider(provider);
+  if (custom?.defaultModel) return custom.defaultModel;
   return '';
 }

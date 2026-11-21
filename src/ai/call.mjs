@@ -1,8 +1,10 @@
 import { config } from '../config.mjs';
 import { recordAICall, getMetricsSummary, resetMetrics } from '../metrics.mjs';
 import { decidirModeloPorContexto } from '../model-router.mjs';
-import { failures, opened, PROVIDERS } from './state.mjs';
+import { failures, opened, lastErrors, PROVIDERS } from './state.mjs';
 import { resolveAIConfig, providers, available, providerDefaultModel, fallbackModelsForProvider, getCircuitBreakers } from './config.mjs';
+import { getCustomProvider } from './custom-providers.mjs';
+import { describeAIError } from './errors.mjs';
 import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail, parseAIResponse } from './parsing.mjs';
 import { shouldEnableGoogleSearch } from './search.mjs';
 import { getEnabledTools, getGeminiToolDeclarations, getToolExecutionPolicy } from '../tools/index.mjs';
@@ -307,10 +309,11 @@ export async function call(provider, {
     throw lastError || Error('cloudflare deadline_exceeded');
   }
 
-  // Provedores não-Gemini usam o modelo que lhes foi atribuído
-  const model = fixedModel || preferredModel || legacyModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
-  const base = provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1';
-  const key = provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey;
+  // Provedores não-Gemini (built-ins OpenAI-compatible e provedores customizados)
+  const customProv = getCustomProvider(provider);
+  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
+  const base = customProv ? customProv.baseUrl : (provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
+  const key = customProv ? customProv.apiKey : (provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
   const headers = { 'content-type': 'application/json', Authorization: `Bearer ${key}` };
   if (provider === 'openrouter') {
     if (config.openrouterSiteUrl) headers['HTTP-Referer'] = config.openrouterSiteUrl;
@@ -370,7 +373,7 @@ export async function call(provider, {
 
 export async function askAI(args) {
   const aiConfig = resolveAIConfig(args?.botConfig);
-  if (!PROVIDERS.includes(aiConfig.provider) || !aiConfig.model) {
+  if ((!PROVIDERS.includes(aiConfig.provider) && !getCustomProvider(aiConfig.provider)) || !aiConfig.model) {
     console.warn('[ai] Nenhum provedor/modelo foi publicado no dashboard.');
     return null;
   }
@@ -429,6 +432,7 @@ export async function askAI(args) {
       if (res?.raw) {
         failures.set(provider, 0);
         opened.delete(provider);
+        lastErrors.delete(provider);
         const parsed = parseAIResponse(res.raw);
         const executedModel = res.model || providerModel || preferredModel;
         const settlementConfirmed = await res.budgetPermit?.commit?.(res.tokens, { provider, model: executedModel });
@@ -455,22 +459,27 @@ export async function askAI(args) {
       }
     } catch (error) {
       if (error?.budgetDenied) continue;
-      if (isProviderCreditExhaustion(error) && !creditExhaustionProvider) creditExhaustionProvider = provider;
+      const attemptedModel = error?.attemptedModel || providerModel || preferredModel || 'unknown';
+      const diag = describeAIError(provider, error, attemptedModel);
+      if ((isProviderCreditExhaustion(error) || diag.isCreditExhausted) && !creditExhaustionProvider) creditExhaustionProvider = provider;
       const count = (failures.get(provider) || 0) + 1;
       failures.set(provider, count);
-      if (count >= 3 || /\b(429|401|403)\b/.test(error.message)) opened.set(provider, Date.now() + 60000);
+      lastErrors.set(provider, { code: diag.code, message: diag.message, model: attemptedModel, at: new Date().toISOString() });
+      if (count >= 3 || /\b(429|401|403)\b/.test(error.message)) {
+        opened.set(provider, Date.now() + Math.max(60_000, diag.quarantineMs || 60_000));
+      }
       if (!error?.budgetAttemptsLogged) await recordAICall({
           provider,
-          model: error?.attemptedModel || providerModel || preferredModel || 'unknown',
+          model: attemptedModel,
           latencyMs: Date.now() - start,
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
           intent: 'falha',
           success: false,
-          error: error.message
+          error: `[${diag.code}] ${diag.message}`
         });
-      console.error(`[ai:${provider}]`, error.message);
+      console.error(`[ai:${provider}] [${diag.code}] ${diag.message}`);
     }
   }
   if (creditExhaustionProvider) return providerCreditExhaustionReply(creditExhaustionProvider);
@@ -531,6 +540,8 @@ export async function pingAI(targetProvider, targetModel, { budgetGate, aiConfig
   } catch (err) {
     const latencyMs = Date.now() - start;
     if (err?.budgetDenied) return { ok: false, provider: p, model, latencyMs, error: 'Orçamento mensal indisponível ou atingido.', code: err.message };
+    const diag = describeAIError(p, err, model);
+    lastErrors.set(p, { code: diag.code, message: diag.message, model, at: new Date().toISOString() });
     await budgetPermit?.markUnknown?.({ provider: p, model });
     if (!err?.budgetAttemptsLogged) await recordAICall({
       requestId: budgetPermit?.requestId || null,
@@ -542,14 +553,15 @@ export async function pingAI(targetProvider, targetModel, { budgetGate, aiConfig
       totalTokens: 0,
       intent: 'ping_falha',
       success: false,
-      error: err.message
+      error: `[${diag.code}] ${diag.message}`
     });
     return {
       ok: false,
       provider: p,
       model,
       latencyMs,
-      error: err.message
+      code: diag.code,
+      error: diag.message
     };
   }
 }

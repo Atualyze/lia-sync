@@ -5088,4 +5088,81 @@ async function loadApiIntegrationsPanel() {
       setRuntimeFeedback('#api-settings-feedback', `Erro ao salvar APIs: ${err.message}`, true);
     }
   });
+
+  // ====================================================================
+  // GESTOR INLINE DE PROVEDORES DE IA (CUSTOM PROVIDERS + API HOT-RELOAD)
+  // ====================================================================
+  async function loadCustomProvidersInline() {
+    const listEl = $('#custom-providers-list');
+    if (!listEl) return;
+    try {
+      const data = await api('/api/dashboard/ai-providers');
+      const items = data.customProviders || [];
+      const breakers = data.circuitBreakers || {};
+      listEl.innerHTML = items.length ? items.map(p => {
+        const cb = breakers[p.id] || {};
+        const rateInfo = (p.inputUsdPerMillion !== null && p.outputUsdPerMillion !== null)
+          ? ` · $${p.inputUsdPerMillion}/$${p.outputUsdPerMillion} por 1M`
+          : '';
+        const errInfo = cb.lastError ? `<div class="muted" style="color:#f59e0b;font-size:11px;margin-top:3px">⚠️ ${runtimeEscape(cb.lastError)}</div>` : '';
+        return `
+          <div class="panel" style="padding:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <div>
+              <strong>${runtimeEscape(p.name)}</strong> <span class="badge-mini">${runtimeEscape(p.id)} · ${runtimeEscape(cb.status || 'operacional')}</span>
+              <div class="muted" style="font-size:12px">${runtimeEscape(p.defaultModel)} · ${runtimeEscape(p.baseUrl)}${rateInfo}</div>
+              ${errInfo}
+            </div>
+            <button type="button" class="btn-secondary btn-sm" data-del-custom-prov="${runtimeEscape(p.id)}">Remover</button>
+          </div>
+        `;
+      }).join('') : '<p class="muted" style="font-size:12px">Nenhum provedor customizado cadastrado ainda.</p>';
+    } catch (err) {
+      listEl.innerHTML = `<p class="muted">${runtimeEscape(err.message)}</p>`;
+    }
+  }
+
+  $('#overview-providers-toggle')?.addEventListener('click', async () => {
+    const mgr = $('#overview-providers-manager');
+    if (!mgr) return;
+    mgr.classList.toggle('hidden');
+    if (!mgr.classList.contains('hidden')) await loadCustomProvidersInline();
+  });
+
+  $('#overview-go-api-settings')?.addEventListener('click', () => {
+    showView('runtime');
+    setTimeout(() => document.getElementById('api-settings-panel')?.scrollIntoView({ behavior: 'smooth' }), 150);
+  });
+
+  $('#custom-provider-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        id: $('#cp-id')?.value?.trim().toLowerCase(),
+        name: $('#cp-name')?.value?.trim(),
+        baseUrl: $('#cp-url')?.value?.trim(),
+        apiKey: $('#cp-key')?.value?.trim(),
+        defaultModel: $('#cp-model')?.value?.trim(),
+        inputUsdPerMillion: $('#cp-rate-in')?.value === '' ? null : Number($('#cp-rate-in')?.value),
+        outputUsdPerMillion: $('#cp-rate-out')?.value === '' ? null : Number($('#cp-rate-out')?.value)
+      };
+      await api('/api/dashboard/ai-providers', { method: 'POST', body: JSON.stringify(payload) });
+      setRuntimeFeedback('#overview-providers-feedback', `Provedor "${payload.name}" (${payload.id}) cadastrado e pronto para roteamento/contingência!`);
+      ['#cp-id', '#cp-name', '#cp-url', '#cp-key', '#cp-model', '#cp-rate-in', '#cp-rate-out'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
+      await loadCustomProvidersInline();
+      renderOverview?.();
+    } catch (err) {
+      setRuntimeFeedback('#overview-providers-feedback', `Erro ao salvar provedor: ${err.message}`, true);
+    }
+  });
+
+  $('#custom-providers-list')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-del-custom-prov]');
+    if (!btn) return;
+    const id = btn.dataset.delCustomProv;
+    if (!window.confirm(`Remover o provedor customizado "${id}"?`)) return;
+    await api(`/api/dashboard/ai-providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setRuntimeFeedback('#overview-providers-feedback', `Provedor "${id}" removido.`);
+    await loadCustomProvidersInline();
+    renderOverview?.();
+  });
 })();

@@ -1,12 +1,13 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
+import { getCircuitBreakers } from '../ai/config.mjs';
 
 /**
  * Rotas autenticadas do painel para controle total do Motor v3.0
- * (Lia Runtime, Learning Engine, Autonomy Engine e API Settings hot-reload).
+ * (Lia Runtime, Learning Engine, Autonomy Engine, Provedores de IA customizados e API Settings hot-reload).
  *
  * Controle de papel aplicado em src/http/router.mjs:
  * - GET /api/dashboard/runtime/overview: operator+
- * - Demais rotas (políticas, objetivos, compromissos, propostas, wake, api-settings): admin
+ * - Demais rotas (políticas, objetivos, compromissos, propostas, wake, api-settings, ai-providers): admin
  */
 export async function handleRuntimeDashboardRoutes({
   req,
@@ -17,12 +18,55 @@ export async function handleRuntimeDashboardRoutes({
   liaLearning,
   liaAutonomy,
   apiSettingsStore,
+  customProviderStore,
   operationsStore
 }) {
   const pathname = u.pathname;
   const isRuntimePath = pathname.startsWith('/api/dashboard/runtime');
   const isApiSettingsPath = pathname === '/api/dashboard/api-settings';
-  if (!isRuntimePath && !isApiSettingsPath) return NOT_HANDLED;
+  const isAiProvidersPath = pathname === '/api/dashboard/ai-providers' || pathname.startsWith('/api/dashboard/ai-providers/');
+  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath) return NOT_HANDLED;
+
+  // === 0. Cadastro e Gestão de Provedores de IA Customizados (OpenAI-compatible) ===
+  if (isAiProvidersPath) {
+    if (!customProviderStore) return json(res, 503, { error: 'custom_providers_unavailable' });
+    if (req.method === 'GET' && pathname === '/api/dashboard/ai-providers') {
+      return json(res, 200, {
+        mode: customProviderStore.mode,
+        customProviders: customProviderStore.listSafe(),
+        circuitBreakers: getCircuitBreakers(),
+        apiSettings: apiSettingsStore ? apiSettingsStore.getSafeView().items.filter(i => i.group === 'ai') : []
+      });
+    }
+    if ((req.method === 'POST' || req.method === 'PUT') && pathname === '/api/dashboard/ai-providers') {
+      let body;
+      try { body = await readBody(req); }
+      catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+      try {
+        const saved = await customProviderStore.upsert(body);
+        await operationsStore?.recordAudit?.({
+          actor: authContext?.email || authContext?.userId || 'admin',
+          action: 'custom_ai_provider_saved',
+          metadata: { provider: saved.id, model: saved.defaultModel }
+        }).catch(() => {});
+        return json(res, 200, { ok: true, provider: saved, circuitBreakers: getCircuitBreakers() });
+      } catch (error) {
+        return json(res, 400, { error: error.message || 'invalid_custom_provider' });
+      }
+    }
+    const provMatch = pathname.match(/^\/api\/dashboard\/ai-providers\/([a-z][a-z0-9_-]{1,31})$/i);
+    if (provMatch && req.method === 'DELETE') {
+      const removed = await customProviderStore.remove(provMatch[1]);
+      if (!removed) return json(res, 404, { error: 'provider_not_found' });
+      await operationsStore?.recordAudit?.({
+        actor: authContext?.email || authContext?.userId || 'admin',
+        action: 'custom_ai_provider_removed',
+        metadata: { provider: provMatch[1] }
+      }).catch(() => {});
+      return json(res, 200, { ok: true, circuitBreakers: getCircuitBreakers() });
+    }
+    return json(res, 405, { error: 'method_not_allowed' });
+  }
 
   // === 1. Configuração de APIs & Provedores (Hot-Reload sem entrar na VPS) ===
   if (isApiSettingsPath) {

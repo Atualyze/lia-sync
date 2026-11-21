@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
+import { getCustomProviderPricingRates } from './ai/custom-providers.mjs';
+import { describeAIError } from './ai/errors.mjs';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PROVIDERS = new Set(['gemini', 'openrouter', 'qwen', 'openai']);
+const PROVIDER_SLUG_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 const safeNumber = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const validRateAmount = value => (typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 const roundUsd = value => Math.round(value * 1_000_000) / 1_000_000;
@@ -36,16 +38,34 @@ function safeMetadata(input = {}) {
 
 function priceIndex(config = {}) {
   const index = new Map();
+  // Tarifas de provedores customizados entram como base e podem ser sobrescritas por pricingRates
+  for (const rate of getCustomProviderPricingRates()) {
+    const provider = String(rate?.provider || '').toLowerCase();
+    const model = String(rate?.model || '').trim();
+    if (!PROVIDER_SLUG_RE.test(provider) || !model || !validRateAmount(rate?.inputUsdPerMillion) || !validRateAmount(rate?.outputUsdPerMillion)) continue;
+    index.set(`${provider}:${model}`, { input: Number(rate.inputUsdPerMillion), output: Number(rate.outputUsdPerMillion) });
+  }
   for (const rate of Array.isArray(config.pricingRates) ? config.pricingRates : []) {
     const provider = String(rate?.provider || '').toLowerCase();
     const model = String(rate?.model || '').trim();
-    if (!PROVIDERS.has(provider) || !model || !validRateAmount(rate?.inputUsdPerMillion) || !validRateAmount(rate?.outputUsdPerMillion)) continue;
+    if (!PROVIDER_SLUG_RE.test(provider) || !model || !validRateAmount(rate?.inputUsdPerMillion) || !validRateAmount(rate?.outputUsdPerMillion)) continue;
     index.set(`${provider}:${model}`, {
       input: Number(rate.inputUsdPerMillion),
       output: Number(rate.outputUsdPerMillion)
     });
   }
   return index;
+}
+
+function resolveModelRate(rates, provider, model) {
+  const exact = rates.get(`${provider}:${model}`);
+  if (exact) return exact;
+  const wildcard = rates.get(`${provider}:*`);
+  if (wildcard) return wildcard;
+  if (provider === 'openrouter' && (model === 'openrouter/free' || String(model || '').endsWith(':free'))) {
+    return { input: 0, output: 0 };
+  }
+  return null;
 }
 
 function budgetList(config = {}) {
@@ -125,7 +145,7 @@ export function summarizePersistentCalls(rows = [], aiConfig = {}, nowValue = ne
   }
 
   const byProviderModel = [...groups.values()].map(group => {
-    const rate = rates.get(`${group.provider}:${group.model}`);
+    const rate = resolveModelRate(rates, group.provider, group.model);
     const knownUsd = rate
       ? roundUsd((group.promptTokens * rate.input + group.completionTokens * rate.output) / 1_000_000)
       : null;
@@ -171,21 +191,42 @@ export function summarizePersistentCalls(rows = [], aiConfig = {}, nowValue = ne
     success: row.success !== false,
     tokenUsageKnown: row.success !== false
   }));
-  const recentErrors = rows.filter(row => row.success === false).slice(0, 15).map(row => ({
-    timestamp: row.created_at,
-    provider: String(row.provider || '').slice(0, 40),
-    model: String(row.model || '').slice(0, 160),
-    message: safeErrorMessage(row.error_message)
-  }));
+  const recentErrors = rows.filter(row => row.success === false).slice(0, 15).map(row => {
+    const prov = String(row.provider || '').slice(0, 40);
+    const mod = String(row.model || '').slice(0, 160);
+    const rawMsg = safeErrorMessage(row.error_message);
+    const diag = describeAIError(prov, rawMsg, mod);
+    return {
+      timestamp: row.created_at,
+      provider: prov,
+      model: mod,
+      code: diag.code,
+      message: rawMsg.startsWith('[') ? rawMsg : `[${diag.code}] ${diag.message}`
+    };
+  });
   const providerMap = {};
+  const byProviderCost = {};
+  let monthlySuccessfulRequests = 0;
   for (const item of byProviderModel) {
     const target = providerMap[item.provider] ||= { requests: 0, errors: 0, totalTokens: 0, totalLatencyMs: 0, avgLatencyMs: 0 };
     target.requests += item.requests;
     target.errors += item.failedRequests;
     target.totalTokens += item.totalTokens;
     target.totalLatencyMs += item.totalLatencyMs;
+    monthlySuccessfulRequests += Math.max(0, item.monthlyRequests - item.monthlyFailedRequests);
+    if (item.monthlyEstimatedUsd !== null) {
+      byProviderCost[item.provider] = roundUsd((byProviderCost[item.provider] || 0) + item.monthlyEstimatedUsd);
+    }
   }
   for (const value of Object.values(providerMap)) value.avgLatencyMs = value.requests ? Math.round(value.totalLatencyMs / value.requests) : 0;
+
+  const daysElapsed = Math.max(1, now.getUTCDate());
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const dailyBurnRateUsd = roundUsd(knownMonthlyUsd / daysElapsed);
+  const projectedMonthlyUsd = roundUsd(dailyBurnRateUsd * daysInMonth);
+  const avgCostPer1kCallsUsd = monthlySuccessfulRequests > 0
+    ? roundUsd((knownMonthlyUsd / monthlySuccessfulRequests) * 1000)
+    : 0;
 
   return {
     source: 'supabase',
@@ -212,11 +253,15 @@ export function summarizePersistentCalls(rows = [], aiConfig = {}, nowValue = ne
       period: 'mês corrente UTC',
       totalUsd: costComplete ? knownMonthlyUsd : null,
       knownUsd: knownMonthlyUsd,
+      dailyBurnRateUsd,
+      projectedMonthlyUsd,
+      avgCostPer1kCallsUsd,
+      byProviderCost,
       complete: costComplete,
-      missingRateModels: byProviderModel.filter(item => item.monthlyRequests && !rates.has(`${item.provider}:${item.model}`)).map(item => ({ provider: item.provider, model: item.model })),
+      missingRateModels: byProviderModel.filter(item => item.monthlyRequests && !resolveModelRate(rates, item.provider, item.model)).map(item => ({ provider: item.provider, model: item.model })),
       unknownUsageRequests: monthlyUnknownUsageRequests,
       unknownUsageModels: byProviderModel.filter(item => item.monthlyFailedRequests > 0).map(item => ({ provider: item.provider, model: item.model, failedRequests: item.monthlyFailedRequests })),
-      note: `Estimativa calculada com tarifas manuais versionadas na configuração ativa; não representa faturamento confirmado pelo provedor. Falhas não têm tokens/custos presumidos; o subtotal conhecido exclui essas chamadas.${truncated ? ' Histórico limitado a 5.000 chamadas; o custo total pode estar subestimado.' : ''}`
+      note: `Estimativa calculada com tarifas versionadas (incluindo provedores customizados e modelos :free = $0); não representa faturamento confirmado pelo provedor. Falhas não têm tokens/custos presumidos; o subtotal conhecido exclui essas chamadas.${truncated ? ' Histórico limitado a 5.000 chamadas; o custo total pode estar subestimado.' : ''}`
     },
     circuitBreakers: {},
     recentCalls,

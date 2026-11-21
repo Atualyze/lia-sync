@@ -37,6 +37,7 @@ import { LiaRuntimeStore, createLiaRuntime } from './runtime/index.mjs';
 import { LiaLearningStore, createLearningEngine } from './learning/index.mjs';
 import { LiaAutonomyStore, createAutonomyEngine } from './autonomy/index.mjs';
 import { ApiSettingsStore } from './api-settings.mjs';
+import { CustomProviderStore } from './ai/custom-providers.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -55,6 +56,12 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   await apiSettingsStore.load();
+  const customProviderStore = new CustomProviderStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'custom-ai-providers.json'),
+    logger: console
+  });
+  await customProviderStore.load();
   // Preços permitidos vêm exclusivamente da configuração publicada (regra do projeto).
   setPricingSource(() => adminConfig.active);
   if (!store.client?.enabled) console.warn('[persistence] Supabase runtime desativado: configure SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; usando fallback local.');
@@ -436,9 +443,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     liaRuntime,
     liaLearning,
     liaAutonomy,
-    apiSettingsStore
+    apiSettingsStore,
+    customProviderStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
