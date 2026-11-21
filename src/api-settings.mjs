@@ -118,7 +118,7 @@ export class ApiSettingsStore {
   async load() {
     if (this.client?.enabled) {
       try {
-        const rows = await this.client.select('runtime_projections', `select=id,payload,updated_at&id=eq.${encodeURIComponent(PROJECTION_ID)}&limit=1`);
+        const rows = await this.client.select('runtime_projections', `select=key,payload,updated_at&key=eq.${encodeURIComponent(PROJECTION_ID)}&limit=1`);
         this.mode = 'supabase';
         const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
         if (row?.payload && typeof row.payload === 'object') {
@@ -201,10 +201,10 @@ export class ApiSettingsStore {
 
     if (this.client?.enabled && this.mode === 'supabase') {
       await this.client.upsert('runtime_projections', [{
-        id: PROJECTION_ID,
+        key: PROJECTION_ID,
         payload: { overrides: this.overrides },
         updated_at: this.updatedAt
-      }], 'id');
+      }], 'key');
     } else {
       await this._saveLocal();
     }
