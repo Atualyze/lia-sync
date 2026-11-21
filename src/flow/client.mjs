@@ -646,7 +646,12 @@ export async function handleClientMessage({
       }
 
       const allowedPrices = getAllowedPrices();
-      const filtered = filterReply(raw, { allowedPrices, strictPrices: true });
+      const filtered = filterReply(raw, {
+        allowedPrices,
+        strictPrices: true,
+        alreadyIntroduced: Boolean(promptSession.hasPriorConversation),
+        botName: assistant
+      });
       let safeReplyText = String(filtered.text || '');
       let adminPixApprovalPending = false;
       const requestAdminPixApproval = async (amount, description = '') => {

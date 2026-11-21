@@ -74,7 +74,30 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const history = session.history || [];
   const alreadyIntroduced = typeof session.hasPriorConversation === 'boolean'
     ? session.hasPriorConversation
-    : history.length > 1;
+    : (copilotMode ? history.length > 0 : history.length > 1) || Boolean(session.contextSummary);
+  const completedHistoryTurns = copilotMode ? history : history.slice(0, -1);
+  const recentCompletedTurns = completedHistoryTurns
+    .filter(entry => entry && typeof entry.content === 'string' && entry.content.trim())
+    .slice(-4)
+    .map(entry => ({
+      role: entry.role === 'assistant' || entry.role === 'model' ? 'assistant' : 'user',
+      content: entry.content.trim().slice(0, 320)
+    }));
+  const lastAssistantTurnText = [...recentCompletedTurns].reverse().find(entry => entry.role === 'assistant')?.content || '';
+  const crossModelContinuitySection = alreadyIntroduced
+    ? [
+      '',
+      '[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]',
+      `ATENÇÃO CRÍTICA DE CONTINUIDADE: Esta conversa JÁ ESTÁ EM ANDAMENTO (mesmo que o modelo ou provedor de IA tenha acabado de ser trocado no painel ou acionado por contingência/fallback).`,
+      `- É TERMINANTEMENTE PROIBIDO agir como se fosse o primeiro contato, repetir apresentações ("Olá, sou a ${botName}...", "Tudo bem? Como posso ajudar hoje?") ou reiniciar o atendimento do zero.`,
+      `- Continue exatamente do ponto em que a conversa parou, respondendo diretamente à mensagem atual em conexão com as últimas trocas abaixo.`,
+      session.contextSummary ? `- Resumo ativo do contexto: ${String(session.contextSummary).trim().slice(0, 350)}` : '',
+      session.conversationState ? `- Estado estruturado da conversa: ${JSON.stringify(session.conversationState)}` : '',
+      lastAssistantTurnText ? `- Última fala/pergunta da ${botName}: ${JSON.stringify(lastAssistantTurnText)}` : '',
+      recentCompletedTurns.length ? `- Últimas trocas confirmadas:\n${recentCompletedTurns.map(t => `  [${t.role === 'assistant' ? botName : (copilotMode ? owner : 'Cliente')}]: ${t.content.replace(/\s+/g, ' ')}`).join('\n')}` : '',
+      '[/CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]'
+    ].filter(Boolean).join('\n')
+    : '';
   const memoryScopeKey = buildMemoryScopeKey({ phone: session.phone || '', isOwner: copilotMode });
   const activeMemories = Array.isArray(memoryItems) ? memoryItems : memoryStore.retrieve({
     scopeKey: memoryScopeKey,
@@ -232,12 +255,13 @@ Você possui voz nativa e síntese de áudio ultrarrealista com o Google Gemini 
 
 [HORÁRIO LOCAL ATUAL] ${local}
 [TELEMETRIA DO SISTEMA]
-${JSON.stringify(telemetry || { status: 'operacional', activeProvider: 'gemini', activeModel: 'gemini-3.8-flash' }, null, 2)}${supportContactsList}
+${JSON.stringify(telemetry || { status: 'operacional', activeProvider: 'gemini', activeModel: 'gemini-3.8-flash' }, null, 2)}${supportContactsList}${crossModelContinuitySection}
 
 Contrato de saída JSON obrigatório:
 {
   "reply": "sua resposta bem formatada com quebras de linha duplas, negritos e emojis",
   "intent": "status|lembrete|comando|chat|envio_mensagem",
+  "context_summary": "resumo em 1 frase do contexto e pendência atual",
   "red_flags": false,
   "handoff": false,
   "handoff_reason": "",
@@ -355,7 +379,7 @@ ${(() => {
     return ctxBlock;
   })()}
 
-[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}
+[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}
   [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;

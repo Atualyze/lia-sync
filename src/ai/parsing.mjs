@@ -128,7 +128,9 @@ export function normalizeHistory(history = []) {
   const clean = history
     .filter(m => m && ['user', 'assistant', 'model'].includes(m.role) && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content.trim().slice(-3000) }));
-  while (clean.length && clean[0].role !== 'user') clean.shift();
+  if (clean.length && clean[0].role !== 'user') {
+    clean.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+  }
   const out = [];
   for (const m of clean) {
     if (out.at(-1)?.role === m.role) out.at(-1).content = `${out.at(-1).content}\n${m.content}`.slice(-3000);
@@ -142,7 +144,17 @@ export function normalizeHistory(history = []) {
     bounded.unshift(item);
     chars += item.content.length;
   }
-  while (bounded.length && bounded[0].role !== 'user') bounded.shift();
+  if (bounded.length && bounded[0].role !== 'user') {
+    const firstIdx = out.indexOf(bounded[0]);
+    if (firstIdx > 0 && out[firstIdx - 1]?.role === 'user') {
+      bounded.unshift({
+        role: 'user',
+        content: out[firstIdx - 1].content.slice(-1500)
+      });
+    } else {
+      bounded.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+    }
+  }
   return bounded;
 }
 

@@ -156,7 +156,27 @@ export function extractAllowedPrices(text = '') {
   return detectPriceMentions(text).map(item => item.raw.replace(/\s/g, ''));
 }
 
-export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false } = {}) {
+export function stripRedundantSelfIntroduction(reply = '', { alreadyIntroduced = false, botName = 'Lia' } = {}) {
+  const raw = String(reply || '').trim();
+  if (!alreadyIntroduced || !raw) return raw;
+  const escapedBot = String(botName || 'Lia').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Remove prefixos típicos de primeiro contato quando um modelo de fallback assume conversa já em andamento
+  const introPattern = new RegExp(
+    `^(?:(?:ol[aá]|oi|bom\\s+dia|boa\\s+tarde|boa\\s+noite|opa|e\\s+a[ií])[,!\\s.]+)?` +
+    `(?:tudo\\s+(?:bem|bom|certo)(?:\\s+com\\s+voc[eê]|\\s+por\\s+a[ií])?[?!.\\s]+)?` +
+    `(?:eu\\s+sou|sou|aqui\\s+[eé]|me\\s+chamo)\\s+(?:a\\s+|o\\s+)?\\*?${escapedBot}\\*?` +
+    `(?:[,\\s]+(?:sua\\s+)?(?:assistente|copiloto|atendente)[^.!?\n]*[.!?]+|[.!?\n]+)\\s*` +
+    `(?:(?:como|em\\s+que)\\s+posso\\s+(?:te\\s+)?ajudar(?:\\s+hoje|\\s+agora)?[?!.\\s]*)?`,
+    'i'
+  );
+  const stripped = raw.replace(introPattern, '').trim();
+  if (stripped.length >= 12) {
+    return stripped[0].toUpperCase() + stripped.slice(1);
+  }
+  return raw;
+}
+
+export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false, alreadyIntroduced = false, botName = 'Lia' } = {}) {
   let text = String(reply || '')
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
@@ -173,6 +193,10 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
     .replace(/como uma IA|como modelo de linguagem/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  if (alreadyIntroduced) {
+    text = stripRedundantSelfIntroduction(text, { alreadyIntroduced: true, botName });
+  }
 
   const violations = [];
 

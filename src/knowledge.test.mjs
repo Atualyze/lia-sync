@@ -20,4 +20,35 @@ test('findFaqInItems e findFaq buscam respostas e buildSystemPrompt gera prompt'
   assert.match(prompt, /PROTOCOLO DE DELIBERAÇÃO/);
   const ownerPrompt = buildSystemPrompt({ session: { history: [] }, isOwner: true });
   assert.match(ownerPrompt, /PROTOCOLO DE DELIBERAÇÃO/);
+  assert.doesNotMatch(ownerPrompt, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
+
+  const activeOwnerPrompt = buildSystemPrompt({
+    session: {
+      history: [
+        { role: 'user', content: 'Quero cobrar 25 reais' },
+        { role: 'assistant', content: 'Qual a descrição da cobrança?' }
+      ],
+      contextSummary: 'Cobrança Pix de R$ 25 aguardando descrição'
+    },
+    isOwner: true
+  });
+  assert.match(activeOwnerPrompt, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
+  assert.match(activeOwnerPrompt, /Cobrança Pix de R\$ 25 aguardando descrição/);
+  assert.match(activeOwnerPrompt, /Qual a descrição da cobrança\?/);
+
+  const activeClientPrompt = buildSystemPrompt({
+    session: {
+      phone: '5511999998888',
+      history: [
+        { role: 'user', content: 'Oi, quero saber sobre os planos' },
+        { role: 'assistant', content: 'Temos os planos Start e Pro. Qual prefere?' },
+        { role: 'user', content: 'E no cartão tem desconto?' }
+      ],
+      contextSummary: 'Cliente avaliando planos Start e Pro'
+    },
+    isOwner: false
+  });
+  assert.match(activeClientPrompt, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
+  assert.match(activeClientPrompt, /Cliente avaliando planos Start e Pro/);
+  assert.match(activeClientPrompt, /Temos os planos Start e Pro\. Qual prefere\?/);
 });

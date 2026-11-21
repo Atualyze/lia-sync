@@ -1,4 +1,4 @@
-import { filterReply, normalize, isGreeting, detectPriceMentions } from '../safety.mjs';
+import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction } from '../safety.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
@@ -92,7 +92,11 @@ export async function handleOwnerSession({
         }
 
         const recordSelfTurn = (replyText, { preserveTask = false } = {}) => {
-          let safeReply = String(replyText || '');
+          const hadPriorTurns = Array.isArray(sSelf.history) && sSelf.history.length > 0;
+          let safeReply = stripRedundantSelfIntroduction(String(replyText || ''), {
+            alreadyIntroduced: hadPriorTurns,
+            botName: assistant
+          });
           const timestamp = new Date(now()).toISOString();
 
           if (!preserveTask) {
@@ -1348,7 +1352,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const taskHistory = activeTask && Array.isArray(sSelf.history)
           ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
           : [];
-        let recentHistory = (taskHistory.length ? taskHistory : (Array.isArray(sSelf.history) ? sSelf.history : [])).slice(-contextTurns);
+        const fullRecentHistory = (Array.isArray(sSelf.history) ? sSelf.history : []).slice(-contextTurns);
+        let recentHistory = (taskHistory.length >= 2 ? taskHistory : fullRecentHistory).slice(-contextTurns);
         let turnReview = null;
         let suppressToolExecution = false;
         const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
@@ -1397,7 +1402,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             if (activeTask.type === 'payment') sSelf.pendingPixRequest = null;
             sSelf.pendingCopilotTask = null;
             activeTask = null;
-            recentHistory = [];
+            recentHistory = fullRecentHistory;
             store.markDirty();
           } else if (turnReview.intent !== 'continue') {
             suppressToolExecution = true;
@@ -1433,7 +1438,14 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           now: now()
         });
         const baseSys = buildSystemPrompt({
-          session: { history: recentHistory, supportContacts, lastUserText: cleanCommand },
+          session: {
+            history: recentHistory,
+            hasPriorConversation: (Array.isArray(sSelf.history) && sSelf.history.length > 0) || Boolean(sSelf.contextSummary),
+            contextSummary: sSelf.contextSummary || null,
+            conversationState: sSelf.conversationState || null,
+            supportContacts,
+            lastUserText: cleanCommand
+          },
           now: new Date(now()),
           botConfig,
           isOwner: true,
@@ -1465,6 +1477,20 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
         if (result?.provider_error) {
           return recordSelfTurn(filterReply(result.reply, { isCopilot: true }).text, { preserveTask: Boolean(activeTask) });
+        }
+        if (result?.context_summary && String(result.context_summary).trim()) {
+          sSelf.contextSummary = String(result.context_summary).trim().slice(0, 400);
+        }
+        if (result?.conversation_state && typeof result.conversation_state === 'object') {
+          const state = result.conversation_state;
+          sSelf.conversationState = {
+            objective: String(state.objective || '').trim().slice(0, 240),
+            need: String(state.need || '').trim().slice(0, 240),
+            next_step: String(state.next_step || '').trim().slice(0, 240),
+            confirmed: Array.isArray(state.confirmed)
+              ? state.confirmed.map(item => String(item || '').trim()).filter(Boolean).slice(0, 8)
+              : []
+          };
         }
         currentToolSuggestions = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
           .map(call => String(call?.name || '').trim())

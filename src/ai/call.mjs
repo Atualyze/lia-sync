@@ -58,7 +58,17 @@ function compactCloudflareHistory(history = []) {
     role: item.role,
     content: compactText(item.content, 1400)
   }));
-  while (recent.length && recent[0].role !== 'user') recent.shift();
+  if (recent.length && recent[0].role !== 'user') {
+    const prevIdx = normalized.length - recent.length - 1;
+    if (prevIdx >= 0 && normalized[prevIdx]?.role === 'user') {
+      recent.unshift({
+        role: 'user',
+        content: compactText(normalized[prevIdx].content, 800)
+      });
+    } else {
+      recent.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+    }
+  }
   return recent;
 }
 

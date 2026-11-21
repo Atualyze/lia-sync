@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createFlow } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
+import { normalizeHistory } from './ai/parsing.mjs';
 
 const at = value => new Date(value).toISOString();
 const botConfig = {
@@ -127,4 +128,82 @@ test('cliente: consulta atual de preço ainda pede validação humana quando o v
     await store.flush();
     await fs.rm(file, { force: true });
   }
+});
+
+test('troca de modelo ou fallback em conversa ativa preserva contexto e remove reapresentação de primeiro contato', async () => {
+  let nowMs = Date.parse('2026-11-21T12:00:00Z');
+  const { store, file } = await makeStore(nowMs);
+  const phone = '5588998340087';
+  const aiRequests = [];
+  let activeModel = 'gemini-2.5-flash';
+
+  const flow = createFlow({
+    store,
+    now: () => nowMs,
+    faq: async () => [],
+    humanPhone: '5588999999999',
+    getBotConfig: () => ({
+      ...botConfig,
+      ai: { ...botConfig.ai, model: activeModel }
+    }),
+    whatsapp: { sendText: async () => {} },
+    ai: {
+      askAI: async request => {
+        aiRequests.push({ model: activeModel, ...request });
+        if (aiRequests.length === 1) {
+          return {
+            reply: 'Olá! Sou a Lia. Posso te ajudar com a integração do sistema. Qual módulo você quer revisar?',
+            context_summary: 'Cliente revisando módulos de integração do sistema',
+            conversation_state: {
+              objective: 'Revisar integração',
+              need: 'Escolher módulo',
+              next_step: 'Detalhar módulo escolhido',
+              confirmed: ['Integração ativa']
+            },
+            handoff: false,
+            tool_calls: []
+          };
+        }
+        // Simula modelo reserva (Cloudflare/OpenRouter) que tenta se reapresentar como se fosse o primeiro contato
+        return {
+          reply: 'Olá! Eu sou a Lia, sua assistente virtual! Como posso te ajudar hoje? Sobre o módulo financeiro, ele sincroniza boletos e Pix automaticamente.',
+          context_summary: 'Explicando sincronização de boletos e Pix no módulo financeiro',
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  try {
+    const turn1 = await flow.process({ phone, text: 'Oi, quero revisar a integração', origin: 'real' });
+    assert.match(turn1, /Qual módulo você quer revisar\?/);
+
+    // Troca o modelo ativo no meio da conversa (simulando troca no painel ou fallback)
+    activeModel = '@cf/mistralai/mistral-small-3.1-24b-instruct';
+    nowMs += 20_000;
+    const turn2 = await flow.process({ phone, text: 'O módulo financeiro', origin: 'real' });
+
+    assert.equal(aiRequests.length, 2);
+    assert.match(aiRequests[1].system, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
+    assert.match(aiRequests[1].system, /Cliente revisando módulos de integração do sistema/);
+    assert.match(aiRequests[1].system, /Qual módulo você quer revisar\?/);
+    assert.doesNotMatch(turn2, /Eu sou a Lia|Como posso te ajudar hoje\?/i);
+    assert.match(turn2, /Sobre o módulo financeiro, ele sincroniza boletos e Pix automaticamente/i);
+  } finally {
+    await store.flush();
+    await fs.rm(file, { force: true });
+  }
+});
+
+test('normalizeHistory nunca apaga turno da assistente quando a janela começa com fala da assistente', () => {
+  const sliced = normalizeHistory([
+    { role: 'assistant', content: 'Qual é o valor da cobrança Pix?' },
+    { role: 'user', content: '35 reais' }
+  ]);
+  assert.equal(sliced.length, 3);
+  assert.equal(sliced[0].role, 'user');
+  assert.equal(sliced[1].role, 'assistant');
+  assert.match(sliced[1].content, /Qual é o valor da cobrança Pix\?/);
+  assert.equal(sliced[2].content, '35 reais');
 });
