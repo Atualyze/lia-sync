@@ -230,6 +230,75 @@ export function createFlow({
         botConfig, identity, messages, owner, assistant, sectors,
         phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
       });
+    },
+    async processPendingAIRetries({ immediate = false, sendReply = null } = {}) {
+      const currentNow = now();
+      let processed = 0;
+      let delivered = 0;
+      const entries = Object.entries(store.sessions || {});
+      for (const [key, session] of entries) {
+        if (!session || isSimulationSession(key, session) || session.human || session.archivedAt) continue;
+        if (!session.phone || session.phone === OWNER_SELF_KEY || isOwnerSender(session.phone)) continue;
+        const pending = session.pendingAIRetry;
+        if (!pending || !pending.userText) continue;
+        const nextRetryMs = Date.parse(pending.nextRetryAt || '');
+        if (!immediate && Number.isFinite(nextRetryMs) && currentNow < nextRetryMs) continue;
+
+        const runRetry = async () => {
+          const live = store.sessions?.[key] || session;
+          if (!live || live.human || live.archivedAt || !live.pendingAIRetry?.userText) return;
+          const retryMeta = { ...live.pendingAIRetry };
+          processed += 1;
+          const reply = await handleClientMessage({
+            store,
+            ai,
+            whatsapp,
+            faq,
+            reminderStore,
+            operationsStore,
+            logger,
+            now,
+            allowClientResume,
+            maxInputChars,
+            notify,
+            isOwnerSender,
+            botConfig: getBotConfig() || {},
+            identity: resolveIdentity(getBotConfig() || {}),
+            messages: resolveMessages(getBotConfig() || {}),
+            owner: (resolveIdentity(getBotConfig() || {}).responsible) || 'nossa equipe',
+            assistant: (resolveIdentity(getBotConfig() || {}).botName) || 'Lia',
+            sectors: typeof getSectors === 'function' ? getSectors() : [],
+            phone: live.phone,
+            text: retryMeta.userText,
+            origin: 'ai_retry',
+            nonText: false,
+            mediaType: retryMeta.mediaType || 'text',
+            rawItem: { jid: retryMeta.rawJid || live.phone },
+            pushName: retryMeta.pushName || live.clientName || '',
+            messageId: ''
+          });
+          if (reply) {
+            const target = retryMeta.rawJid || live.phone;
+            if (typeof sendReply === 'function') {
+              await sendReply(target, reply, live);
+            } else if (typeof whatsapp?.sendText === 'function') {
+              await whatsapp.sendText(target, formatOutgoingMessage(reply));
+            }
+            delivered += 1;
+          }
+        };
+
+        try {
+          if (typeof store.enqueue === 'function') {
+            await store.enqueue(session.phone, runRetry);
+          } else {
+            await runRetry();
+          }
+        } catch (err) {
+          logger.error?.(`[flow:ai-retry] Falha ao retentar resposta para ${session.phone}:`, err?.message || err);
+        }
+      }
+      return { processed, delivered };
     }
   };
 }

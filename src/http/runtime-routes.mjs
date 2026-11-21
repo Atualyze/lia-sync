@@ -1,5 +1,6 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
+import { opened, failures } from '../ai/state.mjs';
 import { config } from '../config.mjs';
 
 /**
@@ -22,7 +23,8 @@ export async function handleRuntimeDashboardRoutes({
   apiSettingsStore,
   customProviderStore,
   baileysProvider,
-  operationsStore
+  operationsStore,
+  onAIConfigUpdated = null
 }) {
   const pathname = u.pathname;
   const isRuntimePath = pathname.startsWith('/api/dashboard/runtime');
@@ -121,11 +123,14 @@ export async function handleRuntimeDashboardRoutes({
       catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
       try {
         const saved = await customProviderStore.upsert(body);
+        opened.delete(saved.id);
+        failures.delete(saved.id);
         await operationsStore?.recordAudit?.({
           actor: authContext?.email || authContext?.userId || 'admin',
           action: 'custom_ai_provider_saved',
           metadata: { provider: saved.id, model: saved.defaultModel }
         }).catch(() => {});
+        onAIConfigUpdated?.('custom_provider_saved');
         return json(res, 200, { ok: true, provider: saved, circuitBreakers: getCircuitBreakers() });
       } catch (error) {
         return json(res, 400, { error: error.message || 'invalid_custom_provider' });
@@ -157,11 +162,14 @@ export async function handleRuntimeDashboardRoutes({
       catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
       try {
         const result = await apiSettingsStore.update(body);
+        opened.clear();
+        failures.clear();
         await operationsStore?.recordAudit?.({
           actor: authContext?.email || authContext?.userId || 'admin',
           action: 'api_settings_updated',
           metadata: { changedKeys: result.changedKeys }
         }).catch(() => {});
+        onAIConfigUpdated?.('api_settings_updated');
         return json(res, 200, { ok: true, changedKeys: result.changedKeys, settings: result.view });
       } catch (error) {
         return json(res, 400, { error: error.message || 'invalid_api_settings' });

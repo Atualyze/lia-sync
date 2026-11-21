@@ -1,4 +1,5 @@
 import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions } from '../safety.mjs';
+import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
@@ -13,6 +14,9 @@ import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixAct
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
+
+export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
+export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
 
 function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
@@ -103,14 +107,17 @@ export async function handleClientMessage({
       }
 
       // Sincroniza sessão pontual do Supabase se disponível (suporte multi-réplica)
+      const isAIRetry = origin === 'ai_retry';
+      const sessionOrigin = isAIRetry ? 'real' : origin;
       if (typeof store.syncSession === 'function') {
-        await store.syncSession(phone, origin).catch(() => {});
+        await store.syncSession(phone, sessionOrigin).catch(() => {});
       }
 
       // Se o Bot foi desativado globalmente pelo comando "bot off", força modo humano para todos os clientes
       if (botConfig?.behavior?.globalBotDisabled) {
-        const sGlobal = store.get(phone, origin);
+        const sGlobal = store.get(phone, sessionOrigin);
         sGlobal.phone = phone;
+        sGlobal.pendingAIRetry = null;
         if (!sGlobal.human) {
           sGlobal.human = true;
           sGlobal.humanSource = 'global_disabled';
@@ -122,14 +129,19 @@ export async function handleClientMessage({
       }
 
       let clean = sanitizeInput(text, maxInputChars);
-      const s = store.get(phone, origin);
+      const s = store.get(phone, sessionOrigin);
       s.phone = phone;
 
-      if (pushName && !s.clientName) s.clientName = pushName;
-      s.lastUserAt = new Date(now()).toISOString();
-      // Cliente voltou a falar: a sessão deixa de estar "aguardando resposta".
-      s.awaitingReply = false;
-      store.touch(s);
+      if (isAIRetry) {
+        if (s.human || !s.pendingAIRetry) return null;
+      } else {
+        if (s.pendingAIRetry) s.pendingAIRetry = null;
+        if (pushName && !s.clientName) s.clientName = pushName;
+        s.lastUserAt = new Date(now()).toISOString();
+        // Cliente voltou a falar: a sessão deixa de estar "aguardando resposta".
+        s.awaitingReply = false;
+        store.touch(s);
+      }
       s.history ??= [];
 
       // 2.1 TRATAMENTO DE ÁUDIO
@@ -287,7 +299,7 @@ export async function handleClientMessage({
       }
 
       if (!clean) { store.markDirty(); return null; }
-      if (mediaType !== 'audio' && !mediaAnalyzedForAI) {
+      if (!isAIRetry && mediaType !== 'audio' && !mediaAnalyzedForAI) {
         s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
       }
 
@@ -636,13 +648,57 @@ export async function handleClientMessage({
       }
 
       if (!result || !raw) {
-        raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
-        const oneHourAgo = now() - 3600000;
-        const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
-        if (lastFallback < oneHourAgo) {
-          s.fallbackHandoffAt = new Date(now()).toISOString();
-          await notify(`[Alerta ${assistant}] Falha ao produzir uma resposta para ${s.phone}: "${clean}"`);
+        if (origin === 'simulation' || origin === 'preview') {
+          raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
+          const oneHourAgo = now() - 3600000;
+          const lastFallback = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
+          if (lastFallback < oneHourAgo) {
+            s.fallbackHandoffAt = new Date(now()).toISOString();
+            await notify(`[Alerta ${assistant}] Falha ao produzir uma resposta para ${s.phone}: "${clean}"`);
+          }
+        } else {
+          // Atendimento real: nunca enviar mensagem de erro técnico ao cliente.
+          // Enfileira retentativa silenciosa com backoff progressivo até uma API responder.
+          const currentNow = now();
+          const prevAttempts = Number(s.pendingAIRetry?.attempts || 0);
+          const nextAttempts = prevAttempts + 1;
+          const firstFailedAt = s.pendingAIRetry?.firstFailedAt || new Date(currentNow).toISOString();
+          const firstFailedMs = Date.parse(firstFailedAt);
+          const elapsedMs = Number.isFinite(firstFailedMs) ? Math.max(0, currentNow - firstFailedMs) : 0;
+          const diagSummary = getRecentAIErrorSummary({ maxAgeMs: 60_000 });
+          const throttleWindowMs = 15 * 60_000;
+          const lastAlertAt = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
+
+          if (nextAttempts <= AI_RETRY_BACKOFF_MS.length && elapsedMs < AI_RETRY_MAX_TTL_MS) {
+            const delayMs = AI_RETRY_BACKOFF_MS[nextAttempts - 1];
+            s.pendingAIRetry = {
+              userText: clean,
+              pushName: pushName || s.clientName || '',
+              rawJid: rawItem?.jid || phone,
+              mediaType: mediaType || 'text',
+              attempts: nextAttempts,
+              maxAttempts: AI_RETRY_BACKOFF_MS.length,
+              firstFailedAt,
+              lastFailedAt: new Date(currentNow).toISOString(),
+              nextRetryAt: new Date(currentNow + delayMs).toISOString()
+            };
+            if (currentNow - lastAlertAt >= throttleWindowMs) {
+              s.fallbackHandoffAt = new Date(currentNow).toISOString();
+              const clientLabel = s.clientName || pushName || s.phone;
+              const detail = diagSummary ? `\n\n${diagSummary}` : '';
+              await notify(`⏳ *[Alerta ${assistant}] APIs de IA indisponíveis — resposta segurada em silêncio*\n\n• *Cliente:* ${clientLabel} (${s.phone})\n• *Mensagem:* "${clean.slice(0, 140)}"\n• *Retentativa:* ${nextAttempts}/${AI_RETRY_BACKOFF_MS.length} (próxima em ${Math.round(delayMs / 1000)}s)\n\n_Nenhuma mensagem de erro foi enviada ao cliente. Assim que uma API voltar (ou você trocar chave/modelo no painel), a ${assistant} responderá automaticamente._${detail}`);
+            }
+          } else {
+            s.pendingAIRetry = null;
+            s.fallbackHandoffAt = new Date(currentNow).toISOString();
+            const clientLabel = s.clientName || pushName || s.phone;
+            await notify(`⚠️ *[Alerta ${assistant}] Retentativas de IA esgotadas (5 min)*\n\n• *Cliente:* ${clientLabel} (${s.phone})\n• *Mensagem pendente:* "${clean.slice(0, 140)}"\n\n_Nenhuma API respondeu dentro da janela de 5 minutos. Nenhuma mensagem de erro foi enviada ao cliente; assuma pelo painel ou verifique as chaves de IA._`);
+          }
+          store.markDirty();
+          return null;
         }
+      } else if (s.pendingAIRetry) {
+        s.pendingAIRetry = null;
       }
 
       const allowedPrices = getAllowedPrices();

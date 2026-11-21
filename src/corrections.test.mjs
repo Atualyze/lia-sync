@@ -214,10 +214,14 @@ test('C2: parser recupera reply de JSON truncado e nunca retorna string vazia pa
     ai: { askAI: async () => ({ reply: '', intent: 'outro', collected: {} }) },
     faq: async () => []
   });
-  const reply = await flow.process({ phone: '5586999962542', text: 'quero saber mais' });
-  assert.ok(reply && reply.length > 0);
-  assert.notEqual(reply, '');
-  assert.match(reply, /instabilidade|ajudar|Dra/i);
+  const simReply = await flow.process({ phone: '5586999962542', text: 'quero saber mais', origin: 'simulation' });
+  assert.ok(simReply && simReply.length > 0);
+  assert.notEqual(simReply, '');
+  assert.match(simReply, /instabilidade|ajudar|Dra/i);
+
+  const realReply = await flow.process({ phone: '5586999962542', text: 'quero saber mais', origin: 'real' });
+  assert.equal(realReply, null);
+  assert.ok(store.get('5586999962542').pendingAIRetry);
 });
 
 test('C3: comando bot retoma atendimento e duvida comum nao reativa emergencia', async () => {
@@ -294,13 +298,76 @@ test('A1: IA fora gera fallback sem inventar causa técnica e alerta, sem triage
   });
 
   const r1 = await flow.process({ phone: '5586999962542', text: 'onde vejo minha segunda via?' });
-  assert.match(r1, /não consegui preparar uma resposta/i);
-  assert.doesNotMatch(r1, /pronto-socorro|Dra\./i);
+  assert.equal(r1, null, 'atendimento real não deve enviar texto de erro técnico ao cliente');
+  const session = store.get('5586999962542');
+  assert.ok(session.pendingAIRetry, 'deve enfileirar retentativa silenciosa de IA');
+  assert.equal(session.pendingAIRetry.attempts, 1);
 
   const r2 = await flow.process({ phone: '5586999962542', text: 'e o prazo de entrega?' });
-  assert.match(r2, /não consegui preparar uma resposta/i);
-  assert.equal(store.get('5586999962542').human, false);
+  assert.equal(r2, null);
+  assert.equal(session.human, false);
   assert.ok(handoffs >= 1);
+});
+
+test('A1.1: fila silenciosa de IA entrega resposta real ao cliente assim que a API volta e respeita modo humano', async () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `ai-retry-${Date.now()}.json`));
+  await store.load();
+  let nowMs = Date.parse('2026-11-21T14:00:00Z');
+  let aiOnline = false;
+  const delivered = [];
+  const ownerAlerts = [];
+  const flow = createFlow({
+    store,
+    now: () => nowMs,
+    faq: async () => [],
+    humanPhone: '5586988887777',
+    whatsapp: {
+      sendText: async (to, msg) => {
+        if (to === '5586988887777') ownerAlerts.push(msg);
+        else delivered.push({ to, msg });
+      }
+    },
+    ai: {
+      askAI: async () => aiOnline
+        ? { reply: 'Você pode consultar sua segunda via direto na aba Financeiro do painel!', intent: 'duvida', red_flags: false, handoff: false }
+        : null
+    }
+  });
+
+  // 1. API fora do ar: nada vai para o cliente, alerta vai para o responsável e retry fica agendado
+  const first = await flow.process({ phone: '5586999962543', text: 'onde vejo minha segunda via?', origin: 'real' });
+  assert.equal(first, null);
+  assert.equal(delivered.length, 0);
+  assert.equal(ownerAlerts.length, 1);
+  const s = store.get('5586999962543');
+  assert.equal(s.pendingAIRetry?.attempts, 1);
+  assert.equal(s.history.filter(m => m.role === 'user').length, 1);
+
+  // 2. Antes dos 15s, ciclo periódico não reexecuta
+  nowMs += 5_000;
+  const early = await flow.processPendingAIRetries({ immediate: false });
+  assert.equal(early.processed, 0);
+
+  // 3. API volta (ex: troca de chave/modelo no painel -> immediate: true): entrega a resposta real sem duplicar a pergunta no histórico
+  aiOnline = true;
+  const recovered = await flow.processPendingAIRetries({ immediate: true });
+  assert.equal(recovered.processed, 1);
+  assert.equal(recovered.delivered, 1);
+  assert.equal(delivered.length, 1);
+  assert.match(delivered[0].msg, /aba Financeiro/i);
+  assert.equal(s.pendingAIRetry, null);
+  assert.equal(s.history.filter(m => m.role === 'user').length, 1, 'não deve duplicar a mensagem do cliente no histórico');
+  assert.equal(s.history.filter(m => m.role === 'assistant').length, 1);
+
+  // 4. Se o responsável assumir (human = true), retentativa pendente é ignorada
+  aiOnline = false;
+  await flow.process({ phone: '5586999962544', text: 'preciso de ajuda', origin: 'real' });
+  const s2 = store.get('5586999962544');
+  assert.ok(s2.pendingAIRetry);
+  s2.human = true;
+  aiOnline = true;
+  const skipped = await flow.processPendingAIRetries({ immediate: true });
+  assert.equal(skipped.delivered, 0);
 });
 
 test('A2: CONFIRMAR COM A DRA. nunca vaza no filterReply nem no knowledge FAQ', async () => {

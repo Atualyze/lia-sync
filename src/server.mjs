@@ -450,6 +450,36 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   });
   setBaileysProvider(baileysProvider);
 
+  const deliverPendingAIReply = async (target, replyText, session) => {
+    const dest = deliveryTarget(target || session?.phone || '');
+    if (!dest || !replyText) return;
+    const parts = splitReply(replyText);
+    for (const part of parts) {
+      await sendText(dest, formatOutgoingMessage(part));
+    }
+    broadcastBridgeEvent('outbound_message', {
+      phone: session?.phone || dest,
+      content: replyText,
+      source: 'ai_retry'
+    });
+  };
+  let aiRetryRunning = false;
+  const runPendingAIRetries = async ({ immediate = false } = {}) => {
+    if (aiRetryRunning) return { processed: 0, delivered: 0 };
+    aiRetryRunning = true;
+    try {
+      return await f.processPendingAIRetries({ immediate, sendReply: deliverPendingAIReply });
+    } catch (error) {
+      console.error('[ai-retry] Falha ao processar fila silenciosa de retentativas:', error?.message || error);
+      return { processed: 0, delivered: 0 };
+    } finally {
+      aiRetryRunning = false;
+    }
+  };
+  const onAIConfigUpdated = () => {
+    void runPendingAIRetries({ immediate: true });
+  };
+
   const app = createRouter({
     store,
     f,
@@ -478,9 +508,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     liaAutonomy,
     apiSettingsStore,
     customProviderStore,
-    baileysProvider
+    baileysProvider,
+    onAIConfigUpdated
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -549,12 +580,17 @@ if (isDirectRun) {
   runCopilotWorker();
   const copilotTaskTimer = setInterval(runCopilotWorker, 3000);
   copilotTaskTimer.unref();
+  const aiRetryTimer = setInterval(() => {
+    void app.runPendingAIRetries?.({ immediate: false });
+  }, 10_000);
+  aiRetryTimer.unref();
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
     stopping = true;
     clearInterval(maintenanceTimer);
     clearInterval(copilotTaskTimer);
+    clearInterval(aiRetryTimer);
     await app.baileysProvider?.stop({ logout: false }).catch(() => {});
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);

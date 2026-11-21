@@ -12,7 +12,7 @@ import { validPhone } from '../dashboard.mjs';
 function safeDecodePathSegment(value) {
   try { return decodeURIComponent(value); } catch { return value; }
 }
-export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore }) {
+export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore, onAIConfigUpdated = null }) {
   if (req.method === 'GET' && u.pathname === '/api/admin/config') return json(res, 200, { ...adminConfig.snapshot(), persistence: adminConfig.persistence || 'fallback', persistenceError: adminConfig.remoteError || null });
   if (req.method === 'PATCH' && u.pathname === '/api/admin/config/draft') { const body = await readBody(req); const { baseRevision, ...patch } = body.patch || body; const result = await adminConfig.updateDraft(patch, 'dashboard', baseRevision); return json(res, result.ok ? 200 : 400, result); }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/validate') { const result = await adminConfig.updateDraft(adminConfig.draft, 'validator'); return json(res, result.ok ? 200 : 400, { ok: result.ok, errors: result.errors || [] }); }
@@ -32,7 +32,7 @@ export async function handleAdminRoutes({ req, res, u, adminConfig, faqFor, inte
       await fs.rm(previewFile, { force: true }).catch(() => {});
     }
   }
-  if (req.method === 'POST' && u.pathname === '/api/admin/config/publish') { const body = await readBody(req); const result = await adminConfig.publish('dashboard', body.baseRevision); return json(res, result.ok ? 200 : 400, result); }
+  if (req.method === 'POST' && u.pathname === '/api/admin/config/publish') { const body = await readBody(req); const result = await adminConfig.publish('dashboard', body.baseRevision); if (result.ok) onAIConfigUpdated?.('config_published'); return json(res, result.ok ? 200 : 400, result); }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/discard') { const result = await adminConfig.discardDraft('dashboard'); return json(res, result.ok ? 200 : 400, result); }
   if (req.method === 'POST' && u.pathname === '/api/admin/config/rollback') { const body = await readBody(req); const result = await adminConfig.rollback(body.revision, 'dashboard', body.baseRevision); return json(res, result.ok ? 200 : 400, result); }
 

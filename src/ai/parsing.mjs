@@ -129,7 +129,12 @@ export function normalizeHistory(history = []) {
     .filter(m => m && ['user', 'assistant', 'model'].includes(m.role) && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content.trim().slice(-3000) }));
   if (clean.length && clean[0].role !== 'user') {
-    clean.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+    const hasLaterAssistant = clean.slice(1).some(m => m.role === 'assistant');
+    if (hasLaterAssistant) {
+      while (clean.length && clean[0].role !== 'user') clean.shift();
+    } else {
+      clean.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+    }
   }
   const out = [];
   for (const m of clean) {

@@ -78,7 +78,7 @@ export function requiredRole(pathname, method) {
   return rule ? rule.role : 'admin';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, onAIConfigUpdated = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -163,7 +163,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
     const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig });
     if (settingsResult !== NOT_HANDLED) return settingsResult;
-    const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore });
+    const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore, onAIConfigUpdated });
     if (adminResult !== NOT_HANDLED) return adminResult;
     const operationsResult = await handleOperationsRoutes({ req, res, u, campaignStore, operationsStore, webhookEventStore, adminConfig, authContext: req.dashboardAuth || {}, sectorProjection });
     if (operationsResult !== NOT_HANDLED) return operationsResult;
@@ -171,7 +171,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (prospectingResult !== NOT_HANDLED) return prospectingResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
-    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore });
+    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore, onAIConfigUpdated });
     if (liaEngineResult !== NOT_HANDLED) return liaEngineResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });
     if (webhookResult !== NOT_HANDLED) return webhookResult;
