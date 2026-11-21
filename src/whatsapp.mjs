@@ -20,7 +20,8 @@ export function getBaileysProvider() {
 function isBaileysActive() {
   return Boolean(
     activeBaileysProvider
-    && activeBaileysProvider.status === 'connected'
+    && activeBaileysProvider.sock
+    && (activeBaileysProvider.status === 'connected' || Boolean(activeBaileysProvider.connectedPhone))
     && (config.whatsappProvider === 'baileys' || !config.evolutionUrl)
   );
 }

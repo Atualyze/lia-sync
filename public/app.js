@@ -5222,7 +5222,7 @@ async function loadApiIntegrationsPanel() {
       }
     }
 
-    if ((status === 'connecting' || status === 'qr_ready') && !baileysPollTimer) {
+    if (state.view === 'integrations' && !baileysPollTimer) {
       baileysPollTimer = setInterval(() => {
         if (state.view !== 'integrations') {
           clearInterval(baileysPollTimer);
@@ -5231,9 +5231,6 @@ async function loadApiIntegrationsPanel() {
         }
         window.loadBaileysPanel?.({ silent: true });
       }, 2500);
-    } else if (status !== 'connecting' && status !== 'qr_ready' && baileysPollTimer) {
-      clearInterval(baileysPollTimer);
-      baileysPollTimer = null;
     }
   }
 

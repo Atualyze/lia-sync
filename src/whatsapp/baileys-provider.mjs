@@ -166,6 +166,18 @@ export class BaileysProvider {
       await this._restoreCredsFromSupabase();
 
       const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
+      // Preenche o número já autenticado a partir das credenciais salvas
+      if (state.creds?.me?.id) {
+        this.connectedPhone = extractOwnerPhoneFromJid(state.creds.me.id);
+        this.connectedName = state.creds.me.name || state.creds.me.verifiedName || this.connectedName || 'WhatsApp Lia';
+      }
+
+      if (this.sock) {
+        const old = this.sock;
+        this.sock = null;
+        try { old.ev?.removeAllListeners?.(); old.end?.(undefined); } catch {}
+      }
+
       let version = [2, 3000, 1017531287];
       try {
         const latest = await fetchLatestBaileysVersion();
@@ -188,14 +200,21 @@ export class BaileysProvider {
       sock.ev.on('creds.update', async () => {
         try {
           await saveCreds();
+          if (state.creds?.me?.id) {
+            this.connectedPhone = extractOwnerPhoneFromJid(state.creds.me.id);
+            this.connectedName = state.creds.me.name || state.creds.me.verifiedName || this.connectedName || 'WhatsApp Lia';
+          }
           await this._backupCredsToSupabase();
+          this._emitState();
         } catch {}
       });
 
       sock.ev.on('connection.update', async (update) => {
+        if (this.sock !== sock) return;
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        // Só exibe QR Code se a sessão ainda não estiver autenticada
+        if (qr && !state.creds?.registered && !state.creds?.me?.id) {
           this.qrText = qr;
           try {
             this.qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, width: 280 });
@@ -214,8 +233,8 @@ export class BaileysProvider {
           this.lastConnectedAt = new Date().toISOString();
           this.lastError = null;
           const user = sock.user || state.creds?.me || {};
-          this.connectedPhone = extractOwnerPhoneFromJid(user.id || '');
-          this.connectedName = user.name || user.verifiedName || 'WhatsApp Lia';
+          this.connectedPhone = extractOwnerPhoneFromJid(user.id || '') || this.connectedPhone;
+          this.connectedName = user.name || user.verifiedName || this.connectedName || 'WhatsApp Lia';
           await this._backupCredsToSupabase();
           this._emitState();
           void this.onEvent?.({
@@ -231,7 +250,11 @@ export class BaileysProvider {
             || lastDisconnect?.error?.statusCode
             || 0
           );
+          const rawMsg = String(lastDisconnect?.error?.message || '');
           const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+          const isRestartRequired = statusCode === DisconnectReason.restartRequired
+            || statusCode === 515
+            || /restart required|stream errored/i.test(rawMsg);
           this.qrText = '';
           this.qrDataUrl = '';
           if (isLoggedOut) {
@@ -243,21 +266,42 @@ export class BaileysProvider {
             this._emitState();
             return;
           }
+          if (isRestartRequired && !this.manualStop) {
+            // 515 (Stream Errored / restart required) faz parte do protocolo oficial
+            // do WhatsApp logo após o pareamento do QR Code. Reconecta imediatamente sem exibir erro!
+            this.status = 'connecting';
+            this.lastError = null;
+            this._emitState();
+            this.reconnectTimer = setTimeout(() => {
+              this.reconnectTimer = null;
+              void this.start().catch(() => {});
+            }, 400);
+            this.reconnectTimer.unref?.();
+            return;
+          }
           this.status = 'disconnected';
-          this.lastError = lastDisconnect?.error?.message || `Conexão encerrada (${statusCode || 'socket_closed'})`;
+          this.lastError = rawMsg || `Conexão encerrada (${statusCode || 'socket_closed'})`;
           this._emitState();
           if (!this.manualStop) {
             this.reconnectTimer = setTimeout(() => {
               this.reconnectTimer = null;
               void this.start().catch(() => {});
-            }, 3500);
+            }, 2500);
             this.reconnectTimer.unref?.();
           }
         }
       });
 
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (this.sock !== sock) return;
         if (type !== 'notify' && type !== 'append') return;
+        // Se mensagens reais estão fluindo pelo socket, a conexão está ativa!
+        if (this.status !== 'connected') {
+          this.status = 'connected';
+          this.qrText = '';
+          this.qrDataUrl = '';
+          this.lastError = null;
+        }
         for (const msg of Array.isArray(messages) ? messages : []) {
           if (!msg?.key) continue;
           // Ignora mensagens antigas sincronizadas em lote no append se não forem recentes
@@ -360,8 +404,13 @@ export class BaileysProvider {
   }
 
   _requireConnected() {
-    if (!this.sock || this.status !== 'connected') {
+    if (!this.sock || (this.status !== 'connected' && !this.connectedPhone)) {
       throw Object.assign(new Error('Baileys não conectado'), { code: 'baileys_not_connected' });
+    }
+    if (this.status !== 'connected' && this.connectedPhone) {
+      this.status = 'connected';
+      this.qrText = '';
+      this.qrDataUrl = '';
     }
     return this.sock;
   }
