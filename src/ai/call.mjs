@@ -78,6 +78,24 @@ function buildCloudflareBody({ system, history, userText, nativeTools, runtime, 
   };
 }
 
+function isProviderCreditExhaustion(error) {
+  const message = String(error?.message || error || '');
+  return /\b402\b|payment required|insufficient (?:funds|credit|balance)|no credits? remaining|credit balance|billing (?:issue|disabled)|quota exceeded/i.test(message);
+}
+
+function providerCreditExhaustionReply(provider) {
+  const label = provider === 'gemini' ? 'Gemini' : provider;
+  return {
+    reply: `Não consegui processar sua mensagem porque o serviço de IA (${label}) está sem saldo/créditos ou precisa de uma regularização de pagamento. O responsável pela conta precisa verificar o faturamento e os créditos do provedor. Assim que o acesso for restabelecido, posso continuar.`,
+    intent: 'outro',
+    red_flags: false,
+    handoff: false,
+    handoff_reason: null,
+    collected: {},
+    provider_error: 'AI_PROVIDER_CREDITS_EXHAUSTED'
+  };
+}
+
 async function reserveModelBudget(budgetGate, context, provider, model) {
   if (!budgetGate) return null;
   const permit = await budgetGate.acquire({ ...context, provider, model });
@@ -383,6 +401,7 @@ export async function askAI(args) {
   const toolDeclarations = toolMode
     ? getEnabledTools(args?.botConfig, { actor })
     : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
+  let creditExhaustionProvider = null;
   for (const provider of providers(args?.botConfig)) {
     const start = Date.now();
     // Cada provedor recebe o modelo que lhe pertence. Nunca o do Gemini.
@@ -436,6 +455,7 @@ export async function askAI(args) {
       }
     } catch (error) {
       if (error?.budgetDenied) continue;
+      if (isProviderCreditExhaustion(error) && !creditExhaustionProvider) creditExhaustionProvider = provider;
       const count = (failures.get(provider) || 0) + 1;
       failures.set(provider, count);
       if (count >= 3 || /\b(429|401|403)\b/.test(error.message)) opened.set(provider, Date.now() + 60000);
@@ -453,6 +473,7 @@ export async function askAI(args) {
       console.error(`[ai:${provider}]`, error.message);
     }
   }
+  if (creditExhaustionProvider) return providerCreditExhaustionReply(creditExhaustionProvider);
   return null;
 }
 

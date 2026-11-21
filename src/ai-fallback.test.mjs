@@ -47,6 +47,32 @@ const geminiOk = {
   }
 };
 
+test('Gemini 402 informa falta de saldo/créditos em vez de retornar fallback genérico', async (t) => {
+  restoreEnvAfter(t, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'QWEN_API_KEY', 'QWEN_BASE_URL', 'OPENAI_API_KEY']);
+  process.env.GEMINI_API_KEY = 'test_gemini_key_123';
+  process.env.OPENROUTER_API_KEY = '';
+  process.env.QWEN_API_KEY = '';
+  process.env.QWEN_BASE_URL = '';
+  process.env.OPENAI_API_KEY = '';
+  const calls = mockFetchSequence([{ status: 402 }]);
+  t.after(() => { globalThis.fetch = realFetch; });
+
+  const { askAI } = await import('./ai.mjs');
+  const result = await askAI({
+    userText: 'mostre a lista de pendencias',
+    botConfig: {
+      ai: { activeProvider: 'gemini', activeModel: 'gemini-3.8-flash', autoRouting: false }
+    },
+    system: 'Você é a Lia.',
+    history: []
+  });
+
+  assert.equal(result?.provider_error, 'AI_PROVIDER_CREDITS_EXHAUSTED');
+  assert.match(result?.reply || '', /Gemini.*sem saldo\\/créditos/i);
+  assert.match(result?.reply || '', /faturamento e os créditos/i);
+  assert.equal(calls.length, 1, '402 não deve disparar tentativas em modelos Gemini alternativos');
+});
+
 test('fallback: flash-lite com 503 cai para flash subsequente', async (t) => {
   restoreEnvAfter(t, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'QWEN_API_KEY', 'QWEN_BASE_URL', 'OPENAI_API_KEY']);
   process.env.GEMINI_API_KEY = 'test_gemini_key_123';
