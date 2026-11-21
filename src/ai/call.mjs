@@ -336,9 +336,9 @@ export async function call(provider, {
 
   // Provedores não-Gemini (built-ins OpenAI-compatible e provedores customizados)
   const customProv = getCustomProvider(provider);
-  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : '');
-  const base = customProv ? customProv.baseUrl : (provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
-  const key = customProv ? customProv.apiKey : (provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
+  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : provider === 'nvidia' ? 'meta/llama-3.3-70b-instruct' : '');
+  const base = customProv ? customProv.baseUrl : (provider === 'nvidia' ? config.nvidiaBaseUrl : provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
+  const key = customProv ? customProv.apiKey : (provider === 'nvidia' ? config.nvidiaKey : provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
   const headers = { 'content-type': 'application/json', Authorization: `Bearer ${key}` };
   if (provider === 'openrouter') {
     if (config.openrouterSiteUrl) headers['HTTP-Referer'] = config.openrouterSiteUrl;
@@ -362,12 +362,20 @@ export async function call(provider, {
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
-      // Se um modelo gratuito/customizado no OpenRouter ou Qwen recusar 'tools' nativo com 400/404, re-tenta sem 'tools' usando o catálogo no system prompt
-      if (!response.ok && (response.status === 400 || response.status === 404) && nativeTools.length > 0 && body.tools) {
+      // Se um modelo gratuito/customizado no OpenRouter, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, re-tenta sem 'tools' usando o catálogo no system prompt
+      if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools) {
         const fallbackBody = { ...body };
         delete fallbackBody.tools;
         delete fallbackBody.tool_choice;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
+      }
+      // Alguns modelos NIM / OpenAI-compatible não suportam response_format json_object; degrada graciosamente mantendo o contrato JSON via system prompt
+      if (!response.ok && (response.status === 400 || response.status === 422) && body.response_format) {
+        const plainBody = { ...body };
+        delete plainBody.tools;
+        delete plainBody.tool_choice;
+        delete plainBody.response_format;
+        response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
       if (!response.ok) {
         const detail = safeErrorDetail(await response.text());

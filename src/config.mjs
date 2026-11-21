@@ -27,6 +27,8 @@ export const config = {
   openrouterAppName: process.env.OPENROUTER_APP_NAME || 'Lia Sync',
   qwenKey: process.env.QWEN_API_KEY || '',
   qwenBaseUrl: (process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
+  nvidiaKey: process.env.NVIDIA_API_KEY || '',
+  nvidiaBaseUrl: (process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''),
   openaiKey: process.env.OPENAI_API_KEY || '',
   cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
   cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || '',

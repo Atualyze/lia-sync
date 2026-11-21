@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { maskSecretValue } from '../api-settings.mjs';
 
 const PROJECTION_KEY = 'custom_ai_providers';
-const BUILTIN_IDS = new Set(['gemini', 'openrouter', 'qwen', 'openai', 'cloudflare']);
+const BUILTIN_IDS = new Set(['gemini', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare']);
 const SLUG_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 
 let activeRegistry = new Map();

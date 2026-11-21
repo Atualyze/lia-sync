@@ -18,6 +18,8 @@ export const API_SETTING_FIELDS = Object.freeze([
   { key: 'openrouterBaseUrl', label: 'OpenRouter Base URL', group: 'ai', secret: false, isUrl: true },
   { key: 'qwenKey', label: 'Qwen / DashScope API Key', group: 'ai', secret: true },
   { key: 'qwenBaseUrl', label: 'Qwen Base URL', group: 'ai', secret: false, isUrl: true },
+  { key: 'nvidiaKey', label: 'NVIDIA NIM API Key', group: 'ai', secret: true },
+  { key: 'nvidiaBaseUrl', label: 'NVIDIA NIM Base URL', group: 'ai', secret: false, isUrl: true },
   { key: 'openaiKey', label: 'OpenAI API Key', group: 'ai', secret: true },
   { key: 'groqKey', label: 'Groq API Key', group: 'ai', secret: true },
   { key: 'cloudflareAccountId', label: 'Cloudflare Account ID', group: 'ai', secret: false },

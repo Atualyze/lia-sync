@@ -2358,10 +2358,82 @@ function renderModelOptions(models, primary) {
   renderActiveModelLabel();
 }
 
-const FALLBACK_PROVIDERS = [['gemini', 'Gemini'], ['openrouter', 'OpenRouter'], ['cloudflare', 'Cloudflare Workers AI'], ['openai', 'OpenAI'], ['qwen', 'Qwen']];
+const BUILTIN_PROVIDER_LABELS = {
+  gemini: 'Google Gemini',
+  nvidia: 'NVIDIA NIM',
+  openrouter: 'OpenRouter',
+  cloudflare: 'Cloudflare Workers AI',
+  openai: 'OpenAI (ChatGPT)',
+  qwen: 'Qwen (Alibaba)'
+};
+
+function getProviderDisplayLabel(id, info = null) {
+  const key = String(id || '').toLowerCase();
+  if (info?.name) return info.name;
+  return BUILTIN_PROVIDER_LABELS[key] || key.toUpperCase();
+}
+
+function getSelectableProviders(extraIds = []) {
+  const map = state.configuredProvidersMap;
+  const fallbackAll = Object.entries(BUILTIN_PROVIDER_LABELS);
+  if (!map || typeof map !== 'object' || !Object.keys(map).length) {
+    return fallbackAll;
+  }
+  const configured = Object.entries(map)
+    .filter(([, info]) => info && info.configured === true)
+    .map(([id, info]) => [id, getProviderDisplayLabel(id, info)]);
+
+  const result = configured.length ? [...configured] : [...fallbackAll];
+  const seen = new Set(result.map(([id]) => id));
+  for (const extra of extraIds) {
+    const id = String(extra || '').trim().toLowerCase();
+    if (!id || seen.has(id)) continue;
+    const info = map[id];
+    const suffix = info && info.configured === false ? ' (sem chave)' : '';
+    result.push([id, `${getProviderDisplayLabel(id, info)}${suffix}`]);
+    seen.add(id);
+  }
+  return result;
+}
+
+function syncPrimaryProviderSelect() {
+  const select = $('#admin-ai-provider');
+  if (!select) return;
+  const current = String(select.value || state.adminConfig?.draft?.ai?.activeProvider || 'gemini').trim().toLowerCase();
+  const options = getSelectableProviders(current ? [current] : []);
+  select.innerHTML = options
+    .map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`)
+    .join('');
+  if (current && options.some(([id]) => id === current)) {
+    select.value = current;
+  } else if (options.length) {
+    select.value = options[0][0];
+  }
+}
+
+async function refreshConfiguredProviders({ reloadCatalogs = false } = {}) {
+  try {
+    const data = await api('/api/dashboard/models');
+    if (data?.providers && typeof data.providers === 'object') {
+      state.configuredProvidersMap = data.providers;
+    }
+  } catch {}
+  syncPrimaryProviderSelect();
+  if (reloadCatalogs) {
+    await loadProviderModels({ refresh: true });
+    await loadFallbackCatalogs({ forceRefreshList: false });
+  } else {
+    renderFallbackRows();
+  }
+}
+
 function fallbackEntry(value = '') {
-  const match = String(value).trim().match(/^(gemini|openrouter|cloudflare|openai|qwen):(.*)$/i);
-  return match ? { provider: match[1].toLowerCase(), model: match[2].trim() } : { provider: 'openrouter', model: String(value).trim() };
+  const raw = String(value || '').trim();
+  const match = raw.match(/^([a-z][a-z0-9_-]{1,31}):(.*)$/i);
+  if (match) return { provider: match[1].toLowerCase(), model: match[2].trim() };
+  const selectable = getSelectableProviders();
+  const defaultProv = selectable[0]?.[0] || 'openrouter';
+  return { provider: defaultProv, model: raw };
 }
 function populateFallbackModelSelect(select, provider, selectedModel = '') {
   if (!select) return;
@@ -2377,11 +2449,13 @@ function renderFallbackRows() {
   const container = $('#admin-fallback-rows');
   if (!container || state.adminFormDirty || container.contains(document.activeElement)) return;
   const values = Array.isArray(state.adminConfig?.draft?.ai?.fallbackModels) ? state.adminConfig.draft.ai.fallbackModels.slice(0, 3) : [];
+  const savedProviders = values.map(v => fallbackEntry(v).provider).filter(Boolean);
+  const selectableProviders = getSelectableProviders(savedProviders);
   container.innerHTML = [0, 1, 2].map(index => {
     const selected = fallbackEntry(values[index] || '');
     return `<div class="fallback-row-card">
       <span class="fallback-slot-title">Reserva #${index + 1}</span>
-      <select class="admin-fallback-provider" data-index="${index}">${FALLBACK_PROVIDERS.map(([id, name]) => `<option value="${id}" ${id === selected.provider ? 'selected' : ''}>${name}</option>`).join('')}</select>
+      <select class="admin-fallback-provider" data-index="${index}">${selectableProviders.map(([id, name]) => `<option value="${esc(id)}" ${id === selected.provider ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select>
       <select class="admin-fallback-model" data-index="${index}"></select>
     </div>`;
   }).join('');
@@ -2410,8 +2484,20 @@ async function loadFallbackCatalog(provider, { refresh = false } = {}) {
     state.fallbackCatalogs[provider] = result.ok && Array.isArray(result.models) ? result.models : [];
   } catch { state.fallbackCatalogs[provider] = []; }
 }
-async function loadFallbackCatalogs() {
-  await Promise.all(FALLBACK_PROVIDERS.map(([provider]) => loadFallbackCatalog(provider)));
+async function loadFallbackCatalogs({ forceRefreshList = true } = {}) {
+  if (forceRefreshList || !state.configuredProvidersMap) {
+    try {
+      const data = await api('/api/dashboard/models');
+      if (data?.providers && typeof data.providers === 'object') {
+        state.configuredProvidersMap = data.providers;
+      }
+    } catch {}
+    syncPrimaryProviderSelect();
+  }
+  const values = Array.isArray(state.adminConfig?.draft?.ai?.fallbackModels) ? state.adminConfig.draft.ai.fallbackModels.slice(0, 3) : [];
+  const savedProviders = values.map(v => fallbackEntry(v).provider).filter(Boolean);
+  const selectable = getSelectableProviders(savedProviders);
+  await Promise.all(selectable.map(([provider]) => loadFallbackCatalog(provider)));
   renderFallbackRows();
 }
 
@@ -5092,6 +5178,7 @@ async function loadApiIntegrationsPanel() {
         });
         setRuntimeFeedback('#api-settings-feedback', `Campo ${clearBtn.dataset.clearKey} restaurado para .env.`);
         await loadApiSettingsPanel();
+        await refreshConfiguredProviders({ reloadCatalogs: true });
       } catch (err) {
         setRuntimeFeedback('#api-settings-feedback', `Erro ao limpar: ${err.message}`, true);
       }
@@ -5109,6 +5196,7 @@ async function loadApiIntegrationsPanel() {
       const res = await api('/api/dashboard/api-settings', { method: 'PUT', body: JSON.stringify(payload) });
       setRuntimeFeedback('#api-settings-feedback', `APIs aplicadas em tempo real (hot-reload): ${(res.changedKeys || []).join(', ') || 'nenhuma alteração'}.`);
       await loadApiSettingsPanel();
+      await refreshConfiguredProviders({ reloadCatalogs: true });
     } catch (err) {
       setRuntimeFeedback('#api-settings-feedback', `Erro ao salvar APIs: ${err.message}`, true);
     }
@@ -5174,6 +5262,7 @@ async function loadApiIntegrationsPanel() {
       setRuntimeFeedback('#overview-providers-feedback', `Provedor "${payload.name}" (${payload.id}) cadastrado e pronto para roteamento/contingência!`);
       ['#cp-id', '#cp-name', '#cp-url', '#cp-key', '#cp-model', '#cp-rate-in', '#cp-rate-out'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       await loadCustomProvidersInline();
+      await refreshConfiguredProviders({ reloadCatalogs: true });
       renderOverview?.();
     } catch (err) {
       setRuntimeFeedback('#overview-providers-feedback', `Erro ao salvar provedor: ${err.message}`, true);
@@ -5188,6 +5277,7 @@ async function loadApiIntegrationsPanel() {
     await api(`/api/dashboard/ai-providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
     setRuntimeFeedback('#overview-providers-feedback', `Provedor "${id}" removido.`);
     await loadCustomProvidersInline();
+    await refreshConfiguredProviders({ reloadCatalogs: true });
     renderOverview?.();
   });
 

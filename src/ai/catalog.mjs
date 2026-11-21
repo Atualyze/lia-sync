@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
+import { getCustomProvider } from './custom-providers.mjs';
 
-const ALLOWED_PROVIDERS = new Set(['gemini', 'openrouter', 'openai', 'qwen', 'cloudflare']);
+const ALLOWED_PROVIDERS = new Set(['gemini', 'nvidia', 'openrouter', 'openai', 'qwen', 'cloudflare']);
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();
 
@@ -21,6 +22,11 @@ function providerConfig(provider) {
     url: 'https://generativelanguage.googleapis.com/v1beta/models',
     auth: key => ({ 'x-goog-api-key': key })
   };
+  if (provider === 'nvidia') return {
+    key: config.nvidiaKey,
+    url: `${config.nvidiaBaseUrl}/models`,
+    auth: key => ({ Authorization: `Bearer ${key}` })
+  };
   if (provider === 'openrouter') return {
     key: config.openrouterKey,
     url: `${config.openrouterBaseUrl}/models`,
@@ -35,6 +41,13 @@ function providerConfig(provider) {
     key: config.cloudflareAccountId && config.cloudflareApiToken ? config.cloudflareApiToken : '',
     url: `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.cloudflareAccountId || '')}/ai/models/search?task=Text+Generation`,
     auth: key => ({ Authorization: `Bearer ${key}` })
+  };
+  const custom = getCustomProvider(provider);
+  if (custom) return {
+    key: custom.enabled ? custom.apiKey : '',
+    url: `${custom.baseUrl}/models`,
+    auth: key => ({ Authorization: `Bearer ${key}` }),
+    custom
   };
   return {
     key: config.openaiKey,
@@ -68,12 +81,33 @@ function normalizeModel(provider, model) {
 
 export async function listProviderModels(provider, { forceRefresh = false, timeoutMs = 10000, freeOnly = false } = {}) {
   const name = String(provider || '').toLowerCase();
-  if (!ALLOWED_PROVIDERS.has(name)) return { ok: false, provider: name, configured: false, models: [], error: 'provider_not_supported' };
+  const custom = getCustomProvider(name);
+  if (!ALLOWED_PROVIDERS.has(name) && !custom) return { ok: false, provider: name, configured: false, models: [], error: 'provider_not_supported' };
   const cached = cache.get(name);
   if (!forceRefresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return { ...applyFreeFilter(name, cached.value, freeOnly), cached: true };
 
   const settings = providerConfig(name);
   if (!settings.key) return { ok: false, provider: name, configured: false, models: [], error: 'provider_not_configured' };
+  const customFallbackResult = () => {
+    if (!custom?.defaultModel) return null;
+    const value = {
+      ok: true,
+      provider: name,
+      configured: true,
+      fetchedAt: new Date().toISOString(),
+      models: [{
+        id: custom.defaultModel,
+        name: custom.defaultModel,
+        provider: name,
+        ownedBy: custom.name || name,
+        contextWindow: null,
+        capabilities: []
+      }],
+      truncated: false
+    };
+    cache.set(name, { at: Date.now(), value });
+    return value;
+  };
   const controller = AbortSignal.timeout(Math.max(1000, Math.min(30000, Number(timeoutMs) || 10000)));
   const rows = [];
   let cursor = '';
@@ -84,12 +118,24 @@ export async function listProviderModels(provider, { forceRefresh = false, timeo
       if (name === 'gemini') pageUrl.searchParams.set('pageSize', '1000');
       if (cursor) pageUrl.searchParams.set(name === 'gemini' ? 'pageToken' : 'after', cursor);
       const response = await fetch(pageUrl, { headers: { accept: 'application/json', ...settings.auth(settings.key) }, signal: controller });
-      if (!response.ok) return { ok: false, provider: name, configured: true, models: [], error: `catalog_http_${response.status}` };
+      if (!response.ok) {
+        const fallback = customFallbackResult();
+        if (fallback) return fallback;
+        return { ok: false, provider: name, configured: true, models: [], error: `catalog_http_${response.status}` };
+      }
       let data;
       try { data = await response.json(); }
-      catch { return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' }; }
+      catch {
+        const fallback = customFallbackResult();
+        if (fallback) return fallback;
+        return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' };
+      }
       const pageRows = name === 'gemini' ? data.models : (name === 'cloudflare' ? data.result : data.data);
-      if (!Array.isArray(pageRows)) return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' };
+      if (!Array.isArray(pageRows)) {
+        const fallback = customFallbackResult();
+        if (fallback) return fallback;
+        return { ok: false, provider: name, configured: true, models: [], error: 'catalog_invalid_response' };
+      }
       rows.push(...pageRows);
       const nextToken = data.nextPageToken || data.next_page_token;
       const hasMore = data.has_more === true && pageRows.length > 0;
@@ -98,10 +144,22 @@ export async function listProviderModels(provider, { forceRefresh = false, timeo
       if (page === 9 || rows.length >= 5000) truncated = true;
     }
   } catch (error) {
+    const fallback = customFallbackResult();
+    if (fallback) return fallback;
     const code = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'catalog_timeout' : 'catalog_unavailable';
     return { ok: false, provider: name, configured: true, models: [], error: code };
   }
   const normalized = rows.map(model => normalizeModel(name, model)).filter(Boolean);
+  if (custom?.defaultModel && !normalized.some(m => m.id === custom.defaultModel)) {
+    normalized.unshift({
+      id: custom.defaultModel,
+      name: custom.defaultModel,
+      provider: name,
+      ownedBy: custom.name || name,
+      contextWindow: null,
+      capabilities: []
+    });
+  }
   const models = [...new Map(normalized.map(model => [model.id, model])).values()]
     .sort((a, b) => a.id.localeCompare(b.id)).slice(0, 500);
   if (normalized.length > 500) truncated = true;
