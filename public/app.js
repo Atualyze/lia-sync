@@ -2360,6 +2360,7 @@ function renderModelOptions(models, primary) {
 
 const BUILTIN_PROVIDER_LABELS = {
   gemini: 'Google Gemini',
+  groq: 'Groq Cloud',
   nvidia: 'NVIDIA NIM',
   openrouter: 'OpenRouter',
   cloudflare: 'Cloudflare Workers AI',

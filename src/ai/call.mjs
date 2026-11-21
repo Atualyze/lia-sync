@@ -336,9 +336,9 @@ export async function call(provider, {
 
   // Provedores não-Gemini (built-ins OpenAI-compatible e provedores customizados)
   const customProv = getCustomProvider(provider);
-  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : provider === 'nvidia' ? 'meta/llama-3.3-70b-instruct' : '');
-  const base = customProv ? customProv.baseUrl : (provider === 'nvidia' ? config.nvidiaBaseUrl : provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
-  const key = customProv ? customProv.apiKey : (provider === 'nvidia' ? config.nvidiaKey : provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
+  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'nvidia' ? 'meta/llama-3.3-70b-instruct' : '');
+  const base = customProv ? customProv.baseUrl : (provider === 'groq' ? config.groqBaseUrl : provider === 'nvidia' ? config.nvidiaBaseUrl : provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
+  const key = customProv ? customProv.apiKey : (provider === 'groq' ? config.groqKey : provider === 'nvidia' ? config.nvidiaKey : provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
   const headers = { 'content-type': 'application/json', Authorization: `Bearer ${key}` };
   if (provider === 'openrouter') {
     if (config.openrouterSiteUrl) headers['HTTP-Referer'] = config.openrouterSiteUrl;

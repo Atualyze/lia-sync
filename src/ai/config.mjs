@@ -47,6 +47,7 @@ export const providers = (botConfig = {}) => {
 
 export const available = provider => {
   if (provider === 'gemini') return config.geminiKey;
+  if (provider === 'groq') return config.groqKey;
   if (provider === 'nvidia') return config.nvidiaKey;
   if (provider === 'openrouter') return config.openrouterKey;
   if (provider === 'qwen') return config.qwenKey;
@@ -84,7 +85,7 @@ export function fallbackModelsForProvider(aiConfig, provider) {
 
 export function getCircuitBreakers() {
   const customList = listCustomProviders();
-  const all = [...new Set(['gemini', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customList.map(c => c.id)])];
+  const all = [...new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customList.map(c => c.id)])];
   const res = {};
   const now = Date.now();
   for (const p of all) {
@@ -266,6 +267,7 @@ export function providerDefaultModel(provider, aiConfig, fixedModel) {
   const configuredFallback = fallbackModelsForProvider(aiConfig, provider)[0];
   if (configuredFallback) return configuredFallback;
   if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
+  if (provider === 'groq') return 'llama-3.3-70b-versatile';
   if (provider === 'nvidia') return 'meta/llama-3.3-70b-instruct';
   if (provider === 'cloudflare') return '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
   const custom = getCustomProvider(provider);

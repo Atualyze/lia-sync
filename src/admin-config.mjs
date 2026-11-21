@@ -175,7 +175,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   const followUpMax = Number(value.behavior?.leadFollowUpMaxHours);
   if (!Number.isFinite(followUpMin) || followUpMin < 1 || followUpMin > 720 || !Number.isFinite(followUpMax) || followUpMax <= followUpMin || followUpMax > 720) errors.push('A janela do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
   const customProviderIds = listCustomProviders().map(item => item.id);
-  const providers = new Set(['gemini', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customProviderIds]);
+  const providers = new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customProviderIds]);
   const provider = value.ai?.activeProvider || '';
   if (requirePublishedAI && (!provider || !providers.has(provider))) errors.push('Publique um provedor de IA válido no dashboard.');
   if (requirePublishedAI && !value.ai?.activeModel?.trim()) errors.push('Publique um modelo de IA no dashboard.');
@@ -231,7 +231,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
     if (!Number.isInteger(calendar.defaultEventDurationMinutes) || calendar.defaultEventDurationMinutes < 5 || calendar.defaultEventDurationMinutes > 480) errors.push('A duração padrão de eventos deve estar entre 5 e 480 minutos.');
     if (typeof calendar.showMockSlotsWhenUnavailable !== 'boolean') errors.push('A exibição de horários simulados deve ser verdadeiro/falso.');
   }
-  const allowedProviders = new Set(['gemini', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customProviderIds]);
+  const allowedProviders = new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare', ...customProviderIds]);
   const validNonNegativeAmount = amount => (typeof amount === 'number' || typeof amount === 'string') && String(amount).trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) >= 0;
   if (value.ai?.pricingRates !== undefined && (!Array.isArray(value.ai.pricingRates) || value.ai.pricingRates.length > 100 || value.ai.pricingRates.some(rate => !allowedProviders.has(rate?.provider) || typeof rate?.model !== 'string' || !rate.model.trim() || !validNonNegativeAmount(rate.inputUsdPerMillion) || !validNonNegativeAmount(rate.outputUsdPerMillion)))) errors.push('Tarifas precisam ser uma lista válida por provedor/modelo e valores USD por milhão de tokens.');
   if (value.ai?.monthlyBudgets !== undefined && (!Array.isArray(value.ai.monthlyBudgets) || value.ai.monthlyBudgets.length > 100 || value.ai.monthlyBudgets.some(budget => !Number.isFinite(Number(budget?.amountUsd)) || Number(budget.amountUsd) <= 0 || (budget.provider && !allowedProviders.has(budget.provider)) || (budget.model !== undefined && typeof budget.model !== 'string')))) errors.push('Limites mensais precisam ser valores USD positivos com provedor/modelo opcionais.');

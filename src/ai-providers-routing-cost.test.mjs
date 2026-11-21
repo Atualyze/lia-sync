@@ -84,11 +84,11 @@ test('summarizePersistentCalls calcula custo de provedores customizados, modelos
   try {
     await store.load();
     await store.upsert({
-      id: 'groq',
-      name: 'Groq',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      apiKey: 'gsk_test_1234567890',
-      defaultModel: 'llama-3.3-70b-versatile',
+      id: 'together',
+      name: 'Together AI',
+      baseUrl: 'https://api.together.xyz/v1',
+      apiKey: 'tog_test_1234567890',
+      defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
       inputUsdPerMillion: 0.59,
       outputUsdPerMillion: 0.79
     });
@@ -97,8 +97,8 @@ test('summarizePersistentCalls calcula custo de provedores customizados, modelos
     const rows = [
       {
         created_at: '2026-11-15T10:00:00Z',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
+        provider: 'together',
+        model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
         prompt_tokens: 1_000_000,
         completion_tokens: 1_000_000,
         total_tokens: 2_000_000,
@@ -120,13 +120,13 @@ test('summarizePersistentCalls calcula custo de provedores customizados, modelos
     const summary = summarizePersistentCalls(rows, { pricingRates: [] }, now);
     assert.equal(summary.estimatedCost.complete, true);
     assert.equal(summary.estimatedCost.totalUsd, 1.38); // 0.59 + 0.79 + 0.00 (:free)
-    assert.equal(summary.estimatedCost.byProviderCost.groq, 1.38);
+    assert.equal(summary.estimatedCost.byProviderCost.together, 1.38);
     assert.equal(summary.estimatedCost.byProviderCost.openrouter, 0);
     assert.equal(summary.estimatedCost.dailyBurnRateUsd, 0.092);
     assert.equal(summary.estimatedCost.projectedMonthlyUsd, 2.76);
     assert.ok(summary.estimatedCost.avgCostPer1kCallsUsd > 0);
   } finally {
-    await store.remove('groq').catch(() => {});
+    await store.remove('together').catch(() => {});
     await rm(dir, { recursive: true, force: true });
   }
 });

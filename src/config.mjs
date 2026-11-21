@@ -21,6 +21,7 @@ export const config = {
   geminiFreeKey: process.env.GEMINI_FREE_API_KEY || '',
   geminiThinkingBudget: num('GEMINI_THINKING_BUDGET', 0),
   groqKey: process.env.GROQ_API_KEY || '',
+  groqBaseUrl: (process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, ''),
   openrouterKey: process.env.OPENROUTER_API_KEY || '',
   openrouterBaseUrl: (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, ''),
   openrouterSiteUrl: process.env.OPENROUTER_SITE_URL || '',

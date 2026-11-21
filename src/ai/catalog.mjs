@@ -1,7 +1,7 @@
 import { config } from '../config.mjs';
 import { getCustomProvider } from './custom-providers.mjs';
 
-const ALLOWED_PROVIDERS = new Set(['gemini', 'nvidia', 'openrouter', 'openai', 'qwen', 'cloudflare']);
+const ALLOWED_PROVIDERS = new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'openai', 'qwen', 'cloudflare']);
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();
 
@@ -21,6 +21,11 @@ function providerConfig(provider) {
     key: config.geminiKey,
     url: 'https://generativelanguage.googleapis.com/v1beta/models',
     auth: key => ({ 'x-goog-api-key': key })
+  };
+  if (provider === 'groq') return {
+    key: config.groqKey,
+    url: `${config.groqBaseUrl}/models`,
+    auth: key => ({ Authorization: `Bearer ${key}` })
   };
   if (provider === 'nvidia') return {
     key: config.nvidiaKey,
