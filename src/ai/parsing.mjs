@@ -151,13 +151,16 @@ export function normalizeHistory(history = []) {
   }
   if (bounded.length && bounded[0].role !== 'user') {
     const firstIdx = out.indexOf(bounded[0]);
-    if (firstIdx > 0 && out[firstIdx - 1]?.role === 'user') {
+    const remainingBudget = 12000 - chars;
+    if (bounded.length < 24 && firstIdx > 0 && out[firstIdx - 1]?.role === 'user' && remainingBudget >= 32) {
       bounded.unshift({
         role: 'user',
-        content: out[firstIdx - 1].content.slice(-1500)
+        content: out[firstIdx - 1].content.slice(-Math.min(1500, remainingBudget))
       });
-    } else {
+    } else if (bounded.length < 24 && remainingBudget >= 34) {
       bounded.unshift({ role: 'user', content: '[Retomada da conversa em andamento]' });
+    } else {
+      while (bounded.length && bounded[0].role !== 'user') bounded.shift();
     }
   }
   return bounded;

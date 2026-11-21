@@ -650,8 +650,9 @@ export async function handleClientMessage({
 
       const hasPendingToolCalls = (Array.isArray(result?.tool_calls) && result.tool_calls.length > 0)
         || Boolean(s.pendingClientAgenda && pendingAgendaAnswer)
-        || Boolean(s.pendingClientPayment && pendingPaymentAnswer);
-      if (!result || (!raw && !hasPendingToolCalls)) {
+        || Boolean(s.pendingClientPayment && pendingPaymentAnswer)
+        || Boolean(!isOwnerSender(phone) && origin !== 'owner' && isPixActionRequest(actionText));
+      if (!hasPendingToolCalls && (!result || !raw)) {
         if (origin === 'simulation' || origin === 'preview') {
           raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
           const oneHourAgo = now() - 3600000;
