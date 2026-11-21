@@ -3,6 +3,7 @@ import { serveStatic } from '../dashboard.mjs';
 import { json, NOT_HANDLED } from './utils.mjs';
 import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath } from './proxy.mjs';
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
+import { handleRuntimeDashboardRoutes } from './runtime-routes.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { renderPaymentLandingPage, renderPixPaymentPage } from './pix-page.mjs';
@@ -37,6 +38,7 @@ const DASHBOARD_ROLE_RULES = Object.freeze([
   { method: 'GET', path: '/api/dashboard/state', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/metrics', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/operations', role: 'operator' },
+  { method: 'GET', path: '/api/dashboard/runtime/overview', role: 'operator' },
   { method: 'GET', prefix: '/api/dashboard/prospecting', role: 'operator' },
   // Administração: usuários, auditoria, inventário do host e reset de métricas.
   { prefix: '/api/dashboard/users', role: 'admin' },
@@ -75,7 +77,7 @@ export function requiredRole(pathname, method) {
   return rule ? rule.role : 'admin';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -168,6 +170,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (prospectingResult !== NOT_HANDLED) return prospectingResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
+    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, operationsStore });
+    if (liaEngineResult !== NOT_HANDLED) return liaEngineResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });
     if (webhookResult !== NOT_HANDLED) return webhookResult;
     const apiV1Result = await apiV1({ req, res, u, store, adminConfig, runtimeAI, readinessCheck, askAI });

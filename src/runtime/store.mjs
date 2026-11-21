@@ -283,7 +283,12 @@ export class LiaRuntimeStore {
     const safeId = String(id || '').trim();
     const updates = { ...patch, updated_at: new Date(this.now()).toISOString() };
     if (this.remoteEnabled) {
-      const rows = await this.client.patch('lia_events', `id=eq.${encodeURIComponent(safeId)}`, updates);
+      const rows = await this.client.request('lia_events', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(safeId)}`,
+        body: updates,
+        prefer: 'return=representation'
+      });
       return Array.isArray(rows) && rows[0] ? rows[0] : null;
     }
     return this._serial(async () => {

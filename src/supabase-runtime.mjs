@@ -121,6 +121,10 @@ export class SupabaseRestClient {
     });
   }
   async insert(table, rows) { return this.request(table, { method: 'POST', body: rows, prefer: 'return=minimal' }); }
+  async patch(table, query, body, { returnRepresentation = true } = {}) {
+    const returnMode = returnRepresentation ? 'return=representation' : 'return=minimal';
+    return this.request(table, { method: 'PATCH', query, body, prefer: returnMode });
+  }
   async rpc(name, args = {}) {
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(name)) throw new Error('Supabase RPC inválida');
     return this.request(`rpc/${name}`, { method: 'POST', body: args });

@@ -1,3 +1,4 @@
+export { LiaAutonomyStore } from './store.mjs';
 export {
   PERMISSION_CATEGORIES,
   classifyActionCategory,

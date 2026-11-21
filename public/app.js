@@ -3102,7 +3102,8 @@ const VIEW_TITLES = {
   integrations: 'Integrações & Webhooks',
   users: 'Acessos & Auditoria',
   metrics: 'Monitoramento & Custos',
-  vps: 'Monitor da VPS'
+  vps: 'Monitor da VPS',
+  runtime: 'Autonomia & Runtime'
 };
 
 function showView(view) {
@@ -3143,6 +3144,7 @@ function showView(view) {
   if (view === 'tools') renderTools();
   if (view === 'users') renderUsers();
   if (view === 'integrations') renderIntegrations();
+  if (view === 'runtime') renderRuntimeView();
   setTimeout(() => decorateTechnicalTerms(document.body), 90);
 }
 
@@ -4790,5 +4792,300 @@ async function loadApiIntegrationsPanel() {
     const targetId = copyBtn.getAttribute('data-copy-target');
     const el = targetId ? document.getElementById(targetId) : null;
     if (el) copyTextWithFeedback(el.textContent.trim(), copyBtn);
+  });
+
+  // ====================================================================
+  // VIEW 6.5: LIA RUNTIME, AUTONOMIA, OBJETIVOS & CONFIGURAÇÃO DE APIS
+  // ====================================================================
+  const runtimeEscape = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function setRuntimeFeedback(id, msg, isError = false) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `admin-feedback ${isError ? 'err' : 'ok'}`;
+    el.classList.remove('hidden');
+  }
+
+  async function renderRuntimeView() {
+    try {
+      const data = await api('/api/dashboard/runtime/overview');
+      const cardsEl = $('#runtime-status-cards');
+      if (cardsEl) {
+        const rd = data.readiness || {};
+        const m = data.metrics || {};
+        cardsEl.innerHTML = [
+          `<div class="panel"><div class="muted">Lia Runtime</div><strong>${runtimeEscape(rd.runtime?.status || 'unavailable')} (${runtimeEscape(rd.runtime?.state || 'idle')})</strong><div class="muted">Modo: ${runtimeEscape(rd.runtime?.mode || '-')}</div></div>`,
+          `<div class="panel"><div class="muted">Presença &amp; Autonomia</div><strong>${runtimeEscape(data.presence?.state || 'available')}</strong><div class="muted">Nível: ${runtimeEscape(data.policy?.autonomy_level || 'assisted')}</div></div>`,
+          `<div class="panel"><div class="muted">Decisões / Ações</div><strong>${Number(m.autonomous_decisions || 0)} / ${Number(m.autonomous_actions || 0)}</strong><div class="muted">Bloqueadas: ${Number(m.blocked_actions || 0)} · Escalações: ${Number(m.human_escalations || 0)}</div></div>`,
+          `<div class="panel"><div class="muted">Learning Engine</div><strong>${runtimeEscape(rd.learning?.status || 'unavailable')}</strong><div class="muted">Aprendizados: ${(data.knowledge || []).length} · Propostas: ${(data.proposals || []).length}</div></div>`
+        ].join('');
+      }
+
+      if (data.policy) {
+        const p = data.policy;
+        if ($('#rt-policy-level')) $('#rt-policy-level').value = p.autonomy_level || 'assisted';
+        if ($('#rt-limit-actions')) $('#rt-limit-actions').value = p.daily_limits?.maxActionsPerHour ?? 30;
+        if ($('#rt-limit-outbound')) $('#rt-limit-outbound').value = p.daily_limits?.maxOutboundPerDay ?? 50;
+        if ($('#rt-limit-experiments')) $('#rt-limit-experiments').value = p.daily_limits?.maxExperimentsPerDay ?? 3;
+        if ($('#rt-comm-cooldown')) $('#rt-comm-cooldown').value = Math.round((p.communication_policy?.cooldownMs ?? 1800000) / 60000);
+        if ($('#rt-comm-max-day')) $('#rt-comm-max-day').value = p.communication_policy?.maxProactivePerDay ?? 12;
+        if ($('#rt-toggle-learning')) $('#rt-toggle-learning').checked = p.learning_policy?.enabled !== false;
+        if ($('#rt-toggle-experiments')) $('#rt-toggle-experiments').checked = p.experiment_policy?.enabled !== false;
+        if ($('#rt-toggle-outbound-human')) $('#rt-toggle-outbound-human').checked = p.approval_policy?.requireHumanForOutbound !== false;
+        const allowed = new Set(p.allowed_actions || []);
+        document.querySelectorAll('.rt-action-cb').forEach(cb => { cb.checked = allowed.has(cb.value); });
+      }
+
+      const goalsEl = $('#runtime-goals-list');
+      if (goalsEl) {
+        const goals = data.goals || [];
+        goalsEl.innerHTML = goals.length ? goals.map(g => `
+          <div class="panel" style="padding:10px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <strong>${runtimeEscape(g.title)}</strong>
+              <span class="badge-mini">${runtimeEscape(g.status)} · ${runtimeEscape(g.priority)} · ${Number(g.progress || 0)}%</span>
+            </div>
+            <div class="muted" style="font-size:12px;margin:4px 0">Indicador: ${runtimeEscape(g.indicator || '-')}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" data-role="admin">
+              ${g.status === 'active' ? `<button type="button" class="btn-secondary" data-goal-act="pause" data-goal-id="${runtimeEscape(g.id)}">Pausar</button>` : ''}
+              ${g.status === 'paused' || g.status === 'draft' ? `<button type="button" class="btn-secondary" data-goal-act="resume" data-goal-id="${runtimeEscape(g.id)}">Ativar</button>` : ''}
+              ${g.status !== 'completed' ? `<button type="button" class="btn-secondary" data-goal-act="complete" data-goal-id="${runtimeEscape(g.id)}">Concluir</button>` : ''}
+              ${g.status !== 'cancelled' ? `<button type="button" class="btn-secondary" data-goal-act="cancel" data-goal-id="${runtimeEscape(g.id)}">Cancelar</button>` : ''}
+            </div>
+          </div>
+        `).join('') : '<p class="muted">Nenhum objetivo cadastrado.</p>';
+      }
+
+      const commEl = $('#runtime-commitments-list');
+      if (commEl) {
+        const items = data.commitments || [];
+        commEl.innerHTML = items.length ? items.map(c => `
+          <div class="panel" style="padding:10px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <strong>${runtimeEscape(c.title)}</strong>
+              <span class="badge-mini">${runtimeEscape(c.status)}</span>
+            </div>
+            <div class="muted" style="font-size:12px;margin:4px 0">Contato: ${runtimeEscape(c.subject || '-')} · Prazo: ${c.due_at ? new Date(c.due_at).toLocaleString('pt-BR') : '-'}</div>
+            <div style="display:flex;gap:6px;margin-top:6px" data-role="admin">
+              ${c.status === 'pending' || c.status === 'in_progress' ? `<button type="button" class="btn-secondary" data-commit-act="fulfill" data-commit-id="${runtimeEscape(c.id)}">Concluir</button><button type="button" class="btn-secondary" data-commit-act="cancel" data-commit-id="${runtimeEscape(c.id)}">Cancelar</button>` : ''}
+            </div>
+          </div>
+        `).join('') : '<p class="muted">Nenhum compromisso registrado.</p>';
+      }
+
+      const propEl = $('#runtime-proposals-list');
+      if (propEl) {
+        const props = data.proposals || [];
+        propEl.innerHTML = props.length ? props.map(pr => `
+          <div class="panel" style="padding:10px;margin-bottom:8px">
+            <div><strong>${runtimeEscape(pr.proposal_type)}</strong> <span class="badge-mini">${runtimeEscape(pr.status)}</span></div>
+            <div class="muted" style="font-size:12px;margin:4px 0">${runtimeEscape(pr.summary)}</div>
+            ${pr.status === 'pending_human_review' ? `<div style="display:flex;gap:6px;margin-top:6px" data-role="admin"><button type="button" class="btn-secondary" data-prop-status="approved" data-prop-id="${runtimeEscape(pr.id)}">Aprovar</button><button type="button" class="btn-secondary" data-prop-status="rejected" data-prop-id="${runtimeEscape(pr.id)}">Rejeitar</button></div>` : ''}
+          </div>
+        `).join('') : '<p class="muted">Nenhuma proposta pendente.</p>';
+      }
+
+      const knowEl = $('#runtime-knowledge-list');
+      if (knowEl) {
+        const list = (data.knowledge || []).slice(0, 10);
+        knowEl.innerHTML = list.length ? `<h4>Aprendizados Recentes</h4>` + list.map(k => `
+          <div class="panel" style="padding:8px;margin-bottom:6px;font-size:13px">
+            <strong>[${runtimeEscape(k.scope)} · ${runtimeEscape(k.status)}]</strong> ${runtimeEscape(k.content)}
+            <div class="muted" style="font-size:11px">Confiança: ${Math.round(Number(k.confidence || 0) * 100)}% · Evidências: ${Number(k.evidence_count || 0)}</div>
+          </div>
+        `).join('') : '';
+      }
+
+      const decEl = $('#runtime-decisions-list');
+      if (decEl) {
+        const list = (data.decisions || []).slice(0, 15);
+        decEl.innerHTML = list.length ? list.map(d => `
+          <div class="panel" style="padding:8px;margin-bottom:6px;font-size:13px">
+            <div><strong>${runtimeEscape(d.proposed_action || d.decision_action)}</strong> <span class="badge-mini">${runtimeEscape(d.authorization_decision || d.authorization?.decision || '-')}</span></div>
+            <div class="muted" style="font-size:12px">${runtimeEscape(d.why || '')}</div>
+          </div>
+        `).join('') : '<p class="muted">Nenhuma decisão autônoma registrada ainda.</p>';
+      }
+
+      if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.admin) {
+        await loadApiSettingsPanel();
+      }
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Erro ao carregar Runtime: ${err.message}`, true);
+    }
+  }
+
+  async function loadApiSettingsPanel() {
+    const grid = $('#api-settings-grid');
+    if (!grid) return;
+    try {
+      const data = await api('/api/dashboard/api-settings');
+      const items = data.items || [];
+      grid.innerHTML = items.map(item => `
+        <div class="panel" style="padding:10px">
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:6px">
+            <strong style="font-size:13px">${runtimeEscape(item.label)}</strong>
+            <span class="badge-mini">${item.source === 'panel' ? 'Painel' : (item.source === 'env' ? 'VPS (.env)' : 'Vazio')}</span>
+          </div>
+          <input
+            type="${item.secret ? 'password' : (item.isNumber ? 'number' : 'text')}"
+            class="api-setting-input"
+            data-api-key="${runtimeEscape(item.key)}"
+            data-is-secret="${item.secret ? '1' : '0'}"
+            placeholder="${item.secret ? (item.configured ? `Atual: ${runtimeEscape(item.masked)} (digite para trocar)` : 'Digite a chave...') : 'Digite o valor...'}"
+            value="${item.secret ? '' : runtimeEscape(item.value)}"
+            style="width:100%"
+          >
+          ${item.source === 'panel' ? `<button type="button" class="btn-secondary api-setting-clear" data-clear-key="${runtimeEscape(item.key)}" style="margin-top:6px;font-size:11px">Voltar para .env</button>` : ''}
+        </div>
+      `).join('');
+    } catch (err) {
+      grid.innerHTML = `<p class="muted">Indisponível: ${runtimeEscape(err.message)}</p>`;
+    }
+  }
+
+  $('#runtime-refresh-btn')?.addEventListener('click', () => renderRuntimeView());
+
+  $('#runtime-wake-btn')?.addEventListener('click', async () => {
+    try {
+      const res = await api('/api/dashboard/runtime/wake', { method: 'POST', body: '{}' });
+      setRuntimeFeedback('#runtime-feedback', `Runtime acordado: ${res.summary?.processedEvents || 0} evento(s), ${res.summary?.tasksCreated || 0} tarefa(s).`);
+      await renderRuntimeView();
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Falha ao acordar Runtime: ${err.message}`, true);
+    }
+  });
+
+  $('#runtime-policy-save')?.addEventListener('click', async () => {
+    try {
+      const allowed_actions = Array.from(document.querySelectorAll('.rt-action-cb:checked')).map(cb => cb.value);
+      const payload = {
+        tenant_id: 'default',
+        autonomy_level: $('#rt-policy-level')?.value || 'assisted',
+        allowed_actions,
+        approval_policy: {
+          requireHumanForOutbound: Boolean($('#rt-toggle-outbound-human')?.checked),
+          requireHumanForPix: true
+        },
+        daily_limits: {
+          maxActionsPerHour: Number($('#rt-limit-actions')?.value || 30),
+          maxOutboundPerDay: Number($('#rt-limit-outbound')?.value || 50),
+          maxExperimentsPerDay: Number($('#rt-limit-experiments')?.value || 3)
+        },
+        communication_policy: {
+          cooldownMs: Number($('#rt-comm-cooldown')?.value || 30) * 60000,
+          maxProactivePerDay: Number($('#rt-comm-max-day')?.value || 12)
+        },
+        learning_policy: { enabled: Boolean($('#rt-toggle-learning')?.checked) },
+        experiment_policy: { enabled: Boolean($('#rt-toggle-experiments')?.checked) }
+      };
+      await api('/api/dashboard/runtime/policy', { method: 'PUT', body: JSON.stringify(payload) });
+      setRuntimeFeedback('#runtime-feedback', 'Política de autonomia salva e persistida com sucesso!');
+      await renderRuntimeView();
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Erro ao salvar política: ${err.message}`, true);
+    }
+  });
+
+  $('#runtime-goal-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/dashboard/runtime/goals', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: $('#rt-goal-title')?.value,
+          indicator: $('#rt-goal-indicator')?.value,
+          priority: $('#rt-goal-priority')?.value || 'medium',
+          status: 'active'
+        })
+      });
+      if ($('#rt-goal-title')) $('#rt-goal-title').value = '';
+      if ($('#rt-goal-indicator')) $('#rt-goal-indicator').value = '';
+      setRuntimeFeedback('#runtime-feedback', 'Objetivo criado com sucesso!');
+      await renderRuntimeView();
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Erro ao criar objetivo: ${err.message}`, true);
+    }
+  });
+
+  $('#runtime-commitment-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const dueRaw = $('#rt-commit-due')?.value;
+      await api('/api/dashboard/runtime/commitments', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: $('#rt-commit-title')?.value,
+          subject: $('#rt-commit-subject')?.value,
+          dueAt: dueRaw ? new Date(dueRaw).toISOString() : ''
+        })
+      });
+      if ($('#rt-commit-title')) $('#rt-commit-title').value = '';
+      if ($('#rt-commit-subject')) $('#rt-commit-subject').value = '';
+      setRuntimeFeedback('#runtime-feedback', 'Compromisso registrado!');
+      await renderRuntimeView();
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Erro ao criar compromisso: ${err.message}`, true);
+    }
+  });
+
+  $('#runtime-view')?.addEventListener('click', async (e) => {
+    const goalBtn = e.target.closest('[data-goal-act]');
+    if (goalBtn) {
+      await api(`/api/dashboard/runtime/goals/${encodeURIComponent(goalBtn.dataset.goalId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: goalBtn.dataset.goalAct })
+      });
+      await renderRuntimeView();
+      return;
+    }
+    const commitBtn = e.target.closest('[data-commit-act]');
+    if (commitBtn) {
+      await api(`/api/dashboard/runtime/commitments/${encodeURIComponent(commitBtn.dataset.commitId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: commitBtn.dataset.commitAct })
+      });
+      await renderRuntimeView();
+      return;
+    }
+    const propBtn = e.target.closest('[data-prop-status]');
+    if (propBtn) {
+      await api(`/api/dashboard/runtime/proposals/${encodeURIComponent(propBtn.dataset.propId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: propBtn.dataset.propStatus })
+      });
+      await renderRuntimeView();
+      return;
+    }
+    const clearBtn = e.target.closest('[data-clear-key]');
+    if (clearBtn) {
+      try {
+        await api('/api/dashboard/api-settings', {
+          method: 'PUT',
+          body: JSON.stringify({ [clearBtn.dataset.clearKey]: '__CLEAR__' })
+        });
+        setRuntimeFeedback('#api-settings-feedback', `Campo ${clearBtn.dataset.clearKey} restaurado para .env.`);
+        await loadApiSettingsPanel();
+      } catch (err) {
+        setRuntimeFeedback('#api-settings-feedback', `Erro ao limpar: ${err.message}`, true);
+      }
+    }
+  });
+
+  $('#api-settings-save')?.addEventListener('click', async () => {
+    try {
+      const payload = {};
+      document.querySelectorAll('.api-setting-input').forEach(input => {
+        const key = input.dataset.apiKey;
+        const val = String(input.value || '').trim();
+        if (val) payload[key] = val;
+      });
+      const res = await api('/api/dashboard/api-settings', { method: 'PUT', body: JSON.stringify(payload) });
+      setRuntimeFeedback('#api-settings-feedback', `APIs aplicadas em tempo real (hot-reload): ${(res.changedKeys || []).join(', ') || 'nenhuma alteração'}.`);
+      await loadApiSettingsPanel();
+    } catch (err) {
+      setRuntimeFeedback('#api-settings-feedback', `Erro ao salvar APIs: ${err.message}`, true);
+    }
   });
 })();

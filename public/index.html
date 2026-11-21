@@ -150,6 +150,10 @@
               <span class="nav-label">Ajustes do Motor</span>
               <b id="admin-draft-badge" class="badge-mini warn hidden">editado</b>
             </button>
+            <button class="nav-item" data-view="runtime" data-role="operator" title="Lia Runtime, Autonomia, Objetivos & APIs">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
+              <span class="nav-label">Autonomia &amp; APIs</span>
+            </button>
             <button class="nav-item" data-view="tools" title="Ferramentas & Busca Web">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
               <span class="nav-label">Ferramentas & Web</span>
@@ -1770,6 +1774,168 @@
               </div>
             </div>
             <div id="tools-catalog" class="tool-catalog"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           VIEW 6.5: AUTONOMIA, RUNTIME, OBJETIVOS & APIS (RUNTIME)
+           ==================================================================== -->
+      <section id="runtime-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Lia Runtime, Autonomia &amp; APIs</h2>
+              <p>Controle completo de objetivos, compromissos, políticas de autonomia, propostas de melhoria e credenciais de API sem precisar entrar na VPS.</p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn-secondary" id="runtime-wake-btn" data-role="admin">⚡ Acordar Runtime</button>
+              <button type="button" class="icon-btn action-btn-ping" id="runtime-refresh-btn" title="Atualizar estado do Runtime" aria-label="Atualizar estado do Runtime">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="runtime-feedback" class="admin-feedback hidden" role="status"></div>
+
+          <div id="runtime-status-cards" class="overview-grid" style="margin-bottom:16px"></div>
+
+          <!-- POLÍTICA DE AUTONOMIA CUSTOMIZÁVEL -->
+          <section class="panel ops-panel" data-role="admin">
+            <div class="panel-head">
+              <div>
+                <h3>Política de Autonomia &amp; Limites</h3>
+                <p>Defina o nível de autonomia, ações pré-autorizadas (Categoria B) e tetos operacionais. Pix e alterações de código/segurança permanecem sempre protegidos.</p>
+              </div>
+              <button type="button" class="btn-primary" id="runtime-policy-save">Salvar Política</button>
+            </div>
+            <form id="runtime-policy-form" class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:12px 0">
+              <label class="field">
+                <span>Nível de Autonomia</span>
+                <select id="rt-policy-level">
+                  <option value="passive">Passivo (somente observa)</option>
+                  <option value="assisted">Assistido (padrão recomendado)</option>
+                  <option value="supervised_autonomous">Autônomo Supervisionado</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Máx. ações / hora</span>
+                <input type="number" id="rt-limit-actions" min="1" max="500" value="30">
+              </label>
+              <label class="field">
+                <span>Máx. outbound / dia</span>
+                <input type="number" id="rt-limit-outbound" min="0" max="1000" value="50">
+              </label>
+              <label class="field">
+                <span>Máx. experimentos / dia</span>
+                <input type="number" id="rt-limit-experiments" min="0" max="50" value="3">
+              </label>
+              <label class="field">
+                <span>Cooldown proativo (min)</span>
+                <input type="number" id="rt-comm-cooldown" min="1" max="1440" value="30">
+              </label>
+              <label class="field">
+                <span>Máx. alertas proativos / dia</span>
+                <input type="number" id="rt-comm-max-day" min="1" max="100" value="12">
+              </label>
+              <div class="field" style="grid-column:1/-1">
+                <span>Ações pré-autorizadas (Categoria B)</span>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
+                  <label><input type="checkbox" class="rt-action-cb" value="follow_up"> Follow-up</label>
+                  <label><input type="checkbox" class="rt-action-cb" value="commercial_message"> Mensagem comercial</label>
+                  <label><input type="checkbox" class="rt-action-cb" value="crm_update"> Atualizar CRM</label>
+                  <label><input type="checkbox" class="rt-action-cb" value="create_calendar_event"> Criar evento Agenda</label>
+                  <label><input type="checkbox" class="rt-action-cb" value="support_action"> Ação de suporte</label>
+                </div>
+              </div>
+              <div class="field" style="grid-column:1/-1;display:flex;gap:18px;flex-wrap:wrap">
+                <label><input type="checkbox" id="rt-toggle-learning" checked> Aprendizado contínuo ativo</label>
+                <label><input type="checkbox" id="rt-toggle-experiments" checked> Experimentos controlados ativos</label>
+                <label><input type="checkbox" id="rt-toggle-outbound-human" checked> Exigir aprovação humana para outbound</label>
+              </div>
+            </form>
+          </section>
+
+          <!-- OBJETIVOS & COMPROMISSOS -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px">
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Objetivos Persistentes (Goals)</h3>
+                  <p>Metas acompanhadas continuamente pelo Runtime</p>
+                </div>
+              </div>
+              <form id="runtime-goal-form" data-role="admin" style="display:grid;gap:8px;margin-bottom:12px">
+                <input type="text" id="rt-goal-title" placeholder="Ex.: Aumentar conversão de leads qualificados" required>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <input type="text" id="rt-goal-indicator" placeholder="Indicador (ex: qualified_leads)">
+                  <select id="rt-goal-priority">
+                    <option value="medium">Prioridade Média</option>
+                    <option value="high">Prioridade Alta</option>
+                    <option value="critical">Crítica</option>
+                    <option value="low">Baixa</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn-primary">Adicionar Objetivo</button>
+              </form>
+              <div id="runtime-goals-list" class="stack-list"><p class="muted">Carregando objetivos…</p></div>
+            </section>
+
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Compromissos (Commitments)</h3>
+                  <p>Promessas com prazo que acordam a Lia automaticamente</p>
+                </div>
+              </div>
+              <form id="runtime-commitment-form" data-role="admin" style="display:grid;gap:8px;margin-bottom:12px">
+                <input type="text" id="rt-commit-title" placeholder="Ex.: Retornar proposta para João" required>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <input type="text" id="rt-commit-subject" placeholder="Contato / Telefone">
+                  <input type="datetime-local" id="rt-commit-due" required>
+                </div>
+                <button type="submit" class="btn-primary">Registrar Compromisso</button>
+              </form>
+              <div id="runtime-commitments-list" class="stack-list"><p class="muted">Carregando compromissos…</p></div>
+            </section>
+          </div>
+
+          <!-- PROPOSTAS DE MELHORIA & AUDITORIA -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px">
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Propostas de Melhoria &amp; Aprendizados</h3>
+                  <p>Sugestões bloqueadas pela fronteira de código/segurança e conhecimentos com confiança</p>
+                </div>
+              </div>
+              <div id="runtime-proposals-list" class="stack-list"><p class="muted">Nenhuma proposta pendente.</p></div>
+              <div id="runtime-knowledge-list" class="stack-list" style="margin-top:12px"></div>
+            </section>
+
+            <section class="panel ops-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Trilha Auditável de Decisões</h3>
+                  <p>Registro de por que a Lia agiu ou bloqueou uma ação</p>
+                </div>
+              </div>
+              <div id="runtime-decisions-list" class="stack-list"><p class="muted">Nenhuma decisão autônoma registrada ainda.</p></div>
+            </section>
+          </div>
+
+          <!-- CONFIGURAÇÃO DE APIS & PROVEDORES VIA INTERFACE (HOT-RELOAD SEM VPS) -->
+          <section class="panel ops-panel" id="api-settings-panel" data-role="admin" style="margin-top:16px">
+            <div class="panel-head">
+              <div>
+                <h3>Configuração de APIs &amp; Provedores (Sem entrar na VPS)</h3>
+                <p>Atualize URLs e chaves de API em tempo real (hot-reload) com persistência segura no Supabase. Chaves salvas nunca são exibidas em texto claro.</p>
+              </div>
+              <button type="button" class="btn-primary" id="api-settings-save">Aplicar &amp; Salvar APIs</button>
+            </div>
+            <div id="api-settings-feedback" class="admin-feedback hidden" role="status"></div>
+            <div id="api-settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding-top:10px">
+              <p class="muted">Carregando configurações de API…</p>
+            </div>
           </section>
         </div>
       </section>

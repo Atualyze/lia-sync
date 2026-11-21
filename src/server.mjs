@@ -35,7 +35,8 @@ import { CopilotTaskStore } from './copilot-tasks.mjs';
 import { createCopilotTaskWorker } from './copilot-task-worker.mjs';
 import { LiaRuntimeStore, createLiaRuntime } from './runtime/index.mjs';
 import { LiaLearningStore, createLearningEngine } from './learning/index.mjs';
-import { createAutonomyEngine } from './autonomy/index.mjs';
+import { LiaAutonomyStore, createAutonomyEngine } from './autonomy/index.mjs';
+import { ApiSettingsStore } from './api-settings.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -48,6 +49,12 @@ const defaultAdminConfig = supabaseRuntime.enabled ? new SupabaseAdminConfigStor
 export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl, readinessCheck } = {}) {
   await store.load();
   await adminConfig.load();
+  const apiSettingsStore = new ApiSettingsStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'api-settings.json'),
+    logger: console
+  });
+  await apiSettingsStore.load();
   // Preços permitidos vêm exclusivamente da configuração publicada (regra do projeto).
   setPricingSource(() => adminConfig.active);
   if (!store.client?.enabled) console.warn('[persistence] Supabase runtime desativado: configure SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; usando fallback local.');
@@ -95,7 +102,14 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   await liaRuntime.start();
+  const liaAutonomyStore = new LiaAutonomyStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'lia-autonomy.json'),
+    allowLocalFallback: process.env.LIA_AUTONOMY_LOCAL_FALLBACK === 'true',
+    logger: console
+  });
   const liaAutonomy = createAutonomyEngine({
+    store: liaAutonomyStore,
     runtime: liaRuntime,
     learning: liaLearning,
     taskStore: copilotTaskStore,
@@ -103,6 +117,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getBotConfig: () => adminConfig.active,
     logger: console
   });
+  await liaAutonomy.start();
   const copilotTaskWorker = createCopilotTaskWorker({
     taskStore: copilotTaskStore,
     store,
@@ -417,9 +432,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     sectorProjection,
     prospecting,
     askAI: askAIWithBudget,
-    integrationsStore
+    integrationsStore,
+    liaRuntime,
+    liaLearning,
+    liaAutonomy,
+    apiSettingsStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));

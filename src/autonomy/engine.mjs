@@ -4,6 +4,7 @@ import {
   normalizeOrgAutonomyPolicy,
   selectCostTier
 } from './permissions.mjs';
+import { LiaAutonomyStore } from './store.mjs';
 import { PresenceEngine, CommunicationGuard, resolveContextualConflict } from './presence.mjs';
 import { verifyOutcome, planRecovery, evaluateSystemHealth, AutonomyAuditStore } from './verification.mjs';
 import {
@@ -51,6 +52,7 @@ export function prioritizeGoalsAntiStarvation(goals = [], nowMs = Date.now()) {
 }
 
 export function createAutonomyEngine({
+  store = null,
   runtime = null,
   learning = null,
   taskStore = null,
@@ -63,6 +65,7 @@ export function createAutonomyEngine({
   logger = console,
   now = () => Date.now()
 } = {}) {
+  const autonomyStore = store;
   const permissions = new PermissionEngine({ isSuppressed });
   const presence = new PresenceEngine({ now });
   const audit = new AutonomyAuditStore({ now });
@@ -95,6 +98,32 @@ export function createAutonomyEngine({
       now
     }));
     return normalized;
+  };
+
+  const saveOrgPolicy = async (tenantId, rawPolicy = {}) => {
+    const normalized = setOrgPolicy(tenantId, rawPolicy);
+    if (autonomyStore?.available) {
+      await autonomyStore.savePolicy(normalized);
+    }
+    return normalized;
+  };
+
+  const start = async () => {
+    if (!autonomyStore) return { ok: true, mode: 'memory' };
+    await autonomyStore.load();
+    if (!autonomyStore.available) return { ok: false, mode: autonomyStore.mode };
+    const policies = await autonomyStore.listPolicies().catch(() => []);
+    for (const row of policies) {
+      if (row?.tenant_id) setOrgPolicy(row.tenant_id, row);
+    }
+    return { ok: true, mode: autonomyStore.mode, policiesLoaded: policies.length };
+  };
+
+  const listPersistedDecisions = async ({ tenantId = null, limit = 50 } = {}) => {
+    if (autonomyStore?.available) {
+      return autonomyStore.listDecisions({ tenantId, limit });
+    }
+    return audit.getAuditTrail({ tenantId, limit });
   };
 
   const getBudget = (tenantId = 'default') => {
@@ -267,6 +296,9 @@ export function createAutonomyEngine({
         audit.increment('learning_events');
       }
 
+      if (autonomyStore?.available) {
+        await autonomyStore.saveDecision(contract).catch(() => {});
+      }
       return {
         decision: 'execute',
         executed: true,
@@ -279,6 +311,9 @@ export function createAutonomyEngine({
       audit.increment('failed_actions');
       const recovery = planRecovery({ errorCode: code, effectType });
       audit.updateDecision(contract.id, { outcome: 'failed', verification: { status: 'failed', reason: code } });
+      if (autonomyStore?.available) {
+        await autonomyStore.saveDecision(contract).catch(() => {});
+      }
       presence.transition(recovery.nextState === 'needs_human' ? 'needs_human' : 'blocked', { blocker: recovery.reason });
       return {
         decision: recovery.action === 'escalate_human' ? 'escalate' : 'wait',
@@ -313,6 +348,9 @@ export function createAutonomyEngine({
     }
     guard.markSent({ deduplicationKey, subject });
     audit.increment('proactive_messages');
+    if (autonomyStore?.available) {
+      await autonomyStore.recordProactiveNotification({ tenantId, deduplicationKey, subject, reason, status: 'sent' }).catch(() => {});
+    }
     return { sent: true, reason: 'sent' };
   };
 
@@ -363,16 +401,19 @@ export function createAutonomyEngine({
   const readiness = () => {
     const runtimeReady = runtime ? runtime.available === true : true;
     const learningReady = learning ? learning.available === true : true;
-    const ok = runtimeReady && learningReady;
+    const storeReady = autonomyStore ? autonomyStore.available === true : true;
+    const ok = runtimeReady && learningReady && storeReady;
     return {
       name: 'lia_autonomy',
       status: ok ? 'ready' : 'unavailable',
+      ...(autonomyStore ? { mode: autonomyStore.mode } : {}),
       presence: presence.state,
-      ...(ok ? {} : { reason: !runtimeReady ? 'runtime_unavailable' : 'learning_unavailable' })
+      ...(ok ? {} : { reason: !storeReady ? (autonomyStore.remoteError || 'autonomy_store_unavailable') : (!runtimeReady ? 'runtime_unavailable' : 'learning_unavailable') })
     };
   };
 
   return {
+    store: autonomyStore,
     permissions,
     presence,
     audit,
@@ -380,8 +421,11 @@ export function createAutonomyEngine({
     relationships,
     sales,
     support,
+    start,
     getPolicy,
     setOrgPolicy,
+    saveOrgPolicy,
+    listPersistedDecisions,
     getBudget,
     decideAndAct,
     communicateProactively,

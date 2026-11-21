@@ -242,7 +242,10 @@ export class LiaLearningStore {
     this._assertAvailable();
     if (this.remoteEnabled) {
       const isoNow = new Date(nowMs).toISOString();
-      await this.client.request(`lia_experiences?expires_at=lt.${encodeURIComponent(isoNow)}`, { method: 'DELETE' }).catch(() => {});
+      await this.client.request('lia_experiences', {
+        method: 'DELETE',
+        query: `expires_at=lt.${encodeURIComponent(isoNow)}`
+      }).catch(() => {});
       return 0;
     }
     return this._serial(async () => {

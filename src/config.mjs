@@ -5,7 +5,7 @@ const num = (name, fallback) => Number.isFinite(Number(process.env[name])) ? Num
 const bindHost = process.env.HOST || '0.0.0.0';
 const loopbackHost = bindHost === 'localhost' || bindHost === '::1' || /^127\./.test(bindHost);
 
-export const config = Object.freeze({
+export const config = {
   port: num('PORT', 3000),
   host: bindHost,
   evolutionUrl: (process.env.EVOLUTION_API_URL || '').replace(/\/$/, ''),
@@ -59,7 +59,7 @@ export const config = Object.freeze({
   apiV1Keys: Object.freeze((process.env.LIA_API_KEYS || process.env.LIA_API_KEY || '').split(',').map(s => s.trim()).filter(Boolean)),
   apiV1RateLimitPerMin: Math.max(10, num('API_V1_RATE_LIMIT_PER_MIN', 60)),
   publicDir: path.resolve('./public')
-});
+};
 
 export function validateConfig({ strict = false } = {}) {
   const errors = [];
