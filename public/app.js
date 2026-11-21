@@ -2953,6 +2953,9 @@ async function renderIntegrations() {
     if (state.role === 'admin') {
       await loadApiIntegrationsPanel();
     }
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator && typeof window.loadBaileysPanel === 'function') {
+      await window.loadBaileysPanel();
+    }
     decorateTechnicalTerms($('#integrations-view'));
   } catch (error) { opsFeedback('integrations-feedback', `Falha ao consultar integrações: ${error.message}`, 'error'); }
 }
@@ -5164,5 +5167,138 @@ async function loadApiIntegrationsPanel() {
     setRuntimeFeedback('#overview-providers-feedback', `Provedor "${id}" removido.`);
     await loadCustomProvidersInline();
     renderOverview?.();
+  });
+
+  // ====================================================================
+  // WHATSAPP NATIVO (BAILEYS EMBUTIDO - QR CODE & PAIRING CODE)
+  // ====================================================================
+  let baileysPollTimer = null;
+
+  function renderBaileysState(data = {}) {
+    const status = data.status || 'disconnected';
+    const badge = $('#baileys-status-badge');
+    if (badge) {
+      const labelMap = {
+        connected: '🟢 Conectado',
+        qr_ready: '🟡 Aguardando leitura do QR Code',
+        connecting: '🟡 Conectando ao WhatsApp…',
+        logged_out: '🔴 Desconectado (Sessão encerrada)',
+        error: '🔴 Erro de conexão',
+        disconnected: '⚪ Desconectado'
+      };
+      badge.textContent = labelMap[status] || status;
+    }
+    if ($('#baileys-active-engine')) {
+      $('#baileys-active-engine').textContent = data.activeEngine === 'baileys'
+        ? 'Baileys Nativo (WebSocket direto na Lia)'
+        : 'Evolution API (Container externo)';
+    }
+    if ($('#baileys-engine-select') && data.activeEngine) {
+      $('#baileys-engine-select').value = data.activeEngine;
+    }
+    if ($('#baileys-phone')) {
+      $('#baileys-phone').textContent = data.phone ? `+${data.phone}${data.name ? ` (${data.name})` : ''}` : 'Não conectado';
+    }
+    if ($('#baileys-last-msg')) {
+      $('#baileys-last-msg').textContent = data.lastMessageAt ? new Date(data.lastMessageAt).toLocaleString('pt-BR') : 'Nenhuma nesta sessão';
+    }
+    if ($('#baileys-msg-in')) $('#baileys-msg-in').textContent = String(data.stats?.messagesReceived || 0);
+    if ($('#baileys-msg-out')) $('#baileys-msg-out').textContent = String(data.stats?.messagesSent || 0);
+    if ($('#baileys-error-box')) $('#baileys-error-box').textContent = data.lastError || '';
+    if ($('#baileys-pair-code-display') && data.pairingCode) {
+      $('#baileys-pair-code-display').textContent = `Código: ${data.pairingCode}`;
+    }
+
+    const qrBox = $('#baileys-qr-container');
+    if (qrBox) {
+      if (status === 'connected') {
+        qrBox.innerHTML = `<div style="padding:18px;color:#10b981;font-weight:600">✅ WhatsApp conectado via Baileys Nativo!<br><span class="muted" style="font-size:12px;font-weight:400">+${runtimeEscape(data.phone || '')} · Eventos em tempo real ativos</span></div>`;
+      } else if (status === 'qr_ready' && data.qrDataUrl) {
+        qrBox.innerHTML = `<img src="${runtimeEscape(data.qrDataUrl)}" alt="QR Code WhatsApp Baileys" style="width:230px;height:230px;border-radius:10px;background:#fff;padding:8px" />`;
+      } else if (status === 'connecting') {
+        qrBox.innerHTML = `<p class="muted">Negociando WebSocket com o WhatsApp… O QR Code aparecerá em instantes.</p>`;
+      } else {
+        qrBox.innerHTML = `<p class="muted" style="max-width:260px">Clique em <strong>Conectar / Gerar QR Code</strong> para iniciar uma sessão Baileys diretamente na Lia.</p>`;
+      }
+    }
+
+    if ((status === 'connecting' || status === 'qr_ready') && !baileysPollTimer) {
+      baileysPollTimer = setInterval(() => {
+        if (state.view !== 'integrations') {
+          clearInterval(baileysPollTimer);
+          baileysPollTimer = null;
+          return;
+        }
+        window.loadBaileysPanel?.({ silent: true });
+      }, 2500);
+    } else if (status !== 'connecting' && status !== 'qr_ready' && baileysPollTimer) {
+      clearInterval(baileysPollTimer);
+      baileysPollTimer = null;
+    }
+  }
+
+  window.loadBaileysPanel = async ({ silent = false } = {}) => {
+    try {
+      const data = await api('/api/dashboard/whatsapp/baileys');
+      renderBaileysState(data);
+    } catch (err) {
+      if (!silent) setRuntimeFeedback('#baileys-feedback', `Erro ao consultar Baileys: ${err.message}`, true);
+    }
+  };
+
+  $('#baileys-engine-select')?.addEventListener('change', async (e) => {
+    try {
+      const engine = e.target.value;
+      const res = await api('/api/dashboard/whatsapp/baileys/engine', {
+        method: 'POST',
+        body: JSON.stringify({ engine })
+      });
+      renderBaileysState(res);
+      setRuntimeFeedback('#baileys-feedback', `Motor WhatsApp alterado para: ${engine === 'baileys' ? 'Baileys Nativo' : 'Evolution API'}.`);
+    } catch (err) {
+      setRuntimeFeedback('#baileys-feedback', `Erro ao alternar motor: ${err.message}`, true);
+    }
+  });
+
+  $('#baileys-connect-btn')?.addEventListener('click', async () => {
+    try {
+      setRuntimeFeedback('#baileys-feedback', 'Iniciando socket Baileys e gerando QR Code…');
+      const res = await api('/api/dashboard/whatsapp/baileys/connect', { method: 'POST', body: '{}' });
+      renderBaileysState(res);
+    } catch (err) {
+      setRuntimeFeedback('#baileys-feedback', `Erro ao conectar Baileys: ${err.message}`, true);
+    }
+  });
+
+  $('#baileys-disconnect-btn')?.addEventListener('click', async () => {
+    if (!window.confirm('Desconectar a sessão do Baileys Nativo?')) return;
+    try {
+      const res = await api('/api/dashboard/whatsapp/baileys/disconnect', {
+        method: 'POST',
+        body: JSON.stringify({ logout: true })
+      });
+      renderBaileysState(res);
+      setRuntimeFeedback('#baileys-feedback', 'Sessão Baileys desconectada com sucesso.');
+    } catch (err) {
+      setRuntimeFeedback('#baileys-feedback', `Erro ao desconectar: ${err.message}`, true);
+    }
+  });
+
+  $('#baileys-pair-btn')?.addEventListener('click', async () => {
+    const phone = $('#baileys-pair-phone')?.value?.trim();
+    if (!phone) {
+      setRuntimeFeedback('#baileys-feedback', 'Informe o número com DDI + DDD (ex: 5588999999999).', true);
+      return;
+    }
+    try {
+      const res = await api('/api/dashboard/whatsapp/baileys/pair', {
+        method: 'POST',
+        body: JSON.stringify({ phone })
+      });
+      renderBaileysState(res);
+      setRuntimeFeedback('#baileys-feedback', `Código gerado: ${res.pairingCode}. Digite no seu WhatsApp em Aparelhos Conectados → Conectar com número de telefone.`);
+    } catch (err) {
+      setRuntimeFeedback('#baileys-feedback', `Erro ao gerar código: ${err.message}`, true);
+    }
   });
 })();

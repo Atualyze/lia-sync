@@ -22,7 +22,8 @@ export const API_SETTING_FIELDS = Object.freeze([
   { key: 'groqKey', label: 'Groq API Key', group: 'ai', secret: true },
   { key: 'cloudflareAccountId', label: 'Cloudflare Account ID', group: 'ai', secret: false },
   { key: 'cloudflareApiToken', label: 'Cloudflare Workers AI Token', group: 'ai', secret: true },
-  // WhatsApp / Evolution API
+  // WhatsApp / Baileys & Evolution API
+  { key: 'whatsappProvider', label: 'Provedor WhatsApp (baileys | evolution)', group: 'whatsapp', secret: false },
   { key: 'evolutionUrl', label: 'Evolution API URL', group: 'whatsapp', secret: false, isUrl: true },
   { key: 'evolutionKey', label: 'Evolution API Key', group: 'whatsapp', secret: true },
   { key: 'evolutionInstance', label: 'Evolution Instance', group: 'whatsapp', secret: false },

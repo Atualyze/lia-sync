@@ -1977,6 +1977,57 @@
             </button>
           </div>
           <div id="integrations-feedback" class="admin-feedback hidden" role="status"></div>
+
+          <!-- CONEXÃO WHATSAPP NATIVA (BAILEYS EMBUTIDO - QR CODE & PAIRING CODE) -->
+          <section class="panel ops-panel" id="baileys-native-panel" style="margin-bottom:16px">
+            <div class="panel-head">
+              <div>
+                <h3>WhatsApp Nativo (Baileys Embutido — Sem Evolution / Sem Chromium)</h3>
+                <p>Conexão WebSocket direta dentro da Lia Sync com consumo mínimo de memória, eventos em tempo real e sessão salva no Supabase.</p>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-role="admin">
+                <select id="baileys-engine-select" style="min-width:210px">
+                  <option value="baileys">Motor Ativo: Baileys Nativo (Recomendado)</option>
+                  <option value="evolution">Motor Ativo: Evolution API (Legado)</option>
+                </select>
+                <button type="button" class="btn-primary" id="baileys-connect-btn">Conectar / Gerar QR Code</button>
+                <button type="button" class="btn-secondary" id="baileys-disconnect-btn">Desconectar</button>
+              </div>
+            </div>
+            <div id="baileys-feedback" class="admin-feedback hidden" role="status"></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;padding-top:12px;align-items:start">
+              <div class="panel" style="padding:14px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                  <strong>Status da Conexão</strong>
+                  <span id="baileys-status-badge" class="badge-mini">Verificando…</span>
+                </div>
+                <div style="display:grid;gap:6px;font-size:13px">
+                  <div><span class="muted">Motor em uso:</span> <strong id="baileys-active-engine">-</strong></div>
+                  <div><span class="muted">Número conectado:</span> <strong id="baileys-phone">-</strong></div>
+                  <div><span class="muted">Última mensagem:</span> <strong id="baileys-last-msg">-</strong></div>
+                  <div><span class="muted">Mensagens recebidas:</span> <strong id="baileys-msg-in">0</strong></div>
+                  <div><span class="muted">Mensagens enviadas:</span> <strong id="baileys-msg-out">0</strong></div>
+                </div>
+                <div id="baileys-error-box" class="muted" style="color:#f59e0b;font-size:12px;margin-top:8px"></div>
+                <div data-role="admin" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08)">
+                  <label style="font-size:12px;display:block;margin-bottom:6px">Conectar por Código de Pareamento (8 dígitos, sem câmera):</label>
+                  <div style="display:flex;gap:6px">
+                    <input type="text" id="baileys-pair-phone" placeholder="Ex: 5588999999999" style="flex:1">
+                    <button type="button" class="btn-secondary" id="baileys-pair-btn">Gerar Código</button>
+                  </div>
+                  <div id="baileys-pair-code-display" style="margin-top:8px;font-size:18px;font-weight:700;letter-spacing:3px;color:#10b981"></div>
+                </div>
+              </div>
+
+              <div class="panel" style="padding:14px;text-align:center;min-height:240px;display:flex;flex-direction:column;justify-content:center;align-items:center">
+                <div id="baileys-qr-container">
+                  <p class="muted" style="max-width:260px">Clique em <strong>Conectar / Gerar QR Code</strong> para exibir o QR Code de pareamento direto do WhatsApp.</p>
+                </div>
+                <p class="muted" style="font-size:12px;margin-top:10px">Abra o WhatsApp → <strong>Aparelhos conectados</strong> → <strong>Conectar aparelho</strong></p>
+              </div>
+            </div>
+          </section>
+
           <section class="panel ops-panel">
             <div class="panel-head">
               <div>

@@ -1,5 +1,6 @@
 import { config } from '../config.mjs';
 import { getCircuitBreakers } from '../ai.mjs';
+import { getBaileysProvider } from '../whatsapp.mjs';
 
 const DEFAULT_TIMEOUT_MS = 1500;
 
@@ -62,8 +63,13 @@ export async function checkReadiness({ timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl
   const checks = [];
   const required = [];
 
-  // Evolution is an essential dependency whenever its integration is configured.
-  if (config.evolutionUrl || config.evolutionInstance || config.evolutionKey) {
+  const baileys = getBaileysProvider();
+  if (config.whatsappProvider === 'baileys' && baileys) {
+    required.push('whatsapp');
+    const isOk = ['connected', 'qr_ready', 'connecting'].includes(baileys.status);
+    checks.push(maskedDependency('whatsapp', isOk ? 'ready' : 'unavailable', { reason: baileys.status }));
+  } else if (config.evolutionUrl || config.evolutionInstance || config.evolutionKey) {
+    // Evolution is an essential dependency whenever its integration is configured.
     required.push('evolution');
     const result = await probeEvolution(timeoutMs, fetchImpl);
     checks.push(maskedDependency('evolution', result.ok ? 'ready' : 'unavailable', result));

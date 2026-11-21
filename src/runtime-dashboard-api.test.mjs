@@ -192,6 +192,16 @@ test('Rotas /api/dashboard/runtime/* e /api/dashboard/api-settings respeitam RBA
     assert.equal(rApiGet.status, 200);
     assert.ok(Array.isArray(rApiGet.body.items));
     assert.ok(rApiGet.body.items.every(i => !i.secret || i.value === ''));
+
+    // Status e seleção do motor WhatsApp Baileys Nativo
+    const rBaileysGet = await callApp(app, 'GET', '/api/dashboard/whatsapp/baileys');
+    assert.equal(rBaileysGet.status, 200);
+    assert.equal(rBaileysGet.body.provider, 'baileys');
+    assert.equal(typeof rBaileysGet.body.stats.messagesReceived, 'number');
+
+    const rEngine = await callApp(app, 'POST', '/api/dashboard/whatsapp/baileys/engine', { engine: 'evolution' });
+    assert.equal(rEngine.status, 200);
+    assert.equal(rEngine.body.activeEngine, 'evolution');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

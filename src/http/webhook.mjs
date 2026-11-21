@@ -35,18 +35,8 @@ export async function isWebhookAuthorized(req, webhookAuthorize) {
   }
 }
 
-// Webhooks do WhatsApp/Evolution. O ledger guarda apenas hash da chave, tipo e estado.
-export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
-  if (req.method !== 'POST' || !['/webhook', '/webhook/evolution'].includes(u.pathname)) return NOT_HANDLED;
-  if (!await isWebhookAuthorized(req, webhookAuthorize)) return json(res, 401, { error: 'unauthorized' });
-
-  let payload;
-  try { payload = await readBody(req); }
-  catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
-
-  res.writeHead(202, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ accepted: true }));
-
+// Webhooks do WhatsApp/Evolution e eventos em tempo real do BaileysProvider. O ledger guarda apenas hash da chave, tipo e estado.
+export async function processWhatsAppWebhookPayload({ payload, store, f, adminConfig, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
   const item = parsePayload(payload);
   const messageId = item.key?.id || payload?.data?.key?.id || payload?.key?.id;
   const rawEvent = String(item.event || payload?.event || payload?.type || '').toUpperCase().replace(/[._]/g, '').slice(0, 120) || 'UNKNOWN';
@@ -65,7 +55,7 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
   };
 
   try {
-    if (config.evolutionInstance && item.instance && item.instance !== config.evolutionInstance) {
+    if (config.evolutionInstance && item.instance && item.instance !== 'baileys' && item.instance !== config.evolutionInstance) {
       await finish('ignored', 'instance_mismatch');
       return;
     }
@@ -303,4 +293,31 @@ export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, 
     await finish('failed', error?.code || error?.name || 'processing_failed');
     console.error('[webhook] processamento falhou', error?.code || error?.name || 'processing_failed');
   }
+}
+
+export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
+  if (req.method !== 'POST' || !['/webhook', '/webhook/evolution'].includes(u.pathname)) return NOT_HANDLED;
+  if (!await isWebhookAuthorized(req, webhookAuthorize)) return json(res, 401, { error: 'unauthorized' });
+
+  let payload;
+  try { payload = await readBody(req); }
+  catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+
+  res.writeHead(202, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ accepted: true }));
+
+  return processWhatsAppWebhookPayload({
+    payload,
+    store,
+    f,
+    adminConfig,
+    schedule,
+    getHumanPhone,
+    getCachedInstanceOwner,
+    updateInstanceOwner,
+    rateMessage,
+    webhookEventStore,
+    campaignStore,
+    prospecting
+  });
 }

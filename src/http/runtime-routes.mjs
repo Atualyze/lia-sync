@@ -1,13 +1,15 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
+import { config } from '../config.mjs';
 
 /**
  * Rotas autenticadas do painel para controle total do Motor v3.0
- * (Lia Runtime, Learning Engine, Autonomy Engine, Provedores de IA customizados e API Settings hot-reload).
+ * (Lia Runtime, Learning Engine, Autonomy Engine, Provedores de IA customizados, Baileys Nativo e API Settings hot-reload).
  *
  * Controle de papel aplicado em src/http/router.mjs:
  * - GET /api/dashboard/runtime/overview: operator+
- * - Demais rotas (políticas, objetivos, compromissos, propostas, wake, api-settings, ai-providers): admin
+ * - GET /api/dashboard/whatsapp/baileys: operator+
+ * - Demais rotas (políticas, objetivos, compromissos, propostas, wake, api-settings, ai-providers, whatsapp/baileys/*): admin
  */
 export async function handleRuntimeDashboardRoutes({
   req,
@@ -19,13 +21,88 @@ export async function handleRuntimeDashboardRoutes({
   liaAutonomy,
   apiSettingsStore,
   customProviderStore,
+  baileysProvider,
   operationsStore
 }) {
   const pathname = u.pathname;
   const isRuntimePath = pathname.startsWith('/api/dashboard/runtime');
   const isApiSettingsPath = pathname === '/api/dashboard/api-settings';
   const isAiProvidersPath = pathname === '/api/dashboard/ai-providers' || pathname.startsWith('/api/dashboard/ai-providers/');
-  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath) return NOT_HANDLED;
+  const isBaileysPath = pathname === '/api/dashboard/whatsapp/baileys' || pathname.startsWith('/api/dashboard/whatsapp/baileys/');
+  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath && !isBaileysPath) return NOT_HANDLED;
+
+  // === 0.0 Gestão do Motor WhatsApp Baileys Nativo (QR Code, Pairing Code, Desconectar) ===
+  if (isBaileysPath) {
+    if (!baileysProvider) return json(res, 503, { error: 'baileys_provider_unavailable' });
+    if (req.method === 'GET' && pathname === '/api/dashboard/whatsapp/baileys') {
+      return json(res, 200, {
+        activeEngine: config.whatsappProvider || 'evolution',
+        ...baileysProvider.getStatus()
+      });
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/whatsapp/baileys/connect') {
+      try {
+        if (apiSettingsStore && config.whatsappProvider !== 'baileys') {
+          await apiSettingsStore.update({ whatsappProvider: 'baileys' });
+        } else {
+          config.whatsappProvider = 'baileys';
+        }
+        const status = await baileysProvider.start();
+        await operationsStore?.recordAudit?.({
+          actor: authContext?.email || authContext?.userId || 'admin',
+          action: 'baileys_connect_requested',
+          metadata: { status: status.status }
+        }).catch(() => {});
+        return json(res, 200, { ok: true, activeEngine: config.whatsappProvider, ...status });
+      } catch (error) {
+        return json(res, 500, { error: error?.message || 'baileys_start_failed' });
+      }
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/whatsapp/baileys/pair') {
+      let body;
+      try { body = await readBody(req); }
+      catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+      try {
+        if (apiSettingsStore && config.whatsappProvider !== 'baileys') {
+          await apiSettingsStore.update({ whatsappProvider: 'baileys' });
+        } else {
+          config.whatsappProvider = 'baileys';
+        }
+        const code = await baileysProvider.requestPairingCode(body?.phone || '');
+        return json(res, 200, { ok: true, pairingCode: code, ...baileysProvider.getStatus() });
+      } catch (error) {
+        return json(res, 400, { error: error?.message || 'baileys_pairing_failed' });
+      }
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/whatsapp/baileys/disconnect') {
+      let body = {};
+      try { body = await readBody(req); } catch {}
+      const logout = body?.logout !== false;
+      const status = await baileysProvider.stop({ logout });
+      await operationsStore?.recordAudit?.({
+        actor: authContext?.email || authContext?.userId || 'admin',
+        action: 'baileys_disconnected',
+        metadata: { logout }
+      }).catch(() => {});
+      return json(res, 200, { ok: true, activeEngine: config.whatsappProvider, ...status });
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/whatsapp/baileys/engine') {
+      let body;
+      try { body = await readBody(req); }
+      catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+      const engine = String(body?.engine || '').toLowerCase() === 'baileys' ? 'baileys' : 'evolution';
+      if (apiSettingsStore) {
+        await apiSettingsStore.update({ whatsappProvider: engine });
+      } else {
+        config.whatsappProvider = engine;
+      }
+      if (engine === 'baileys' && baileysProvider.status === 'disconnected') {
+        void baileysProvider.start().catch(() => {});
+      }
+      return json(res, 200, { ok: true, activeEngine: config.whatsappProvider, ...baileysProvider.getStatus() });
+    }
+    return json(res, 405, { error: 'method_not_allowed' });
+  }
 
   // === 0. Cadastro e Gestão de Provedores de IA Customizados (OpenAI-compatible) ===
   if (isAiProvidersPath) {

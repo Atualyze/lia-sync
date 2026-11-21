@@ -10,7 +10,9 @@ import { setPricingSource, getAllowedPrices } from './faq.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
-import { sendText, sendPresence, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck } from './whatsapp.mjs';
+import { sendText, sendPresence, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck, setBaileysProvider } from './whatsapp.mjs';
+import { BaileysProvider } from './whatsapp/baileys-provider.mjs';
+import { processWhatsAppWebhookPayload } from './http/webhook.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -220,7 +222,12 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const getTelemetry = async () => {
     let evoState = 'desconhecido';
-    if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) {
+    if (config.whatsappProvider === 'baileys' && baileysProvider) {
+      evoState = baileysProvider.status === 'connected' ? 'connected' : baileysProvider.status;
+      if (baileysProvider.connectedPhone) {
+        cachedInstanceOwner = baileysProvider.connectedPhone;
+      }
+    } else if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) {
       evoState = 'not_configured';
     } else {
       try {
@@ -416,6 +423,32 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     return true;
   };
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
+  const baileysProvider = new BaileysProvider({
+    authDir: config.baileysAuthDir,
+    client: store.client,
+    logger: console,
+    onStateChange: (status) => {
+      if (status?.phone) cachedInstanceOwner = status.phone;
+      broadcastBridgeEvent('baileys_status', { ...status, activeEngine: config.whatsappProvider });
+    },
+    onEvent: async (payload) => {
+      await processWhatsAppWebhookPayload({
+        payload,
+        store,
+        f,
+        adminConfig,
+        schedule,
+        getHumanPhone,
+        getCachedInstanceOwner,
+        updateInstanceOwner,
+        rateMessage,
+        webhookEventStore,
+        campaignStore,
+        prospecting
+      });
+    }
+  });
+  setBaileysProvider(baileysProvider);
 
   const app = createRouter({
     store,
@@ -444,9 +477,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     liaLearning,
     liaAutonomy,
     apiSettingsStore,
-    customProviderStore
+    customProviderStore,
+    baileysProvider
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -454,6 +488,9 @@ const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) ===
 if (isDirectRun) {
   const errors = validateConfig(); if (errors.length) { console.error(`[config] ${errors.join('; ')}`); process.exit(1); }
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(e); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
+  if (config.whatsappProvider === 'baileys') {
+    void app.baileysProvider?.start().catch(err => console.error('[baileys] Falha na inicialização automática:', err?.message || err));
+  }
   // Conexões SSE (/api/bridge/events) não podem ser mortas pelo requestTimeout padrão do Node (300s)
   server.requestTimeout = 0;
   server.headersTimeout = 65000;
@@ -518,6 +555,7 @@ if (isDirectRun) {
     stopping = true;
     clearInterval(maintenanceTimer);
     clearInterval(copilotTaskTimer);
+    await app.baileysProvider?.stop({ logout: false }).catch(() => {});
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});

@@ -7,6 +7,23 @@ import { formatOutgoingMessage } from './core/format.mjs';
 const sent = new Set();
 const recentSent = new Map();
 let outboundSuppressionCheck = null;
+let activeBaileysProvider = null;
+
+export function setBaileysProvider(provider) {
+  activeBaileysProvider = provider || null;
+}
+
+export function getBaileysProvider() {
+  return activeBaileysProvider;
+}
+
+function isBaileysActive() {
+  return Boolean(
+    activeBaileysProvider
+    && activeBaileysProvider.status === 'connected'
+    && (config.whatsappProvider === 'baileys' || !config.evolutionUrl)
+  );
+}
 
 export function setOutboundSuppressionCheck(check) {
   outboundSuppressionCheck = typeof check === 'function' ? check : null;
@@ -101,6 +118,9 @@ export function parsePayload(data) {
 }
 
 export async function getInstanceOwnerPhone() {
+  if (activeBaileysProvider?.connectedPhone) {
+    return activeBaileysProvider.connectedPhone;
+  }
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return null;
   try {
     const res = await fetch(`${config.evolutionUrl}/instance/fetchInstances`, {
@@ -155,6 +175,9 @@ async function providerSend(url, payload, kind, jid) {
 }
 
 export async function getMediaBase64(item) {
+  if (isBaileysActive()) {
+    return activeBaileysProvider.getMediaBase64(item);
+  }
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return null;
   const key = item?.key;
   const message = item?.message;
@@ -175,7 +198,12 @@ export async function getMediaBase64(item) {
 }
 
 export async function sendPresence(jid, presence = 'composing', delay = 1200) {
-  if (!jid || !config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return;
+  if (!jid) return;
+  if (isBaileysActive()) {
+    await activeBaileysProvider.sendPresence(jid, presence);
+    return;
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return;
   try {
     await fetch(`${config.evolutionUrl}/chat/sendPresence/${encodeURIComponent(config.evolutionInstance)}`, {
       method: 'POST',
@@ -188,9 +216,16 @@ export async function sendPresence(jid, presence = 'composing', delay = 1200) {
 
 export async function sendText(jid, text, { retry = 2, onSent } = {}) {
   await assertNotSuppressed(jid);
-  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const formattedText = formatOutgoingMessage(text);
   recordBotSend(jid, formattedText);
+  if (isBaileysActive()) {
+    void sendPresence(jid, 'composing', 900);
+    const { result: j, id } = await activeBaileysProvider.sendText(jid, formattedText);
+    j && remember(id);
+    onSent?.(id);
+    return j;
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
@@ -212,9 +247,16 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
 
 export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento.pdf', mimetype = 'application/pdf', caption = '' } = {}, { retry = 2, onSent } = {}) {
   await assertNotSuppressed(jid);
-  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(dataUrl || base64 || '').replace(/^data:[^;]+;base64,/, '');
   if (!cleanB64) throw Error('Documento sem conteúdo para envio');
+  if (isBaileysActive()) {
+    void sendPresence(jid, 'composing', 900);
+    const { result: j, id } = await activeBaileysProvider.sendDocument(jid, { cleanB64, fileName, mimetype, caption });
+    j && remember(id);
+    onSent?.(id);
+    return j;
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
@@ -236,9 +278,16 @@ export async function sendDocument(jid, { dataUrl, base64, fileName = 'documento
 
 export async function sendImage(jid, { dataUrl, base64, mimetype = 'image/png', caption = '' } = {}, { retry = 2, onSent } = {}) {
   await assertNotSuppressed(jid);
-  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(dataUrl || base64 || '').replace(/^data:[^;]+;base64,/, '');
   if (!cleanB64) throw Error('Imagem sem conteúdo para envio');
+  if (isBaileysActive()) {
+    void sendPresence(jid, 'composing', 900);
+    const { result: j, id } = await activeBaileysProvider.sendImage(jid, { cleanB64, mimetype, caption });
+    j && remember(id);
+    onSent?.(id);
+    return j;
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
@@ -260,8 +309,15 @@ export async function sendImage(jid, { dataUrl, base64, mimetype = 'image/png', 
 
 export async function sendWhatsAppAudio(jid, audioBase64, { retry = 0, onSent } = {}) {
   await assertNotSuppressed(jid);
-  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   const cleanB64 = String(audioBase64).replace(/^data:audio\/[^;]+;base64,/, '');
+  if (isBaileysActive()) {
+    void sendPresence(jid, 'recording', 1200);
+    const { result: j, id } = await activeBaileysProvider.sendWhatsAppAudio(jid, cleanB64);
+    j && remember(id);
+    onSent?.(id);
+    return j;
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   let last;
   for (let i = 0; i <= retry; i++) {
     try {
@@ -287,6 +343,9 @@ function toRemoteJid(jid = '') {
 }
 
 export async function markChatAsRead({ jid, messageId, fromMe = false } = {}) {
+  if (isBaileysActive()) {
+    return activeBaileysProvider.markChatAsRead({ jid, messageId, fromMe });
+  }
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance || !jid || !messageId) return { ok: false };
   try {
     const res = await fetch(`${config.evolutionUrl}/chat/markMessageAsRead/${encodeURIComponent(config.evolutionInstance)}`, {
