@@ -50,10 +50,13 @@ const geminiOk = {
 test('Gemini 402 informa falta de saldo/créditos em vez de retornar fallback genérico', async (t) => {
   restoreEnvAfter(t, ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'QWEN_API_KEY', 'QWEN_BASE_URL', 'OPENAI_API_KEY']);
   process.env.GEMINI_API_KEY = 'test_gemini_key_123';
-  process.env.OPENROUTER_API_KEY = '';
-  process.env.QWEN_API_KEY = '';
-  process.env.QWEN_BASE_URL = '';
-  process.env.OPENAI_API_KEY = '';
+  // ai.mjs/config.mjs is cached after the first import in this test file.
+  // Keep all provider keys configured here so later provider-specific tests
+  // do not inherit a permanently empty cached config.
+  process.env.OPENROUTER_API_KEY = 'test_openrouter_key';
+  process.env.QWEN_API_KEY = 'test_qwen_key';
+  process.env.QWEN_BASE_URL = 'https://qwen.test/v1';
+  process.env.OPENAI_API_KEY = 'test_openai_key';
   const calls = mockFetchSequence([{ status: 402 }]);
   t.after(() => { globalThis.fetch = realFetch; });
 
