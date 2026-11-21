@@ -377,6 +377,25 @@ export async function call(provider, {
         delete plainBody.response_format;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
+      // Groq (tier free 6k TPM) e provedores OpenAI-compatible podem retornar 413/429 "Request too large".
+      // Compacta o system prompt + histórico (mantendo a âncora de continuidade no fim) e tenta uma vez antes de cair para outro provedor.
+      if (!response.ok && (response.status === 413 || response.status === 429)) {
+        const errBodyText = await response.clone().text().catch(() => '');
+        if (response.status === 413 || /request too large|tokens per minute|tpm|context_length_exceeded|maximum context length/i.test(errBodyText)) {
+          const compactBody = {
+            model: candidateModel,
+            temperature: adaptiveTemperature,
+            max_tokens: Math.min(1024, config.aiMaxOutputTokens),
+            messages: [
+              { role: 'system', content: compactText(effectiveSystem, 7000) },
+              ...compactCloudflareHistory(history),
+              { role: 'user', content: compactText(userText, 2500) }
+            ],
+            response_format: { type: 'json_object' }
+          };
+          response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(compactBody) });
+        }
+      }
       if (!response.ok) {
         const detail = safeErrorDetail(await response.text());
         throw Error(`${provider} ${response.status}${detail ? ` - ${detail}` : ''}`);
