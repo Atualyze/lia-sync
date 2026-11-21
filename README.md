@@ -1,8 +1,17 @@
 # Lia Sync - Central de Atendimento Inteligente via WhatsApp
 
-Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
+Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.0.0** (pacote, metadata, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.1.0** (pacote, painel, metadata, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.1.0 — WhatsApp Nativo (Baileys), Provedores Customizados e Continuidade entre Modelos
+
+- **WhatsApp Nativo via Baileys (`src/whatsapp/baileys-provider.mjs`, `src/whatsapp/baileys-auth.mjs`):** transporte WebSocket embutido sem dependência obrigatória da Evolution API, com conexão por QR Code/Pairing Code no painel, `syncFullHistory: false`, **Message Gate** P0+P1 (deduplicação O(1), filtro de status/grupos/presença e mídia sob demanda), sessão compacta em arquivo único (`auth-snapshot.json`) com `BoundedLruCache` e backup automático no Supabase (`runtime_projections`), além de reconexão transparente em `515 (restartRequired)`.
+- **Provedores de IA Customizados, Hot-Reload e Diagnóstico Real (`src/ai/custom-providers.mjs`, `src/ai/errors.mjs`, `src/api-settings.mjs`):** suporte a provedores OpenAI-compatible no painel, roteamento por prioridade, hot-reload de credenciais, particionamento de deadline entre provedores de contingência e diagnóstico explícito de falhas no Copiloto.
+- **Continuidade Conversacional entre Modelos e Fallbacks (`src/knowledge.mjs`, `src/ai/parsing.mjs`, `src/safety.mjs`, `src/flow/owner.mjs`, `src/flow/client.mjs`):** bloco `[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]` para Copiloto e Cliente, preservação de histórico em trocas de tarefa/modelo, retenção de turnos da assistente em `normalizeHistory` e filtro `stripRedundantSelfIntroduction` que impede reapresentações de primeiro contato quando o modelo muda ou entra em fallback.
+- **Painel Autonomia, Runtime & Baileys (`public/index.html`, `public/app.js`, `src/http/operations.mjs`):** novas abas de Autonomia/Runtime, gerenciamento visual de provedores customizados e exibição nativa do status do Baileys na aba Integrações e no Overview.
+
+Detalhes técnicos: [`docs/release-3.1.0.md`](docs/release-3.1.0.md).
 
 ## Novidades da Versão 3.0.0 — Lia Runtime, Aprendizado Contínuo e Autonomia Operacional
 

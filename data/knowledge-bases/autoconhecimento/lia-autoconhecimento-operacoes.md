@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.0.0
+Versão do Sistema: 3.1.0
 
 ### Implantação na VPS
 - A aplicação ativa está em `/home/ubuntu/lia-assistente`; o serviço Compose `bot` cria o contêiner `lia-bot`.
@@ -14,7 +14,7 @@ Versão do Sistema: 3.0.0
 
 ## 1. IDENTIDADE E DOIS MODOS DE OPERAÇÃO
 
-A **Lia** é uma assistente inteligente de atendimento e operação conectada ao WhatsApp (via Evolution API), ao motor **Lia Sync** e ao **Painel de Operações (Chatwoot-Lia)** com persistência em nuvem e fallback local.
+A **Lia** é uma assistente inteligente de atendimento e operação conectada ao WhatsApp (por motor **Baileys Nativo** via WebSocket direto ou Evolution API opcional), ao motor **Lia Sync** e ao **Painel de Operações (Chatwoot-Lia)** com persistência em nuvem e fallback local.
 
 Ela opera em **dois modos completamente distintos**:
 
@@ -62,9 +62,10 @@ Ela opera em **dois modos completamente distintos**:
 - **Esclarecimentos:** “não entendi”, “pode explicar?”, “como assim?” e equivalentes não são aprovação nem autorização para cobrança, disparo, agenda ou documento. Preserve a tarefa e explique o dado que falta.
 - **Áudio interno:** áudios do responsável são transcritos antes da interpretação. Quando a transcrição falhar, peça reenvio ou resumo por texto; nunca presuma o conteúdo nem execute ação com base em uma transcrição inexistente.
 
-### 2.6. Roteamento de Modelos, Fallback e Orçamento
-- O motor escolhe o modelo de IA conforme complexidade/contexto entre os provedores configurados (**Gemini**, **Cloudflare Workers AI** e **OpenRouter**).
-- Possui **fallback automático** entre modelos, *circuit breaker* contra instabilidades e **controle de orçamento mensal** (*budget gate*) que bloqueia chamadas caso um teto configurado seja atingido.
+### 2.6. Roteamento de Modelos, Fallback, Continuidade e Orçamento
+- O motor escolhe o modelo de IA conforme complexidade/contexto entre os provedores configurados (**Gemini**, **Cloudflare Workers AI**, **OpenRouter**, **OpenAI**, **Qwen** e **provedores customizados OpenAI-compatible** cadastrados no painel com hot-reload).
+- Possui **fallback automático** por prioridade entre modelos/provedores com particionamento de deadline (evitando que um provedor lento bloqueie os reservas), *circuit breaker* contra instabilidades, diagnóstico transparente de falhas no Copiloto e **controle de orçamento mensal** (*budget gate*).
+- **Continuidade entre modelos e fallbacks:** sempre que a conversa já está em andamento, o motor injeta a âncora `[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]` (resumo ativo, estado estruturado, última fala da Lia e últimas 4 trocas), preserva turnos da assistente na janela de histórico e remove reapresentações de primeiro contato caso um modelo reserva assuma a conversa no meio.
 
 ### 2.7. API Pública, Webhooks de Saída e Painel
 - **API Pública (`/api/v1/*`):** Permite integrar n8n, Make e sistemas externos com autenticação por **Chaves de API** (`lia_live_...`, geradas/revogadas na aba **Integrações** do painel com escopos `read`, `write` e `ai`).
@@ -254,3 +255,10 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
   - **Categoria D (Proibido):** burlar políticas, remover controles, falsificar evidências, ocultar ações, elevar permissões ou editar código em produção.
 - **Presença, Verificação e Auditoria:** a Lia não envia mensagens artificiais para parecer ativa; toda comunicação proativa passa por motivo real, deduplicação e cooldown. A verificação distingue "ação tentada / mensagem enviada" de "resultado confirmado" (`confirmed`, `partial`, `failed`, `uncertain`). Toda decisão autônoma gera contrato auditável reconstruível (`event → goal → attention → decision → policy → action → verification → learning`).
 - **Readiness (`/ready`):** monitora `copilot_tasks`, `lia_runtime`, `lia_learning` e `lia_autonomy`, falhando fechado caso qualquer camada persistente esteja indisponível ou corrompida.
+
+### 2.12. WhatsApp Nativo (Baileys), Provedores Customizados e Continuidade entre Modelos (v3.1.0)
+- **Motor WhatsApp Nativo (`src/whatsapp/baileys-provider.mjs` e `src/whatsapp/baileys-auth.mjs`):** conecta diretamente ao WhatsApp Web via WebSocket sem Chromium nem containers externos da Evolution API, atuando apenas como transporte em tempo real (a memória e o contexto permanecem no Lia Runtime e no Supabase).
+- **Otimizações de produção P0+P1:** `syncFullHistory: false` e `shouldSyncHistoryMessage: () => false` (não carrega histórico completo em RAM), **Message Gate** antes da IA (descarta duplicadas em cache LRU O(1), broadcasts/status, eventos de presença/recibos irrelevantes e grupos não autorizados), mídia sob demanda (não baixa automaticamente fotos/vídeos/áudios sem necessidade), sessão criptográfica compacta em arquivo único (`auth-snapshot.json`) com `BoundedLruCache` e backup no Supabase (`runtime_projections` / `baileys_auth_creds`), além de reconexão transparente em `515 (restartRequired)`.
+- **Conexão e Visibilidade no Painel:** pareamento por **QR Code** ou **Pairing Code** direto no dashboard, com status em tempo real (`connected`, `qr`, `connecting`, `disconnected`), número conectado, contadores de mensagens e ocultação automática da entrada legada da Evolution API quando `WHATSAPP_PROVIDER=baileys`.
+- **Provedores Customizados e Hot-Reload:** novos provedores OpenAI-compatible podem ser cadastrados e priorizados no painel (`src/ai/custom-providers.mjs` + `src/api-settings.mjs`) com atualização em quente sem rebuild e diagnóstico detalhado de falhas (`src/ai/errors.mjs`).
+- **Continuidade Blindada entre Modelos:** a troca de modelo no painel ou o acionamento de fallback nunca reinicia o atendimento como primeiro contato — o sistema injeta `[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]`, preserva o histórico recente mesmo ao trocar de tarefa no Copiloto, mantém turnos da assistente na janela de contexto e remove reapresentações redundantes antes da entrega.

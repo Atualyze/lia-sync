@@ -1,29 +1,29 @@
 # Arquitetura do Lia Sync
 
-Versão: **3.0.0**
+Versão: **3.1.0**
 
 ## Objetivo
 
-O Lia Sync recebe eventos do WhatsApp, decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel e as integrações sincronizados. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA. O Lia Sync é a fonte central das configurações, ferramentas, campanhas, supressões, métricas e readiness operacional; o Chatwoot Lia atua como ponte autenticada e console de atendimento.
+O Lia Sync recebe eventos do WhatsApp (via **Baileys Nativo** por WebSocket direto ou Evolution API v2 opcional), decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel e as integrações sincronizados. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA. O Lia Sync é a fonte central das configurações, ferramentas, campanhas, supressões, métricas e readiness operacional; o Chatwoot Lia atua como ponte autenticada e console de atendimento.
 
 ## Camadas
 
 ```text
-Evolution / Chatwoot / Dashboard
-             │
-        src/server.mjs
-             │
-        src/http/*
-             │
-        src/flow.mjs
-        ├─ flow/client.mjs
-        ├─ flow/owner.mjs
-        ├─ flow/media.mjs
-        └─ flow/pdf.mjs
-             │
-    core/* · ai/* · tools/* · safety.mjs
-             │
- Sessions locais / Supabase / Evolution API
+WhatsApp (Baileys Nativo / Evolution) · Chatwoot · Dashboard
+                         │
+                    src/server.mjs
+                         │
+            src/whatsapp/* · src/http/*
+                         │
+                    src/flow.mjs
+                    ├─ flow/client.mjs
+                    ├─ flow/owner.mjs
+                    ├─ flow/media.mjs
+                    └─ flow/pdf.mjs
+                         │
+    core/* · ai/* · tools/* · runtime/* · learning/* · autonomy/* · safety.mjs
+                         │
+     Sessions locais / Supabase / Baileys Auth Snapshot
 ```
 
 ## Módulos principais
@@ -47,6 +47,9 @@ Evolution / Chatwoot / Dashboard
 | `flow/pdf.mjs` | Entrega de PDF gerado como documento no WhatsApp. |
 | `flow/text.mjs` | Normalização, intenção e humanização de mensagens. |
 | `ai/` | Seleção de provedor/modelo, catálogo consultado no backend, chamadas, parsing, busca web, documentos, voz e orquestração de ferramentas. |
+| `ai/custom-providers.mjs` e `ai/errors.mjs` | Provedores OpenAI-compatible cadastrados pelo painel, roteamento por prioridade e classificação diagnóstica de falhas de IA. |
+| `api-settings.mjs` | Hot-reload e persistência segura de chaves/configurações de API em `runtime_projections` no Supabase. |
+| `whatsapp/baileys-provider.mjs` e `whatsapp/baileys-auth.mjs` | Motor WhatsApp Nativo por WebSocket (QR/Pairing Code), Message Gate P0+P1, `BoundedLruCache`, sessão compacta (`auth-snapshot.json`) e backup no Supabase. |
 | `ai/catalog.mjs` | Consulta os catálogos de Gemini, OpenRouter, Qwen e OpenAI no servidor, usando credenciais de ambiente e cache temporário. |
 | `ai/budget.mjs` | Reserva e liquida orçamento mensal por provedor/modelo; usa RPCs atômicas no Supabase quando disponíveis. |
 | `core/identity.mjs` | Identidade configurada no painel e reconhecimento do responsável. |
