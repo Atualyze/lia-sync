@@ -5204,6 +5204,12 @@ async function loadApiIntegrationsPanel() {
     }
     if ($('#baileys-msg-in')) $('#baileys-msg-in').textContent = String(data.stats?.messagesReceived || 0);
     if ($('#baileys-msg-out')) $('#baileys-msg-out').textContent = String(data.stats?.messagesSent || 0);
+    if ($('#baileys-msg-filtered')) $('#baileys-msg-filtered').textContent = String(data.stats?.messagesFiltered || 0);
+    if ($('#baileys-mem-stats')) {
+      const rss = data.stats?.rssMb ? `${data.stats.rssMb} MB RSS` : '-';
+      const sig = data.stats?.persistedSessions !== undefined ? ` · ${data.stats.persistedSessions} sessões / ${data.stats.ephemeralKeysInRam || 0} LRU` : '';
+      $('#baileys-mem-stats').textContent = `${rss}${sig}`;
+    }
     if ($('#baileys-error-box')) $('#baileys-error-box').textContent = data.lastError || '';
     if ($('#baileys-pair-code-display') && data.pairingCode) {
       $('#baileys-pair-code-display').textContent = `Código: ${data.pairingCode}`;

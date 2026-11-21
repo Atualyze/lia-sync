@@ -1,17 +1,17 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import QRCode from 'qrcode';
 import {
   makeWASocket,
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
-  BufferJSON,
   Browsers
 } from '@whiskeysockets/baileys';
+import { createLiaBaileysAuthState, BoundedLruCache } from './baileys-auth.mjs';
 
-const PROJECTION_KEY = 'baileys_auth_creds';
+const DEDUPE_CACHE_MAX = 600;
+const DEDUPE_TTL_MS = 10 * 60 * 1000;
+const MAX_MESSAGE_AGE_MS = 45_000;
 
 function toRemoteJid(jid = '') {
   const s = String(jid || '').trim();
@@ -38,6 +38,92 @@ const silentLogger = {
   child() { return silentLogger; }
 };
 
+/**
+ * Message Gate ultra-rápido (P0):
+ * Filtra eventos irrelevantes, status@broadcast, grupos, canais, sincronizações
+ * de histórico, reações vazias e mensagens duplicadas ANTES do webhook ledger,
+ * do Context Builder e do AI Orchestrator.
+ */
+export function evaluateBaileysMessageGate(msg, { type = 'notify', seenCache = null, nowMs = Date.now() } = {}) {
+  if (!msg || typeof msg !== 'object' || !msg.key) {
+    return { allowed: false, reason: 'missing_key' };
+  }
+  // 1. Só aceita mensagens em tempo real ('notify'), descartando lotes de histórico ('append')
+  if (type !== 'notify') {
+    return { allowed: false, reason: 'history_append_ignored' };
+  }
+
+  const remoteJid = String(msg.key.remoteJid || '').trim();
+  if (!remoteJid) {
+    return { allowed: false, reason: 'empty_jid' };
+  }
+
+  // 2. Descarta status, broadcasts, grupos e canais (newsletters) na porta de entrada
+  if (
+    remoteJid === 'status@broadcast' ||
+    /@(?:broadcast|g\.us|newsletter)$/i.test(remoteJid)
+  ) {
+    return { allowed: false, reason: 'non_direct_chat' };
+  }
+
+  // 3. Descarta eventos de sistema sem conteúdo conversacional ou de revogação real
+  const m = msg.message;
+  if (!m || typeof m !== 'object') {
+    return { allowed: false, reason: 'empty_message_envelope' };
+  }
+  if (
+    m.protocolMessage &&
+    m.protocolMessage.type !== 0 &&
+    m.protocolMessage.type !== 'REVOKE'
+  ) {
+    return { allowed: false, reason: 'non_revoke_protocol_message' };
+  }
+  if (
+    m.reactionMessage ||
+    m.pollUpdateMessage ||
+    m.keepInChatMessage ||
+    m.pinInChatMessage ||
+    m.ephemeralMessage?.message?.protocolMessage
+  ) {
+    return { allowed: false, reason: 'ephemeral_or_reaction_ignored' };
+  }
+
+  const hasUsablePayload = Boolean(
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage ||
+    m.audioMessage ||
+    m.videoMessage ||
+    m.documentMessage ||
+    m.documentWithCaptionMessage?.message?.documentMessage ||
+    (m.protocolMessage && (m.protocolMessage.type === 0 || m.protocolMessage.type === 'REVOKE'))
+  );
+  if (!hasUsablePayload) {
+    return { allowed: false, reason: 'unsupported_message_type' };
+  }
+
+  // 4. Descarta mensagens antigas reentregues pelo servidor (> 45s)
+  const rawTs = Number(msg.messageTimestamp || 0);
+  if (Number.isFinite(rawTs) && rawTs > 0) {
+    const msgMs = rawTs < 1e12 ? rawTs * 1000 : rawTs;
+    if (nowMs - msgMs > MAX_MESSAGE_AGE_MS) {
+      return { allowed: false, reason: 'stale_message' };
+    }
+  }
+
+  // 5. Deduplicação O(1) em memória limitada (evita bater no Supabase para retry de frame)
+  const msgId = String(msg.key.id || '').trim();
+  if (msgId && seenCache) {
+    const dedupeKey = `${remoteJid}:${msgId}`;
+    if (seenCache.get(dedupeKey)) {
+      return { allowed: false, reason: 'duplicate_frame' };
+    }
+    seenCache.set(dedupeKey, true);
+  }
+
+  return { allowed: true, reason: 'accepted' };
+}
+
 export class BaileysProvider {
   constructor({
     authDir = './data/baileys-auth',
@@ -53,6 +139,7 @@ export class BaileysProvider {
     this.logger = logger;
 
     this.sock = null;
+    this.authController = null;
     this.status = 'disconnected'; // disconnected | connecting | qr_ready | connected | logged_out | error
     this.qrText = '';
     this.qrDataUrl = '';
@@ -64,12 +151,21 @@ export class BaileysProvider {
     this.lastError = null;
     this.messagesReceived = 0;
     this.messagesSent = 0;
+    this.messagesFiltered = 0;
+    this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.manualStop = false;
     this.starting = false;
+    this.seenMessages = new BoundedLruCache({ max: DEDUPE_CACHE_MAX, ttlMs: DEDUPE_TTL_MS });
   }
 
   getStatus() {
+    const mem = process.memoryUsage();
+    const cacheStats = this.authController?.getCacheStats?.() || {
+      ephemeralKeysInRam: 0,
+      persistedSessions: 0,
+      persistedPreKeys: 0
+    };
     return {
       provider: 'baileys',
       status: this.status,
@@ -83,7 +179,12 @@ export class BaileysProvider {
       lastError: this.lastError,
       stats: {
         messagesReceived: this.messagesReceived,
-        messagesSent: this.messagesSent
+        messagesSent: this.messagesSent,
+        messagesFiltered: this.messagesFiltered,
+        dedupeCacheSize: this.seenMessages.size,
+        ...cacheStats,
+        rssMb: Math.round((mem.rss / (1024 * 1024)) * 10) / 10,
+        heapUsedMb: Math.round((mem.heapUsed / (1024 * 1024)) * 10) / 10
       }
     };
   }
@@ -94,58 +195,11 @@ export class BaileysProvider {
     } catch {}
   }
 
-  async _restoreCredsFromSupabase() {
-    if (!this.client?.enabled) return false;
-    const credsPath = path.join(this.authDir, 'creds.json');
-    try {
-      await fs.access(credsPath);
-      return true; // já existe em disco
-    } catch {}
-
-    try {
-      const rows = await this.client.select(
-        'runtime_projections',
-        `select=key,payload&key=eq.${encodeURIComponent(PROJECTION_KEY)}&limit=1`
-      );
-      const rawJson = rows?.[0]?.payload?.credsJson;
-      if (typeof rawJson === 'string' && rawJson.trim().startsWith('{')) {
-        await fs.mkdir(this.authDir, { recursive: true });
-        await fs.writeFile(credsPath, rawJson, 'utf8');
-        this.logger.log?.('[baileys] Credenciais restauradas do Supabase com sucesso.');
-        return true;
-      }
-    } catch (error) {
-      this.logger.warn?.(`[baileys] Não foi possível restaurar credenciais do Supabase: ${error?.message || error}`);
-    }
-    return false;
-  }
-
-  async _backupCredsToSupabase() {
-    if (!this.client?.enabled) return;
-    const credsPath = path.join(this.authDir, 'creds.json');
-    try {
-      const rawJson = await fs.readFile(credsPath, 'utf8');
-      await this.client.upsert('runtime_projections', [{
-        key: PROJECTION_KEY,
-        payload: { credsJson: rawJson },
-        updated_at: new Date().toISOString()
-      }], 'key');
-    } catch {}
-  }
-
-  async _clearAuthStorage() {
-    try {
-      await fs.rm(this.authDir, { recursive: true, force: true });
-    } catch {}
-    if (this.client?.enabled) {
-      try {
-        await this.client.upsert('runtime_projections', [{
-          key: PROJECTION_KEY,
-          payload: { credsJson: null },
-          updated_at: new Date().toISOString()
-        }], 'key');
-      } catch {}
-    }
+  _nextBackoffMs() {
+    const attempt = Math.min(6, this.reconnectAttempts++);
+    const base = Math.min(30_000, 1500 * (2 ** attempt));
+    const jitter = Math.floor(Math.random() * 800);
+    return base + jitter;
   }
 
   async start() {
@@ -162,11 +216,13 @@ export class BaileysProvider {
       this.lastError = null;
       this._emitState();
 
-      await fs.mkdir(this.authDir, { recursive: true });
-      await this._restoreCredsFromSupabase();
+      this.authController = await createLiaBaileysAuthState({
+        authDir: this.authDir,
+        client: this.client,
+        logger: this.logger
+      });
+      const { state, saveCreds, clearAuth } = this.authController;
 
-      const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
-      // Preenche o número já autenticado a partir das credenciais salvas
       if (state.creds?.me?.id) {
         this.connectedPhone = extractOwnerPhoneFromJid(state.creds.me.id);
         this.connectedName = state.creds.me.name || state.creds.me.verifiedName || this.connectedName || 'WhatsApp Lia';
@@ -192,19 +248,21 @@ export class BaileysProvider {
         browser: Browsers.ubuntu('Lia Sync'),
         markOnlineOnConnect: false,
         syncFullHistory: false,
-        generateHighQualityLinkPreview: false
+        shouldSyncHistoryMessage: () => false,
+        shouldIgnoreJid: (jid) => !jid || jid === 'status@broadcast' || /@(?:broadcast|g\.us|newsletter)$/i.test(jid),
+        generateHighQualityLinkPreview: false,
+        getMessage: async () => undefined
       });
 
       this.sock = sock;
 
       sock.ev.on('creds.update', async () => {
         try {
-          await saveCreds();
           if (state.creds?.me?.id) {
             this.connectedPhone = extractOwnerPhoneFromJid(state.creds.me.id);
             this.connectedName = state.creds.me.name || state.creds.me.verifiedName || this.connectedName || 'WhatsApp Lia';
           }
-          await this._backupCredsToSupabase();
+          await saveCreds();
           this._emitState();
         } catch {}
       });
@@ -213,7 +271,6 @@ export class BaileysProvider {
         if (this.sock !== sock) return;
         const { connection, lastDisconnect, qr } = update;
 
-        // Só exibe QR Code se a sessão ainda não estiver autenticada
         if (qr && !state.creds?.registered && !state.creds?.me?.id) {
           this.qrText = qr;
           try {
@@ -227,6 +284,7 @@ export class BaileysProvider {
 
         if (connection === 'open') {
           this.status = 'connected';
+          this.reconnectAttempts = 0;
           this.qrText = '';
           this.qrDataUrl = '';
           this.pairingCode = '';
@@ -235,7 +293,7 @@ export class BaileysProvider {
           const user = sock.user || state.creds?.me || {};
           this.connectedPhone = extractOwnerPhoneFromJid(user.id || '') || this.connectedPhone;
           this.connectedName = user.name || user.verifiedName || this.connectedName || 'WhatsApp Lia';
-          await this._backupCredsToSupabase();
+          await saveCreds();
           this._emitState();
           void this.onEvent?.({
             event: 'CONNECTION_UPDATE',
@@ -262,20 +320,18 @@ export class BaileysProvider {
             this.connectedPhone = '';
             this.connectedName = '';
             this.lastError = 'Sessão desconectada pelo aparelho. Escaneie um novo QR Code.';
-            await this._clearAuthStorage();
+            await clearAuth();
             this._emitState();
             return;
           }
           if (isRestartRequired && !this.manualStop) {
-            // 515 (Stream Errored / restart required) faz parte do protocolo oficial
-            // do WhatsApp logo após o pareamento do QR Code. Reconecta imediatamente sem exibir erro!
             this.status = 'connecting';
             this.lastError = null;
             this._emitState();
             this.reconnectTimer = setTimeout(() => {
               this.reconnectTimer = null;
               void this.start().catch(() => {});
-            }, 400);
+            }, 350);
             this.reconnectTimer.unref?.();
             return;
           }
@@ -283,10 +339,11 @@ export class BaileysProvider {
           this.lastError = rawMsg || `Conexão encerrada (${statusCode || 'socket_closed'})`;
           this._emitState();
           if (!this.manualStop) {
+            const delayMs = this._nextBackoffMs();
             this.reconnectTimer = setTimeout(() => {
               this.reconnectTimer = null;
               void this.start().catch(() => {});
-            }, 2500);
+            }, delayMs);
             this.reconnectTimer.unref?.();
           }
         }
@@ -294,8 +351,6 @@ export class BaileysProvider {
 
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (this.sock !== sock) return;
-        if (type !== 'notify' && type !== 'append') return;
-        // Se mensagens reais estão fluindo pelo socket, a conexão está ativa!
         if (this.status !== 'connected') {
           this.status = 'connected';
           this.qrText = '';
@@ -303,23 +358,27 @@ export class BaileysProvider {
           this.lastError = null;
         }
         for (const msg of Array.isArray(messages) ? messages : []) {
-          if (!msg?.key) continue;
-          // Ignora mensagens antigas sincronizadas em lote no append se não forem recentes
-          if (type === 'append') {
-            const ts = Number(msg.messageTimestamp || 0);
-            const ageMs = ts ? Date.now() - (ts < 1e12 ? ts * 1000 : ts) : 0;
-            if (ageMs > 60_000) continue;
+          const gate = evaluateBaileysMessageGate(msg, {
+            type,
+            seenCache: this.seenMessages
+          });
+          if (!gate.allowed) {
+            this.messagesFiltered += 1;
+            continue;
           }
           this.messagesReceived += 1;
           this.lastMessageAt = new Date().toISOString();
           this._emitState();
           if (typeof this.onEvent === 'function') {
+            const normalizedMsg = msg.message?.documentWithCaptionMessage?.message
+              ? { ...msg.message, documentMessage: msg.message.documentWithCaptionMessage.message.documentMessage }
+              : (msg.message || {});
             void Promise.resolve(this.onEvent({
               event: 'MESSAGES_UPSERT',
               instance: 'baileys',
               data: {
                 key: msg.key,
-                message: msg.message || {},
+                message: normalizedMsg,
                 pushName: msg.pushName || '',
                 messageTimestamp: msg.messageTimestamp
               }
@@ -329,7 +388,9 @@ export class BaileysProvider {
       });
 
       sock.ev.on('messages.update', async (updates) => {
+        if (this.sock !== sock) return;
         for (const u of Array.isArray(updates) ? updates : []) {
+          if (!u?.key?.remoteJid || /@(?:broadcast|g\.us|newsletter)$/i.test(u.key.remoteJid)) continue;
           if (u?.update?.messageStubType === 'REVOKE' || u?.update?.status === 'DELETED') {
             void this.onEvent?.({
               event: 'MESSAGES_UPDATE',
@@ -341,6 +402,7 @@ export class BaileysProvider {
       });
 
       sock.ev.on('chats.delete', async (deletedIds) => {
+        if (this.sock !== sock) return;
         void this.onEvent?.({
           event: 'CHATS_DELETE',
           instance: 'baileys',
@@ -386,14 +448,16 @@ export class BaileysProvider {
     this.sock = null;
     if (current) {
       try {
+        current.ev?.removeAllListeners?.();
         if (logout) await current.logout();
         else current.end?.(undefined);
       } catch {}
     }
     if (logout) {
-      await this._clearAuthStorage();
+      await this.authController?.clearAuth?.();
       this.connectedPhone = '';
       this.connectedName = '';
+      this.seenMessages.clear();
     }
     this.qrText = '';
     this.qrDataUrl = '';

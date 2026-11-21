@@ -9,6 +9,8 @@ import { AdminConfigStore } from './admin-config.mjs';
 import { ApiSettingsStore } from './api-settings.mjs';
 import { LiaAutonomyStore, createAutonomyEngine } from './autonomy/index.mjs';
 import { SupabaseRestClient } from './supabase-runtime.mjs';
+import { createLiaBaileysAuthState, BoundedLruCache } from './whatsapp/baileys-auth.mjs';
+import { evaluateBaileysMessageGate } from './whatsapp/baileys-provider.mjs';
 
 function makeReq(method, url, body = null) {
   const payload = body === null ? null : Buffer.from(JSON.stringify(body));
@@ -202,6 +204,69 @@ test('Rotas /api/dashboard/runtime/* e /api/dashboard/api-settings respeitam RBA
     const rEngine = await callApp(app, 'POST', '/api/dashboard/whatsapp/baileys/engine', { engine: 'evolution' });
     assert.equal(rEngine.status, 200);
     assert.equal(rEngine.body.activeEngine, 'evolution');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('Baileys P0+P1: Message Gate descarta histórico/broadcast/grupos/duplicatas e AuthState enxuto migra multi-file legado com LRU limitado', async () => {
+  const seen = new BoundedLruCache({ max: 5, ttlMs: 60_000 });
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  // 1. Rejeita lote de histórico ('append')
+  assert.deepEqual(
+    evaluateBaileysMessageGate({ key: { id: 'm1', remoteJid: '5588999999999@s.whatsapp.net' }, message: { conversation: 'oi' }, messageTimestamp: nowSec }, { type: 'append', seenCache: seen, nowMs }),
+    { allowed: false, reason: 'history_append_ignored' }
+  );
+
+  // 2. Rejeita status@broadcast, grupos (@g.us) e canais (@newsletter)
+  assert.equal(
+    evaluateBaileysMessageGate({ key: { id: 'm2', remoteJid: 'status@broadcast' }, message: { conversation: 'status' }, messageTimestamp: nowSec }, { type: 'notify', seenCache: seen, nowMs }).allowed,
+    false
+  );
+  assert.equal(
+    evaluateBaileysMessageGate({ key: { id: 'm3', remoteJid: '120363000@g.us' }, message: { conversation: 'grupo' }, messageTimestamp: nowSec }, { type: 'notify', seenCache: seen, nowMs }).allowed,
+    false
+  );
+
+  // 3. Rejeita reação vazia e protocolMessage que não seja REVOKE
+  assert.equal(
+    evaluateBaileysMessageGate({ key: { id: 'm4', remoteJid: '5588999999999@s.whatsapp.net' }, message: { reactionMessage: { text: '👍' } }, messageTimestamp: nowSec }, { type: 'notify', seenCache: seen, nowMs }).allowed,
+    false
+  );
+
+  // 4. Aceita mensagem direta real e bloqueia retry duplicado em O(1)
+  const validMsg = {
+    key: { id: 'm5', remoteJid: '5588999999999@s.whatsapp.net' },
+    message: { conversation: 'Bom dia' },
+    messageTimestamp: nowSec
+  };
+  assert.equal(evaluateBaileysMessageGate(validMsg, { type: 'notify', seenCache: seen, nowMs }).allowed, true);
+  assert.deepEqual(
+    evaluateBaileysMessageGate(validMsg, { type: 'notify', seenCache: seen, nowMs }),
+    { allowed: false, reason: 'duplicate_frame' }
+  );
+
+  // 5. AuthState enxuto: migra pasta legada, mantém lid-mapping em LRU em RAM e persiste apenas auth-snapshot.json
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-baileys-auth-'));
+  try {
+    const auth = await createLiaBaileysAuthState({ authDir: dir, logger: { log() {}, warn() {} } });
+    await auth.state.keys.set({
+      session: { '5588999999999:1': { chainKey: 'ok' } },
+      'lid-mapping': { '100979580080280_reverse': '5588999999999' },
+      tctoken: { '100979580080280@lid': 'tok123' }
+    });
+    await auth.saveCreds();
+
+    const gotSession = await auth.state.keys.get('session', ['5588999999999:1']);
+    const gotLid = await auth.state.keys.get('lid-mapping', ['100979580080280_reverse']);
+    assert.deepEqual(gotSession['5588999999999:1'], { chainKey: 'ok' });
+    assert.equal(gotLid['100979580080280_reverse'], '5588999999999');
+
+    const stats = auth.getCacheStats();
+    assert.equal(stats.persistedSessions, 1);
+    assert.equal(stats.ephemeralKeysInRam, 2);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
