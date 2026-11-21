@@ -20,6 +20,8 @@ import { buildCopilotContext } from './copilot-context.mjs';
 import { memoryStore, buildMemoryScopeKey } from '../core/memory.mjs';
 import { transcribeIncomingAudio } from './media.mjs';
 import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, listPendingAdminPixDecisions, matchPendingAdminPixDecision, parseAdminPixDecision } from './admin-pix-approval.mjs';
+import { listPendingAdminConsults, parseAdminConsultAction } from './admin-consult.mjs';
+import { formatOutgoingMessage } from '../core/format.mjs';
 import {
   COPILOT_PENDING_TTL_MS,
   COPILOT_TASK_CONTEXT_TTL_MS,
@@ -701,6 +703,71 @@ export async function handleOwnerSession({
           if (store.file || store.client?.enabled) await store.flush?.().catch(() => {});
           else { clearTimeout(store.saveTimer); store.saveTimer = null; }
         };
+        // Consulta interna da Lia aguardando orientação/confirmação do admin para retornar ao cliente
+        if (!adminPixChoice && !sSelf.pendingOutboundDispatch) {
+          const pendingConsults = listPendingAdminConsults(store.sessions || {}, { nowMs: now() });
+          if (pendingConsults.length > 0) {
+            const consultAction = parseAdminConsultAction(cleanCommand);
+            if (consultAction) {
+              const current = pendingConsults[0];
+              const targetSession = current.session;
+              const consult = current.consult;
+              const targetName = consult.clientName || targetSession.clientName || targetSession.phone;
+              const timestamp = new Date(now()).toISOString();
+
+              if (consultAction.action === 'takeover') {
+                targetSession.pendingAdminConsult = null;
+                targetSession.human = true;
+                targetSession.humanSource = 'admin';
+                targetSession.handoffAt = timestamp;
+                targetSession.handoffReason = `Responsável assumiu atendimento após consulta interna (${targetName})`;
+                store.markDirty();
+                return recordSelfTurn(`✅ Entendido! Pausei meu atendimento com *${targetName}* e deixei a conversa em *Modo Humano* para você responder diretamente.`);
+              }
+              if (consultAction.action === 'cancel') {
+                targetSession.pendingAdminConsult = null;
+                store.markDirty();
+                return recordSelfTurn(`👍 Consulta pendente de *${targetName}* cancelada. Nenhuma mensagem foi enviada ao cliente.`);
+              }
+              if (consultAction.action === 'reply') {
+                let clientReply = '';
+                try {
+                  const crafted = await ai?.askAI?.({
+                    system: `Você é a ${assistant}, assistente de atendimento. O cliente ${targetName} perguntou: "${consult.question}". O responsável (${owner}) acabou de te responder internamente com a seguinte orientação/informação: "${consultAction.text}".\n\nEscreva uma resposta natural, acolhedora e objetiva para enviar agora ao cliente no WhatsApp, continuando o atendimento normalmente. NÃO diga "a mando de ${owner}" e NÃO se reapresente. Retorne JSON: {"reply":"...","intent":"atendimento","red_flags":false,"handoff":false}.`,
+                    history: (targetSession.history || []).slice(-6),
+                    userText: consult.question,
+                    botConfig,
+                    disableToolCalling: true,
+                    deadline: Date.now() + 20_000
+                  });
+                  clientReply = String(crafted?.reply || '').trim();
+                } catch {}
+                if (!clientReply) {
+                  clientReply = `Oi! Acabei de confirmar aqui: ${consultAction.text}\n\nQualquer dúvida, sigo por aqui para te ajudar! 😊`;
+                }
+                const filteredClientReply = filterReply(clientReply, {
+                  isCopilot: false,
+                  alreadyIntroduced: true,
+                  botName: assistant
+                }).text || clientReply;
+                const targetDest = consult.rawJid || targetSession.jid || targetSession.phone;
+                if (typeof whatsapp?.sendText === 'function') {
+                  await whatsapp.sendText(targetDest, formatOutgoingMessage(filteredClientReply));
+                }
+                targetSession.history ??= [];
+                targetSession.history.push({ role: 'assistant', content: filteredClientReply, createdAt: timestamp });
+                targetSession.lastBotAt = timestamp;
+                targetSession.awaitingReply = true;
+                targetSession.pendingAdminConsult = null;
+                targetSession.updatedAt = timestamp;
+                store.markDirty();
+                await store.flush?.().catch(() => {});
+                return recordSelfTurn(`✅ *Retornei para ${targetName} e o atendimento continua comigo!*\n\n> "${filteredClientReply}"`);
+              }
+            }
+          }
+        }
+
         if (adminPixChoice) {
           const pendingPixDecisions = adminPixChoice.action === 'assume'
             ? listAdminPixDecisionsForAssumption(store.sessions || {})

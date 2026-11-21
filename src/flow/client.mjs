@@ -14,6 +14,7 @@ import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixAct
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
+import { buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
@@ -647,7 +648,9 @@ export async function handleClientMessage({
         raw = m ? (m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()) : '';
       }
 
-      const hasPendingToolCalls = Array.isArray(result?.tool_calls) && result.tool_calls.length > 0;
+      const hasPendingToolCalls = (Array.isArray(result?.tool_calls) && result.tool_calls.length > 0)
+        || Boolean(s.pendingClientAgenda && pendingAgendaAnswer)
+        || Boolean(s.pendingClientPayment && pendingPaymentAnswer);
       if (!result || (!raw && !hasPendingToolCalls)) {
         if (origin === 'simulation' || origin === 'preview') {
           raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
@@ -1370,6 +1373,39 @@ export async function handleClientMessage({
         }
       }
 
+      // Guarda anti-mentira: nunca permite que a Lia prometa "vou buscar no Drive / só um instante"
+      // ou finja ter enviado um arquivo/contrato quando nenhuma ferramenta real executou a entrega.
+      let adminConsultPending = false;
+      const executedDeliveryTool = Boolean(toolReplyOverride || pixHandledByTool);
+      if (!executedDeliveryTool && detectUnexecutedClientPromiseOrFakeAttachment(finalReply)) {
+        const consultReason = 'A resposta tentou prometer busca/envio de arquivo ou serviço externo sem ferramenta conectada.';
+        if (origin !== 'simulation' && origin !== 'preview') {
+          adminConsultPending = true;
+          s.pendingAdminConsult = {
+            id: `consult-${Date.now().toString(36)}`,
+            phone: s.phone,
+            rawJid: rawItem?.jid || s.phone,
+            clientName: s.clientName || pushName || 'Cliente',
+            question: clean.slice(0, 400),
+            reason: consultReason,
+            requestedAt: new Date(now()).toISOString(),
+            status: 'pending'
+          };
+          await notify(buildAdminConsultNotice({
+            clientName: s.clientName || pushName || 'Cliente',
+            phone: s.phone,
+            question: clean,
+            reason: consultReason,
+            assistant
+          }));
+        }
+        finalReply = `Ainda não tenho acesso direto a esse arquivo ou consulta automática por aqui, mas já consultei *${owner}* no nosso canal interno e assim que ele me responder eu já te retorno por aqui! 😊`;
+        safeReplyText = finalReply;
+        // Mantém a Lia no controle para retornar automaticamente assim que o admin responder no chat interno
+        result.handoff = false;
+        result.handoff_reason = null;
+      }
+
       if (botConfig?.style?.emoji === 'off' && safeReplyText) {
         safeReplyText = String(safeReplyText).replace(/\p{Extended_Pictographic}/gu, '').replace(/\uFE0F/g, '').replace(/[ \t]{2,}/g, ' ').trim();
         finalReply = safeReplyText;
@@ -1380,7 +1416,7 @@ export async function handleClientMessage({
       const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
       const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(actionText));
 
-      if (!adminPixApprovalPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
+      if (!adminPixApprovalPending && !adminConsultPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
           (userDirectedToOwner ? `Assunto direcionado a ${owner}: "${clean.slice(0, 90)}"` :
             (textHintsHandoff ? `Assunto encaminhado pela ${assistant} a ${owner}: "${clean.slice(0, 90)}"` : `sugerido pela ${assistant} pelo contexto`));

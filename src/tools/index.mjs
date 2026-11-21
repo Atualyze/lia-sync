@@ -95,6 +95,29 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 
+export function hasGoogleWorkspaceCredentials() {
+  return Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+    || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
+    || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
+    || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
+  );
+}
+
+export function isToolConfigured(toolName, botConfig = {}) {
+  const canonical = resolveToolName(toolName);
+  if (canonical === 'gerenciar_drive_google' || canonical === 'consultar_planilha_google') {
+    return hasGoogleWorkspaceCredentials();
+  }
+  if (canonical === 'gerenciar_agenda_google') {
+    return hasGoogleWorkspaceCredentials()
+      || botConfig?.integrations?.googleCalendar?.showMockSlotsWhenUnavailable === true;
+  }
+  return true;
+}
+
 export function isToolEnabled(toolName, botConfig = {}) {
   const canonical = resolveToolName(toolName);
   if (canonical === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
@@ -102,7 +125,11 @@ export function isToolEnabled(toolName, botConfig = {}) {
 }
 
 export function getEnabledTools(botConfig = {}, { actor = 'owner' } = {}) {
-  return ALL_TOOLS.filter(tool => isToolEnabled(tool.name, botConfig) && (actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name)));
+  return ALL_TOOLS.filter(tool =>
+    isToolEnabled(tool.name, botConfig)
+    && isToolConfigured(tool.name, botConfig)
+    && (actor !== 'client' || CLIENT_ALLOWED_TOOL_NAMES.has(tool.name))
+  );
 }
 
 // Perfil de execução: descreve risco e política, mas não substitui as confirmações

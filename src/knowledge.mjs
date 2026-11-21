@@ -65,6 +65,26 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const { botName, responsible, companyName } = identity;
   const owner = responsible || 'nossa equipe';
   const webSearchAvailable = Boolean(config.geminiKey);
+  const hasGoogleCredentials = Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+    || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
+    || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
+    || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
+  );
+  const googleDriveAvailable = hasGoogleCredentials && botConfig?.tools?.enabled?.gerenciar_drive_google !== false;
+  const googleSheetsAvailable = hasGoogleCredentials && botConfig?.tools?.enabled?.consultar_planilha_google !== false;
+  const googleCalendarAvailable = (hasGoogleCredentials || botConfig?.integrations?.googleCalendar?.showMockSlotsWhenUnavailable === true)
+    && botConfig?.tools?.enabled?.gerenciar_agenda_google !== false;
+  const unavailableGoogleServices = [
+    !googleDriveAvailable ? 'Google Drive' : '',
+    !googleSheetsAvailable ? 'Google Planilhas' : '',
+    !googleCalendarAvailable ? 'Google Agenda' : ''
+  ].filter(Boolean);
+  const unavailableGoogleRule = unavailableGoogleServices.length
+    ? `\n   - SERVIÇOS GOOGLE NÃO CONECTADOS (${unavailableGoogleServices.join(', ')}): você NÃO possui acesso a ${unavailableGoogleServices.join(', ')} neste momento. É TERMINANTEMENTE PROIBIDO dizer que vai buscar no Drive, consultar planilha, verificar agenda ou anexar arquivo/contrato/PDF. Se o cliente pedir um contrato, documento ou arquivo que você não possui, seja 100% transparente e informe que vai confirmar com ${owner} para retornar por aqui.`
+    : '';
   const local = new Intl.DateTimeFormat('pt-BR', {
     timeZone: business.timezone || process.env.BUSINESS_TIME_ZONE || 'America/Sao_Paulo',
     dateStyle: 'full',
@@ -317,13 +337,11 @@ ${(botConfig?.ai?.agentMode === 'super_agente' || botConfig?.ai?.enableToolCalli
    • "consultar_base_conhecimento": {"termo": "..."} - busca informações e regras APENAS quando houver base de conhecimento vinculada ao produto/sistema; NÃO chame em saudações ("Oi", "Como pode ajudar?") ou pedidos de pagamento.
    • "atualizar_dados_crm": {"interesse": "...", "observacoes": "...", "estagio": "lead|qualificacao|proposta"} - atualiza interesses e status do cliente no funil.
    • "consultar_saude_infra": {"target": "geral|dokku|chatwoot|postgres"} - diagnostica a saúde dos servidores, containers e banco de dados.
-   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} - consulta horários vagos e sincroniza eventos no Google Agenda. Só confirme disponibilidade ou criação depois de receber sucesso da ferramenta; nunca diga apenas "vou consultar" e encerre o turno. Para criar um evento para o cliente, apresente data/horário e pergunte se ele confirma antes de chamar a ferramenta.
-   • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} - gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Quando o cliente pedir Pix de forma genérica, pergunte naturalmente se prefere *só a chave*, *código copia e cola* ou *checkout* (somente se houver valor definido e checkout configurado). Se ele escolher copia e cola ou checkout, aceite a resposta em qualquer posição e use o valor já informado no histórico; se faltar valor, pergunte apenas o valor. Use "valor": 0 somente para chave Pix ou quando o cliente pedir explicitamente valor livre, e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
+${googleCalendarAvailable ? '   • "gerenciar_agenda_google": {"action": "consultar_livres|criar_evento", "summary": "...", "start": "...", "end": "..."} - consulta horários vagos e sincroniza eventos no Google Agenda. Só confirme disponibilidade ou criação depois de receber sucesso da ferramenta; nunca diga apenas "vou consultar" e encerre o turno. Para criar um evento para o cliente, apresente data/horário e pergunte se ele confirma antes de chamar a ferramenta.\n' : ''}   • "gerar_cobranca_pix": {"valor": 0, "descricao": "..."} - gera Pix Copia e Cola, QR Code e link de pagamento (/pix) no WhatsApp. Quando o cliente pedir Pix de forma genérica, pergunte naturalmente se prefere *só a chave*, *código copia e cola* ou *checkout* (somente se houver valor definido e checkout configurado). Se ele escolher copia e cola ou checkout, aceite a resposta em qualquer posição e use o valor já informado no histórico; se faltar valor, pergunte apenas o valor. Use "valor": 0 somente para chave Pix ou quando o cliente pedir explicitamente valor livre, e NUNCA transfira para ${owner} por causa de pedido de chave Pix!
    • "checkout_infinitepay": {"acao": "criar_link|verificar_pagamento", "valor": 150.0, "descricao": "..."} - gera link de checkout InfinitePay (Pix/Cartão) com confirmação automática e consulta status de pagamento.
-   • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} - consulta preços, estoque e catálogo no Google Sheets.
-   • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} - busca e envia catálogos/contratos em PDF do Google Drive.
-   • "consultar_dados_brasil": {"acao": "consultar_cep|consultar_cnpj|consultar_feriados", "cep": "...", "cnpj": "..."} - consulta endereço por CEP, CNPJ ou feriados nacionais.
-${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a web e retorna síntese, consultas e fontes.' : ''}`
+${googleSheetsAvailable ? '   • "consultar_planilha_google": {"acao": "ler_intervalo|buscar_linhas", "busca": "..."} - consulta preços, estoque e catálogo no Google Sheets.\n' : ''}${googleDriveAvailable ? '   • "gerenciar_drive_google": {"acao": "buscar_arquivo|enviar_arquivo_whatsapp", "busca": "...", "fileId": "..."} - busca e envia catálogos/contratos em PDF do Google Drive.\n' : ''}   • "consultar_dados_brasil": {"acao": "consultar_cep|consultar_cnpj|consultar_feriados", "cep": "...", "cnpj": "..."} - consulta endereço por CEP, CNPJ ou feriados nacionais.
+${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a web e retorna síntese, consultas e fontes.' : ''}
+   - REGRA ANTI-MENTIRA E SEM PROMESSA VAZIA: NUNCA diga "vou buscar", "estou procurando", "só um instante que já envio" ou "aqui está o arquivo/contrato" sem ter executado uma ferramenta real que retornou o dado ou arquivo.${unavailableGoogleRule}`
     : `5. MODO ASSISTENTE PESSOAL DO RESPONSÁVEL (PADRÃO - SEM EXECUÇÃO DE TOOLS):
    Você atua exclusivamente como a assistente executiva calorosa e acolhedora de ${owner}. Faça a recepção, esclareça dúvidas com base no FAQ oficial e anote recados.
    Não execute comandos de ferramentas automatizadas. Mantenha "tool_calls": null.`
