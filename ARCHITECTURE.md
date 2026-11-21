@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.8.0**
+Versão: **2.9.0**
 
 ## Objetivo
 
@@ -35,7 +35,10 @@ Evolution / Chatwoot / Dashboard
 | `http/dashboard.mjs` | Visão operacional autenticada, saúde, operações, modelos, métricas, campanhas e supressões mascaradas. |
 | `flow.mjs` | Seleciona atendimento do cliente ou Copiloto do responsável. |
 | `flow/client.mjs` | Sessão de cliente, handoff, janela de atendimento, ferramentas permitidas e resposta segura com retorno explícito de agenda/lembretes. |
-| `flow/owner.mjs` | Comandos do Copiloto, ações operacionais e confirmação de envio. |
+| `flow/owner.mjs` | Orquestração do Copiloto, confirmação de envios/Pix e delegação para fila persistente. |
+| `flow/owner-helpers.mjs` | Funções puras de classificação, extração de argumentos Pix, TTL e controle natural do Copiloto. |
+| `flow/owner-commands.mjs` | Comandos determinísticos rápidos do chat interno (`status`, `fila`, `bot`, `humano`, `expediente`, `lembretes`, `ping`, `pdf`). |
+| `copilot-tasks.mjs` e `copilot-task-worker.mjs` | Fila persistente idempotente, claim atômico com lease, drenagem imediata e broadcast SSE de resultados. |
 | `flow/copilot-continuity.mjs` | Revisão semântica de tool calls: continuação, novo pedido, esclarecimento ou assunto não relacionado. |
 | `flow/copilot-tool-plan.mjs` | Valida planos sequenciais do Copiloto, limita a quatro etapas, deduplica chamadas e verifica resultados/recuperação sem retry automático. |
 | `tools/index.mjs` | Registro executável `ALL_TOOLS`, schemas reais, aliases, allowlist de cliente, catálogo dinâmico e perfis de risco/autorização. |

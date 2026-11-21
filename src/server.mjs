@@ -72,6 +72,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     operationsStore,
     logger: console
   });
+  copilotTaskStore.setOnEnqueue(() => {
+    void copilotTaskWorker.drain().catch(error => console.error('[copilot-worker] ciclo imediato interrompido:', error?.code || error?.name || 'worker_error'));
+  });
 
   const baseReadinessCheck = readinessCheck || checkReadiness;
   const taskQueueReadinessCheck = async () => {
@@ -223,6 +226,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       : ['nvidia/nemotron-3.5-lightning:free'];
     return { provider, model, fallbackModels };
   };
+  const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });
+  await integrationsStore.load().catch(() => {});
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
   const deliver = (job) => store.enqueue(job.phone, async () => {
     const wasHuman = Boolean(store.get(job.phone)?.human);
@@ -256,21 +261,45 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       });
     }
     return answer;
-  }).catch(e => { try { const session = store.get(job.phone); if (session) { session.sendFailed = true; store.markDirty(); } } catch {} console.error('[webhook]', e.message); });
+  }).catch(e => {
+    try { const session = store.get(job.phone); if (session) { session.sendFailed = true; store.markDirty(); } } catch {}
+    console.error('[webhook]', e.message);
+    throw e;
+  });
+  const runBatch = (batch) => {
+    const waiters = Array.isArray(batch.waiters) ? batch.waiters : [];
+    return deliver(batch).then(
+      result => { for (const waiter of waiters) waiter.resolve(result); return result; },
+      error => { for (const waiter of waiters) waiter.reject(error); }
+    );
+  };
   const schedule = (job) => {
     if (job.nonText || job.mediaType === 'audio' || job.mediaType === 'image' || job.mediaType === 'video' || isOwnerKey(job.phone)) {
       return deliver(job);
     }
-    const old = pending.get(job.phone);
-    if (old) {
-      clearTimeout(old.timer);
-      old.text = `${old.text}\n${job.text}`;
-      old.keyId = job.keyId || old.keyId;
-      old.timer = setTimeout(() => { pending.delete(job.phone); deliver(old); }, config.debounceMs);
-      return;
+    return new Promise((resolve, reject) => {
+      const old = pending.get(job.phone);
+      if (old) {
+        clearTimeout(old.timer);
+        old.text = `${old.text}\n${job.text}`;
+        old.keyId = job.keyId || old.keyId;
+        old.waiters.push({ resolve, reject });
+        old.timer = setTimeout(() => { pending.delete(job.phone); void runBatch(old); }, config.debounceMs);
+        return;
+      }
+      const entry = { ...job, waiters: [{ resolve, reject }] };
+      entry.timer = setTimeout(() => { pending.delete(job.phone); void runBatch(entry); }, config.debounceMs);
+      pending.set(job.phone, entry);
+    });
+  };
+  const drainPending = async () => {
+    const batches = [];
+    for (const [phone, job] of pending.entries()) {
+      clearTimeout(job.timer);
+      pending.delete(phone);
+      batches.push(runBatch(job));
     }
-    job.timer = setTimeout(() => { pending.delete(job.phone); deliver(job); }, config.debounceMs);
-    pending.set(job.phone, job);
+    if (batches.length) await Promise.allSettled(batches);
   };
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
   const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
@@ -320,8 +349,6 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     return true;
   };
   const webhookEventStore = new WebhookEventStore({ client: supabaseRuntime.client });
-  const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });
-  await integrationsStore.load().catch(() => {});
 
   const app = createRouter({
     store,
@@ -347,7 +374,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     askAI: askAIWithBudget,
     integrationsStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -407,19 +434,18 @@ if (isDirectRun) {
   // Worker independente: reivindica jobs persistentes com lease no Supabase.
   // O intervalo não sobrepõe execuções locais; concorrência entre réplicas é controlada pela RPC claim_copilot_task.
   const runCopilotWorker = () => {
-    app.copilotTaskWorker?.runOnce().catch(error => console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error'));
+    app.copilotTaskWorker?.drain().catch(error => console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error'));
   };
   runCopilotWorker();
   const copilotTaskTimer = setInterval(runCopilotWorker, 3000);
   copilotTaskTimer.unref();
+  let stopping = false;
   const stop = async () => {
+    if (stopping) return;
+    stopping = true;
     clearInterval(maintenanceTimer);
     clearInterval(copilotTaskTimer);
-    for (const [phone, job] of pending.entries()) {
-      clearTimeout(job.timer);
-      pending.delete(phone);
-      deliver(job);
-    }
+    await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});
     const forceExit = setTimeout(() => process.exit(0), 5000);

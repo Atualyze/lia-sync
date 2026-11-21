@@ -4,6 +4,7 @@ import { buildCopilotToolPlan, verifyCopilotToolResult } from './flow/copilot-to
 import { filterReply, splitReply } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
+import { broadcastBridgeEvent as defaultBroadcastBridgeEvent } from './http/bridge.mjs';
 
 const BACKGROUND_READ_TOOLS = new Set([
   'consultar_web',
@@ -116,6 +117,7 @@ export function createCopilotTaskWorker({
   ai = {},
   getBotConfig = () => ({}),
   sendText,
+  broadcastBridgeEvent = defaultBroadcastBridgeEvent,
   getHumanPhone = () => '',
   operationsStore = null,
   logger = console,
@@ -251,46 +253,63 @@ export function createCopilotTaskWorker({
     }
   };
 
-  return {
-    async runOnce() {
-      if (running || !taskStore) return false;
-      running = true;
-      try {
-        const pendingNotification = await taskStore.claimPendingNotification();
-        if (pendingNotification) {
-          // Notification is already atomically claimed; deliver without claiming it twice.
-          const target = pendingNotification.targetPhone || getHumanPhone();
-          if (!target || typeof sendText !== 'function') {
-            await taskStore.finishNotification(pendingNotification, 'uncertain', 'notification_target_missing');
-            await appendTaskResultToSession(pendingNotification, pendingNotification.resultText, { clearTask: true }).catch(() => {});
-            logger.error?.('[copilot-worker] tarefa concluída sem destino de notificação; resultado preservado na sessão.');
-            return false;
-          }
-          const safe = filterReply(pendingNotification.resultText, { isCopilot: true }).text;
-          try {
-            const parts = splitReply(formatOutgoingMessage(safe));
-            for (let i = 0; i < parts.length; i += 1) {
-              if (i) await new Promise(resolve => setTimeout(resolve, 400));
-              await sendText(target, parts[i]);
-            }
-            await taskStore.finishNotification(pendingNotification, 'sent');
-            await appendTaskResultToSession(pendingNotification, safe);
-            return true;
-          } catch (error) {
-            await taskStore.finishNotification(pendingNotification, 'uncertain', error?.code || error?.name || 'notification_delivery_uncertain');
-            await appendTaskResultToSession(pendingNotification, safe, { clearTask: true }).catch(() => {});
-            return false;
-          }
+  const runOnce = async () => {
+    if (running || !taskStore) return false;
+    running = true;
+    try {
+      const pendingNotification = await taskStore.claimPendingNotification();
+      if (pendingNotification) {
+        // Notification is already atomically claimed; deliver without claiming it twice.
+        const target = pendingNotification.targetPhone || getHumanPhone();
+        if (!target || typeof sendText !== 'function') {
+          await taskStore.finishNotification(pendingNotification, 'uncertain', 'notification_target_missing');
+          await appendTaskResultToSession(pendingNotification, pendingNotification.resultText, { clearTask: true }).catch(() => {});
+          logger.error?.('[copilot-worker] tarefa concluída sem destino de notificação; resultado preservado na sessão.');
+          return false;
         }
-        const task = await taskStore.claimNext(workerId, 180);
-        if (!task) return false;
-        return await runClaimedTask(task);
-      } catch (error) {
-        logger.error?.(`[copilot-worker] ciclo da fila falhou (${error?.code || error?.name || 'worker_error'}).`);
-        return false;
-      } finally {
-        running = false;
+        const safe = filterReply(pendingNotification.resultText, { isCopilot: true }).text;
+        try {
+          const parts = splitReply(formatOutgoingMessage(safe));
+          for (let i = 0; i < parts.length; i += 1) {
+            if (i) await new Promise(resolve => setTimeout(resolve, 400));
+            await sendText(target, parts[i]);
+            broadcastBridgeEvent?.('bot_reply', {
+              phone: pendingNotification.ownerKey || OWNER_SELF_KEY,
+              text: parts[i],
+              timestamp: now()
+            });
+          }
+          await taskStore.finishNotification(pendingNotification, 'sent');
+          await appendTaskResultToSession(pendingNotification, safe);
+          return true;
+        } catch (error) {
+          await taskStore.finishNotification(pendingNotification, 'uncertain', error?.code || error?.name || 'notification_delivery_uncertain');
+          await appendTaskResultToSession(pendingNotification, safe, { clearTask: true }).catch(() => {});
+          return false;
+        }
       }
+      const task = await taskStore.claimNext(workerId, 180);
+      if (!task) return false;
+      return await runClaimedTask(task);
+    } catch (error) {
+      logger.error?.(`[copilot-worker] ciclo da fila falhou (${error?.code || error?.name || 'worker_error'}).`);
+      return false;
+    } finally {
+      running = false;
+    }
+  };
+
+  return {
+    runOnce,
+    async drain({ maxCycles = 10 } = {}) {
+      let processed = 0;
+      const limit = Math.max(1, Number(maxCycles) || 10);
+      while (processed < limit) {
+        const worked = await runOnce();
+        if (!worked) break;
+        processed += 1;
+      }
+      return processed;
     },
     get isRunning() { return running; }
   };

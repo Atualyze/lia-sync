@@ -38,25 +38,30 @@ export function createFlow({
   const dedupe = new Map();
   const rate = new Map();
   const rateWarned = new Map();
-  const nonTextNotice = new Map();
+  const OWNER_HISTORY_LIMIT = 100;
 
   const notify = async (message) => {
     const phone = getHumanPhone();
     try {
       if (store?.get) {
-        const sSelf = store.get(OWNER_SELF_KEY);
-        if (sSelf) {
+        const recordNotification = async () => {
+          const sSelf = store.get(OWNER_SELF_KEY);
+          if (!sSelf) return;
           sSelf.history ??= [];
           sSelf.history.push({
             role: 'assistant',
             content: message,
             createdAt: new Date(now()).toISOString()
           });
-          if (sSelf.history.length > 40) sSelf.history = sSelf.history.slice(-30);
+          if (sSelf.history.length > OWNER_HISTORY_LIMIT) {
+            sSelf.history = sSelf.history.slice(-OWNER_HISTORY_LIMIT);
+          }
           sSelf.lastBotAt = new Date(now()).toISOString();
           sSelf.updatedAt = new Date(now()).toISOString();
           store.markDirty?.();
-        }
+        };
+        if (typeof store.enqueue === 'function') await store.enqueue(OWNER_SELF_KEY, recordNotification);
+        else await recordNotification();
       }
     } catch (e) {
       logger.error?.('[notify:copilot] erro ao salvar notificação no histórico interno:', e.message);
@@ -160,15 +165,30 @@ export function createFlow({
     },
     allowRate(phone) {
       if (isOwnerSender(phone) || phone === OWNER_SELF_KEY) return true;
-      const fresh = (rate.get(phone) || []).filter(t => now() - t < rateLimitWindowMs);
+      const t = now();
+      if (rate.size > 500) {
+        for (const [key, timestamps] of rate) {
+          const active = timestamps.filter(ts => t - ts < rateLimitWindowMs);
+          if (!active.length) rate.delete(key);
+          else if (active.length !== timestamps.length) rate.set(key, active);
+        }
+      }
+      const fresh = (rate.get(phone) || []).filter(ts => t - ts < rateLimitWindowMs);
       if (fresh.length >= rateLimitMax) { rate.set(phone, fresh); return false; }
-      fresh.push(now());
+      fresh.push(t);
       rate.set(phone, fresh);
+      while (rate.size > 5000) rate.delete(rate.keys().next().value);
       return true;
     },
     shouldWarnRate(phone) {
-      if (rateWarned.has(phone) && now() - rateWarned.get(phone) < rateLimitWindowMs) return false;
-      rateWarned.set(phone, now());
+      const t = now();
+      for (const [key, ts] of rateWarned) {
+        if (t - ts >= rateLimitWindowMs) rateWarned.delete(key);
+        else break;
+      }
+      if (rateWarned.has(phone) && t - rateWarned.get(phone) < rateLimitWindowMs) return false;
+      rateWarned.set(phone, t);
+      while (rateWarned.size > 5000) rateWarned.delete(rateWarned.keys().next().value);
       return true;
     },
     async process({

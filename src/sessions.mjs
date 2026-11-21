@@ -95,13 +95,23 @@ export class SessionStore {
     this.saveTimer = null;
     this.saving = null;
     this.queues = new Map();
-    this.outboundDispatchClaims = new Set();
+    this.outboundDispatchClaims = new Map();
   }
 
-  async claimOutboundDispatch(dispatchId) {
+  async claimOutboundDispatch(dispatchId, ttlMs = 86400000) {
     const id = String(dispatchId || '').trim().toUpperCase();
-    if (!/^[A-F0-9]{8}$/.test(id) || this.outboundDispatchClaims.has(id)) return false;
-    this.outboundDispatchClaims.add(id);
+    if (!/^[A-F0-9]{8}$/.test(id)) return false;
+    const now = this.now();
+    const cutoff = now - ttlMs;
+    for (const [key, ts] of this.outboundDispatchClaims) {
+      if (ts < cutoff) this.outboundDispatchClaims.delete(key);
+      else break;
+    }
+    if (this.outboundDispatchClaims.has(id)) return false;
+    this.outboundDispatchClaims.set(id, now);
+    while (this.outboundDispatchClaims.size > 5000) {
+      this.outboundDispatchClaims.delete(this.outboundDispatchClaims.keys().next().value);
+    }
     return true;
   }
 
@@ -227,12 +237,14 @@ export class SessionStore {
 
   markDirty() {
     this.dirty = true;
-    clearTimeout(this.saveTimer);
+    if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
       this.flush().catch((e) => {
         this.logger.error?.('[sessions] falha ao agendar gravação', e?.message || e);
       });
     }, 500);
+    this.saveTimer.unref?.();
   }
 
   async flush() {
@@ -332,7 +344,6 @@ export class SessionStore {
     );
     delete this.sessions[key];
     this.markDirty();
-    await this.purgeArchives();
     return s;
   }
 }

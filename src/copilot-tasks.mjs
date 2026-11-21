@@ -105,6 +105,7 @@ export class CopilotTaskStore {
     this.logger = logger;
     this.now = now;
     this.allowLocalFallback = allowLocalFallback === true;
+    this.onEnqueue = null;
     this.tasks = [];
     this.mode = 'local';
     this.remoteError = null;
@@ -190,6 +191,15 @@ export class CopilotTaskStore {
     return this.writing;
   }
 
+  setOnEnqueue(fn) {
+    this.onEnqueue = typeof fn === 'function' ? fn : null;
+  }
+
+  _notifyEnqueued(task) {
+    if (!task?.created || typeof this.onEnqueue !== 'function') return;
+    try { this.onEnqueue(task); } catch {}
+  }
+
   async enqueue(input = {}) {
     if (!this.loaded) await this.load();
     if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
@@ -225,7 +235,11 @@ export class CopilotTaskStore {
           body: [row],
           prefer: 'return=representation'
         });
-        if (Array.isArray(inserted) && inserted[0]) return { ...mapTask(inserted[0]), created: true };
+        if (Array.isArray(inserted) && inserted[0]) {
+          const result = { ...mapTask(inserted[0]), created: true };
+          this._notifyEnqueued(result);
+          return result;
+        }
         throw new Error('copilot_task_insert_not_confirmed');
       } catch (error) {
         if (!/\b409\b|duplicate key|unique constraint/i.test(String(error?.message || ''))) throw error;
@@ -241,7 +255,9 @@ export class CopilotTaskStore {
       const task = mapTask(row);
       this.tasks.push(task);
       await this._saveLocal();
-      return { ...clone(task), created: true };
+      const result = { ...clone(task), created: true };
+      this._notifyEnqueued(result);
+      return result;
     });
   }
 

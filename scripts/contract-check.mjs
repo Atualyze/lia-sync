@@ -1,32 +1,34 @@
 import { readFile } from 'node:fs/promises';
 
-const legacyMigration = await readFile('supabase/migrations/20261112220000_phone_suppressions.sql', 'utf8');
-const observabilityMigration = await readFile('supabase/migrations/20261113000000_operations_observability.sql', 'utf8');
-const campaigns = await readFile('src/campaigns.mjs', 'utf8');
-const dashboardRoutes = await readFile('src/http/dashboard.mjs', 'utf8');
-const operationsRoutes = await readFile('src/http/operations.mjs', 'utf8');
-const operations = await readFile('src/operations.mjs', 'utf8');
-const router = await readFile('src/http/router.mjs', 'utf8');
-const webhook = await readFile('src/http/webhook.mjs', 'utf8');
-const webhookEvents = await readFile('src/webhook-events.mjs', 'utf8');
-const whatsapp = await readFile('src/whatsapp.mjs', 'utf8');
-const index = await readFile('public/index.html', 'utf8');
-const app = await readFile('public/app.js', 'utf8');
-const supabaseClient = await readFile('public/vendor/supabase.js', 'utf8');
-const bridgeRoutes = await readFile('src/http/bridge-routes.mjs', 'utf8');
-const bridgeStatus = await readFile('src/http/bridge-config-status.mjs', 'utf8');
-const adminConfigSchema = await readFile('src/admin-config.mjs', 'utf8');
-const sectorsProjection = await readFile('src/sectors.mjs', 'utf8');
-const clientFlow = await readFile('src/flow/client.mjs', 'utf8');
-const copilotTasks = await readFile('src/copilot-tasks.mjs', 'utf8');
-const copilotWorker = await readFile('src/copilot-task-worker.mjs', 'utf8');
-const copilotTaskMigration = await readFile('supabase/migrations/20261120150000_copilot_task_queue.sql', 'utf8');
-const copilotTaskSchema = await readFile('supabase/complete_schema_migration.sql', 'utf8');
-const copilotOwnerFlow = await readFile('src/flow/owner.mjs', 'utf8');
-const copilotContinuity = await readFile('src/flow/copilot-continuity.mjs', 'utf8');
-const copilotServer = await readFile('src/server.mjs', 'utf8');
-const copilotFlow = await readFile('src/flow.mjs', 'utf8');
-const supabaseRuntime = await readFile('src/supabase-runtime.mjs', 'utf8');
+const readNormalized = async (file) => (await readFile(file, 'utf8')).replace(/\r\n/g, '\n');
+
+const legacyMigration = await readNormalized('supabase/migrations/20261112220000_phone_suppressions.sql');
+const observabilityMigration = await readNormalized('supabase/migrations/20261113000000_operations_observability.sql');
+const campaigns = await readNormalized('src/campaigns.mjs');
+const dashboardRoutes = await readNormalized('src/http/dashboard.mjs');
+const operationsRoutes = await readNormalized('src/http/operations.mjs');
+const operations = await readNormalized('src/operations.mjs');
+const router = await readNormalized('src/http/router.mjs');
+const webhook = await readNormalized('src/http/webhook.mjs');
+const webhookEvents = await readNormalized('src/webhook-events.mjs');
+const whatsapp = await readNormalized('src/whatsapp.mjs');
+const index = await readNormalized('public/index.html');
+const app = await readNormalized('public/app.js');
+const supabaseClient = await readNormalized('public/vendor/supabase.js');
+const bridgeRoutes = await readNormalized('src/http/bridge-routes.mjs');
+const bridgeStatus = await readNormalized('src/http/bridge-config-status.mjs');
+const adminConfigSchema = await readNormalized('src/admin-config.mjs');
+const sectorsProjection = await readNormalized('src/sectors.mjs');
+const clientFlow = await readNormalized('src/flow/client.mjs');
+const copilotTasks = await readNormalized('src/copilot-tasks.mjs');
+const copilotWorker = await readNormalized('src/copilot-task-worker.mjs');
+const copilotTaskMigration = await readNormalized('supabase/migrations/20261120150000_copilot_task_queue.sql');
+const copilotTaskSchema = await readNormalized('supabase/complete_schema_migration.sql');
+const copilotOwnerFlow = await readNormalized('src/flow/owner.mjs');
+const copilotContinuity = await readNormalized('src/flow/copilot-continuity.mjs');
+const copilotServer = await readNormalized('src/server.mjs');
+const copilotFlow = await readNormalized('src/flow.mjs');
+const supabaseRuntime = await readNormalized('src/supabase-runtime.mjs');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
   ['campaign claims and retry state are persisted', observabilityMigration.includes("'sending'") && observabilityMigration.includes('attempt_count') && campaigns.includes('status=in.(pending,paused)') && campaigns.includes("status: 'sending'")],
