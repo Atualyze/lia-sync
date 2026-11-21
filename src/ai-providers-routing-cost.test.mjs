@@ -269,6 +269,26 @@ test('NVIDIA NIM integrado como provedor nativo: roteamento, chamada OpenAI-comp
     assert.equal(capturedAuth, 'Bearer nvapi-test-key-123456');
     assert.equal(capturedModel, 'meta/llama-3.3-70b-instruct');
     assert.match(res.raw, /NVIDIA NIM/);
+
+    // Quando o painel define Principal + Reservas sem Gemini, Gemini nunca entra na fila mesmo com chave configurada
+    const prevGeminiKey = config.geminiKey;
+    const prevGroqKey = config.groqKey;
+    try {
+      config.geminiKey = 'AIza-test-key-unused-for-chat';
+      config.groqKey = 'gsk-test-key-123';
+      const strictList = providers({
+        ai: {
+          activeProvider: 'groq',
+          activeModel: 'llama-3.3-70b-versatile',
+          fallbackModels: ['nvidia:meta/llama-3.3-70b-instruct']
+        }
+      });
+      assert.deepEqual(strictList, ['groq', 'nvidia']);
+      assert.equal(strictList.includes('gemini'), false);
+    } finally {
+      config.geminiKey = prevGeminiKey;
+      config.groqKey = prevGroqKey;
+    }
   } finally {
     config.nvidiaKey = prevKey;
     config.nvidiaBaseUrl = prevBase;

@@ -24,16 +24,24 @@ export function resolveAIConfig(botConfig = {}) {
 }
 
 export const providers = (botConfig = {}) => {
+  const aiRaw = botConfig?.ai || botConfig || {};
+  const hasExplicitProvider = Boolean(
+    (typeof aiRaw.activeProvider === 'string' && aiRaw.activeProvider.trim())
+    || (typeof aiRaw.provider === 'string' && aiRaw.provider.trim())
+  );
   const aiCfg = resolveAIConfig(botConfig);
   const p = aiCfg.provider;
   const customIds = listCustomProviders().filter(cp => cp.enabled && cp.apiKey && cp.baseUrl).map(cp => cp.id);
   const allKnown = [...new Set([...PROVIDERS, ...customIds])];
-  // Respeita a ordem explícita dos provedores configurados em fallbackModels antes dos demais.
+  // Respeita estritamente o Provedor Principal e a ordem dos Modelos Reserva escolhidos no painel.
+  // Provedores extras com chave (ex.: Gemini usado para voz/visão) NÃO são chamados no chat se não estiverem na seleção do admin.
   const fallbackProviderOrder = (aiCfg.fallbackModels || [])
     .map(parseFallbackModel)
     .map(item => item.provider)
     .filter(prov => prov && prov !== p && allKnown.includes(prov) && Boolean(available(prov)));
-  const remaining = allKnown.filter(x => x !== p && !fallbackProviderOrder.includes(x) && Boolean(available(x)));
+  const remaining = hasExplicitProvider
+    ? []
+    : allKnown.filter(x => x !== p && !fallbackProviderOrder.includes(x) && Boolean(available(x)));
   const ordered = [...new Set([p, ...fallbackProviderOrder, ...remaining])]
     .filter(x => allKnown.includes(x) && Boolean(available(x)));
   const now = Date.now();
