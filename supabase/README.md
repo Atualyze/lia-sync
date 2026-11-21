@@ -1,6 +1,6 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **2.9.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **3.0.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Este diretório contém o schema do banco do Lia Sync, independente do Supabase do CRM original. O runtime usa o Supabase como fonte primária quando configurado e mantém armazenamento local como fallback compatível.
 
@@ -22,7 +22,10 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 12. `migrations/20261115_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
 13. `migrations/20261116000000_review_hardening.sql` — RLS nas tabelas `prospect_*` e `reminders`, CHECK de `created_by` removido, lease de manutenção
 14. `migrations/20261120150000_copilot_task_queue.sql` — fila persistente backend-only do Copiloto, leases, idempotência e notificação de resultados
-15. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+15. `migrations/20261121100000_lia_runtime.sql` — fundação do Lia Runtime (`lia_identity`, `lia_goals`, `lia_events`, `lia_commitments`, `lia_runtime_state`), RLS backend-only
+16. `migrations/20261121120000_lia_learning.sql` — Learning Engine (`lia_experiences`, `lia_knowledge`, `lia_hypotheses`, `lia_strategies`, `lia_experiments`, `lia_regressions`, `lia_relationships`, `lia_improvement_proposals`), RLS backend-only
+17. `migrations/20261121150000_lia_autonomy.sql` — Autonomy Engine (`lia_org_autonomy_policies`, `lia_autonomy_decisions`, `lia_sales_states`, `lia_proactive_notifications`), RLS backend-only
+18. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 
@@ -64,7 +67,10 @@ O runtime persiste as áreas operacionais no Supabase e mantém arquivos locais 
 sessions.json              -> conversations + conversation_messages + contacts + pets
 bot-config.json             -> bot_config_state + bot_config_revisions
 memória de métricas         -> ai_calls e agregações
-archive/*.json              -> conversations.status = 'archived'\ncopilot-tasks.json           -> fallback local da fila (somente uma réplica)
+archive/*.json              -> conversations.status = 'archived'
+copilot-tasks.json          -> fallback local da fila (somente uma réplica)
+lia-runtime.json            -> fallback local do Lia Runtime (somente uma réplica)
+lia-learning.json           -> fallback local do Learning Engine (somente uma réplica)
 ```
 
 Na primeira inicialização com as variáveis de runtime configuradas, dados locais são importados quando ainda não existem no banco. Não remova os arquivos locais antes de validar a operação e o rollback.

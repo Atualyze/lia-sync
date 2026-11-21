@@ -2,7 +2,17 @@
 
 Bot Node 22 ESM de alta performance, sem dependências npm externas pesadas, integrado à Evolution API v2, Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 2.9.0** (pacote, metadata e documentação sincronizados).
+**Versão atual: 3.0.0** (pacote, metadata, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.0.0 — Lia Runtime, Aprendizado Contínuo e Autonomia Operacional
+
+- **Lia Runtime (`src/runtime/*`):** estado operacional persistente separado de sessões e histórico (`lia_identity`, `lia_goals`, `lia_events`, `lia_commitments`, `lia_runtime_state`), Attention Engine determinístico sem loops de LLM, recuperação automática após restart e wake-up via scheduler distribuído `maintenance`, reutilizando `copilot_tasks` como única fila de execução.
+- **Learning Engine (`src/learning/*`):** Experience Store com deduplicação e TTL, Feedback Engine ponderado, Reflection Engine com fallback determinístico em `AI_PROVIDER_CREDITS_EXHAUSTED`, sistema de confiança com desaprendizado preservando histórico, isolamento de escopos (`individual`, `relationship`, `business`, `segment`, `global`), Strategy Registry versionado, Experiment Engine seguro com auto-rollback e fronteira explícita `ALLOW`/`DENY` (propostas de alteração de código viram `improvement_proposal`).
+- **Autonomy Engine (`src/autonomy/*`):** Permission Engine em 4 categorias (`A` interna, `B` pré-autorizada por organização, `C` confirmação obrigatória e `D` proibida), `PresenceEngine`, `CommunicationGuard` com deduplicação/cooldown, `VerificationEngine` (diferencia tentativa de resultado confirmado), `SalesAutonomy`, `SupportAutonomy`, `RelationshipEngine`, CRM Ports desacoplados e trilha de auditoria completa.
+- **Hardening estrutural e performance:** graceful shutdown seguro com `drainPending()`, ledger de webhooks fiel a lotes em debounce, broadcast SSE no worker do Copiloto com drenagem imediata (`drain()` + `onEnqueue`), limpeza de `Map`/`Set` com limites de memória e modularização de `src/flow/owner.mjs` (`owner-helpers.mjs` e `owner-commands.mjs`).
+- **Migrations e Readiness:** aplicadas as migrations backend-only com RLS (`20261121100000_lia_runtime.sql`, `20261121120000_lia_learning.sql` e `20261121150000_lia_autonomy.sql`); `/ready` monitora `copilot_tasks`, `lia_runtime`, `lia_learning` e `lia_autonomy`.
+
+Detalhes e guias: [`docs/release-3.0.0.md`](docs/release-3.0.0.md), [`docs/lia-runtime.md`](docs/lia-runtime.md), [`docs/lia-learning.md`](docs/lia-learning.md), [`docs/lia-autonomy.md`](docs/lia-autonomy.md) e [`docs/lia-safety.md`](docs/lia-safety.md).
 
 ## Novidades da Versão 2.9.0 — Execução persistente de tarefas do Copiloto
 

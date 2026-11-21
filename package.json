@@ -1,7 +1,7 @@
 {
   "name": "lia-sync",
-  "version": "2.9.0",
-  "description": "Lia Sync - Central de Atendimento Inteligente, Triagem Setorial, MoA e Copiloto Operacional via WhatsApp",
+  "version": "3.0.0",
+  "description": "Lia Sync - Runtime Persistente de Agente, Aprendizado Contínuo, Autonomia Operacional e Copiloto via WhatsApp",
   "author": "Lia Sync",
   "private": true,
   "type": "module",

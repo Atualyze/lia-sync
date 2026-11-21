@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0 - Lia Runtime, Aprendizado Contínuo e Autonomia Operacional
+- **Parte 1/3 — Lia Runtime (`src/runtime/*`):** identidade persistente (`lia_identity`), Goal Engine (`lia_goals`), Event Engine idempotente com recuperação pós-restart (`lia_events`), Attention Engine determinístico sem loops de LLM, compromissos persistentes (`lia_commitments`), ciclo de vida observável (`lia_runtime_state`), integração ao `/ready` e delegação exclusiva para `copilot_tasks`.
+- **Parte 2/3 — Learning Engine (`src/learning/*`):** Experience Store com relevância e TTL, Feedback Engine ponderado, Reflection Engine com cooldown/cota e fallback em `AI_PROVIDER_CREDITS_EXHAUSTED`, Knowledge Store com confiança/desaprendizado/resolução de conflitos, Relationship Learning, Regression Knowledge, Strategy Registry versionado, Experiment Engine seguro com auto-rollback e fronteira explícita `ALLOW`/`DENY` (`improvement_proposal`).
+- **Parte 3/3 — Autonomy Engine (`src/autonomy/*`):** Permission Engine em 4 categorias (`A`/`B`/`C`/`D`), `AutonomyBudget` por organização, `PresenceEngine`, `CommunicationGuard` com deduplicação/cooldown, `resolveContextualConflict`, `VerificationEngine`, recuperação segura sem retry em efeitos externos/incertos, `SalesAutonomy`, `SupportAutonomy`, `RelationshipEngine`, CRM Ports desacoplados, auditoria completa e métricas de Runtime e Sales.
+- **Hardening e Modularização:** correção do graceful shutdown (`app.drainPending()`), fidelidade do ledger de webhooks em debounce, broadcast SSE e drenagem imediata no worker do Copiloto, limites de memória em `rate`/`outboundDispatchClaims`, remoção de varredura `O(N)` no `archive()` e extração de `src/flow/owner-helpers.mjs` e `src/flow/owner-commands.mjs`.
+- **Migrations e Documentação:** adicionadas `20261121100000_lia_runtime.sql`, `20261121120000_lia_learning.sql` e `20261121150000_lia_autonomy.sql` (com `complete_schema_migration.sql` atualizado), além de `docs/release-3.0.0.md`, `docs/lia-runtime.md`, `docs/lia-learning.md`, `docs/lia-autonomy.md` e `docs/lia-safety.md`.
+- **Validação:** 478 testes automatizados aprovados (0 falhas), 43/43 contratos `PASS`, lint/build em 208 módulos e cobertura de 79,72%.
+
+## 2.9.0 - Execução persistente de tarefas do Copiloto
+- **Fila durável (`copilot_tasks`):** tarefas elegíveis persistidas com chave idempotente, leases, checkpoints e RPC atômica `claim_copilot_task` (`FOR UPDATE SKIP LOCKED`).
+- **Worker independente:** execução sequencial limitada a 4 etapas, revalidação de políticas, verificação de resultado e notificação terminal; criação Pix isolada sem retry automático.
+- **Tratamento de créditos:** erro HTTP 402 em provedores de IA retorna diagnóstico explícito (`AI_PROVIDER_CREDITS_EXHAUSTED`).
+
 ## 2.8.0 - Continuidade natural do Copiloto e revisão semântica de tarefas
 - **Contexto ativo:** o Copiloto mantém o pedido original, a última pergunta, o tipo da tarefa, os turnos e as ferramentas permitidas enquanto uma solicitação ainda está em andamento.
 - **Continuidade sem palavras-chave:** respostas curtas, reformulações, correções e mudanças parciais de assunto são avaliadas pelo contexto, não apenas por correspondência literal de palavras.

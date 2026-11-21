@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **2.9.0**
+Versão: **3.0.0**
 
 ## Objetivo
 
@@ -113,3 +113,36 @@ Eligible plans are validated and persisted with an idempotency key derived from 
 The worker allowlist is limited to read-only queries and explicitly authorized Pix creation. Read-only leases may be retried within the configured attempt limit. Pix creation is a single-step task with retry policy `never`, enforced in application code and by database constraints. Ambiguous external effects and ambiguous WhatsApp notification delivery become `uncertain`; neither is automatically replayed. A created Pix charge is not evidence of payment.
 
 Supabase is required when configured: if the task table/RPC is unavailable, queue operations fail closed and `/ready` reports `copilot_tasks` unavailable. Local JSON persistence is used when Supabase is not configured; opting into local fallback with Supabase configured requires `COPILOT_TASK_LOCAL_FALLBACK=true` and exactly one replica. Pending local jobs block cutover to Supabase until reconciled. The local task file is stored under the data directory and included by the recursive data backup.
+
+## Lia Runtime Foundation (Parte 1/3)
+
+O **Lia Runtime** (`src/runtime/*`) introduz continuidade operacional persistente separada das sessões de usuário, do histórico de mensagens e das tarefas individuais:
+
+- **`src/runtime/store.mjs`**: persistência backend-only no Supabase (`lia_identity`, `lia_goals`, `lia_events`, `lia_commitments`, `lia_runtime_state` via `20261121100000_lia_runtime.sql`) com fallback local atômico em `data/lia-runtime.json` quando o Supabase não está configurado (ou via `LIA_RUNTIME_LOCAL_FALLBACK=true` em instância única). Falha fechado se o armazenamento estiver indisponível ou corrompido.
+- **`src/runtime/identity.mjs`**: identidade operacional persistente da Lia (`identity`, `role`, `principles`, `operating_mode`, `owner_preferences`, `current_status`, `active_objectives`, `active_commitments`, `watched_items`).
+- **`src/runtime/goals.mjs`**: Goal Engine com ciclo de vida (`draft`, `active`, `paused`, `completed`, `cancelled`, `failed`), indicadores, prazos, progresso e vínculo com tarefas da `copilot_tasks`.
+- **`src/runtime/events.mjs`**: Event Engine e Event Dispatch com deduplicação idempotente (`deduplication_key`), isolamento de falhas, limite de profundidade causal, retries seguros e recuperação após restart.
+- **`src/runtime/attention.mjs`**: Attention Engine determinístico (zero chamadas de LLM em loop) que pontua relevância, urgência, impacto, risco e oportunidade. Eventos incertos (`task.uncertain`), Pix ou outbound exigem aprovação humana e nunca são executados automaticamente.
+- **`src/runtime/commitments.mjs`**: compromissos persistentes (`pending`, `in_progress`, `fulfilled`, `missed`, `cancelled`) que geram eventos `commitment.due` apenas quando pendentes e vencidos.
+- **`src/runtime/index.mjs`**: orquestrador com estados observáveis (`idle`, `observing`, `evaluating`, `planning`, `working`, `waiting`, `blocked`, `needs_human`, `recovering`), recuperação por timeout, logs estruturados sanitizados (`runtime.*`), integração ao `/ready` (`lia_runtime`) e wake-up econômico via scheduler distribuído existente (`maintenance` com `claim_maintenance_lease`), delegando qualquer execução segura somente-leitura exclusivamente para `copilot_tasks`.
+
+## Lia Learning Engine (Parte 2/3)
+
+A camada **`src/learning/*`** adiciona aprendizado contínuo e autoaperfeiçoamento controlado ao `Lia Runtime`, sem jamais alterar código de produção, políticas de segurança ou permissões:
+
+- **`src/learning/boundary.mjs`**: política explícita `ALLOW` vs `DENY` (`enforceSelfImprovementBoundary`) e sanitização de privacidade/segredos; propostas bloqueadas viram `improvement_proposal` para revisão humana.
+- **`src/learning/store.mjs`**: persistência backend-only no Supabase (`20261121120000_lia_learning.sql`: `lia_experiences`, `lia_knowledge`, `lia_hypotheses`, `lia_strategies`, `lia_experiments`, `lia_regressions`, `lia_relationships`, `lia_improvement_proposals`) com fallback local atômico em `data/lia-learning.json` e TTL para experiências.
+- **`src/learning/experience.mjs`**: Experience Store idempotente com filtro de relevância e Feedback Engine com peso maior para correções humanas explícitas.
+- **`src/learning/knowledge.mjs`**: Knowledge Store com sistema de confiança (`candidate` → `experimental` → `supported` → `consolidated` / `deprecated` / `contradicted`), isolamento de escopos (`individual`, `relationship`, `business`, `segment`, `global`), desaprendizado com histórico preservado, resolução de conflitos baseada em evidência, Relationship Learning e Regression Knowledge.
+- **`src/learning/experiments.mjs`**: Hypothesis Engine, Strategy Registry versionado (estratégias declarativas, não código), Experiment Engine com validação de segurança (opt-out, suppression, outbound guard, bloqueio de Pix e auto-rollback) e Evaluation Engine objetivo.
+- **`src/learning/reflection.mjs`**: Reflection Engine com cooldown/cota, fallback determinístico completo em ausência ou esgotamento de créditos de IA (`AI_PROVIDER_CREDITS_EXHAUSTED`), loop de aprendizado limitado e integração ao `/ready` (`lia_learning`).
+
+## Lia Autonomy Engine (Parte 3/3)
+
+A camada **`src/autonomy/*`** integra Runtime e Learning em autonomia operacional auditável e orientada a resultado (ver [`docs/lia-runtime.md`](docs/lia-runtime.md), [`docs/lia-autonomy.md`](docs/lia-autonomy.md), [`docs/lia-learning.md`](docs/lia-learning.md) e [`docs/lia-safety.md`](docs/lia-safety.md)):
+
+- **`src/autonomy/permissions.mjs`**: Permission Engine em 4 categorias (`A` interna, `B` pré-autorizada por organização, `C` confirmação obrigatória, `D` proibida), `AutonomyBudget` configurável por tenant e seletor de custo (`selectCostTier`).
+- **`src/autonomy/presence.mjs`**: `PresenceEngine`, `CommunicationGuard` (motivo real, deduplicação, cooldown e teto diário) e `resolveContextualConflict` (bloqueio de afirmação curta sob estado `uncertain` ou ambiguidade).
+- **`src/autonomy/verification.mjs`**: `VerificationEngine` (diferencia tentativa de resultado confirmado), `planRecovery` (proíbe retry de efeitos externos/incertos e pausa LLM em `AI_PROVIDER_CREDITS_EXHAUSTED`), `evaluateSystemHealth` e `AutonomyAuditStore` com métricas de Runtime e Sales.
+- **`src/autonomy/domains.mjs`**: CRM Ports desacoplados (`LeadProvider`, `ContactProvider`, `CompanyProvider`, `OpportunityProvider`, `ActivityProvider`, `PipelineProvider`), `RelationshipEngine`, `SalesAutonomy` (estados comerciais, scoring por fatores, cadência adaptativa e personalização factual) e `SupportAutonomy`.
+- **`src/autonomy/engine.mjs`**: `AutonomyEngine` com contrato de decisão auditável, priorização multi-objetivo anti-starvation, revisão diária proativa (`runDailyReview`) e integração ao `/ready` (`lia_autonomy`). Migration dedicada: `supabase/migrations/20261121150000_lia_autonomy.sql`.

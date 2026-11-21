@@ -29,6 +29,15 @@ const copilotContinuity = await readNormalized('src/flow/copilot-continuity.mjs'
 const copilotServer = await readNormalized('src/server.mjs');
 const copilotFlow = await readNormalized('src/flow.mjs');
 const supabaseRuntime = await readNormalized('src/supabase-runtime.mjs');
+const liaRuntimeMigration = await readNormalized('supabase/migrations/20261121100000_lia_runtime.sql');
+const liaRuntimeIndex = await readNormalized('src/runtime/index.mjs');
+const liaRuntimeAttention = await readNormalized('src/runtime/attention.mjs');
+const liaLearningMigration = await readNormalized('supabase/migrations/20261121120000_lia_learning.sql');
+const liaLearningBoundary = await readNormalized('src/learning/boundary.mjs');
+const liaLearningReflection = await readNormalized('src/learning/reflection.mjs');
+const liaAutonomyMigration = await readNormalized('supabase/migrations/20261121150000_lia_autonomy.sql');
+const liaAutonomyPermissions = await readNormalized('src/autonomy/permissions.mjs');
+const liaAutonomyVerification = await readNormalized('src/autonomy/verification.mjs');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
   ['campaign claims and retry state are persisted', observabilityMigration.includes("'sending'") && observabilityMigration.includes('attempt_count') && campaigns.includes('status=in.(pending,paused)') && campaigns.includes("status: 'sending'")],
@@ -64,6 +73,15 @@ const checks = [
   ['Copilot continuity handles direct Pix choices, status questions, and unsupported promises', copilotContinuity.includes('isDirectPixChoice') && copilotContinuity.includes('isCopilotTaskStatusQuestion') && copilotContinuity.includes('claimsUnexecutedToolWork')],
   ['persistent Copilot worker is injected through flow and started/stopped with server lifecycle', copilotFlow.includes('copilotTaskStore = null') && copilotServer.includes('createCopilotTaskWorker') && copilotServer.includes('taskQueueReadinessCheck') && copilotServer.includes('name: \'copilot_tasks\'') && copilotServer.includes('copilotTaskTimer') && copilotServer.includes('clearInterval(copilotTaskTimer)') && copilotServer.includes('COPILOT_TASK_LOCAL_FALLBACK')],
   ['Supabase conversation metadata preserves the active durable task identity across restarts', supabaseRuntime.includes('taskId: value.taskId') && supabaseRuntime.includes('taskStatus: value.taskStatus')],
+  ['Lia Runtime migration is backend-only with RLS and no browser policy', liaRuntimeMigration.includes('create table if not exists public.lia_identity') && liaRuntimeMigration.includes('create table if not exists public.lia_goals') && liaRuntimeMigration.includes('create table if not exists public.lia_events') && liaRuntimeMigration.includes('create table if not exists public.lia_commitments') && liaRuntimeMigration.includes('create table if not exists public.lia_runtime_state') && liaRuntimeMigration.includes('enable row level security') && !liaRuntimeMigration.includes('create policy')],
+  ['complete Supabase schema includes the Lia Runtime migration', copilotTaskSchema.includes('-- ======== 20261121100000_lia_runtime.sql ========') && copilotTaskSchema.includes('create table if not exists public.lia_commitments')],
+  ['Lia Runtime reuses copilot_tasks, enforces read-only safety, and integrates with /ready and maintenance scheduler', liaRuntimeIndex.includes('taskStore.enqueue') && liaRuntimeIndex.includes('SAFE_RUNTIME_READ_TOOLS') && liaRuntimeAttention.includes("type === 'task.uncertain'") && copilotServer.includes('liaRuntime.readiness()') && copilotServer.includes("liaRuntime?.wake({ reason: 'scheduler' })")],
+  ['Lia Learning migration is backend-only with RLS and no browser policy', liaLearningMigration.includes('create table if not exists public.lia_experiences') && liaLearningMigration.includes('create table if not exists public.lia_knowledge') && liaLearningMigration.includes('create table if not exists public.lia_experiments') && liaLearningMigration.includes('create table if not exists public.lia_strategies') && liaLearningMigration.includes('create table if not exists public.lia_regressions') && liaLearningMigration.includes('enable row level security') && !liaLearningMigration.includes('create policy')],
+  ['complete Supabase schema includes the Lia Learning migration', copilotTaskSchema.includes('-- ======== 20261121120000_lia_learning.sql ========') && copilotTaskSchema.includes('create table if not exists public.lia_improvement_proposals')],
+  ['Lia Learning enforces self-improvement boundary, AI credit exhaustion fallback, and /ready integration', liaLearningBoundary.includes('production_code_modification') && liaLearningBoundary.includes('safety_bypass') && liaLearningReflection.includes('AI_PROVIDER_CREDITS_EXHAUSTED') && copilotServer.includes('liaLearning.readiness()')],
+  ['Lia Autonomy migration is backend-only with RLS, rollback docs, and no browser policy', liaAutonomyMigration.includes('create table if not exists public.lia_org_autonomy_policies') && liaAutonomyMigration.includes('create table if not exists public.lia_autonomy_decisions') && liaAutonomyMigration.includes('create table if not exists public.lia_sales_states') && liaAutonomyMigration.includes('enable row level security') && !liaAutonomyMigration.includes('create policy')],
+  ['complete Supabase schema includes the Lia Autonomy migration', copilotTaskSchema.includes('-- ======== 20261121150000_lia_autonomy.sql ========') && copilotTaskSchema.includes('create table if not exists public.lia_proactive_notifications')],
+  ['Lia Autonomy enforces 4-tier permissions, verification, non-retryable external effects, and /ready integration', liaAutonomyPermissions.includes('D_FORBIDDEN') && liaAutonomyPermissions.includes('requireHumanForPix: true') && liaAutonomyVerification.includes('NON_RETRYABLE_EFFECTS') && copilotServer.includes('liaAutonomy.readiness()')],
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);

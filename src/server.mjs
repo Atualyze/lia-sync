@@ -33,6 +33,9 @@ import { createProspecting } from './prospecting/index.mjs';
 import { IntegrationsStore } from './http/integrations-store.mjs';
 import { CopilotTaskStore } from './copilot-tasks.mjs';
 import { createCopilotTaskWorker } from './copilot-task-worker.mjs';
+import { LiaRuntimeStore, createLiaRuntime } from './runtime/index.mjs';
+import { LiaLearningStore, createLearningEngine } from './learning/index.mjs';
+import { createAutonomyEngine } from './autonomy/index.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -62,6 +65,44 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   const budgetGate = new AIBudgetGate({ operationsStore });
   const askAIWithBudget = args => askAI({ ...args, budgetGate });
   const copilotAI = { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice };
+  const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
+  setOutboundSuppressionCheck(phone => campaignStore.isSuppressed(phone));
+  const liaLearningStore = new LiaLearningStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'lia-learning.json'),
+    allowLocalFallback: process.env.LIA_LEARNING_LOCAL_FALLBACK === 'true',
+    logger: console
+  });
+  const liaLearning = createLearningEngine({
+    store: liaLearningStore,
+    ai: copilotAI,
+    isSuppressed: phone => campaignStore.isSuppressed(phone),
+    logger: console
+  });
+  await liaLearning.start();
+  const liaRuntimeStore = new LiaRuntimeStore({
+    client: store.client,
+    filePath: path.join(path.dirname(config.dataFile), 'lia-runtime.json'),
+    allowLocalFallback: process.env.LIA_RUNTIME_LOCAL_FALLBACK === 'true',
+    logger: console
+  });
+  const liaRuntime = createLiaRuntime({
+    store: liaRuntimeStore,
+    taskStore: copilotTaskStore,
+    learningEngine: liaLearning,
+    getBotConfig: () => adminConfig.active,
+    getHumanPhone,
+    logger: console
+  });
+  await liaRuntime.start();
+  const liaAutonomy = createAutonomyEngine({
+    runtime: liaRuntime,
+    learning: liaLearning,
+    taskStore: copilotTaskStore,
+    isSuppressed: phone => campaignStore.isSuppressed(phone),
+    getBotConfig: () => adminConfig.active,
+    logger: console
+  });
   const copilotTaskWorker = createCopilotTaskWorker({
     taskStore: copilotTaskStore,
     store,
@@ -88,8 +129,14 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       ...(queueMode === 'local' && copilotTaskStore.localCorrupt ? { reason: 'local_store_corrupt' } : {}),
       ...(queueMode === 'local' && !copilotTaskStore.localCorrupt ? { reason: 'single_instance_local_fallback' } : {})
     };
-    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck];
-    const ok = Boolean(base?.ok) && queueAvailable;
+    const runtimeCheck = liaRuntime.readiness();
+    const runtimeAvailable = runtimeCheck.status === 'ready';
+    const learningCheck = liaLearning.readiness();
+    const learningAvailable = learningCheck.status === 'ready';
+    const autonomyCheck = liaAutonomy.readiness();
+    const autonomyAvailable = autonomyCheck.status === 'ready';
+    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck, runtimeCheck, learningCheck, autonomyCheck];
+    const ok = Boolean(base?.ok) && queueAvailable && runtimeAvailable && learningAvailable && autonomyAvailable;
     return { ...base, ok, status: ok ? 'ready' : 'not_ready', checks };
   };
   const faqFor = (botConfig) => async () => {
@@ -302,8 +349,6 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     if (batches.length) await Promise.allSettled(batches);
   };
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
-  const campaignStore = new CampaignStore({ client: supabaseRuntime.client, sender: sendText });
-  setOutboundSuppressionCheck(phone => campaignStore.isSuppressed(phone));
   const prospecting = createProspecting({
     client: supabaseRuntime.client,
     sender: sendText,
@@ -374,7 +419,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     askAI: askAIWithBudget,
     integrationsStore
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -425,6 +470,7 @@ if (isDirectRun) {
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
     followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
       }).catch(e => console.error('[maintenance]', e.message));
+      await app.liaRuntime?.wake({ reason: 'scheduler' }).catch(e => console.error('[lia-runtime]', e.message));
       return await app.prospecting?.tick({ stageOutboundDispatch: app.stageAutomatedOutbound });
     } finally {
       maintenanceRunning = false;
