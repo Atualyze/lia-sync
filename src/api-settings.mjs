@@ -29,6 +29,15 @@ export const API_SETTING_FIELDS = Object.freeze([
   { key: 'evolutionUrl', label: 'Evolution API URL', group: 'whatsapp', secret: false, isUrl: true },
   { key: 'evolutionKey', label: 'Evolution API Key', group: 'whatsapp', secret: true },
   { key: 'evolutionInstance', label: 'Evolution Instance', group: 'whatsapp', secret: false },
+  // Google Workspace (Drive, Docs, Planilhas e Agenda)
+  { key: 'googleClientId', label: 'Google OAuth Client ID', group: 'google', secret: false },
+  { key: 'googleClientSecret', label: 'Google OAuth Client Secret', group: 'google', secret: true },
+  { key: 'googleRefreshToken', label: 'Google OAuth Refresh Token', group: 'google', secret: true },
+  { key: 'googleServiceAccountEmail', label: 'Google Service Account Email', group: 'google', secret: false },
+  { key: 'googleServiceAccountPrivateKey', label: 'Google Service Account Private Key (PEM)', group: 'google', secret: true, maxLength: 8192 },
+  { key: 'googleDriveFolderId', label: 'Google Drive Folder ID (Padrão)', group: 'google', secret: false },
+  { key: 'googleSheetsDefaultId', label: 'Google Sheets Spreadsheet ID (Padrão)', group: 'google', secret: false },
+  { key: 'googleCalendarId', label: 'Google Calendar ID (ex: primary)', group: 'google', secret: false },
   // Integrações & API v1
   { key: 'chatwootInternalUrl', label: 'Chatwoot Internal URL', group: 'integrations', secret: false, isUrl: true },
   { key: 'faqUrl', label: 'FAQ Remota URL', group: 'integrations', secret: false, isUrl: true },
@@ -53,7 +62,8 @@ function validateFieldValue(field, rawValue) {
   }
   const str = String(rawValue || '').trim();
   if (!str) return { skip: true };
-  if (str.length > 512) throw new Error(`value_too_long:${field.key}`);
+  const limit = Number(field.maxLength) || 512;
+  if (str.length > limit) throw new Error(`value_too_long:${field.key}`);
   if (field.isUrl) {
     let parsed;
     try { parsed = new URL(str); } catch { throw new Error(`invalid_url:${field.key}`); }

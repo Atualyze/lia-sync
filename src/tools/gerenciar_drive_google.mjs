@@ -1,4 +1,5 @@
 import { resolveGoogleAccessToken } from './google_auth.mjs';
+import { config } from '../config.mjs';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
@@ -17,8 +18,8 @@ export const toolGerenciarDriveGoogle = {
     properties: {
       acao: {
         type: 'STRING',
-        enum: ['listar_arquivos', 'buscar_arquivo', 'enviar_arquivo_whatsapp'],
-        description: 'Ação no Google Drive.'
+        enum: ['listar_arquivos', 'buscar_arquivo', 'ler_documento', 'enviar_arquivo_whatsapp'],
+        description: 'Ação no Google Drive / Google Docs (ler_documento lê o texto de um Google Doc).'
       },
       busca: {
         type: 'STRING',
@@ -59,7 +60,7 @@ export const toolGerenciarDriveGoogle = {
 
     if (acao === 'listar_arquivos' || acao === 'buscar_arquivo') {
       const toolSettings = context?.botConfig?.tools?.settings?.gerenciar_drive_google || {};
-      const folderId = sanitizeQueryTerm(args.folderId || toolSettings.defaultFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '');
+      const folderId = sanitizeQueryTerm(args.folderId || toolSettings.defaultFolderId || config.googleDriveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '');
       const search = sanitizeQueryTerm(args.busca || '');
       const clauses = ['trashed = false'];
       if (folderId) clauses.push(`'${folderId}' in parents`);
@@ -104,6 +105,29 @@ export const toolGerenciarDriveGoogle = {
     }
 
     const isGoogleDoc = String(meta.mimeType || '').startsWith('application/vnd.google-apps.');
+
+    if (acao === 'ler_documento') {
+      const textUrl = isGoogleDoc
+        ? `${DRIVE_BASE}/${encodeURIComponent(fileId)}/export?mimeType=text/plain`
+        : `${DRIVE_BASE}/${encodeURIComponent(fileId)}?alt=media`;
+      const docRes = await fetch(textUrl, {
+        headers: authHeaders,
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (!docRes.ok) {
+        return { success: false, error: 'google_docs_read_failed', status: docRes.status, message: 'Não foi possível ler o conteúdo do documento no Google Drive/Docs.' };
+      }
+      const textContent = (await docRes.text()).trim().slice(0, 12_000);
+      return {
+        success: true,
+        acao,
+        fileId,
+        fileName: String(meta.name || 'documento').trim(),
+        mimeType: meta.mimeType || 'text/plain',
+        content: textContent
+      };
+    }
+
     const downloadUrl = isGoogleDoc
       ? `${DRIVE_BASE}/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`
       : `${DRIVE_BASE}/${encodeURIComponent(fileId)}?alt=media`;

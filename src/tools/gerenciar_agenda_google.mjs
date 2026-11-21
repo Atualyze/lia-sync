@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { config } from '../config.mjs';
 
 const MOCK_SLOTS = ['09:00', '10:30', '14:00', '15:30', '17:00'];
 const GOOGLE_CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
@@ -19,12 +20,12 @@ const integration = (botConfig = {}) => {
     defaultEventDurationMinutes: Number(configured.defaultEventDurationMinutes) || 30,
     accessToken: process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || '',
     apiKey: process.env.GOOGLE_CALENDAR_API_KEY || '',
-    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
-    refreshToken: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || process.env.GOOGLE_REFRESH_TOKEN || '',
-    serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
-    serviceAccountPrivateKey: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary'
+    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || config.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || '',
+    refreshToken: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || config.googleRefreshToken || process.env.GOOGLE_REFRESH_TOKEN || '',
+    serviceAccountEmail: config.googleServiceAccountEmail || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
+    serviceAccountPrivateKey: (config.googleServiceAccountPrivateKey || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    calendarId: config.googleCalendarId || process.env.GOOGLE_CALENDAR_ID || 'primary'
   };
 };
 

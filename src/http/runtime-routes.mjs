@@ -1,6 +1,7 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
 import { opened, failures } from '../ai/state.mjs';
+import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
 import { config } from '../config.mjs';
 
 /**
@@ -164,6 +165,7 @@ export async function handleRuntimeDashboardRoutes({
         const result = await apiSettingsStore.update(body);
         opened.clear();
         failures.clear();
+        clearGoogleTokenCache();
         await operationsStore?.recordAudit?.({
           actor: authContext?.email || authContext?.userId || 'admin',
           action: 'api_settings_updated',

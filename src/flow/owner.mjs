@@ -762,7 +762,26 @@ export async function handleOwnerSession({
                 targetSession.updatedAt = timestamp;
                 store.markDirty();
                 await store.flush?.().catch(() => {});
-                return recordSelfTurn(`✅ *Retornei para ${targetName} e o atendimento continua comigo!*\n\n> "${filteredClientReply}"`);
+
+                // Aprendizado contínuo: salva a orientação geral do admin na memória de negócio
+                // para que a Lia responda sozinha em futuras perguntas semelhantes.
+                let learnedNote = '';
+                try {
+                  const learnedContent = `Quando um cliente perguntar sobre "${consult.question.slice(0, 120)}": ${consultAction.text.slice(0, 260)}`;
+                  const savedMem = memoryStore.remember({
+                    scopeKey: 'default:business',
+                    type: 'fact',
+                    content: learnedContent,
+                    importance: 0.85,
+                    confidence: 0.95,
+                    source: 'admin_consult'
+                  });
+                  if (savedMem?.saved) {
+                    learnedNote = '\n\n🧠 _Salvei essa orientação na memória de negócio para responder sozinha nas próximas vezes._';
+                  }
+                } catch {}
+
+                return recordSelfTurn(`✅ *Retornei para ${targetName} e o atendimento continua comigo!*\n\n> "${filteredClientReply}"${learnedNote}`);
               }
             }
           }

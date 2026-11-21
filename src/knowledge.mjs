@@ -68,9 +68,12 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const hasGoogleCredentials = Boolean(
     process.env.GOOGLE_SERVICE_ACCOUNT_JSON
     || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    || (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey)
+    || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
     || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
     || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
     || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
     || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
   );
   const googleDriveAvailable = hasGoogleCredentials && botConfig?.tools?.enabled?.gerenciar_drive_google !== false;
@@ -119,11 +122,19 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     ].filter(Boolean).join('\n')
     : '';
   const memoryScopeKey = buildMemoryScopeKey({ phone: session.phone || '', isOwner: copilotMode });
-  const activeMemories = Array.isArray(memoryItems) ? memoryItems : memoryStore.retrieve({
+  const personalMemories = Array.isArray(memoryItems) ? memoryItems : memoryStore.retrieve({
     scopeKey: memoryScopeKey,
     query: session.lastUserText || '',
     limit: 6
   });
+  const businessMemories = !copilotMode
+    ? memoryStore.retrieve({
+        scopeKey: 'default:business',
+        query: session.lastUserText || '',
+        limit: 4
+      })
+    : [];
+  const activeMemories = [...personalMemories, ...businessMemories].slice(0, 8);
   const memorySection = buildMemoryPromptSection(activeMemories);
   const recalledHistory = Array.isArray(session.recalledHistory) ? session.recalledHistory.slice(0, 10) : [];
   const historyRecallSection = session.historyRecallRequested

@@ -1,4 +1,5 @@
 import { resolveGoogleAccessToken } from './google_auth.mjs';
+import { config } from '../config.mjs';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
@@ -57,6 +58,7 @@ export const toolConsultarPlanilhaGoogle = {
       args.spreadsheetId ||
       toolSettings.defaultSpreadsheetId ||
       context?.botConfig?.integrations?.googleSheets?.defaultSpreadsheetId ||
+      config.googleSheetsDefaultId ||
       process.env.GOOGLE_SHEETS_DEFAULT_ID ||
       ''
     ).trim();

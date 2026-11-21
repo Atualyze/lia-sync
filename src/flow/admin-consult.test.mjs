@@ -6,8 +6,11 @@ import { rm } from 'node:fs/promises';
 import { createFlow } from '../flow.mjs';
 import { SessionStore } from '../sessions.mjs';
 import { getEnabledTools } from '../tools/index.mjs';
+import { toolGerenciarDriveGoogle } from '../tools/gerenciar_drive_google.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
+import { config } from '../config.mjs';
+import { memoryStore } from '../core/memory.mjs';
 
 test('sem credenciais Google, ferramentas Drive/Sheets/Agenda não são expostas ao LLM e o prompt proíbe mentir', () => {
   const prevKeys = {
@@ -121,12 +124,72 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     });
 
     assert.match(ownerConfirmation, /Retornei para Atualyze e o atendimento continua comigo/i);
+    assert.match(ownerConfirmation, /Salvei essa orientação na memória de negócio/i);
     assert.equal(sentToClient.length, 1, 'deve entregar a resposta automaticamente ao cliente');
     assert.match(sentToClient[0].msg, /minuta do contrato na reunião de alinhamento/i);
     assert.equal(clientSession.pendingAdminConsult, null);
     assert.equal(clientSession.human, false);
     assert.match(clientSession.history.at(-1).content, /minuta do contrato/i);
+
+    // 3. Próximo cliente que perguntar sobre modelo de contrato já recebe o aprendizado no prompt
+    const nextClientPrompt = buildSystemPrompt({
+      session: { phone: '5588999992222', history: [], lastUserText: 'Vocês têm o modelo de contrato?' },
+      isOwner: false
+    });
+    assert.match(nextClientPrompt, /minuta do contrato na reunião de alinhamento/i);
   } finally {
+    // Limpa memória de negócio criada no teste
+    for (const mem of memoryStore.list('default:business')) {
+      if (mem.source === 'admin_consult') memoryStore.forget({ scopeKey: 'default:business', id: mem.id });
+    }
     await rm(file, { force: true }).catch(() => {});
+  }
+});
+
+test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento extrai texto de Google Docs', async () => {
+  const prevId = config.googleClientId;
+  const prevSecret = config.googleClientSecret;
+  const prevRefresh = config.googleRefreshToken;
+  const prevToken = process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
+  const prevFetch = globalThis.fetch;
+
+  try {
+    config.googleClientId = 'test-client-id';
+    config.googleClientSecret = 'test-client-secret';
+    config.googleRefreshToken = 'test-refresh-token';
+
+    const tools = getEnabledTools({}, { actor: 'client' }).map(t => t.name);
+    assert.equal(tools.includes('gerenciar_drive_google'), true);
+    assert.equal(tools.includes('consultar_planilha_google'), true);
+    assert.equal(tools.includes('gerenciar_agenda_google'), true);
+
+    process.env.GOOGLE_DRIVE_ACCESS_TOKEN = 'ya29.test-token';
+    globalThis.fetch = async (url) => {
+      const sUrl = String(url);
+      if (sUrl.includes('fields=id,name,mimeType,size')) {
+        return new Response(JSON.stringify({
+          id: 'doc-123',
+          name: 'Modelo de Contrato Atualyze',
+          mimeType: 'application/vnd.google-apps.document',
+          size: '1024'
+        }), { status: 200 });
+      }
+      if (sUrl.includes('/export?mimeType=text/plain')) {
+        return new Response('CLÁUSULA 1: Prestação de serviços de automação com IA sem fidelidade.', { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    };
+
+    const doc = await toolGerenciarDriveGoogle.execute({ acao: 'ler_documento', fileId: 'doc-123' }, {});
+    assert.equal(doc.success, true);
+    assert.equal(doc.fileName, 'Modelo de Contrato Atualyze');
+    assert.match(doc.content, /CLÁUSULA 1/);
+  } finally {
+    config.googleClientId = prevId;
+    config.googleClientSecret = prevSecret;
+    config.googleRefreshToken = prevRefresh;
+    if (prevToken === undefined) delete process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
+    else process.env.GOOGLE_DRIVE_ACCESS_TOKEN = prevToken;
+    globalThis.fetch = prevFetch;
   }
 });

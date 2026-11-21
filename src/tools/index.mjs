@@ -1,3 +1,4 @@
+import { config } from '../config.mjs';
 import { toolConsultarContato } from './consultar_contato.mjs';
 import { toolAgendarRetorno } from './agendar_retorno.mjs';
 import { toolTransferirSetor } from './transferir_setor.mjs';
@@ -99,9 +100,12 @@ export function hasGoogleWorkspaceCredentials() {
   return Boolean(
     process.env.GOOGLE_SERVICE_ACCOUNT_JSON
     || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    || (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey)
+    || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
     || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
     || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
     || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
     || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
   );
 }
