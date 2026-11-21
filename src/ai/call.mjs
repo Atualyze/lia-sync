@@ -479,10 +479,15 @@ export async function askAI(args) {
         preferredModel: provider === 'gemini' ? (preferredModel?.startsWith('gemini-') ? preferredModel : (providerDefaultModel('gemini', aiConfig, null) || 'gemini-3.8-flash')) : null
       });
       if (res?.raw) {
+        const parsed = parseAIResponse(res.raw);
+        const hasUsableReply = Boolean(String(parsed?.reply || '').trim());
+        const hasToolCalls = Array.isArray(parsed?.tool_calls) && parsed.tool_calls.length > 0;
+        if (!hasUsableReply && !hasToolCalls) {
+          throw new Error(`${provider} empty_reply`);
+        }
         failures.set(provider, 0);
         opened.delete(provider);
         lastErrors.delete(provider);
-        const parsed = parseAIResponse(res.raw);
         const executedModel = res.model || providerModel || preferredModel;
         const settlementConfirmed = await res.budgetPermit?.commit?.(res.tokens, { provider, model: executedModel });
         if (res.budgetPermit?.requestId && settlementConfirmed !== true) {

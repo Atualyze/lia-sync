@@ -647,7 +647,8 @@ export async function handleClientMessage({
         raw = m ? (m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()) : '';
       }
 
-      if (!result || !raw) {
+      const hasPendingToolCalls = Array.isArray(result?.tool_calls) && result.tool_calls.length > 0;
+      if (!result || (!raw && !hasPendingToolCalls)) {
         if (origin === 'simulation' || origin === 'preview') {
           raw = `Desculpe, não consegui preparar uma resposta agora. Não quero te passar uma informação imprecisa. Posso tentar novamente ou chamar ${owner} para ajudar. Como prefere seguir?`;
           const oneHourAgo = now() - 3600000;
@@ -1335,6 +1336,38 @@ export async function handleClientMessage({
           ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
           : toolFiltered.text;
         safeReplyText = finalReply;
+      }
+
+      if (!String(finalReply || '').trim() && hasPendingToolCalls) {
+        const synthesized = await ai?.askAI?.({
+          system: `${systemPrompt}\n\n[SÍNTESE_FINAL_SEM_FERRAMENTAS]\nResponda diretamente ao cliente em texto natural e claro, sem chamar ferramentas. Se o recurso solicitado (como contrato ou documento interno) depender de ${owner}, explique de forma acolhedora que vai verificar com ${owner} e retornar por aqui.`,
+          history: activeContext.history.slice(-contextTurns, -1),
+          userText,
+          botConfig,
+          disableToolCalling: true,
+          deadline: aiDeadline
+        }).catch(() => null);
+        const synthText = String(synthesized?.reply || '').trim();
+        if (synthText) {
+          const synthFiltered = filterReply(synthText, {
+            allowedPrices,
+            strictPrices: true,
+            alreadyIntroduced: Boolean(promptSession.hasPriorConversation),
+            botName: assistant
+          });
+          if (!synthFiltered.blocked && synthFiltered.text) {
+            finalReply = synthFiltered.text;
+            safeReplyText = finalReply;
+          }
+        }
+        if (!String(finalReply || '').trim()) {
+          if (origin === 'simulation' || origin === 'preview') {
+            finalReply = `Vou verificar essa informação com ${owner} para te passar certinho e já te retorno por aqui!`;
+            safeReplyText = finalReply;
+          } else {
+            return null;
+          }
+        }
       }
 
       if (botConfig?.style?.emoji === 'off' && safeReplyText) {
