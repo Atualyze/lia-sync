@@ -1,6 +1,7 @@
 import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { getCircuitBreakers } from '../ai.mjs';
+import { getBaileysProvider } from '../whatsapp.mjs';
 import { ALL_TOOLS, TOOL_SETTINGS_SCHEMA, isClientToolAllowed } from '../tools/index.mjs';
 import { isUuid, maskPhone } from '../operations.mjs';
 import { getBridgeConfigStatus } from './bridge-config-status.mjs';
@@ -119,24 +120,43 @@ export async function getIntegrations(webhookEventStore, sectorProjection, admin
     counts[event.status] = (counts[event.status] || 0) + 1;
     return counts;
   }, {});
+  const activeEngine = config.whatsappProvider || 'evolution';
+  const baileys = getBaileysProvider();
+  const baileysStatus = baileys ? baileys.getStatus() : null;
+  const evolutionStatus = activeEngine === 'baileys'
+    ? {
+        configured: Boolean(baileysStatus?.connected || baileysStatus?.phone),
+        status: baileysStatus?.connected ? 'connected' : (baileysStatus?.status || 'disconnected'),
+        checkedAt: new Date().toISOString(),
+        latencyMs: 0,
+        instance: baileysStatus?.phone ? `+${baileysStatus.phone}` : 'Baileys Nativo',
+        apiHost: 'WebSocket Direto (Baileys)',
+        connected: Boolean(baileysStatus?.connected),
+        ownerLinked: Boolean(baileysStatus?.phone),
+        isBaileysNative: true
+      }
+    : await probeEvolution();
+
   return {
+    activeWhatsappEngine: activeEngine,
+    baileys: baileysStatus,
     chatwootBridge: getBridgeConfigStatus({ configured: Boolean(config.webhookToken) }),
     // O que o motor realmente está usando: expediente publicado e projeção de setores do Chatwoot.
     businessHours: resumoJanelaDeAtendimento(adminConfig?.active?.business?.hoursConfig),
     sectorsProjection: sectorProjection
       ? sectorProjection.status()
       : { synced: false, count: 0, updatedAt: null },
-    evolution: await probeEvolution(),
+    evolution: evolutionStatus,
     supabase: { configured: Boolean(config.supabaseUrl && config.supabaseServiceRoleKey), urlHost: safeHost(config.supabaseUrl) },
     webhook: {
       authenticated: Boolean(config.webhookToken),
-      route: '/webhook/evolution',
+      route: activeEngine === 'baileys' ? 'WebSocket Direto (Baileys)' : '/webhook/evolution',
       ledgerConfigured: webhookHistory.configured,
       recentEvents: (webhookHistory.events || []).slice(0, 50),
       recentCounts: webhookCounts
     },
     providers,
-    note: 'Credenciais e payloads de webhook não são expostos; o status da Evolution é uma verificação ao vivo.'
+    note: 'Credenciais e payloads de webhook não são expostos; o status do canal WhatsApp é verificado em tempo real.'
   };
 }
 

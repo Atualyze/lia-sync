@@ -846,18 +846,22 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
       waPill.className = `pill mini ${isOk ? 'mint' : 'amber'}`;
     }
     if (waMeta) {
-      waMeta.textContent = `Instância: ${ev.instance || '-'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
+      waMeta.textContent = ev.isBaileysNative
+        ? `Baileys Nativo · ${ev.instance || '-'}`
+        : `Instância: ${ev.instance || '-'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
     }
   } else if (hlth?.readiness?.checks) {
-    const evCheck = hlth.readiness.checks.find(c => c.name === 'evolution');
+    const evCheck = hlth.readiness.checks.find(c => c.name === 'whatsapp' || c.name === 'evolution');
     const isOk = evCheck?.status === 'ready' || evCheck?.status === 'ok';
     if (waDot) waDot.className = `status-dot ${isOk ? '' : 'warn'}`;
     if (waPill) {
       waPill.textContent = isOk ? 'Online' : (evCheck?.status || 'verificando');
       waPill.className = `pill mini ${isOk ? 'mint' : 'amber'}`;
     }
-    if (waMeta && hlth.system?.instance) {
-      waMeta.textContent = `Instância: ${hlth.system.instance} · Evolution API`;
+    if (waMeta) {
+      waMeta.textContent = evCheck?.name === 'whatsapp'
+        ? `WhatsApp · Baileys Nativo`
+        : `Instância: ${hlth.system?.instance || '-'} · Evolution API`;
     }
   }
 
@@ -2779,7 +2783,9 @@ async function renderOverview(opts = {}) {
     const ev = integrations?.evolution;
     if ($('#ov-kpi-wa')) {
       $('#ov-kpi-wa').textContent = ev ? (ev.connected ? 'Conectado' : ev.status) : (health?.readiness?.ok ? 'Online' : 'Verificando');
-      $('#ov-kpi-wa-sub').textContent = ev ? `Instância ${ev.instance || '-'} · ${ev.latencyMs ?? '-'} ms` : `Instância ${health?.system?.instance || '-'}`;
+      $('#ov-kpi-wa-sub').textContent = ev
+        ? (ev.isBaileysNative ? `Baileys Nativo · ${ev.instance || '-'}` : `Instância ${ev.instance || '-'} · ${ev.latencyMs ?? '-'} ms`)
+        : `Instância ${health?.system?.instance || '-'}`;
     }
     if ($('#ov-kpi-ai')) {
       $('#ov-kpi-ai').textContent = `${(health?.system?.provider || 'gemini').toUpperCase()} · ${health?.system?.model || '-'}`;
@@ -2920,13 +2926,29 @@ async function renderIntegrations() {
     const sectors = data.sectorsProjection || {};
     const hoursDetail = `${hours.summary || 'Expediente indisponível.'}${hours.enabled && !hours.isOpenNow && hours.nextOpenAt ? ` · reabertura ${new Date(hours.nextOpenAt).toLocaleString('pt-BR')}` : ''}`;
     const sectorsDetail = `${Number(sectors.count) || 0} setor(es) na projeção · última leitura ${sectors.updatedAt ? new Date(sectors.updatedAt).toLocaleString('pt-BR') : 'ainda não sincronizada'}`;
+    const isBaileysEngine = data.activeWhatsappEngine === 'baileys' || data.evolution?.isBaileysNative;
+    const whatsappChannelRow = isBaileysEngine
+      ? [
+          'WhatsApp Nativo (Baileys)',
+          'WhatsApp & Canal',
+          data.evolution?.status || 'connected',
+          `WebSocket Direto na Lia · número ${data.evolution?.instance || '-'} · ${data.baileys?.stats?.rssMb ? `${data.baileys.stats.rssMb} MB RSS` : 'latência 0 ms'}`,
+          `Recebidas: ${data.baileys?.stats?.messagesReceived ?? 0} · Enviadas: ${data.baileys?.stats?.messagesSent ?? 0} · Filtradas (Gate): ${data.baileys?.stats?.messagesFiltered ?? 0}`
+        ]
+      : [
+          'Evolution API',
+          'WhatsApp & Canal',
+          data.evolution.status,
+          `Host ${data.evolution.apiHost || '-'} · instância ${data.evolution.instance || '-'} · latência ${data.evolution.latencyMs ?? '-'} ms`,
+          data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'
+        ];
     const statuses = [
       ['Ponte Chatwoot Lia', 'Ponte Chatwoot', data.chatwootBridge?.status || 'unknown', `Revisão ${data.chatwootBridge?.revision ?? '-'} · última leitura ${data.chatwootBridge?.lastReadAt ? new Date(data.chatwootBridge.lastReadAt).toLocaleString('pt-BR') : 'aguardando primeira leitura'}`],
       ['Expediente da Lia', 'Operação', !hours.enabled ? '24 horas' : (hours.isOpenNow ? 'aberto' : 'fechado'), hoursDetail],
       ['Setores do Chatwoot', 'Ponte Chatwoot', sectors.synced ? 'sincronizado' : 'aguardando sincronização', sectorsDetail],
-      ['Evolution API', 'WhatsApp & Canal', data.evolution.status, `Host ${data.evolution.apiHost || '-'} · instância ${data.evolution.instance || '-'} · latência ${data.evolution.latencyMs ?? '-'} ms`, data.evolution.ownerLinked ? 'Instância vinculada a um telefone' : 'Telefone proprietário não vinculado'],
+      whatsappChannelRow,
       ['Supabase', 'Banco de Dados', data.supabase.configured ? 'configurado' : 'não configurado', `Projeto ${data.supabase.urlHost || '-'} · backend-only`],
-      ['Autenticação do webhook', 'Webhook', data.webhook.authenticated ? 'token configurado' : 'sem token', `Rota ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
+      ['Eventos & Ledger WhatsApp', 'Canal & Webhook', data.webhook.authenticated ? 'token configurado' : 'ativo', `Transporte ${data.webhook.route} · ledger ${data.webhook.ledgerConfigured ? 'ativo' : 'indisponível'}`],
       ...(data.providers || []).map(item => [item.name, 'Provedor IA', item.state, `${item.configured ? 'configurado' : 'não configurado'} · ${item.failures} falhas · quarentena ${item.quarantineSeconds}s`])
     ];
     const countBadge = $('#integrations-status-count');

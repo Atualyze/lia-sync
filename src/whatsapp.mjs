@@ -122,6 +122,7 @@ export async function getInstanceOwnerPhone() {
   if (activeBaileysProvider?.connectedPhone) {
     return activeBaileysProvider.connectedPhone;
   }
+  if (config.whatsappProvider === 'baileys') return null;
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return null;
   try {
     const res = await fetch(`${config.evolutionUrl}/instance/fetchInstances`, {
