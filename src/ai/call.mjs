@@ -98,6 +98,21 @@ function providerCreditExhaustionReply(provider) {
   };
 }
 
+function providerFailureDiagnosticReply(attemptDiagnostics = []) {
+  const lines = attemptDiagnostics.map(d => `• *${d.provider}* (${d.model}): [${d.code}] ${d.message}`).join('\n');
+  return {
+    reply: `⚠️ *Falha na comunicação com os provedores de IA:*\n\n${lines}\n\n_Verifique a chave, o modelo ou a conectividade em Provedores de IA no painel._`,
+    intent: 'outro',
+    red_flags: false,
+    handoff: false,
+    handoff_reason: null,
+    collected: {},
+    tool_calls: [],
+    provider_error: attemptDiagnostics[0]?.code || 'AI_PROVIDER_FAILURE',
+    provider_errors: attemptDiagnostics
+  };
+}
+
 async function reserveModelBudget(budgetGate, context, provider, model) {
   if (!budgetGate) return null;
   const permit = await budgetGate.acquire({ ...context, provider, model });
@@ -404,9 +419,25 @@ export async function askAI(args) {
   const toolDeclarations = toolMode
     ? getEnabledTools(args?.botConfig, { actor })
     : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
+  const providerList = providers(args?.botConfig);
   let creditExhaustionProvider = null;
-  for (const provider of providers(args?.botConfig)) {
+  const attemptDiagnostics = [];
+  for (let pIdx = 0; pIdx < providerList.length; pIdx++) {
+    const provider = providerList[pIdx];
     const start = Date.now();
+    const remainingTotalMs = deadline - start;
+    if (remainingTotalMs <= 100) {
+      const skippedModel = providerDefaultModel(provider, aiConfig, fixedModel) || 'unknown';
+      const diag = describeAIError(provider, new Error('deadline_exceeded'), skippedModel);
+      attemptDiagnostics.push({ provider, model: skippedModel, code: diag.code, message: diag.message });
+      break;
+    }
+    // Se ainda há provedores de contingência na fila, reserva janela para eles
+    // para que um único provedor lento não esgote 100% do deadline de 35s.
+    const hasBackupProviders = pIdx < providerList.length - 1;
+    const providerDeadline = hasBackupProviders
+      ? start + Math.max(4000, Math.min(15000, Math.floor(remainingTotalMs * 0.6)))
+      : deadline;
     // Cada provedor recebe o modelo que lhe pertence. Nunca o do Gemini.
     const providerModel = providerDefaultModel(provider, aiConfig, fixedModel);
     if (!providerModel && provider !== 'gemini') continue; // sem modelo, não tenta
@@ -414,7 +445,7 @@ export async function askAI(args) {
     try {
       const res = await call(provider, {
         ...args,
-        deadline,
+        deadline: providerDeadline,
         toolDeclarations,
         routingDecision: decision,
         aiConfig,
@@ -461,6 +492,7 @@ export async function askAI(args) {
       if (error?.budgetDenied) continue;
       const attemptedModel = error?.attemptedModel || providerModel || preferredModel || 'unknown';
       const diag = describeAIError(provider, error, attemptedModel);
+      attemptDiagnostics.push({ provider, model: attemptedModel, code: diag.code, message: diag.message });
       if ((isProviderCreditExhaustion(error) || diag.isCreditExhausted) && !creditExhaustionProvider) creditExhaustionProvider = provider;
       const count = (failures.get(provider) || 0) + 1;
       failures.set(provider, count);
@@ -482,7 +514,12 @@ export async function askAI(args) {
       console.error(`[ai:${provider}] [${diag.code}] ${diag.message}`);
     }
   }
-  if (creditExhaustionProvider) return providerCreditExhaustionReply(creditExhaustionProvider);
+  if (creditExhaustionProvider && !(args?.isOwner === true && attemptDiagnostics.length > 1)) {
+    return providerCreditExhaustionReply(creditExhaustionProvider);
+  }
+  if (args?.isOwner === true && !args?.disableToolCalling && attemptDiagnostics.length > 0) {
+    return providerFailureDiagnosticReply(attemptDiagnostics);
+  }
   return null;
 }
 

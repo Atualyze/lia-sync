@@ -108,6 +108,25 @@ export function getCircuitBreakers() {
   return res;
 }
 
+export function getRecentAIErrorSummary({ maxAgeMs = 45_000 } = {}) {
+  const now = Date.now();
+  const items = [];
+  for (const [provider, errInfo] of lastErrors.entries()) {
+    if (!errInfo || typeof errInfo !== 'object') continue;
+    const atMs = Date.parse(errInfo.at || '');
+    if (Number.isFinite(atMs) && now - atMs > maxAgeMs) continue;
+    items.push({
+      provider,
+      model: errInfo.model || 'unknown',
+      code: errInfo.code || 'ERRO_PROVEDOR',
+      message: errInfo.message || 'Falha de comunicação com o provedor'
+    });
+  }
+  if (!items.length) return '';
+  const lines = items.map(d => `• *${d.provider}* (${d.model}): [${d.code}] ${d.message}`).join('\n');
+  return `⚠️ *Falha na comunicação com os provedores de IA:*\n\n${lines}\n\n_Verifique a chave, o modelo ou a conectividade em Provedores de IA no painel._`;
+}
+
 export const OPENROUTER_FREE_MODELS = [
   {
     id: 'google/gemma-4-31b:free',

@@ -1,4 +1,5 @@
 import { filterReply, normalize, isGreeting, detectPriceMentions } from '../safety.mjs';
+import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
@@ -1335,6 +1336,15 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const configuredContextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
         const contextTurns = Math.min(COPILOT_CONTEXT_LIMIT, configuredContextTurns);
         activeTask = activeCopilotTask(sSelf, now());
+        if (!activeTask && sSelf.pendingPixRequest?.requestedAt) {
+          activeTask = {
+            type: 'payment',
+            createdAt: sSelf.pendingPixRequest.requestedAt,
+            originCommand: 'Solicitação de cobrança Pix',
+            lastQuestion: String(sSelf.pendingPixRequest.lastQuestion || ''),
+            allowedTools: ['gerar_cobranca_pix', 'checkout_infinitepay']
+          };
+        }
         const taskHistory = activeTask && Array.isArray(sSelf.history)
           ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
           : [];
@@ -1372,10 +1382,14 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           isAffirmativeTaskAnswer || isShortPaymentAnswer || explicitDispatchContinuation || directPixChoice
         ));
         const hasPendingClarification = /[?¿]|\b(?:me informe|me diga|me passe|qual|quais|quanto|como|o que|pode me explicar|me explique|me descreva)\b/i.test(String(activeTask?.lastQuestion || ''));
+        const isPureGreeting = isGreeting(cleanCommand);
         const shouldClassifyTurn = Boolean(activeTask && activeTask.type !== 'general' && hasPendingClarification
           && !explicitTaskContinuation
+          && !isPureGreeting
           && (activeTask.type === 'payment' || isCopilotMetaQuestion));
-        if (shouldClassifyTurn) {
+        if (isPureGreeting && activeTask) {
+          suppressToolExecution = true;
+        } else if (shouldClassifyTurn) {
           turnReview = await classifyCopilotTurn({
             ai, currentMessage: cleanCommand, activeTask, recentContext: recentHistory, botConfig, deadline: aiDeadline
           });
@@ -1443,7 +1457,16 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           isOwner: true,
           deadline: aiDeadline
         });
-        currentToolSuggestions = (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
+        if (!result) {
+          const recentErr = getRecentAIErrorSummary({ maxAgeMs: 45_000 });
+          if (recentErr) {
+            return recordSelfTurn(filterReply(recentErr, { isCopilot: true }).text, { preserveTask: Boolean(activeTask) });
+          }
+        }
+        if (result?.provider_error) {
+          return recordSelfTurn(filterReply(result.reply, { isCopilot: true }).text, { preserveTask: Boolean(activeTask) });
+        }
+        currentToolSuggestions = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
           .map(call => String(call?.name || '').trim())
           .filter(Boolean);
 
@@ -1477,7 +1500,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         );
 
         const toolOutputs = [];
-        let toolCallsToRun = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? [...result.tool_calls] : []);
+        let toolCallsToRun = suppressToolExecution
+          ? []
+          : (Array.isArray(result?.tool_calls)
+            ? [...result.tool_calls].filter(tc => !(isPureGreeting && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)))
+            : []);
         if (isAudioForSelf) {
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
         }
@@ -1601,12 +1628,13 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               && item.reason === 'invalid_arguments'
             );
             if (rejectedPix) {
+              const pixDetail = rejectedPix.detail ? ` Detalhe técnico: ${rejectedPix.detail}.` : '';
               return recordSelfTurn(filterReply(
-                'Não consegui gerar a cobrança Pix porque os argumentos recebidos não passaram pela validação da ferramenta. Nenhuma cobrança foi executada; revise os dados e tente novamente.',
+                `Não consegui gerar a cobrança Pix porque os argumentos recebidos não passaram pela validação da ferramenta.${pixDetail} Nenhuma cobrança foi executada; revise os dados e tente novamente.`,
                 { isCopilot: true }
               ).text);
             }
-            const reasons = toolPlan.rejected.map(item => item.name + ' (' + item.reason + ')').join(', ');
+            const reasons = toolPlan.rejected.map(item => `${item.name} (${item.reason}${item.detail ? `: ${item.detail}` : ''})`).join(', ');
             const detail = toolPlan.truncated
               ? 'O plano ultrapassou o limite de ' + toolPlan.maxSteps + ' etapas.'
               : 'Uma ou mais chamadas estão inválidas, desativadas ou indisponíveis para este fluxo.';
@@ -1646,6 +1674,12 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   deadline: aiDeadline
                 });
                 if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                  if (review.reason === 'invalid_review_response') {
+                    const recentErr = getRecentAIErrorSummary({ maxAgeMs: 45_000 });
+                    if (recentErr) {
+                      return recordSelfTurn(filterReply(recentErr, { isCopilot: true }).text, { preserveTask: Boolean(liveTask) });
+                    }
+                  }
                   const question = review.question || 'Você quer que eu continue a solicitação anterior?';
                   if (review.decision === 'clarify' && liveTask) {
                     sSelf.pendingCopilotTask = {
@@ -1744,6 +1778,12 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   deadline: aiDeadline
                 });
                 if (review.decision !== 'allow' || review.relation === 'unrelated') {
+                  if (review.reason === 'invalid_review_response') {
+                    const recentErr = getRecentAIErrorSummary({ maxAgeMs: 45_000 });
+                    if (recentErr) {
+                      return recordSelfTurn(filterReply(recentErr, { isCopilot: true }).text, { preserveTask: Boolean(liveTask) });
+                    }
+                  }
                   const question = review.question || (liveTask
                     ? 'Você quer continuar a solicitação anterior ou começar outra coisa?'
                     : 'Não consegui entender com segurança o que você quer fazer. Pode me explicar com suas palavras?');
@@ -2364,7 +2404,14 @@ ${errMsg}`;
             rawReply = String(naturalFallback?.reply || naturalFallback?.text || '').trim();
 
             if (!rawReply) {
-              rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
+              const recentErr = getRecentAIErrorSummary({ maxAgeMs: 45_000 });
+              if (recentErr) {
+                rawReply = recentErr;
+              } else if (isPureGreeting) {
+                rawReply = `Bom dia, ${owner}! Tudo pronto por aqui. Como posso te ajudar agora?`;
+              } else {
+                rawReply = 'Entendi. Me conta um pouco mais sobre o que você quer fazer e eu sigo com você.';
+              }
             }
           }
         }
@@ -2443,9 +2490,14 @@ ${errMsg}`;
               return recordSelfTurn(filterReply(rawReply, { isCopilot: true }).text);
             }
           }
-          rawReply = /\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)
-            ? `${owner}, me informe o *valor* e uma *descrição curta* para eu gerar o Pix agora.`
-            : `${owner}, ainda não entendi bem o que você precisa aqui. Pode me explicar o contexto ou qual ação quer que eu execute?`;
+          const recentErr = getRecentAIErrorSummary({ maxAgeMs: 45_000 });
+          rawReply = recentErr
+            ? recentErr
+            : isPureGreeting
+              ? `Olá, ${owner}! Estou online e pronta para ajudar. O que vamos fazer agora?`
+              : /\b(?:pix|chave\s*pix|pagamento|cobran[cç]a)\b/i.test(cleanCommand)
+                ? `${owner}, me informe o *valor* e uma *descrição curta* para eu gerar o Pix agora.`
+                : `${owner}, ainda não entendi bem o que você precisa aqui. Pode me explicar o contexto ou qual ação quer que eu execute?`;
         }
 
         if (isAudioForSelf) {

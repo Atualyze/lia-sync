@@ -5,8 +5,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import test from 'node:test';
 import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { describeAIError } from './ai/errors.mjs';
-import { providers, parseFallbackModel, getCircuitBreakers } from './ai/config.mjs';
+import { providers, parseFallbackModel, getCircuitBreakers, getRecentAIErrorSummary } from './ai/config.mjs';
+import { lastErrors } from './ai/state.mjs';
 import { summarizePersistentCalls } from './operations.mjs';
+import { createFlow } from './flow.mjs';
+import { OWNER_SELF_KEY } from './core/identity.mjs';
 
 test('describeAIError traduz falhas HTTP/rede em diagnósticos claros sem vazar segredos', () => {
   const auth = describeAIError('openai', new Error('openai 401 - invalid api key sk-secret1234567890'), 'gpt-4o');
@@ -123,4 +126,88 @@ test('summarizePersistentCalls calcula custo de provedores customizados, modelos
     await store.remove('groq').catch(() => {});
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('Copiloto reporta o erro real das APIs de IA em vez de frase genérica e não dispara Pix não solicitado em saudação ("Bom dia")', async () => {
+  const sessions = {};
+  const store = {
+    sessions,
+    get(key) {
+      if (!sessions[key]) sessions[key] = { phone: key, history: [], human: false };
+      return sessions[key];
+    },
+    touch() {},
+    markDirty() {}
+  };
+
+  // 1. Quando provedores de IA falham com erro técnico, o Copiloto exibe o diagnóstico real
+  lastErrors.clear();
+  lastErrors.set('gemini', {
+    code: 'SALDO_ESGOTADO',
+    message: 'Saldo ou créditos esgotados em gemini (gemini-2.5-flash).',
+    model: 'gemini-2.5-flash',
+    at: new Date().toISOString()
+  });
+  lastErrors.set('cloudflare', {
+    code: 'TIMEOUT',
+    message: 'Tempo limite excedido aguardando resposta de cloudflare (@cf/meta/llama-3.3-70b-instruct-fp8-fast).',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    at: new Date().toISOString()
+  });
+
+  const failingFlow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => null
+    }
+  });
+
+  const errReply = await failingFlow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'Oi',
+    origin: 'owner'
+  });
+
+  assert.match(errReply, /Falha na comunicação com os provedores de IA/i);
+  assert.match(errReply, /SALDO_ESGOTADO/);
+  assert.match(errReply, /TIMEOUT/);
+  assert.doesNotMatch(errReply, /Ainda não consegui entender com segurança/i);
+  assert.doesNotMatch(errReply, /ainda não entendi bem o que você precisa/i);
+  lastErrors.clear();
+
+  // 2. Quando o responsável envia "Bom dia" e o modelo alucina uma tool_call de Pix,
+  // a saudação pura suprime tool_calls não solicitadas e responde normalmente
+  const self = store.get(OWNER_SELF_KEY);
+  self.pendingPixRequest = {
+    requestedAt: new Date().toISOString(),
+    amount: null,
+    description: ''
+  };
+
+  const greetingFlow = createFlow({
+    store,
+    humanPhone: '5588921694598',
+    getHumanPhone: () => '5588921694598',
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => ({
+        reply: 'Bom dia, Tauan! Tudo ótimo por aqui. Como posso te ajudar hoje?',
+        intent: 'saudacao',
+        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: null, descricao: '' } }]
+      })
+    }
+  });
+
+  const greetReply = await greetingFlow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'Bom dia',
+    origin: 'owner'
+  });
+
+  assert.match(greetReply, /Bom dia, Tauan/i);
+  assert.doesNotMatch(greetReply, /argumentos recebidos não passaram pela validação/i);
+  assert.doesNotMatch(greetReply, /para gerar a cobrança Pix/i);
 });

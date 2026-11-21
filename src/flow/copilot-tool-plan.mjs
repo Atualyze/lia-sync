@@ -54,7 +54,7 @@ export function buildCopilotToolPlan(toolCalls = [], {
       : args;
     const invalid = validateToolCallArguments(name, validationArgs);
     if (invalid) {
-      rejected.push({ index: index + 1, name, reason: 'invalid_arguments' });
+      rejected.push({ index: index + 1, name, reason: 'invalid_arguments', detail: invalid });
       continue;
     }
 
