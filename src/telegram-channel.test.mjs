@@ -31,11 +31,17 @@ test('splitTelegramMessage divide mensagens longas preservando conteúdo', () =>
 test('mapTelegramSlashCommand traduz comandos nativos do Telegram para intenções do Copiloto', () => {
   assert.deepEqual(mapTelegramSlashCommand('/meu_id'), { kind: 'meu_id' });
   assert.deepEqual(mapTelegramSlashCommand('/status@liasync_bot'), { kind: 'text', text: 'status' });
-  assert.deepEqual(mapTelegramSlashCommand('/saude'), { kind: 'text', text: 'verificar saude da infraestrutura' });
+  assert.deepEqual(mapTelegramSlashCommand('/saude'), { kind: 'text', text: 'infra' });
   assert.deepEqual(mapTelegramSlashCommand('/fila'), { kind: 'text', text: 'fila' });
   assert.deepEqual(mapTelegramSlashCommand('/rotinas'), { kind: 'text', text: 'listar minhas rotinas' });
   assert.deepEqual(mapTelegramSlashCommand('/agenda amanhã'), { kind: 'text', text: 'consultar agenda google: amanhã' });
   assert.deepEqual(mapTelegramSlashCommand('/gmail fatura'), { kind: 'text', text: 'buscar emails no gmail: fatura' });
+  assert.deepEqual(mapTelegramSlashCommand('/bot_off'), { kind: 'text', text: 'bot off' });
+  assert.deepEqual(mapTelegramSlashCommand('/bot_on'), { kind: 'text', text: 'bot on' });
+  assert.deepEqual(mapTelegramSlashCommand('/assumir 1'), { kind: 'text', text: 'humano 1' });
+  assert.deepEqual(mapTelegramSlashCommand('/retomar 1'), { kind: 'text', text: 'retomar 1' });
+  assert.deepEqual(mapTelegramSlashCommand('/drive'), { kind: 'text', text: 'listar arquivos na pasta padrao do google drive' });
+  assert.deepEqual(mapTelegramSlashCommand('/pix 150 consultoria'), { kind: 'text', text: 'gerar cobranca pix 150 consultoria' });
 });
 
 test('redactSecrets oculta tokens de bot do Telegram', () => {

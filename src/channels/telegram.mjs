@@ -9,15 +9,36 @@ const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const POLL_TIMEOUT_SECONDS = 25;
 
 export const TELEGRAM_COMMANDS = Object.freeze([
-  { command: 'status', description: 'Status geral, WhatsApp e IA' },
-  { command: 'saude', description: 'Diagnóstico completo da infraestrutura' },
+  // Operação & Monitoramento
+  { command: 'status', description: 'Raio-X geral: WhatsApp, IA e sessões' },
+  { command: 'saude', description: 'Diagnóstico completo da VPS e servidores' },
+  { command: 'metricas', description: 'Consumo de IA, tokens e taxa de sucesso' },
+  { command: 'relatorio', description: 'Relatório executivo do dia' },
+  { command: 'ping', description: 'Teste de latência real da IA em ms' },
+  { command: 'expediente', description: 'Consultar janela de atendimento' },
+  // Controle de Atendimento & WhatsApp
   { command: 'fila', description: 'Clientes aguardando atendimento humano' },
+  { command: 'assumir', description: 'Pausar bot para cliente (/assumir 1)' },
+  { command: 'retomar', description: 'Reativar bot para cliente (/retomar 1)' },
+  { command: 'limpar', description: 'Resetar sessão de contato (/limpar 1)' },
+  { command: 'bot_off', description: 'Pausar a Lia globalmente (modo humano)' },
+  { command: 'bot_on', description: 'Reativar a Lia globalmente' },
+  { command: 'enviar', description: 'Enviar mensagem WhatsApp para contato' },
+  // Google Workspace
+  { command: 'agenda', description: 'Eventos e horários livres (Google Calendar)' },
+  { command: 'gmail', description: 'Buscar e-mails recentes no Gmail' },
+  { command: 'planilha', description: 'Consultar leads no Google Sheets' },
+  { command: 'drive', description: 'Listar ou buscar arquivos no Google Drive' },
+  // Autonomia, Memória & Produtividade
   { command: 'rotinas', description: 'Listar rotinas e agendamentos autônomos' },
-  { command: 'agenda', description: 'Próximos compromissos no Google Calendar' },
-  { command: 'gmail', description: 'Buscar últimos e-mails no Gmail' },
-  { command: 'planilha', description: 'Ver últimos leads no Google Sheets' },
-  { command: 'meu_id', description: 'Mostrar seu Chat ID para vincular no painel' },
-  { command: 'ajuda', description: 'Ver comandos e funções da Lia no Telegram' }
+  { command: 'lembretes', description: 'Ver lembretes e retornos pendentes' },
+  { command: 'memoria', description: 'Consultar memórias e projetos salvos' },
+  { command: 'pdf', description: 'Gerar relatório, proposta ou orçamento PDF' },
+  { command: 'pix', description: 'Gerar cobrança Pix ou link de pagamento' },
+  { command: 'web', description: 'Pesquisar informações atualizadas na web' },
+  { command: 'cnpj', description: 'Consultar CNPJ ou CEP (Dados Brasil)' },
+  { command: 'meu_id', description: 'Mostrar seu Chat ID do Telegram' },
+  { command: 'ajuda', description: 'Ver guia completo de comandos da Lia' }
 ]);
 
 const APPROVAL_KEYBOARD = Object.freeze({
@@ -79,10 +100,33 @@ export function mapTelegramSlashCommand(rawText = '') {
   if (cmd === 'meu_id' || cmd === 'id') return { kind: 'meu_id' };
   if (cmd === 'start') return { kind: 'start' };
   if (cmd === 'ajuda' || cmd === 'help') return { kind: 'help' };
+  // Operação & Monitoramento
   if (cmd === 'status') return { kind: 'text', text: 'status' };
-  if (cmd === 'saude' || cmd === 'infra') return { kind: 'text', text: 'verificar saude da infraestrutura' };
+  if (cmd === 'saude' || cmd === 'infra') return { kind: 'text', text: 'infra' };
+  if (cmd === 'metricas' || cmd === 'consumo') return { kind: 'text', text: 'metricas' };
+  if (cmd === 'relatorio') return { kind: 'text', text: 'relatorio' };
+  if (cmd === 'ping') return { kind: 'text', text: 'ping' };
+  if (cmd === 'expediente') return { kind: 'text', text: 'expediente' };
+  // Controle de Atendimento & WhatsApp
   if (cmd === 'fila') return { kind: 'text', text: 'fila' };
-  if (cmd === 'rotinas' || cmd === 'agendamentos') return { kind: 'text', text: 'listar minhas rotinas' };
+  if (cmd === 'assumir' || cmd === 'humano' || cmd === 'pausar') {
+    return { kind: 'text', text: args ? `humano ${args}` : 'humano' };
+  }
+  if (cmd === 'retomar' || cmd === 'reativar') {
+    return { kind: 'text', text: args ? `retomar ${args}` : 'retomar' };
+  }
+  if (cmd === 'limpar' || cmd === 'resetar') {
+    return { kind: 'text', text: args ? `limpar ${args}` : 'limpar' };
+  }
+  if (cmd === 'bot_off' || cmd === 'botoff') return { kind: 'text', text: 'bot off' };
+  if (cmd === 'bot_on' || cmd === 'boton') return { kind: 'text', text: 'bot on' };
+  if (cmd === 'enviar') {
+    return {
+      kind: 'text',
+      text: args ? `enviar mensagem no whatsapp: ${args}` : 'Quero enviar uma mensagem no WhatsApp para um contato. Pergunte para quem e qual texto.'
+    };
+  }
+  // Google Workspace
   if (cmd === 'agenda') {
     return {
       kind: 'text',
@@ -101,6 +145,45 @@ export function mapTelegramSlashCommand(rawText = '') {
       text: args ? `consultar planilha google: ${args}` : 'ler as ultimas linhas da planilha de leads no google sheets'
     };
   }
+  if (cmd === 'drive') {
+    return {
+      kind: 'text',
+      text: args ? `buscar arquivo no google drive: ${args}` : 'listar arquivos na pasta padrao do google drive'
+    };
+  }
+  // Autonomia, Memória & Produtividade
+  if (cmd === 'rotinas' || cmd === 'agendamentos') return { kind: 'text', text: 'listar minhas rotinas' };
+  if (cmd === 'lembretes') return { kind: 'text', text: 'lembretes' };
+  if (cmd === 'memoria') {
+    return {
+      kind: 'text',
+      text: args ? `consultar memoria sobre: ${args}` : 'listar minhas memorias e projetos salvos'
+    };
+  }
+  if (cmd === 'pdf') {
+    return {
+      kind: 'text',
+      text: args ? `gerar pdf ${args}` : 'gerar relatorio em pdf'
+    };
+  }
+  if (cmd === 'pix') {
+    return {
+      kind: 'text',
+      text: args ? `gerar cobranca pix ${args}` : 'Quero gerar uma cobranca Pix. Pergunte o valor e a descricao.'
+    };
+  }
+  if (cmd === 'web' || cmd === 'pesquisar') {
+    return {
+      kind: 'text',
+      text: args ? `pesquisar na web: ${args}` : 'Me diga o que voce quer que eu pesquise na web.'
+    };
+  }
+  if (cmd === 'cnpj' || cmd === 'cep') {
+    return {
+      kind: 'text',
+      text: args ? `consultar ${cmd} ${args}` : `Me informe o ${cmd.toUpperCase()} que deseja consultar.`
+    };
+  }
   return { kind: 'text', text: trimmed };
 }
 
@@ -111,17 +194,19 @@ function buildHelpText(botUsername = '') {
     '',
     'Este canal compartilha a mesma memória, histórico e ferramentas do seu chat interno no WhatsApp.',
     '',
-    '*Comandos rápidos:*',
-    '• /status — Status geral, WhatsApp e IA',
-    '• /saude — Diagnóstico completo da infraestrutura',
-    '• /fila — Clientes aguardando atendimento humano',
-    '• /rotinas — Listar rotinas e agendamentos autônomos',
-    '• /agenda — Próximos compromissos no Google Calendar',
-    '• /gmail — Últimos e-mails no Gmail (ou `/gmail assunto`)',
-    '• /planilha — Últimos leads no Google Sheets',
-    '• /meu_id — Mostrar seu Chat ID',
+    '*📊 Operação & Monitoramento:*',
+    '• /status • /saude • /metricas • /relatorio • /ping • /expediente',
     '',
-    '*Dica:* Você também pode mandar mensagens livres ou *áudios de voz* — eu transcrevo e executo normalmente (ex.: *"todo dia às 9h verificar saúde da infra"*, *"agendar reunião amanhã 15h"*, *"assumir cliente 1"*).'
+    '*💬 Atendimento & WhatsApp:*',
+    '• /fila • /assumir • /retomar • /limpar • /bot_off • /bot_on • /enviar',
+    '',
+    '*☁️ Google Workspace:*',
+    '• /agenda • /gmail • /planilha • /drive',
+    '',
+    '*🧠 Autonomia & Produtividade:*',
+    '• /rotinas • /lembretes • /memoria • /pdf • /pix • /web • /cnpj',
+    '',
+    '*Dica:* Você também pode mandar mensagens livres ou *áudios de voz* — eu transcrevo e executo normalmente!'
   ].join('\n');
 }
 
