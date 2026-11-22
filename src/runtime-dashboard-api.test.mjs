@@ -4,6 +4,8 @@ import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import test from 'node:test';
 import { createApp } from './server.mjs';
+import { handleRuntimeDashboardRoutes } from './http/runtime-routes.mjs';
+import { requiredRole } from './http/router.mjs';
 import { SessionStore } from './sessions.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
 import { ApiSettingsStore } from './api-settings.mjs';
@@ -270,4 +272,98 @@ test('Baileys P0+P1: Message Gate descarta histórico/broadcast/grupos/duplicata
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+test('reconciliação de tarefas incertas é admin-only, auditada e nunca chama o worker', async () => {
+  const taskId = '123e4567-e89b-42d3-a456-426614174000';
+  const audit = [];
+  const calls = [];
+  const copilotTaskStore = {
+    available: true,
+    listUncertain: async () => [{
+      id: taskId,
+      status: 'uncertain',
+      notificationStatus: 'unaddressable',
+      requestSummary: 'Criar pasta de relatório',
+      resultText: 'Resultado ficou incerto após a interrupção.',
+      errorCode: 'worker_lease_expired',
+      steps: [{ name: 'gerenciar_drive_google', args: { acao: 'criar_pasta' } }],
+      targetPhone: '5588999998888',
+      attemptCount: 1,
+      updatedAt: '2026-11-22T12:00:00.000Z'
+    }],
+    reconcileUncertain: async (id, args) => {
+      calls.push({ id, args });
+      return {
+        id,
+        status: 'succeeded',
+        notificationStatus: 'unaddressable',
+        reconciledAt: '2026-11-22T12:10:00.000Z',
+        reconciledBy: args.actor,
+        reconciliationOutcome: args.decision,
+        reconciliationNote: args.evidence
+      };
+    }
+  };
+  const operationsStore = {
+    enabled: true,
+    audit: async entry => { audit.push(entry); }
+  };
+  assert.equal(requiredRole('/api/dashboard/runtime/uncertain-tasks', 'GET'), 'admin');
+  assert.equal(requiredRole('/api/dashboard/runtime/tasks/' + taskId + '/reconcile', 'POST'), 'admin');
+
+  const invoke = async (method, url, body = null) => {
+    const req = makeReq(method, url, body);
+    let status = 0;
+    let raw = '';
+    const res = { writeHead(code) { status = code; }, end(chunk) { raw = String(chunk || ''); } };
+    await handleRuntimeDashboardRoutes({
+      req, res, u: new URL(url, 'http://localhost'),
+      authContext: { role: 'admin', userId: '123e4567-e89b-42d3-a456-426614174001', email: 'admin@test.local' },
+      copilotTaskStore, operationsStore
+    });
+    return { status, body: raw ? JSON.parse(raw) : null };
+  };
+
+  const list = await invoke('GET', '/api/dashboard/runtime/uncertain-tasks');
+  assert.equal(list.status, 200);
+  assert.equal(list.body.items[0].steps[0], 'gerenciar_drive_google');
+  assert.equal(list.body.items[0].target, '55••••••88');
+  assert.equal('args' in list.body.items[0].steps[0], false);
+
+  const result = await invoke('POST', '/api/dashboard/runtime/tasks/' + taskId + '/reconcile', {
+    decision: 'confirmed_succeeded',
+    evidence: 'Conferi no Google Drive e confirmei que a pasta está criada.'
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.replayed, false);
+  assert.equal(result.body.task.status, 'succeeded');
+  assert.equal(calls.length, 1);
+  assert.equal(audit.length, 2);
+  assert.equal(audit[0].action, 'copilot_task_reconciliation_requested');
+  assert.equal(audit[1].action, 'copilot_task_reconciled');
+  assert.equal(calls[0].args.actor, 'admin@test.local');
+  assert.equal('claimNext' in copilotTaskStore, false);
+  assert.equal('enqueue' in copilotTaskStore, false);
+});
+
+test('reconciliação falha fechado quando a persistência de auditoria está indisponível', async () => {
+  const taskId = '123e4567-e89b-42d3-a456-426614174000';
+  let reconciled = false;
+  const req = makeReq('POST', '/api/dashboard/runtime/tasks/' + taskId + '/reconcile', {
+    decision: 'confirmed_failed',
+    evidence: 'Consultei o sistema externo e confirmei que a ação não ocorreu.'
+  });
+  let status = 0, raw = '';
+  const res = { writeHead(code) { status = code; }, end(chunk) { raw = String(chunk || ''); } };
+  await handleRuntimeDashboardRoutes({
+    req, res, u: new URL(req.url, 'http://localhost'),
+    authContext: { role: 'admin', email: 'admin@test.local' },
+    copilotTaskStore: { available: true, reconcileUncertain: async () => { reconciled = true; } },
+    operationsStore: { enabled: false }
+  });
+  assert.equal(status, 503);
+  assert.equal(JSON.parse(raw).error, 'audit_persistence_unavailable');
+  assert.equal(reconciled, false);
 });
