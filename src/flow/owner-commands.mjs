@@ -86,9 +86,11 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
   // 1.0.7.5 Atalho Direto: Consulta de Atendimento / Contato por Telefone
   const isCnpjOrCep = /\b(?:cnpj|cep|cpf)\b/i.test(norm);
   const isDispatchCmd = /\b(?:enviar|envie|mandar|mande|avisar|avise|disparar|dispare|mensagem\s+para)\b/i.test(norm);
+  const hasPendingDispatchFlow = Boolean(sSelf?.pendingRecipient || sSelf?.pendingCopilotTask?.type === 'dispatch');
   const phoneLookupDigits = strippedCmd.match(/\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}\b/)?.[0]?.replace(/\D/g, '') || '';
   const hasLookupVerb = /\b(?:consulte|consultar|consulta|atendimento|historico|hist[oó]rico|conversa|cliente|contato|lead|detalhes?|resumo\s+d[eo]|sobre\s+o?\s*(?:numero|n[uú]mero|atendimento|cliente|contato))\b/i.test(norm);
-  if (!isCnpjOrCep && !isDispatchCmd && phoneLookupDigits.length >= 8 && phoneLookupDigits.length <= 13 && (hasLookupVerb || /^\s*(?:\+?55)?\d{8,13}\s*$/.test(strippedCmd))) {
+  const isBarePhoneLookup = !hasPendingDispatchFlow && /^\s*(?:\+?55)?\d{8,13}\s*$/.test(strippedCmd);
+  if (!isCnpjOrCep && !isDispatchCmd && phoneLookupDigits.length >= 8 && phoneLookupDigits.length <= 13 && (hasLookupVerb || isBarePhoneLookup)) {
     const contactRes = await executeToolCall('consultar_contato_ou_lead', { phone: phoneLookupDigits }, { store });
     if (!contactRes?.found) {
       return recordSelfTurn(filterReply(`🔎 Não encontrei nenhum atendimento ou cadastro registrado para *${phoneLookupDigits}*.`, { isCopilot: true }).text);

@@ -440,10 +440,23 @@ export function extractDispatchIntent(cleanCommand, { pendingRecipient, pendingA
   }
 
   let recipient = null;
-  const recMatch = cleanCommand.match(/(?:para\s+o|para\s+a|para|pro|pra|ao)\s+([a-zA-ZÀ-ÿ0-9+]+)/i) ||
-    cleanCommand.match(/(?:lembre|lembra|avise|avisa|notifique|notifica|fale\s+com|falar\s+com)\s+(?:o|a)?\s*([a-zA-ZÀ-ÿ0-9+]+)/i);
-  if (recMatch && !IGNORED_RECIPIENTS.has(recMatch[1].toLowerCase())) {
-    recipient = recMatch[1].trim();
+  // Se já temos um destinatário pendente e o usuário está apenas respondendo o texto do recado
+  // (sem iniciar um novo comando de envio), preserva o destinatário pendente e evita confundir
+  // "para finalizar / para confirmar / para agendar" dentro do texto com um novo destinatário.
+  if (pendingRecipient && !isSendIntent && !IGNORED_RECIPIENTS.has(String(pendingRecipient).toLowerCase())) {
+    recipient = pendingRecipient;
+  }
+  const knownLower = new Set((knownNames || []).map(n => String(n || '').trim().toLowerCase()).filter(Boolean));
+  const isLikelyInfinitiveVerb = (word = '') => {
+    const w = String(word || '').trim().toLowerCase();
+    return w.length >= 4 && /(?:ar|er|ir)$/i.test(w) && !knownLower.has(w);
+  };
+  if (!recipient) {
+    const recMatch = cleanCommand.match(/(?:para\s+o|para\s+a|para|pro|pra|ao)\s+([a-zA-ZÀ-ÿ0-9+]+)/i) ||
+      cleanCommand.match(/(?:lembre|lembra|avise|avisa|notifique|notifica|fale\s+com|falar\s+com)\s+(?:o|a)?\s*([a-zA-ZÀ-ÿ0-9+]+)/i);
+    if (recMatch && !IGNORED_RECIPIENTS.has(recMatch[1].toLowerCase()) && !isLikelyInfinitiveVerb(recMatch[1])) {
+      recipient = recMatch[1].trim();
+    }
   }
   if (!recipient) {
     // Procura qualquer nome de contato conhecido da agenda/sessões citado na frase

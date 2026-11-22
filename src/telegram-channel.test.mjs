@@ -10,6 +10,7 @@ import {
 import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
 import { toolConsultarContato } from './tools/consultar_contato.mjs';
+import { extractDispatchIntent } from './flow/text.mjs';
 
 test('parseAdminChatIds aceita múltiplos IDs positivos e negativos', () => {
   assert.deepEqual(parseAdminChatIds('123456, -987654 ; abc 555'), ['123456', '-987654', '555']);
@@ -252,4 +253,14 @@ test('consultar_contato_ou_lead encontra sessão sem DDI 55 e retorna histórico
   assert.equal(res.attendance.mode, 'bot');
   assert.equal(res.attendance.recentMessages[0].role, 'cliente');
   assert.ok(res.attendance.recentMessages[0].content.includes('orçamento'));
+});
+
+test('extractDispatchIntent preserva pendingRecipient quando o recado contém "para finalizar"', () => {
+  const intent = extractDispatchIntent('Que entrarei em contato mais tarde para finalizar a reunião', {
+    pendingRecipient: '88921694598',
+    pendingAsAudio: false,
+    lastAssistantMsg: 'Claro, Tauan! O que você gostaria de dizer para o (88) 92169-4598 em texto? Me diga o recado que eu preparo a mensagem e te mostro!'
+  });
+  assert.equal(intent.recipient, '88921694598');
+  assert.ok(intent.message && intent.message.includes('finalizar a reunião'));
 });
