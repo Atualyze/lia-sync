@@ -1547,24 +1547,12 @@ export async function handleClientMessage({
         if (toolBlockNotified || origin === 'simulation' || origin === 'preview') return;
         toolBlockNotified = true;
         const reason = `Resposta de ferramenta bloqueada pelo filtro (${violations.join(', ') || 'segurança'})`;
-        s.pendingAdminConsult = {
-          id: `consult-${Date.now().toString(36)}`,
-          phone: s.phone,
-          rawJid: rawItem?.jid || s.phone,
-          clientName: s.clientName || pushName || 'Cliente',
-          question: clean.slice(0, 400),
+        const financial = violations.some(value => /pre[cç]o|valor|price|pix|financeir/i.test(String(value)));
+        await createAdminConsultCommitment({
           reason,
-          requestedAt: new Date(now()).toISOString(),
-          status: 'pending'
-        };
-        store.markDirty();
-        await notify(buildAdminConsultNotice({
-          clientName: s.clientName || pushName || 'Cliente',
-          phone: s.phone,
-          question: clean,
-          reason,
-          assistant
-        }));
+          title: financial ? 'Validar solicitação financeira bloqueada' : 'Revisar solicitação bloqueada pelo filtro',
+          category: financial ? 'financeiro' : 'outro'
+        });
       };
 
       if (toolReplyOverride) {
@@ -1573,7 +1561,9 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
+          ? (s.pendingAdminConsult?.commitmentId
+            ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
+            : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
@@ -1595,11 +1585,7 @@ export async function handleClientMessage({
           });
           toolReplyOverride = reminderResult?.success
             ? reminderResult.message
-            : 'Nao consegui confirmar o agendamento. Vou pedir a equipe para verificar.';
-          if (!reminderResult?.success) {
-            result.handoff = true;
-            result.handoff_reason = 'falha ao persistir lembrete do cliente';
-          }
+            : 'Não consegui salvar o lembrete, então ele não está agendado. Você pode me informar outro horário para tentar novamente?';
         }
       }
 
@@ -1610,7 +1596,9 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
+          ? (s.pendingAdminConsult?.commitmentId
+            ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
+            : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
