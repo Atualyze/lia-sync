@@ -20,6 +20,41 @@ import { buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment 
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
+export async function buildAIUnavailableReply({ ai, session = {}, currentText = '', botConfig = {}, assistant = 'assistente', now = () => Date.now() } = {}) {
+  const history = (Array.isArray(session.history) ? session.history : [])
+    .slice(-8)
+    .map(item => ({ role: item?.role === 'assistant' ? 'assistant' : 'user', content: String(item?.content || '').slice(0, 1200) }))
+    .filter(item => item.content.trim());
+  const subject = String(session.conversationState?.need || session.contextSummary || '').trim().slice(0, 220);
+  const request = String(currentText || '').trim().slice(0, 500);
+  try {
+    const generated = await ai?.askAI?.({
+      system: [
+        'Você redige uma atualização breve em nome de ' + assistant + ' para um cliente.',
+        'Use o histórico recente para identificar o assunto e demonstre que entendeu o pedido.',
+        'Explique com naturalidade que ainda não consegue confirmar uma resposta confiável.',
+        'Não mencione IA, API, provedor, erro técnico, indisponibilidade de sistema ou detalhes internos.',
+        'Não prometa prazo, retorno futuro, encaminhamento, consulta, envio, pagamento ou ação que não ocorreu.',
+        'Não transfira o atendimento e não invente fatos, preços, descontos ou reembolsos.',
+        'Responda em português brasileiro em até duas frases.'
+      ].join('\n'),
+      history,
+      userText: 'Pedido atual: ' + request + '\nContexto resumido: ' + (subject || 'use o histórico acima') + '\nEscreva somente a mensagem que será enviada ao cliente.',
+      botConfig,
+      disableToolCalling: true,
+      deadline: now() + 2500
+    });
+    const reply = String(generated?.reply || generated?.text || '').trim();
+    const makesUnsupportedPromise = /\b(?:vou\s+(?:verificar|consultar|retornar|avisar|encaminhar|enviar)|irei\s+(?:verificar|consultar|retornar|avisar|encaminhar|enviar)|te\s+retorno|já\s+retorno|assim\s+que|em\s+instantes|já\s+encaminhei|já\s+enviei)\b/i.test(reply);
+    if (reply && !makesUnsupportedPromise && reply.length <= 600) return reply;
+  } catch {}
+  const contextual = subject || request;
+  if (contextual) {
+    return 'Sobre "' + contextual.replace(/[\r\n]+/g, ' ').slice(0, 180) + '", ainda não tenho uma confirmação confiável para te passar. Prefiro não arriscar uma orientação incorreta; pode retomar a conversa por aqui quando quiser.';
+  }
+  return 'Ainda não consegui confirmar uma resposta confiável para sua solicitação. Prefiro não arriscar uma orientação incorreta; pode retomar a conversa por aqui quando quiser.';
+}
+
 
 function normalizedClientText(value = '') {
   return normalize(String(value || '')).replace(/\s+/g, ' ').trim();
@@ -730,10 +765,17 @@ export async function handleClientMessage({
             s.pendingAIRetry = null;
             s.fallbackHandoffAt = new Date(currentNow).toISOString();
             const clientLabel = s.clientName || pushName || s.phone;
-            await notify(`⚠️ *[Alerta ${assistant}] Retentativas de IA esgotadas (5 min)*\n\n• *Cliente:* ${clientLabel} (${s.phone})\n• *Mensagem pendente:* "${clean.slice(0, 140)}"\n\n_Nenhuma API respondeu dentro da janela de 5 minutos. Nenhuma mensagem de erro foi enviada ao cliente; assuma pelo painel ou verifique as chaves de IA._`);
+            raw = await buildAIUnavailableReply({
+              ai,
+              session: s,
+              currentText: clean,
+              botConfig,
+              assistant,
+              now
+            });
+            await notify('⚠️ *[Alerta ' + assistant + '] Retentativas de IA esgotadas*\n\n• *Cliente:* ' + clientLabel + ' (' + s.phone + ')\n• *Mensagem pendente:* "' + clean.slice(0, 140) + '"\n\n_O cliente recebeu uma atualização neutra contextual. Verifique os provedores e a fila de retentativas._' + (diagSummary ? '\n\n' + diagSummary : ''));
           }
           store.markDirty();
-          return null;
         }
       } else if (s.pendingAIRetry) {
         s.pendingAIRetry = null;

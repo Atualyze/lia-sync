@@ -42,6 +42,7 @@ import { ApiSettingsStore } from './api-settings.mjs';
 import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { startGlobalEventLoopMonitor, stopGlobalEventLoopMonitor, getEventLoopHealthSnapshot } from './ops/event-loop-monitor.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
+import { createAlertThrottle } from './ops/alert-throttle.mjs';
 import { createTelegramCopilot } from './channels/telegram.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
@@ -597,6 +598,25 @@ if (isDirectRun) {
   const errors = validateConfig(); if (errors.length) { console.error(`[config] ${errors.join('; ')}`); process.exit(1); }
   startGlobalEventLoopMonitor({ logger: console });
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(redactSecrets(e?.stack || e?.message || String(e))); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
+  const runtimeAlertThrottle = createAlertThrottle({ windowMs: 10 * 60_000 });
+  const notifyRuntimeAlert = async (key, message) => {
+    if (!runtimeAlertThrottle.allow(key)) return false;
+    const safeMessage = redactSecrets(String(message || '').slice(0, 3000));
+    const tasks = [];
+    const target = app.getHumanPhone?.();
+    if (target) tasks.push(Promise.resolve().then(() => sendText(target, formatOutgoingMessage(safeMessage))));
+    if (app.telegramCopilot?.notifyAdmin) tasks.push(Promise.resolve().then(() => app.telegramCopilot.notifyAdmin(safeMessage)));
+    if (!tasks.length) {
+      console.error('[runtime-alert] Nenhum canal do responsável disponível para alerta:', key);
+      return false;
+    }
+    const settled = await Promise.allSettled(tasks);
+    if (settled.every(item => item.status === 'rejected')) {
+      console.error('[runtime-alert] Não foi possível entregar o alerta:', key);
+      return false;
+    }
+    return true;
+  };
   if (config.whatsappProvider === 'baileys') {
     void app.baileysProvider?.start().catch(err => console.error('[baileys] Falha na inicialização automática:', err?.message || err));
   }
@@ -622,6 +642,10 @@ if (isDirectRun) {
         leaseWarningLogged = true;
         console.error('[maintenance] lease distribuído indisponível; manutenção bloqueada até aplicar a migration:', error?.code || error?.name || 'lease_unavailable');
       }
+      void notifyRuntimeAlert(
+        'maintenance_lease_unavailable',
+        '⚠️ *Lia Sync: manutenção pausada*\n\nA reivindicação do lease distribuído falhou. A manutenção automática ficará pausada nesta réplica até a conectividade com o Supabase/RPC ser restabelecida.\n\n*Diagnóstico:* ' + redactSecrets(error?.message || error?.code || error?.name || 'lease_unavailable').slice(0, 500)
+      ).catch(() => {});
       return false;
     }
   };
@@ -691,7 +715,14 @@ if (isDirectRun) {
   // disparem no horário exato sem depender do intervalo longo de manutenção de inatividade.
   let runtimeWakeRunning = false;
   const runRuntimeScheduler = async () => {
-    if (runtimeWakeRunning || !app.liaRuntime?.available) return;
+    if (runtimeWakeRunning) return;
+    if (!app.liaRuntime?.available) {
+      void notifyRuntimeAlert(
+        'lia_runtime_unavailable',
+        '⚠️ *Lia Runtime indisponível*\n\nO agendador detectou que o Runtime não está disponível. Verifique a persistência/migration do Lia Runtime e o endpoint /ready.'
+      ).catch(() => {});
+      return;
+    }
     runtimeWakeRunning = true;
     try {
       await app.liaRuntime.wake({ reason: 'scheduler' });
@@ -706,7 +737,20 @@ if (isDirectRun) {
   // Worker independente: reivindica jobs persistentes com lease no Supabase.
   // O intervalo não sobrepõe execuções locais; concorrência entre réplicas é controlada pela RPC claim_copilot_task.
   const runCopilotWorker = () => {
-    app.copilotTaskWorker?.drain().catch(error => console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error'));
+    if (app.copilotTaskStore?.available !== true) {
+      void notifyRuntimeAlert(
+        'copilot_queue_unavailable',
+        '⚠️ *Fila do Copiloto indisponível*\n\nA fila persistente de tarefas não está disponível. Novas tarefas em segundo plano podem ficar aguardando recuperação. Verifique Supabase, migrations e /ready.'
+      ).catch(() => {});
+      return;
+    }
+    app.copilotTaskWorker?.drain().catch(error => {
+      console.error('[copilot-worker] ciclo interrompido:', error?.code || error?.name || 'worker_error');
+      void notifyRuntimeAlert(
+        'copilot_worker_failed',
+        '⚠️ *Worker do Copiloto com falha*\n\nO ciclo de execução da fila foi interrompido.\n\n*Diagnóstico:* ' + redactSecrets(error?.message || error?.code || error?.name || 'worker_error').slice(0, 500)
+      ).catch(() => {});
+    });
   };
   runCopilotWorker();
   const copilotTaskTimer = setInterval(runCopilotWorker, 3000);
@@ -716,9 +760,10 @@ if (isDirectRun) {
   }, 10_000);
   aiRetryTimer.unref();
   let stopping = false;
-  const stop = async () => {
+  const stop = async (exitCode = 0) => {
     if (stopping) return;
     stopping = true;
+    process.exitCode = exitCode;
     clearInterval(maintenanceTimer);
     clearInterval(runtimeSchedulerTimer);
     clearInterval(copilotTaskTimer);
@@ -729,8 +774,22 @@ if (isDirectRun) {
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});
-    const forceExit = setTimeout(() => process.exit(0), 5000);
+    const forceExit = setTimeout(() => process.exit(exitCode), 5000);
     forceExit.unref?.();
-    server.close(() => process.exit(0));
-  }; process.on('SIGTERM', stop); process.on('SIGINT', stop);
+    server.close(() => process.exit(exitCode));
+  };
+  process.on('SIGTERM', () => { void stop(0); });
+  process.on('SIGINT', () => { void stop(0); });
+  process.on('unhandledRejection', (reason) => {
+    const detail = redactSecrets(reason?.stack || reason?.message || String(reason)).slice(0, 1200);
+    console.error('[process] unhandledRejection:', detail);
+    void notifyRuntimeAlert('process_unhandled_rejection', '⚠️ *Lia Sync: rejeição não tratada*\n\nO processo continua ativo, mas uma Promise falhou sem tratamento.\n\n*Diagnóstico:* ' + detail).catch(() => {});
+  });
+  process.on('uncaughtException', (error) => {
+    const detail = redactSecrets(error?.stack || error?.message || String(error)).slice(0, 1200);
+    console.error('[process] uncaughtException; iniciando encerramento controlado:', detail);
+    void notifyRuntimeAlert('process_uncaught_exception', '🚨 *Lia Sync: exceção não tratada*\n\nO processo iniciará um encerramento controlado para evitar continuar em estado inconsistente.\n\n*Diagnóstico:* ' + detail)
+      .catch(() => {})
+      .finally(() => { void stop(1); });
+  });
 }
