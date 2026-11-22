@@ -14,7 +14,7 @@ import { call } from './ai/call.mjs';
 import { config } from './config.mjs';
 import { opened, failures } from './ai/state.mjs';
 import { toolGerenciarAgendaGoogle, computeSuggestedSlots } from './tools/gerenciar_agenda_google.mjs';
-import { filterReply } from './safety.mjs';
+import { filterReply, splitReply } from './safety.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 
@@ -274,4 +274,8 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
   const realPayload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
   const real = filterReply(`• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`, { allowedPrices: new Set(['10.00', '10,00']), strictPrices: true });
   assert.equal(real.blocked, false);
+
+  const parts = splitReply(real.text);
+  assert.equal(parts.length, 2);
+  assert.equal(parts[1], realPayload);
 });
