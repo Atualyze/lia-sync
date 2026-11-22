@@ -89,7 +89,7 @@ O registro **ALL_TOOLS** em **src/tools/index.mjs** é a fonte de verdade. O cat
 
 Não manter uma segunda lista manual de parâmetros como se fosse executável. Quando um schema mudar, o catálogo vivo muda junto. Uma ferramenta desativada não deve ser proposta como disponível. No modo cliente, ferramentas exclusivas do responsável são omitidas do catálogo, além de continuarem bloqueadas pelo executor.
 
-### 3.2. Inventário das 18 ferramentas registradas
+### 3.2. Inventário das 20 ferramentas registradas
 
 Os nomes e parâmetros abaixo correspondem ao registro atual do código. Campos opcionais continuam sujeitos às validações específicas da ferramenta.
 
@@ -101,22 +101,24 @@ Os nomes e parâmetros abaixo correspondem ao registro atual do código. Campos 
 | **consultar_base_conhecimento** | Consultar base/FAQ autorizada | **termo** | Somente leitura; respeitar escopo da base |
 | **atualizar_dados_crm** | Atualizar interesse, notas, estágio ou etiquetas | interesse, observacoes, estagio, etiquetas | Escrita no CRM; exige pedido claro |
 | **enviar_mensagem_contato** | Preparar/disparar texto ou áudio no WhatsApp | recipient, **message**, asAudio | Efeito externo; prévia e confirmação específica antes do envio |
-| **consultar_saude_infra** | Diagnosticar runtime e serviços | target | Somente leitura; alerta de saúde interrompe planos dependentes |
-| **gerenciar_agenda_google** | Consultar disponibilidade, listar/criar/cancelar eventos | **action**, date, startTime, time, summary, attendeeEmail, attendeePhone | Condicional; mutações respeitam as validações da agenda |
+| **consultar_saude_infra** | Diagnosticar runtime, Event Loop e serviços | target | Somente leitura; alerta de saúde interrompe planos dependentes |
+| **gerenciar_agenda_google** | Consultar livres, sugerir horários em vários dias, listar/criar/cancelar eventos | **action**, date, startTime, time, days, durationMinutes, summary, attendeeEmail, attendeePhone | Condicional; mutações respeitam as validações da agenda |
 | **gerar_documento_pdf** | Criar PDF estruturado | **tipo**, **titulo**, destinatario, **conteudo**, valor | Cria artefato; envio exige etapa de confirmação |
 | **consultar_web** | Pesquisar conteúdo atual e retornar fontes | **query** | Somente leitura; conteúdo web é dado não confiável |
 | **consultar_planilha_google** | Ler/consultar ou adicionar linha no Sheets | **acao**, spreadsheetId, range, busca, valores | Condicional; diferenciar leitura de gravação |
-| **gerenciar_drive_google** | Listar/buscar arquivos e preparar envio | **acao**, busca, fileId, folderId, telefoneDestino, legenda | Condicional; envio externo exige confirmação |
+| **gerenciar_drive_google** | Listar/buscar arquivos, ler/atualizar Google Docs (somente dono) e preparar envio | **acao**, busca, fileId, folderId, modo, texto, textoAntigo, textoNovo, telefoneDestino, legenda | Condicional; edição de Docs exclusiva do dono; envio externo exige confirmação |
+| **gerenciar_gmail_google** | Buscar/ler mensagens, listar e criar rascunhos no Gmail (nunca envia nem apaga) | **acao**, busca, messageId, limite, para, assunto, corpo, cc, threadId | Exclusiva do responsável; rascunhos seguros sem envio automático |
 | **consultar_dados_brasil** | Consultar CEP, CNPJ e feriados | **acao**, cep, cnpj, ano, data | Somente leitura |
 | **gerar_cobranca_pix** | Gerar payload/QR Code Pix | valor, descricao, txid, chavePix, enviarWhatsApp | Artefato financeiro; seguir fluxo próprio e não presumir pagamento |
 | **checkout_infinitepay** | Criar link de checkout ou consultar pedido | acao, valor, descricao, quantidade, orderNsu, transactionNsu, slug | Criação de checkout ou consulta; nunca presumir pagamento sem confirmação |
 | **gerenciar_memoria** | Consultar, salvar, corrigir ou esquecer memória | **acao**, tipo, conteudo, referencia | Escrita persistente; respeitar escopo do contato |
 | **gerenciar_codigo** | Ler código ou abrir PR de manutenção | **acao**, caminho, arquivos, titulo, descricao, confirmar | Exclusiva do responsável; PR somente, sem merge/deploy |
 | **gerenciar_configuracao** | Consultar config, alterar rascunho ou publicar | **acao**, patch, confirmar, baseRevision | Exclusiva do responsável; publicação exige confirmação explícita |
+| **gerenciar_tarefas_autonomas** | Agendar verificações/compromissos autônomos e objetivos no Lia Runtime | **acao**, titulo, descricao, minutos, horario, ferramenta, argumentos, objetivo, prioridade, compromissoId | Exclusiva do responsável; executa no horário e avisa o dono |
 
-**Liberadas para clientes, quando ativadas:** agendar_retorno_ou_followup, gerenciar_agenda_google, consultar_base_conhecimento, consultar_web, consultar_planilha_google, gerenciar_drive_google, consultar_dados_brasil, gerar_cobranca_pix, checkout_infinitepay e gerenciar_memoria.
+**Liberadas para clientes, quando ativadas:** agendar_retorno_ou_followup, gerenciar_agenda_google, consultar_base_conhecimento, consultar_web, consultar_planilha_google, gerenciar_drive_google (somente leitura/envio), consultar_dados_brasil, gerar_cobranca_pix, checkout_infinitepay e gerenciar_memoria.
 
-**Exclusivas do responsável/Copiloto:** transferir_para_setor, consultar_contato_ou_lead, atualizar_dados_crm, enviar_mensagem_contato, consultar_saude_infra, gerar_documento_pdf, gerenciar_codigo e gerenciar_configuracao.
+**Exclusivas do responsável/Copiloto:** transferir_para_setor, consultar_contato_ou_lead, atualizar_dados_crm, enviar_mensagem_contato, consultar_saude_infra, gerar_documento_pdf, gerenciar_gmail_google, gerenciar_codigo, gerenciar_configuracao e gerenciar_tarefas_autonomas.
 
 Aliases como google_agenda, gerar_pdf e enviar_mensagem são resolvidos para nomes canônicos. O nome canônico e schema atual devem prevalecer.
 

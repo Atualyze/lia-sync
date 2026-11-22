@@ -184,24 +184,85 @@ async function googleRequest(endpointPath, options = {}, settings = {}) {
   return body;
 }
 
+function parseHHMMToMinutes(hhmm = '09:00', fallback = 540) {
+  const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallback;
+  return Math.min(23, Number(m[1])) * 60 + Math.min(59, Number(m[2]));
+}
+
+function formatMinutesToHHMM(totalMinutes) {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.floor(totalMinutes)));
+  const hh = String(Math.floor(clamped / 60)).padStart(2, '0');
+  const mm = String(clamped % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+export function computeSuggestedSlots({
+  startDate,
+  days = 3,
+  durationMinutes = 30,
+  stepMinutes = 30,
+  workdayStart = '09:00',
+  workdayEnd = '18:00',
+  timezone = 'America/Sao_Paulo',
+  busyIntervals = [],
+  maxSuggestions = 8,
+  nowMs = Date.now()
+}) {
+  const startMin = parseHHMMToMinutes(workdayStart, 9 * 60);
+  const endMin = parseHHMMToMinutes(workdayEnd, 18 * 60);
+  const dur = Math.max(15, Math.min(240, Number(durationMinutes) || 30));
+  const step = Math.max(15, Math.min(120, Number(stepMinutes) || 30));
+  const busyRanges = (Array.isArray(busyIntervals) ? busyIntervals : [])
+    .map(b => ({ start: Date.parse(b.start), end: Date.parse(b.end) }))
+    .filter(b => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end > b.start);
+
+  const suggestions = [];
+  const totalDays = Math.max(1, Math.min(14, Number(days) || 3));
+  for (let offset = 0; offset < totalDays && suggestions.length < maxSuggestions; offset += 1) {
+    const dayObj = new Date(startDate.getTime() + offset * 86400000);
+    const isoDate = getIsoDateInZone(dayObj, timezone);
+    const dateLabel = dayObj.toLocaleDateString('pt-BR', { timeZone: timezone });
+    for (let cursor = startMin; cursor + dur <= endMin && suggestions.length < maxSuggestions; cursor += step) {
+      const timeStr = formatMinutesToHHMM(cursor);
+      const slotStartMs = Date.parse(toZonedIsoTimestamp(isoDate, timeStr, timezone));
+      const slotEndMs = slotStartMs + dur * 60000;
+      if (slotStartMs < nowMs + 10 * 60000) continue;
+      const overlaps = busyRanges.some(b => slotStartMs < b.end && slotEndMs > b.start);
+      if (!overlaps) {
+        suggestions.push({
+          date: dateLabel,
+          isoDate,
+          startTime: timeStr,
+          endTime: formatMinutesToHHMM(cursor + dur),
+          durationMinutes: dur
+        });
+      }
+    }
+  }
+  return suggestions;
+}
+
 export const toolGerenciarAgendaGoogle = {
   name: 'gerenciar_agenda_google',
-  description: 'Gerencia a agenda do Google Calendar: consulta horários livres, cria reuniões/atendimentos, lista eventos ou cancela compromissos.',
+  description: 'Gerencia a agenda do Google Calendar: consulta horários livres, sugere janelas livres em vários dias, cria reuniões/atendimentos, lista eventos ou cancela compromissos.',
   parameters: {
     type: 'OBJECT',
     properties: {
-      action: { type: 'STRING', enum: ['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'] },
+      action: { type: 'STRING', enum: ['consultar_livres', 'sugerir_horarios', 'criar_evento', 'listar_eventos', 'cancelar_evento'] },
       date: { type: 'STRING' },
       startTime: { type: 'STRING' },
       time: { type: 'STRING' },
+      days: { type: 'INTEGER', description: 'Quantos dias pesquisar em sugerir_horarios (padrão 3, máximo 14).' },
+      durationMinutes: { type: 'INTEGER', description: 'Duração desejada em minutos para sugerir_horarios (padrão 30).' },
       summary: { type: 'STRING' },
       attendeeEmail: { type: 'STRING' },
       attendeePhone: { type: 'STRING' }
     },
     required: ['action']
   },
-  async execute({ action, date, startTime, time: altTime, start: altStart, summary, attendeeEmail, attendeePhone }, context = {}) {
-    if (!['consultar_livres', 'criar_evento', 'listar_eventos', 'cancelar_evento'].includes(action)) {
+  async execute({ action, date, startTime, time: altTime, start: altStart, days, durationMinutes, summary, attendeeEmail, attendeePhone }, context = {}) {
+    if (!['consultar_livres', 'sugerir_horarios', 'criar_evento', 'listar_eventos', 'cancelar_evento'].includes(action)) {
       return { success: false, error: 'invalid_action', message: 'Ação de agenda inválida.' };
     }
     const settings = integration(context.botConfig);
@@ -216,6 +277,11 @@ export const toolGerenciarAgendaGoogle = {
 
     if (mockEnabled()) {
       if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
+      if (action === 'sugerir_horarios') {
+        const dur = Number(durationMinutes) || settings.defaultEventDurationMinutes;
+        const suggested = MOCK_SLOTS.slice(0, 4).map(slot => ({ date: dateFormatted, isoDate, startTime: slot, endTime: formatMinutesToHHMM(parseHHMMToMinutes(slot) + dur), durationMinutes: dur }));
+        return { success: true, mocked: true, date: dateFormatted, suggestions: suggested, availableSlots: MOCK_SLOTS.slice(0, 4), message: `Sugestões de horários livres a partir de ${dateFormatted}: ${suggested.map(s => `${s.date} às ${s.startTime}`).join(', ')}.` };
+      }
       if (action === 'criar_evento') return { success: true, mocked: true, event: { title: summary || `Atendimento com ${context.clientName || 'Cliente'}`, date: dateFormatted, time: chosenTime, status: 'confirmed' }, message: `Compromisso simulado com sucesso para ${dateFormatted} às ${chosenTime}.` };
     }
 
@@ -228,6 +294,46 @@ export const toolGerenciarAgendaGoogle = {
     if (!hasCredentials) return unavailable();
 
     try {
+      if (action === 'sugerir_horarios') {
+        const totalDays = Math.max(1, Math.min(14, Number(days) || 3));
+        const dur = Math.max(15, Math.min(240, Number(durationMinutes) || settings.defaultEventDurationMinutes));
+        const endDateObj = new Date(targetDate.getTime() + (totalDays - 1) * 86400000);
+        const endIsoDate = getIsoDateInZone(endDateObj, settings.timezone);
+        const rangeStartIso = toZonedIsoTimestamp(isoDate, '00:00', settings.timezone);
+        const rangeEndIso = toZonedIsoTimestamp(endIsoDate, '23:59', settings.timezone);
+        const body = await googleRequest('/freeBusy', {
+          method: 'POST',
+          body: JSON.stringify({
+            timeMin: rangeStartIso,
+            timeMax: rangeEndIso,
+            timeZone: settings.timezone,
+            items: [{ id: settings.calendarId }]
+          })
+        }, settings);
+        const busy = body.calendars?.[settings.calendarId]?.busy || [];
+        const suggestions = computeSuggestedSlots({
+          startDate: targetDate,
+          days: totalDays,
+          durationMinutes: dur,
+          stepMinutes: settings.slotDurationMinutes || 30,
+          workdayStart: settings.workdayStart,
+          workdayEnd: settings.workdayEnd,
+          timezone: settings.timezone,
+          busyIntervals: busy,
+          maxSuggestions: 8
+        });
+        return {
+          success: true,
+          date: dateFormatted,
+          daysChecked: totalDays,
+          durationMinutes: dur,
+          suggestions,
+          availableSlots: suggestions.map(s => `${s.date} ${s.startTime}`),
+          message: suggestions.length
+            ? `Sugestões de horários livres (${dur} min): ${suggestions.map(s => `${s.date} às ${s.startTime}`).join(', ')}.`
+            : `Não encontrei janelas livres de ${dur} min nos próximos ${totalDays} dia(s) a partir de ${dateFormatted}.`
+        };
+      }
       if (action === 'consultar_livres') {
         const dayStartIso = toZonedIsoTimestamp(isoDate, '00:00', settings.timezone);
         const dayEndIso = toZonedIsoTimestamp(isoDate, '23:59', settings.timezone);

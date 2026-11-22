@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
 import { getBaileysProvider } from '../whatsapp.mjs';
+import { getEventLoopHealthSnapshot } from '../ops/event-loop-monitor.mjs';
 
 const TARGETS = new Set(['geral', 'dokku', 'vps', 'evolution', 'baileys', 'whatsapp', 'supabase', 'banco', 'ai', 'apis']);
 const validTarget = target => { const value = String(target || 'geral').trim().toLowerCase(); if (TARGETS.has(value)) return value; try { const url = new URL(value); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null; return url; } catch { return null; } };
@@ -13,7 +14,9 @@ export const toolConsultarSaudeInfra = {
     const selected = validTarget(target);
     if (!selected) return { success: false, healthy: false, error: 'invalid_target', message: 'target inválido; use um alvo permitido ou URL HTTP(S) sem credenciais.' };
     const memory = process.memoryUsage();
-    const checks = [{ name: 'Lia Bot Runtime', status: 'online', details: `Heap: ${Math.round(memory.heapUsed / 1048576)}MB | RSS: ${Math.round(memory.rss / 1048576)}MB | Uptime: ${(process.uptime() / 3600).toFixed(1)}h` }];
+    const el = getEventLoopHealthSnapshot();
+    const elInfo = el.totalStalls > 0 ? ` | Stalls(15m): ${el.recentStalls15m} (máx ${el.maxStallMs}ms)` : ' | Event Loop: estável';
+    const checks = [{ name: 'Lia Bot Runtime', status: el.status === 'degraded' ? 'degraded' : 'online', details: `Heap: ${Math.round(memory.heapUsed / 1048576)}MB | RSS: ${Math.round(memory.rss / 1048576)}MB | Uptime: ${(process.uptime() / 3600).toFixed(1)}h${elInfo}` }];
     const include = name => selected === 'geral' || selected === name;
     if (selected instanceof URL) checks.push(check('URL configurada', await probe(selected.toString())));
     if (include('evolution') || include('baileys') || include('whatsapp')) {

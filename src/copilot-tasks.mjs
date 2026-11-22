@@ -11,8 +11,9 @@ const READ_ONLY_TASK_TOOLS = new Set([
 const isReadOnlyTaskStep = step => READ_ONLY_TASK_TOOLS.has(step.name)
   || (step.name === 'checkout_infinitepay' && String(step.args?.acao || '') === 'verificar_pagamento')
   || (step.name === 'consultar_planilha_google' && ['ler_intervalo', 'buscar_linhas'].includes(String(step.args?.acao || '')))
-  || (step.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo'].includes(String(step.args?.acao || '')))
-  || (step.name === 'gerenciar_agenda_google' && ['consultar_livres', 'listar_eventos'].includes(String(step.args?.action || '')));
+  || (step.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(String(step.args?.acao || '')))
+  || (step.name === 'gerenciar_agenda_google' && ['consultar_livres', 'sugerir_horarios', 'listar_eventos'].includes(String(step.args?.action || '')))
+  || (step.name === 'gerenciar_gmail_google' && ['buscar_mensagens', 'ler_mensagem', 'listar_rascunhos'].includes(String(step.args?.acao || '')));
 const NOTIFICATION_STATES = new Set(['pending', 'sending', 'sent', 'uncertain', 'unaddressable']);
 const iso = value => {
   const date = new Date(value);
@@ -467,6 +468,91 @@ export class CopilotTaskStore {
       current.updatedAt = new Date(this.now()).toISOString();
       await this._saveLocal();
       return true;
+    });
+  }
+
+  async recoverInterruptedOnStartup(currentWorkerId = '') {
+    if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable' || (!this.remoteEnabled && this.localCorrupt)) {
+      return { recovered: 0, requeued: 0, markedUncertain: 0 };
+    }
+    const nowIso = new Date(this.now()).toISOString();
+    let requeued = 0;
+    let markedUncertain = 0;
+
+    if (this.remoteEnabled) {
+      try {
+        const rows = await this.client.select(
+          'copilot_tasks',
+          'select=*&status=eq.running&order=started_at.asc&limit=25'
+        );
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const task = mapTask(row);
+          if (currentWorkerId && task.leaseOwner === currentWorkerId) continue;
+          const canRequeue = task.retryPolicy === 'read_only' && task.attemptCount < task.maxAttempts;
+          const patch = canRequeue
+            ? {
+                status: 'queued',
+                last_error_code: 'requeued_after_restart',
+                lease_owner: null,
+                lease_token: null,
+                lease_expires_at: null,
+                updated_at: nowIso
+              }
+            : {
+                status: 'uncertain',
+                last_error_code: 'interrupted_by_restart',
+                result_text: 'O serviço reiniciou enquanto esta tarefa estava em execução. O resultado ficou incerto — confira antes de repetir a ação.',
+                notification_status: 'pending',
+                completed_at: nowIso,
+                lease_owner: null,
+                lease_token: null,
+                lease_expires_at: null,
+                updated_at: nowIso
+              };
+          const updated = await this.client.request('copilot_tasks', {
+            method: 'PATCH',
+            query: `id=eq.${encodeURIComponent(task.id)}&status=eq.running`,
+            body: patch,
+            prefer: 'return=representation'
+          });
+          if (Array.isArray(updated) && updated.length === 1) {
+            if (canRequeue) requeued += 1;
+            else markedUncertain += 1;
+          }
+        }
+      } catch (error) {
+        this.logger.warn?.('[copilot-tasks] falha na recuperação de tarefas no startup:', error?.code || error?.message || 'recovery_error');
+      }
+      return { recovered: requeued + markedUncertain, requeued, markedUncertain };
+    }
+
+    return this._serial(async () => {
+      let dirty = false;
+      for (const task of this.tasks) {
+        if (task.status !== 'running') continue;
+        if (currentWorkerId && task.leaseOwner === currentWorkerId) continue;
+        const canRequeue = task.retryPolicy === 'read_only' && task.attemptCount < task.maxAttempts;
+        if (canRequeue) {
+          task.status = 'queued';
+          task.errorCode = 'requeued_after_restart';
+          requeued += 1;
+        } else {
+          task.status = 'uncertain';
+          task.errorCode = 'interrupted_by_restart';
+          task.resultText = 'O serviço reiniciou enquanto esta tarefa estava em execução. O resultado ficou incerto — confira antes de repetir a ação.';
+          task.notificationStatus = 'pending';
+          task.completedAt = nowIso;
+          markedUncertain += 1;
+        }
+        task.leaseOwner = null;
+        task.leaseToken = null;
+        task.leaseExpiresAt = null;
+        task.updatedAt = nowIso;
+        dirty = true;
+      }
+      if (dirty) await this._saveLocal();
+      return { recovered: requeued + markedUncertain, requeued, markedUncertain };
     });
   }
 

@@ -1,8 +1,10 @@
 import { resolveGoogleAccessToken } from './google_auth.mjs';
+import { createGoogleHttp, GoogleHttpError } from './google_http.mjs';
 import { config } from '../config.mjs';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
+const DOCS_WRITE_SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive.file'];
 const MAX_DRIVE_FILE_BYTES = 15 * 1024 * 1024;
 
 function sanitizeQueryTerm(text) {
@@ -12,14 +14,14 @@ function sanitizeQueryTerm(text) {
 export const toolGerenciarDriveGoogle = {
   name: 'gerenciar_drive_google',
   description:
-    'Lista, busca e envia catálogos, contratos ou documentos em PDF do Google Drive diretamente para o cliente no WhatsApp.',
+    'Lista, busca, lê, atualiza Google Docs (somente dono) e envia catálogos, contratos ou documentos em PDF do Google Drive diretamente para o cliente no WhatsApp.',
   parameters: {
     type: 'OBJECT',
     properties: {
       acao: {
         type: 'STRING',
-        enum: ['listar_arquivos', 'buscar_arquivo', 'ler_documento', 'enviar_arquivo_whatsapp'],
-        description: 'Ação no Google Drive / Google Docs (ler_documento lê o texto de um Google Doc).'
+        enum: ['listar_arquivos', 'buscar_arquivo', 'ler_documento', 'atualizar_documento', 'enviar_arquivo_whatsapp'],
+        description: 'Ação no Google Drive / Google Docs (ler_documento lê texto; atualizar_documento anexa ou substitui texto em um Google Doc).'
       },
       busca: {
         type: 'STRING',
@@ -27,11 +29,28 @@ export const toolGerenciarDriveGoogle = {
       },
       fileId: {
         type: 'STRING',
-        description: 'ID do arquivo no Google Drive (obrigatório para enviar_arquivo_whatsapp).'
+        description: 'ID do arquivo no Google Drive / Google Doc.'
       },
       folderId: {
         type: 'STRING',
         description: 'ID da pasta no Google Drive (opcional; usa GOOGLE_DRIVE_FOLDER_ID se omitido).'
+      },
+      modo: {
+        type: 'STRING',
+        enum: ['anexar', 'substituir'],
+        description: 'Modo para atualizar_documento: "anexar" (adiciona texto ao final) ou "substituir" (troca textoAntigo por textoNovo).'
+      },
+      texto: {
+        type: 'STRING',
+        description: 'Texto a anexar no documento (para atualizar_documento com modo "anexar").'
+      },
+      textoAntigo: {
+        type: 'STRING',
+        description: 'Trecho exato a substituir (para atualizar_documento com modo "substituir").'
+      },
+      textoNovo: {
+        type: 'STRING',
+        description: 'Novo texto substituto (para atualizar_documento com modo "substituir").'
       },
       telefoneDestino: {
         type: 'STRING',
@@ -47,6 +66,71 @@ export const toolGerenciarDriveGoogle = {
 
   async execute(args = {}, context = {}) {
     const acao = String(args.acao || '').trim();
+    if (acao === 'atualizar_documento') {
+      if (context.actor === 'client') {
+        return { success: false, error: 'forbidden_for_client', message: 'Apenas o responsável pode editar documentos no Google Docs.' };
+      }
+      const docId = String(args.fileId || '').trim();
+      if (!docId) {
+        return { success: false, error: 'missing_file_id', message: 'Informe o fileId do Google Doc para atualizar.' };
+      }
+      const modo = String(args.modo || (args.textoAntigo ? 'substituir' : 'anexar')).trim();
+      const writeToken = await resolveGoogleAccessToken({ scopes: DOCS_WRITE_SCOPES, envPrefix: 'GOOGLE_DRIVE' });
+      if (!writeToken) {
+        return { success: false, error: 'google_docs_unavailable', message: 'Integração com Google Docs não está configurada para edição.' };
+      }
+      const http = createGoogleHttp({ accessToken: writeToken, fetchImpl: context.fetchImpl || globalThis.fetch });
+      const requests = [];
+      if (modo === 'substituir') {
+        const oldText = String(args.textoAntigo || '');
+        const newText = String(args.textoNovo ?? '');
+        if (!oldText) {
+          return { success: false, error: 'missing_old_text', message: 'Informe textoAntigo para substituir no documento.' };
+        }
+        requests.push({
+          replaceAllText: {
+            containsText: { text: oldText, matchCase: true },
+            replaceText: newText
+          }
+        });
+      } else {
+        const appendText = String(args.texto ?? args.textoNovo ?? '').trim();
+        if (!appendText) {
+          return { success: false, error: 'missing_text', message: 'Informe o texto para anexar ao documento.' };
+        }
+        requests.push({
+          insertText: {
+            endOfSegmentLocation: { segmentId: '' },
+            text: `\n${appendText}`
+          }
+        });
+      }
+      try {
+        const res = await http.send({
+          method: 'POST',
+          host: 'docs.googleapis.com',
+          path: `/v1/documents/${encodeURIComponent(docId)}:batchUpdate`,
+          body: { requests }
+        });
+        const occurrences = res?.replies?.[0]?.replaceAllText?.occurrencesChanged;
+        return {
+          success: true,
+          acao,
+          modo,
+          fileId: docId,
+          ...(typeof occurrences === 'number' ? { occurrencesChanged: occurrences } : {}),
+          message: modo === 'substituir'
+            ? `Documento atualizado (${occurrences ?? 0} ocorrência(s) substituída(s)).`
+            : 'Texto anexado ao final do Google Doc com sucesso.'
+        };
+      } catch (error) {
+        if (error instanceof GoogleHttpError) {
+          return { success: false, error: `google_docs_${error.code}`, status: error.status || undefined, message: error.message };
+        }
+        return { success: false, error: 'google_docs_update_failed', message: error?.message || 'Falha ao atualizar o Google Doc.' };
+      }
+    }
+
     const token = await resolveGoogleAccessToken({ scopes: DRIVE_SCOPES, envPrefix: 'GOOGLE_DRIVE' });
     if (!token) {
       return {

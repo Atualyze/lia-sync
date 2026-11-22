@@ -40,6 +40,8 @@ import { LiaLearningStore, createLearningEngine } from './learning/index.mjs';
 import { LiaAutonomyStore, createAutonomyEngine } from './autonomy/index.mjs';
 import { ApiSettingsStore } from './api-settings.mjs';
 import { CustomProviderStore } from './ai/custom-providers.mjs';
+import { startGlobalEventLoopMonitor, stopGlobalEventLoopMonitor, getEventLoopHealthSnapshot } from './ops/event-loop-monitor.mjs';
+import { redactSecrets } from './ops/log-redaction.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -78,6 +80,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   await copilotTaskStore.load();
+  const startupRecovery = await copilotTaskStore.recoverInterruptedOnStartup(`${os.hostname()}:${process.pid}`).catch(() => ({ recovered: 0, requeued: 0, markedUncertain: 0 }));
+  if (startupRecovery.recovered > 0) {
+    console.log(`[copilot-tasks] recuperação no startup: ${startupRecovery.recovered} tarefa(s) interrompida(s) (${startupRecovery.requeued} re-enfileirada(s), ${startupRecovery.markedUncertain} marcada(s) como incerta(s)).`);
+  }
   const budgetGate = new AIBudgetGate({ operationsStore });
   const askAIWithBudget = args => askAI({ ...args, budgetGate });
   const copilotAI = { askAI: askAIWithBudget, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice };
@@ -164,7 +170,15 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     const learningAvailable = learningCheck.status === 'ready';
     const autonomyCheck = liaAutonomy.readiness();
     const autonomyAvailable = autonomyCheck.status === 'ready';
-    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck, runtimeCheck, learningCheck, autonomyCheck];
+    const elSnapshot = getEventLoopHealthSnapshot();
+    const eventLoopCheck = {
+      name: 'event_loop',
+      status: 'ready',
+      health: elSnapshot.status,
+      recentStalls15m: elSnapshot.recentStalls15m,
+      maxStallMs: elSnapshot.maxStallMs
+    };
+    const checks = [...(Array.isArray(base?.checks) ? base.checks : []), queueCheck, runtimeCheck, learningCheck, autonomyCheck, eventLoopCheck];
     const ok = Boolean(base?.ok) && queueAvailable && runtimeAvailable && learningAvailable && autonomyAvailable;
     return { ...base, ok, status: ok ? 'ready' : 'not_ready', checks };
   };
@@ -524,7 +538,8 @@ const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) ===
 
 if (isDirectRun) {
   const errors = validateConfig(); if (errors.length) { console.error(`[config] ${errors.join('; ')}`); process.exit(1); }
-  const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(e); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
+  startGlobalEventLoopMonitor({ logger: console });
+  const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(redactSecrets(e?.stack || e?.message || String(e))); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
   if (config.whatsappProvider === 'baileys') {
     void app.baileysProvider?.start().catch(err => console.error('[baileys] Falha na inicialização automática:', err?.message || err));
   }
@@ -597,6 +612,7 @@ if (isDirectRun) {
     clearInterval(maintenanceTimer);
     clearInterval(copilotTaskTimer);
     clearInterval(aiRetryTimer);
+    stopGlobalEventLoopMonitor();
     await app.baileysProvider?.stop({ logout: false }).catch(() => {});
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);

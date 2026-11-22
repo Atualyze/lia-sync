@@ -18,6 +18,7 @@ import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
 import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
 import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs';
+import { toolGerenciarGmailGoogle } from './gerenciar_gmail_google.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
@@ -64,7 +65,8 @@ export const ALL_TOOLS = [
   toolGerenciarMemoria,
   toolGerenciarCodigo,
   toolGerenciarConfiguracao,
-  toolGerenciarTarefasAutonomas
+  toolGerenciarTarefasAutonomas,
+  toolGerenciarGmailGoogle
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -76,6 +78,8 @@ const TOOL_NAME_ALIASES = {
   enviar_mensagem: 'enviar_mensagem_contato',
   google_sheets: 'consultar_planilha_google',
   google_drive: 'gerenciar_drive_google',
+  google_gmail: 'gerenciar_gmail_google',
+  gmail: 'gerenciar_gmail_google',
   consultar_cep_cnpj: 'consultar_dados_brasil',
   gerar_pix: 'gerar_cobranca_pix'
 };
@@ -107,6 +111,7 @@ export function hasGoogleWorkspaceCredentials() {
     || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
     || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
     || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || process.env.GOOGLE_GMAIL_ACCESS_TOKEN
     || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
     || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
   );
@@ -114,7 +119,7 @@ export function hasGoogleWorkspaceCredentials() {
 
 export function isToolConfigured(toolName, botConfig = {}) {
   const canonical = resolveToolName(toolName);
-  if (canonical === 'gerenciar_drive_google' || canonical === 'consultar_planilha_google') {
+  if (canonical === 'gerenciar_drive_google' || canonical === 'consultar_planilha_google' || canonical === 'gerenciar_gmail_google') {
     return hasGoogleWorkspaceCredentials();
   }
   if (canonical === 'gerenciar_agenda_google') {
@@ -159,7 +164,8 @@ export const TOOL_EXECUTION_POLICIES = Object.freeze({
   gerenciar_memoria: { mode: 'memory_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_memory' },
   gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
   gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' },
-  gerenciar_tarefas_autonomas: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'runtime_commitment_or_goal' }
+  gerenciar_tarefas_autonomas: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'runtime_commitment_or_goal' },
+  gerenciar_gmail_google: { mode: 'conditional', approval: 'draft_only_no_send', retry: 'never', effects: 'gmail_read_or_draft' }
 });
 
 export function getToolExecutionPolicy(toolName) {
@@ -216,6 +222,7 @@ export {
   toolConsultarWeb,
   toolConsultarPlanilhaGoogle,
   toolGerenciarDriveGoogle,
+  toolGerenciarGmailGoogle,
   toolConsultarDadosBrasil,
   toolGerarCobrancaPix
 };

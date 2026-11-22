@@ -176,7 +176,76 @@ export function stripRedundantSelfIntroduction(reply = '', { alreadyIntroduced =
   return raw;
 }
 
-export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false, alreadyIntroduced = false, botName = 'Lia' } = {}) {
+const INVENTED_URL_RE = /https?:\/\/(?:\[[0-9A-Fa-f:.]+\](?::\d+)?|[^\s/?#()<>[\]"'`]+)[^\s()<>[\]"'`]*/gi;
+const RESERVED_INVENTED_TLDS = new Set(['local', 'localhost', 'internal', 'test', 'example', 'invalid', 'lan']);
+const PLACEHOLDER_HOSTS = new Set([
+  'example.com', 'www.example.com', 'exemplo.com', 'exemplo.com.br',
+  'seu-dominio.com', 'seu-dominio.com.br', 'seudominio.com', 'seudominio.com.br',
+  'seusite.com', 'seusite.com.br', 'meusite.com', 'meusite.com.br',
+  'lia', 'lia-bot', 'paperclip'
+]);
+const KNOWN_LIA_ROUTES = /^\/(?:pix|pay|painel|api\/public)(?:\/|$)/i;
+
+function isLoopbackOrInventedHost(hostname = '') {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return false;
+  if (host === 'localhost' || host === '::1' || host === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(host)) return true;
+  if (PLACEHOLDER_HOSTS.has(host)) return true;
+  const labels = host.split('.');
+  const tld = labels.at(-1) || '';
+  if (labels.length >= 2 && RESERVED_INVENTED_TLDS.has(tld)) return true;
+  return false;
+}
+
+/**
+ * Remove ou corrige links inventados/locais (localhost, 127.0.0.1, *.local, seu-dominio.com)
+ * que jamais abririam no WhatsApp do cliente ou do responsável.
+ */
+export function sanitizeInventedLinks(text = '', { ownOrigin = '' } = {}) {
+  const raw = String(text || '');
+  if (!raw.includes('://')) return { text: raw, removedCount: 0, rewrittenCount: 0 };
+  let safeOrigin = '';
+  if (ownOrigin) {
+    try {
+      const parsed = new URL(ownOrigin);
+      if (['http:', 'https:'].includes(parsed.protocol) && !isLoopbackOrInventedHost(parsed.hostname)) {
+        safeOrigin = parsed.origin;
+      }
+    } catch {}
+  }
+
+  let removedCount = 0;
+  let rewrittenCount = 0;
+  const cleaned = raw.replace(INVENTED_URL_RE, (match) => {
+    const trailingMatch = match.match(/[.,;:!?]+$/);
+    const trailing = trailingMatch ? trailingMatch[0] : '';
+    const candidate = trailing ? match.slice(0, -trailing.length) : match;
+    let url;
+    try {
+      url = new URL(candidate);
+    } catch {
+      return match;
+    }
+    if (safeOrigin && url.origin === safeOrigin) return match;
+    if (!isLoopbackOrInventedHost(url.hostname)) return match;
+    if (safeOrigin && KNOWN_LIA_ROUTES.test(url.pathname)) {
+      rewrittenCount += 1;
+      return `${safeOrigin}${url.pathname}${url.search}${url.hash}${trailing}`;
+    }
+    removedCount += 1;
+    return trailing;
+  });
+
+  const normalized = cleaned
+    .replace(/\(\s*\)/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .trim();
+
+  return { text: normalized, removedCount, rewrittenCount };
+}
+
+export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false, alreadyIntroduced = false, botName = 'Lia', ownOrigin = '' } = {}) {
   let text = String(reply || '')
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
@@ -193,6 +262,9 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
     .replace(/como uma IA|como modelo de linguagem/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  const linkCheck = sanitizeInventedLinks(text, { ownOrigin });
+  text = linkCheck.text;
 
   if (alreadyIntroduced) {
     text = stripRedundantSelfIntroduction(text, { alreadyIntroduced: true, botName });
