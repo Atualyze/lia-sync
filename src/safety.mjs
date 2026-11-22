@@ -277,8 +277,21 @@ export function convertMarkdownTablesToBullets(text = '') {
   return out.join('\n');
 }
 
+export function formatIsoTimestampsForHumans(text = '', timeZone = 'America/Sao_Paulo') {
+  return String(text || '').replace(
+    /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g,
+    (match) => {
+      const d = new Date(match);
+      if (Number.isNaN(d.getTime())) return match;
+      const dateStr = new Intl.DateTimeFormat('pt-BR', { timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+      const timeStr = new Intl.DateTimeFormat('pt-BR', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+      return `${dateStr} às ${timeStr}`;
+    }
+  );
+}
+
 export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false, alreadyIntroduced = false, botName = 'Lia', ownOrigin = '' } = {}) {
-  let text = convertMarkdownTablesToBullets(String(reply || ''))
+  let text = formatIsoTimestampsForHumans(convertMarkdownTablesToBullets(String(reply || '')))
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
     .replace(/\s*—\s*/g, ' - ')

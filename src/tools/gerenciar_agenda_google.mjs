@@ -1,5 +1,15 @@
 import crypto from 'node:crypto';
 import { config } from '../config.mjs';
+import { normalizarJanelaDeAtendimento, diasSemanaTexto } from '../business-hours.mjs';
+
+const WEEKDAY_NAMES_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const WEEKDAY_MAP_EN = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function getWeekdayInZone(dateObj, timezone = 'America/Sao_Paulo') {
+  const short = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short' }).format(dateObj);
+  const index = WEEKDAY_MAP_EN[short] ?? dateObj.getUTCDay();
+  return { index, name: WEEKDAY_NAMES_PT[index] || 'dia' };
+}
 
 const MOCK_SLOTS = ['09:00', '10:30', '14:00', '15:30', '17:00'];
 const GOOGLE_CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
@@ -11,11 +21,16 @@ const mockEnabled = () => process.env.GOOGLE_CALENDAR_MOCK === 'true' && ['devel
 
 const integration = (botConfig = {}) => {
   const configured = botConfig?.integrations?.googleCalendar || {};
+  const rawBh = botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
+  const bh = rawBh?.enabled === true ? normalizarJanelaDeAtendimento(rawBh) : null;
   return {
     enabled: configured.enabled !== false,
-    timezone: configured.timezone || 'America/Sao_Paulo',
-    workdayStart: configured.workdayStart || '09:00',
-    workdayEnd: configured.workdayEnd || '18:00',
+    timezone: bh?.timezone || configured.timezone || 'America/Sao_Paulo',
+    workdayStart: bh?.start || configured.workdayStart || '09:00',
+    workdayEnd: bh?.end || configured.workdayEnd || '18:00',
+    allowedWeekdays: bh ? bh.weekdays : null,
+    businessHoursEnforced: Boolean(bh),
+    businessHoursSummary: bh ? `${diasSemanaTexto(bh.weekdays)}, das ${bh.start} às ${bh.end}` : '',
     slotDurationMinutes: Number(configured.slotDurationMinutes) || 60,
     defaultEventDurationMinutes: Number(configured.defaultEventDurationMinutes) || 30,
     accessToken: process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || '',
@@ -204,6 +219,7 @@ export function computeSuggestedSlots({
   stepMinutes = 30,
   workdayStart = '09:00',
   workdayEnd = '18:00',
+  allowedWeekdays = null,
   timezone = 'America/Sao_Paulo',
   busyIntervals = [],
   maxSuggestions = 8,
@@ -221,6 +237,10 @@ export function computeSuggestedSlots({
   const totalDays = Math.max(1, Math.min(14, Number(days) || 3));
   for (let offset = 0; offset < totalDays && suggestions.length < maxSuggestions; offset += 1) {
     const dayObj = new Date(startDate.getTime() + offset * 86400000);
+    const weekday = getWeekdayInZone(dayObj, timezone);
+    if (Array.isArray(allowedWeekdays) && allowedWeekdays.length > 0 && !allowedWeekdays.includes(weekday.index)) {
+      continue;
+    }
     const isoDate = getIsoDateInZone(dayObj, timezone);
     const dateLabel = dayObj.toLocaleDateString('pt-BR', { timeZone: timezone });
     for (let cursor = startMin; cursor + dur <= endMin && suggestions.length < maxSuggestions; cursor += step) {
@@ -232,6 +252,7 @@ export function computeSuggestedSlots({
       if (!overlaps) {
         suggestions.push({
           date: dateLabel,
+          weekdayName: weekday.name,
           isoDate,
           startTime: timeStr,
           endTime: formatMinutesToHHMM(cursor + dur),
@@ -272,8 +293,45 @@ export const toolGerenciarAgendaGoogle = {
     const targetDate = parseCalendarDate(date || altStart, settings.timezone);
     if (!targetDate) return { success: false, error: 'invalid_date', message: 'Data inválida para a agenda.' };
     const dateFormatted = targetDate.toLocaleDateString('pt-BR', { timeZone: settings.timezone });
+    const weekday = getWeekdayInZone(targetDate, settings.timezone);
     const isoDate = getIsoDateInZone(targetDate, settings.timezone);
     const chosenTime = normalizeTimeStr(startTime || altTime || (altStart && String(altStart).includes('T') ? String(altStart).split('T')[1] : '') || '14:00');
+    const isClosedDay = Boolean(
+      settings.businessHoursEnforced
+      && Array.isArray(settings.allowedWeekdays)
+      && !settings.allowedWeekdays.includes(weekday.index)
+    );
+    const chosenMinutes = parseHHMMToMinutes(chosenTime, 14 * 60);
+    const workStartMinutes = parseHHMMToMinutes(settings.workdayStart, 9 * 60);
+    const workEndMinutes = parseHHMMToMinutes(settings.workdayEnd, 18 * 60);
+    const isOutsideWorkHours = Boolean(
+      settings.businessHoursEnforced
+      && (chosenMinutes < workStartMinutes || chosenMinutes + settings.defaultEventDurationMinutes > workEndMinutes)
+    );
+
+    if (action === 'consultar_livres' && isClosedDay) {
+      return {
+        success: true,
+        closedDay: true,
+        date: dateFormatted,
+        weekdayName: weekday.name,
+        availableSlots: [],
+        message: `Não há atendimento em ${weekday.name} (${dateFormatted}). Nosso expediente é de ${settings.businessHoursSummary}.`
+      };
+    }
+    if (action === 'criar_evento' && (isClosedDay || isOutsideWorkHours)) {
+      return {
+        success: false,
+        error: 'outside_business_hours',
+        closedDay: isClosedDay,
+        date: dateFormatted,
+        weekdayName: weekday.name,
+        time: chosenTime,
+        message: isClosedDay
+          ? `Não é possível agendar em ${weekday.name} (${dateFormatted}) porque estamos fora do expediente (${settings.businessHoursSummary}).`
+          : `Não é possível agendar em ${weekday.name} (${dateFormatted}) às ${chosenTime} — nosso expediente é de ${settings.businessHoursSummary}.`
+      };
+    }
 
     if (mockEnabled()) {
       if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
@@ -318,6 +376,7 @@ export const toolGerenciarAgendaGoogle = {
           stepMinutes: settings.slotDurationMinutes || 30,
           workdayStart: settings.workdayStart,
           workdayEnd: settings.workdayEnd,
+          allowedWeekdays: settings.allowedWeekdays,
           timezone: settings.timezone,
           busyIntervals: busy,
           maxSuggestions: 8
@@ -325,13 +384,14 @@ export const toolGerenciarAgendaGoogle = {
         return {
           success: true,
           date: dateFormatted,
+          weekdayName: weekday.name,
           daysChecked: totalDays,
           durationMinutes: dur,
           suggestions,
-          availableSlots: suggestions.map(s => `${s.date} ${s.startTime}`),
+          availableSlots: suggestions.map(s => `${s.weekdayName} (${s.date}) às ${s.startTime}`),
           message: suggestions.length
-            ? `Sugestões de horários livres (${dur} min): ${suggestions.map(s => `${s.date} às ${s.startTime}`).join(', ')}.`
-            : `Não encontrei janelas livres de ${dur} min nos próximos ${totalDays} dia(s) a partir de ${dateFormatted}.`
+            ? `Sugestões de horários livres (${dur} min): ${suggestions.map(s => `${s.weekdayName}, ${s.date} às ${s.startTime}`).join(', ')}.`
+            : `Não encontrei janelas livres de ${dur} min nos próximos ${totalDays} dia(s) a partir de ${weekday.name} (${dateFormatted}).`
         };
       }
       if (action === 'consultar_livres') {

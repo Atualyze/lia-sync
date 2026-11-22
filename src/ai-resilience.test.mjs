@@ -13,6 +13,8 @@ import {
 import { call } from './ai/call.mjs';
 import { config } from './config.mjs';
 import { opened, failures } from './ai/state.mjs';
+import { toolGerenciarAgendaGoogle, computeSuggestedSlots } from './tools/gerenciar_agenda_google.mjs';
+import { filterReply } from './safety.mjs';
 
 test('getModelCapabilities e learnModelCapability aprendem capacidades em runtime', () => {
   clearModelCapabilities();
@@ -124,4 +126,59 @@ test('call("groq") faz fallback automático intra-provedor em empty_reply para l
     config.groqKey = prevKey;
     globalThis.fetch = prevFetch;
   }
+});
+
+test('gerenciar_agenda_google respeita businessHours (bloqueia domingo e fora do horário)', async () => {
+  const botConfig = {
+    behavior: {
+      businessHours: {
+        enabled: true,
+        timezone: 'America/Sao_Paulo',
+        start: '09:00',
+        end: '18:00',
+        weekdays: [1, 2, 3, 4, 5]
+      }
+    }
+  };
+  // 2026-11-22 é domingo!
+  const freeSun = await toolGerenciarAgendaGoogle.execute(
+    { action: 'consultar_livres', date: '2026-11-22' },
+    { botConfig }
+  );
+  assert.equal(freeSun.closedDay, true);
+  assert.equal(freeSun.weekdayName, 'domingo');
+  assert.deepEqual(freeSun.availableSlots, []);
+
+  const createSun = await toolGerenciarAgendaGoogle.execute(
+    { action: 'criar_evento', date: '2026-11-22', startTime: '15:00', summary: 'Teste' },
+    { botConfig }
+  );
+  assert.equal(createSun.success, false);
+  assert.equal(createSun.error, 'outside_business_hours');
+  assert.equal(createSun.weekdayName, 'domingo');
+
+  const createLateMon = await toolGerenciarAgendaGoogle.execute(
+    { action: 'criar_evento', date: '2026-11-23', startTime: '20:00', summary: 'Teste' },
+    { botConfig }
+  );
+  assert.equal(createLateMon.success, false);
+  assert.equal(createLateMon.error, 'outside_business_hours');
+
+  const suggestions = computeSuggestedSlots({
+    startDate: new Date('2026-11-22T12:00:00.000Z'),
+    days: 3,
+    allowedWeekdays: [1, 2, 3, 4, 5],
+    workdayStart: '09:00',
+    workdayEnd: '18:00',
+    nowMs: Date.parse('2026-11-22T12:00:00.000Z')
+  });
+  assert.ok(suggestions.length > 0);
+  assert.ok(suggestions.every(s => s.isoDate !== '2026-11-22'));
+  assert.equal(suggestions[0].weekdayName, 'segunda-feira');
+});
+
+test('filterReply converte timestamps ISO crus para data/hora legível em BRT', () => {
+  const res = filterReply('Encontrei o horário às 2026-11-22T15:00:00-03:00. Posso confirmar?');
+  assert.ok(!res.text.includes('2026-11-22T15:00:00-03:00'));
+  assert.ok(res.text.includes('22/11/2026 às 15:00'));
 });

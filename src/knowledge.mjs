@@ -1,5 +1,6 @@
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
+import { normalizarJanelaDeAtendimento, diasSemanaTexto } from './business-hours.mjs';
 import { getKnowledgeBaseContentSync, getRelevantKnowledgeBaseContentSync, listKnowledgeBasesSync, findGuidanceKnowledgeSync, findMatchingKnowledgeBasesSync } from './knowledge-bases.mjs';
 import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
@@ -88,11 +89,19 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const unavailableGoogleRule = unavailableGoogleServices.length
     ? `\n   - SERVIÇOS GOOGLE NÃO CONECTADOS (${unavailableGoogleServices.join(', ')}): você NÃO possui acesso a ${unavailableGoogleServices.join(', ')} neste momento. É TERMINANTEMENTE PROIBIDO dizer que vai buscar no Drive, consultar planilha, verificar agenda ou anexar arquivo/contrato/PDF. Se o cliente pedir um contrato, documento ou arquivo que você não possui, seja 100% transparente e informe que vai confirmar com ${owner} para retornar por aqui.`
     : '';
+  const activeTz = business.timezone || process.env.BUSINESS_TIME_ZONE || 'America/Sao_Paulo';
   const local = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: business.timezone || process.env.BUSINESS_TIME_ZONE || 'America/Sao_Paulo',
+    timeZone: activeTz,
     dateStyle: 'full',
     timeStyle: 'short'
   }).format(now);
+  const rawBh = botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
+  const activeBh = rawBh?.enabled === true ? normalizarJanelaDeAtendimento(rawBh) : null;
+  const dateAndHoursHeader = [
+    `[DATA_E_HORA_ATUAL] Agora é ${local} (fuso ${activeTz}).`,
+    'REGRA OBRIGATÓRIA DE DATA/HORA: Confie 100% nesta data e dia da semana acima — NUNCA invente ou troque o dia da semana. NUNCA exiba timestamps ISO (como 2026-11-22T15:00:00-03:00) para o usuário; escreva sempre em português natural (ex.: "segunda-feira, 23/11 às 15:00").',
+    activeBh ? `EXPEDIENTE ATIVO: ${diasSemanaTexto(activeBh.weekdays)}, das ${activeBh.start} às ${activeBh.end}. NUNCA ofereça nem agende horários em dias fechados ou fora desse expediente.` : ''
+  ].filter(Boolean).join('\n');
 
   const history = session.history || [];
   const alreadyIntroduced = typeof session.hasPriorConversation === 'boolean'
@@ -205,7 +214,9 @@ ${relevantKbs.length
       ? `\n[CONTATOS COM SUPORTE ATIVO / BASE VINCULADA]\n${JSON.stringify(session.supportContacts, null, 2)}\n`
       : '';
 
-    return `Você é a ${botName}, assistente pessoal e copiloto executiva${companySuffix(companyName)}.
+    return `${dateAndHoursHeader}
+
+Você é a ${botName}, assistente pessoal e copiloto executiva${companySuffix(companyName)}.
 Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
 Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
 
@@ -313,7 +324,9 @@ Contrato de saída JSON obrigatório:
     payment: messages.payment
   };
 
-  return `Você é a ${botName}, assistente pessoal e executiva${companySuffix(companyName)}.
+  return `${dateAndHoursHeader}
+
+Você é a ${botName}, assistente pessoal e executiva${companySuffix(companyName)}.
 Você conversa pelo WhatsApp com clientes e parceiros de forma humana, calorosa, inteligente, prestativa e bem distribuída visualmente no celular.
 
 ${buildPersonalityPrompt({ botName, isOwner: false, botConfig })}
