@@ -372,16 +372,16 @@ export function splitReply(text = '') {
   const value = String(text).trim();
   if (!value) return [];
   // Se houver código Pix EMV Copia e Cola (000201...br.gov.bcb.pix...), isola o código
-  // em um balão próprio sozinho para que o cliente consiga copiar com 1 toque no WhatsApp.
-  const emvMatch = value.match(/(?:^|\n)(000201[^\s\n]*br\.gov\.bcb\.pix[^\n]{20,})(?=\n|$)/i);
-  if (emvMatch && value !== emvMatch[1].trim()) {
+  // em um balão próprio com crases triplas (bloco monoespaçado copiável no WhatsApp).
+  const emvMatch = value.match(/(?:^|\n)(?:```)?(000201[^\s\n`]*br\.gov\.bcb\.pix[^\n`]{20,})(?:```)?(?=\n|$)/i);
+  if (emvMatch && value !== `\`\`\`${emvMatch[1].trim()}\`\`\``) {
     const code = emvMatch[1].trim();
-    const idx = value.indexOf(emvMatch[1]);
+    const idx = value.indexOf(emvMatch[0]);
     const before = value.slice(0, idx).trim();
-    const after = value.slice(idx + emvMatch[1].length).trim();
+    const after = value.slice(idx + emvMatch[0].length).trim();
     const head = [before, after].filter(Boolean).join('\n\n').trim();
     const headParts = head ? splitReply(head) : [];
-    return [...headParts, code];
+    return [...headParts, `\`\`\`${code}\`\`\``];
   }
   if (value.length <= 700) return [value];
   const paragraphs = value.split(/\n{2,}/).filter(Boolean);

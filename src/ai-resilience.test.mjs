@@ -277,5 +277,5 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
 
   const parts = splitReply(real.text);
   assert.equal(parts.length, 2);
-  assert.equal(parts[1], realPayload);
+  assert.equal(parts[1], `\`\`\`${realPayload}\`\`\``);
 });
