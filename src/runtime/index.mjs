@@ -327,9 +327,13 @@ export function createLiaRuntime({
                 steps: [{ name: meta.actionTool, args: meta.actionArgs || {} }]
               });
               if (scheduledTask?.created) summary.tasksCreated += 1;
-              // Enfileirar uma tarefa não cumpre a promessa. A tarefa deve
-              // realizar a transição para fulfilled quando concluir de fato.
-              if (commitmentId && !scheduledTask?.created) {
+              // O compromisso acompanha a tarefa até seu estado terminal.
+              if (commitmentId && scheduledTask?.id) {
+                const current = await commitments.get(commitmentId).catch(() => null);
+                await commitments.start(commitmentId, {
+                  metadata: { ...(current?.metadata || meta), linkedTaskId: scheduledTask.id, linkedTaskStatus: scheduledTask.status || 'queued' }
+                }).catch(() => {});
+              } else if (commitmentId) {
                 await commitments.markOverdue(commitmentId, 'scheduled_task_enqueue_failed').catch(() => {});
               }
             } else {

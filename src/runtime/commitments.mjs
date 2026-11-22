@@ -116,8 +116,8 @@ export class CommitmentStore {
     return this.store.upsertCommitment(updated);
   }
 
-  async start(id) {
-    return this.setStatus(id, 'in_progress');
+  async start(id, extra = {}) {
+    return this.setStatus(id, 'in_progress', extra);
   }
 
   async fulfill(id) {

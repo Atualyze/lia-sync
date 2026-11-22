@@ -231,6 +231,14 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     sendText,
     getHumanPhone,
     onOwnerNotify: (message) => mirrorToTelegram(message),
+    onTaskFinished: async (task) => {
+      const commitments = await liaRuntime.commitments.list();
+      const linked = commitments.find(item => item.metadata?.linkedTaskId === task.id);
+      if (!linked) return;
+      if (task.status === 'succeeded') await liaRuntime.commitments.fulfill(linked.id);
+      else if (task.status === 'uncertain') await liaRuntime.commitments.markUncertain(linked.id, task.errorCode || 'linked_task_outcome_uncertain');
+      else if (task.status === 'failed') await liaRuntime.commitments.fail(linked.id, task.errorCode || 'linked_task_failed');
+    },
     operationsStore,
     logger: console
   });
