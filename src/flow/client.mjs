@@ -811,7 +811,7 @@ export async function handleClientMessage({
           result.handoff = true;
           result.handoff_category = 'emergencia';
           result.handoff_reason = 'Orientação clínica de risco bloqueada pelo filtro de segurança';
-          safeReplyText = 'Não posso orientar sobre dose ou uso de medicamento com segurança. Vou solicitar avaliação humana para esse caso; se houver risco imediato, procure um serviço de emergência.';
+          safeReplyText = 'Não posso orientar sobre dose ou uso de medicamento com segurança. Este caso precisa de avaliação da equipe; se houver risco imediato, procure um serviço de emergência.';
         } else if (isPriceViolation && !priceContextActive) {
           // An unrequested price in the model draft is a safety failure, not a
           // customer request for pricing and not grounds for a human handoff.
