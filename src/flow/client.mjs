@@ -806,7 +806,13 @@ export async function handleClientMessage({
             if (!faqFiltered.blocked) faqPriceReply = faqFiltered.text;
           }
         }
-        if (isPriceViolation && !priceContextActive) {
+        if (filtered.violations.includes('clinica')) {
+          // Bloqueios clínicos são a exceção de segurança/emergência, não um handoff técnico genérico.
+          result.handoff = true;
+          result.handoff_category = 'emergencia';
+          result.handoff_reason = 'Orientação clínica de risco bloqueada pelo filtro de segurança';
+          safeReplyText = 'Não posso orientar sobre dose ou uso de medicamento com segurança. Vou solicitar avaliação humana para esse caso; se houver risco imediato, procure um serviço de emergência.';
+        } else if (isPriceViolation && !priceContextActive) {
           // An unrequested price in the model draft is a safety failure, not a
           // customer request for pricing and not grounds for a human handoff.
           // Retry using only the active thread; discard stale actions/handoffs.

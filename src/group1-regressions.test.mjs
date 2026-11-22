@@ -170,7 +170,7 @@ test('flow: notify serializa gravação via store.enqueue e preserva até 100 me
 
     const flow = createFlow({
       store,
-      ai: { askAI: async () => ({ reply: 'Transferindo para um humano.', handoff: true, handoff_reason: 'teste' }) },
+      ai: { askAI: async () => ({ reply: 'Vou chamar uma pessoa para continuar o atendimento.', handoff: true, handoff_category: 'pedido_pessoa', handoff_reason: 'pedido explícito do cliente' }) },
       whatsapp: { sendText: async () => {} },
       getBotConfig: () => ({}),
       humanPhone: '5588999999999',
