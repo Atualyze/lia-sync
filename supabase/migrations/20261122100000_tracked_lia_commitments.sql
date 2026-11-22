@@ -6,6 +6,7 @@ alter table public.lia_commitments
   add column if not exists recipient_phone text not null default '',
   add column if not exists owner_type text not null default 'owner',
   add column if not exists category text not null default 'outro',
+  add column if not exists deduplication_key text not null default '',
   add column if not exists overdue_at timestamptz,
   add column if not exists failed_at timestamptz,
   add column if not exists failure_reason text;
@@ -15,7 +16,7 @@ alter table public.lia_commitments
 
 alter table public.lia_commitments
   add constraint lia_commitments_status_check
-  check (status in ('pending', 'in_progress', 'fulfilled', 'failed', 'overdue', 'missed', 'cancelled'));
+  check (status in ('pending', 'in_progress', 'fulfilled', 'failed', 'overdue', 'missed', 'uncertain', 'cancelled'));
 
 alter table public.lia_commitments
   add constraint lia_commitments_recipient_type_check
@@ -24,6 +25,10 @@ alter table public.lia_commitments
     check (owner_type in ('bot', 'owner')),
   add constraint lia_commitments_category_check
     check (category in ('financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'));
+
+create unique index if not exists lia_commitments_deduplication_key_uidx
+  on public.lia_commitments (deduplication_key)
+  where deduplication_key <> '';
 
 create index if not exists lia_commitments_recipient_due_idx
   on public.lia_commitments (recipient_type, recipient_phone, due_at)

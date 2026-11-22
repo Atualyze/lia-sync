@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 export const COMMITMENT_STATUSES = Object.freeze([
-  'pending', 'in_progress', 'fulfilled', 'failed', 'overdue', 'missed', 'cancelled'
+  'pending', 'in_progress', 'fulfilled', 'failed', 'overdue', 'missed', 'uncertain', 'cancelled'
 ]);
 const STATUS_SET = new Set(COMMITMENT_STATUSES);
 const RECIPIENT_TYPES = new Set(['client', 'owner']);
@@ -25,7 +25,8 @@ export class CommitmentStore {
     recipientPhone = '',
     ownerType = 'owner',
     category = 'outro',
-    metadata = {}
+    metadata = {},
+    deduplicationKey = ''
   } = {}) {
     const cleanTitle = String(title || '').trim().slice(0, 200);
     if (!cleanTitle) throw new Error('commitment_title_required');
@@ -40,9 +41,18 @@ export class CommitmentStore {
     if (recipient === 'client' && !String(recipientPhone || '').replace(/\D/g, '')) {
       throw new Error('commitment_client_phone_required');
     }
+    const dedupeKey = String(deduplicationKey || '').trim().slice(0, 240);
+    if (dedupeKey && typeof this.store.getCommitmentByDeduplicationKey === 'function') {
+      const existing = await this.store.getCommitmentByDeduplicationKey(dedupeKey);
+      if (existing) return existing;
+    }
     const nowIso = new Date(this.now()).toISOString();
+    const deterministicId = dedupeKey
+      ? 'commit_' + crypto.createHash('sha256').update(dedupeKey).digest('hex').slice(0, 40)
+      : null;
     const record = {
-      id: crypto.randomUUID(),
+      id: deterministicId || crypto.randomUUID(),
+      deduplication_key: dedupeKey,
       title: cleanTitle,
       description: String(description || '').trim().slice(0, 1000),
       subject: String(subject || '').trim().slice(0, 160),
@@ -81,6 +91,18 @@ export class CommitmentStore {
     if (!STATUS_SET.has(status)) throw new Error('invalid_commitment_status');
     const current = await this.store.getCommitment(id);
     if (!current) return null;
+    const allowedTransitions = {
+      pending: new Set(['in_progress', 'fulfilled', 'failed', 'overdue', 'missed', 'uncertain', 'cancelled']),
+      in_progress: new Set(['fulfilled', 'failed', 'overdue', 'missed', 'uncertain', 'cancelled']),
+      overdue: new Set(['in_progress', 'fulfilled', 'failed', 'missed', 'uncertain', 'cancelled']),
+      failed: new Set(['in_progress', 'cancelled']),
+      missed: new Set(['in_progress', 'cancelled']),
+      uncertain: new Set(['in_progress', 'fulfilled', 'failed', 'cancelled']),
+      fulfilled: new Set(),
+      cancelled: new Set()
+    };
+    if (current.status === status) return current;
+    if (!allowedTransitions[current.status]?.has(status)) throw new Error('invalid_commitment_transition');
     const nowIso = new Date(this.now()).toISOString();
     const updated = {
       ...current,
@@ -112,6 +134,10 @@ export class CommitmentStore {
 
   async miss(id) {
     return this.setStatus(id, 'missed');
+  }
+
+  async markUncertain(id, reason = 'commitment_outcome_uncertain') {
+    return this.setStatus(id, 'uncertain', { failure_reason: String(reason || 'commitment_outcome_uncertain').slice(0, 500) });
   }
 
   async cancel(id) {
