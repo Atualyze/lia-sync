@@ -729,6 +729,7 @@ export async function handleOwnerSession({
               const timestamp = new Date(now()).toISOString();
 
               if (consultAction.action === 'takeover') {
+                if (consult.commitmentId) await liaRuntime?.commitments?.cancel?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 targetSession.human = true;
                 targetSession.humanSource = 'admin';
@@ -738,6 +739,7 @@ export async function handleOwnerSession({
                 return recordSelfTurn(`✅ Entendido! Pausei meu atendimento com *${targetName}* e deixei a conversa em *Modo Humano* para você responder diretamente.`);
               }
               if (consultAction.action === 'cancel') {
+                if (consult.commitmentId) await liaRuntime?.commitments?.cancel?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 store.markDirty();
                 return recordSelfTurn(`👍 Consulta pendente de *${targetName}* cancelada. Nenhuma mensagem foi enviada ao cliente.`);
@@ -788,6 +790,7 @@ export async function handleOwnerSession({
                     targetSession.human = false;
                     targetSession.lastBotAt = timestamp;
                     targetSession.awaitingReply = true;
+                    if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
                     targetSession.pendingAdminConsult = null;
                     targetSession.pendingClientPayment = null;
                     targetSession.updatedAt = timestamp;
@@ -828,6 +831,7 @@ export async function handleOwnerSession({
                 targetSession.human = false;
                 targetSession.lastBotAt = timestamp;
                 targetSession.awaitingReply = true;
+                if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 targetSession.updatedAt = timestamp;
                 store.markDirty();
