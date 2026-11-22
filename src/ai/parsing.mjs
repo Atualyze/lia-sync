@@ -7,8 +7,10 @@ export const responseSchema = {
     intent: { type: 'STRING' },
     red_flags: { type: 'BOOLEAN' },
     handoff: { type: 'BOOLEAN' },
-    handoff_reason: { type: 'STRING' },
-    sector: { type: 'STRING', nullable: true },
+    handoff_category: { type: 'STRING', nullable: true, enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia'] },
+    handoff_reason: { type: 'STRING', nullable: true },
+    needs_tool: { type: 'BOOLEAN' },
+    sector: { type: 'STRING', nullable: true, enum: ['vendas', 'comercial', 'suporte', 'financeiro', 'reclamacao', 'responsavel'] },
     sentiment: { type: 'STRING', nullable: true },
     context_summary: { type: 'STRING', nullable: true },
     tool_calls: {
@@ -58,6 +60,16 @@ export const responseSchema = {
         dueAt: { type: 'STRING' }
       }
     },
+    conversation_state: {
+      type: 'OBJECT',
+      properties: {
+        objective: { type: 'STRING' },
+        need: { type: 'STRING' },
+        next_step: { type: 'STRING' },
+        confirmed: { type: 'ARRAY', items: { type: 'STRING' } }
+      },
+      required: ['objective', 'need', 'next_step', 'confirmed']
+    },
     collected: {
       type: 'OBJECT',
       properties: {
@@ -66,7 +78,7 @@ export const responseSchema = {
       }
     }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'needs_tool', 'conversation_state']
 };
 
 const openRouterSchema = {
@@ -74,11 +86,13 @@ const openRouterSchema = {
   additionalProperties: false,
   properties: {
     reply: { type: 'string', description: 'Resposta curta e acolhedora em português do Brasil.' },
-    intent: { type: 'string', enum: ['saudacao', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'outro'] },
+    intent: { type: 'string', enum: ['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro'] },
     red_flags: { type: 'boolean' },
     handoff: { type: 'boolean' },
+    handoff_category: { type: ['string', 'null'], enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', null] },
     handoff_reason: { type: ['string', 'null'] },
-    sector: { type: ['string', 'null'] },
+    needs_tool: { type: 'boolean' },
+    sector: { type: ['string', 'null'], enum: ['vendas', 'comercial', 'suporte', 'financeiro', 'reclamacao', 'responsavel', null] },
     sentiment: { type: ['string', 'null'] },
     context_summary: { type: ['string', 'null'] },
     tool_calls: {
@@ -92,9 +106,20 @@ const openRouterSchema = {
         required: ['name']
       }
     },
+    conversation_state: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        objective: { type: 'string' },
+        need: { type: 'string' },
+        next_step: { type: 'string' },
+        confirmed: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['objective', 'need', 'next_step', 'confirmed']
+    },
     collected: { type: 'object', additionalProperties: true }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_reason', 'collected']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'handoff_reason', 'needs_tool', 'conversation_state', 'collected']
 };
 
 export function safeErrorDetail(body = '') {
@@ -200,37 +225,51 @@ export function parseAIResponse(raw) {
     const source = String(raw || '').replace(/```json|```/gi, '').trim();
     if (/^\s*\{|"reply"\s*:/.test(source)) {
       const recovered = extractTruncatedReply(source);
-      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
+      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, needs_tool: false, collected: {} };
     }
-    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
+    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, needs_tool: false, collected: {} };
   }
   const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
-  const isHandoff = o.handoff === true || o.intent === 'falar_com_responsavel' || o.intent === 'humano';
   const rem = o.reminder && typeof o.reminder === 'object' && o.reminder.text ? o.reminder : null;
-  const cleanToolCalls = Array.isArray(o.tool_calls)
-    ? o.tool_calls
-        .filter(t => t && t.name)
-        .map(t => ({
-          name: String(t.name).trim(),
-          args: t.args && typeof t.args === 'object'
-            ? Object.fromEntries(Object.entries(t.args).filter(([, v]) => v !== null && v !== undefined))
-            : {}
-        }))
-    : [];
-  const validSectors = new Set(['vendas', 'comercial', 'suporte', 'financeiro', 'responsavel']);
+  const validHandoffCategories = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia']);
+  const rawHandoffCategory = typeof o.handoff_category === 'string' ? o.handoff_category.trim().toLowerCase() : '';
+  // Fail closed: handoff requires both the boolean decision and an allowed category.
+  const handoffCategory = o.handoff === true && validHandoffCategories.has(rawHandoffCategory) ? rawHandoffCategory : null;
+  const validSectors = new Set(['vendas', 'comercial', 'suporte', 'financeiro', 'reclamacao', 'responsavel']);
   const rawSector = typeof o.sector === 'string' ? o.sector.trim().toLowerCase() : '';
   const validSentiments = new Set(['positivo', 'neutro', 'confuso', 'frustrado', 'urgente']);
   const rawSentiment = typeof o.sentiment === 'string' ? o.sentiment.trim().toLowerCase() : '';
+  const candidateToolCalls = o.needs_tool === false ? [] : (Array.isArray(o.tool_calls) ? o.tool_calls : []);
+  const cleanToolCalls = candidateToolCalls
+    .filter(t => t && typeof t.name === 'string' && t.name.trim())
+    .map(t => ({
+      name: t.name.trim(),
+      args: t.args && typeof t.args === 'object'
+        ? Object.fromEntries(Object.entries(t.args).filter(([, v]) => v !== null && v !== undefined))
+        : {}
+    }));
+  const rawState = o.conversation_state && typeof o.conversation_state === 'object' ? o.conversation_state : null;
+  const conversationState = rawState ? {
+    objective: String(rawState.objective || '').trim().slice(0, 240),
+    need: String(rawState.need || '').trim().slice(0, 240),
+    next_step: String(rawState.next_step || '').trim().slice(0, 240),
+    confirmed: Array.isArray(rawState.confirmed)
+      ? rawState.confirmed.map(item => String(item || '').trim()).filter(Boolean).slice(0, 8)
+      : []
+  } : null;
   return {
     reply: typeof o.reply === 'string' ? o.reply : '',
-    intent: intents.has(o.intent) ? o.intent : (isHandoff ? 'falar_com_responsavel' : 'outro'),
+    intent: intents.has(o.intent) ? o.intent : (handoffCategory ? 'falar_com_responsavel' : 'outro'),
     red_flags: o.red_flags === true,
-    handoff: isHandoff,
-    handoff_reason: typeof o.handoff_reason === 'string' ? o.handoff_reason : null,
+    handoff: Boolean(handoffCategory),
+    handoff_category: handoffCategory,
+    handoff_reason: handoffCategory && typeof o.handoff_reason === 'string' ? o.handoff_reason.trim().slice(0, 300) : null,
+    needs_tool: cleanToolCalls.length > 0,
     sector: validSectors.has(rawSector) ? (rawSector === 'comercial' ? 'vendas' : rawSector) : null,
     sentiment: validSentiments.has(rawSentiment) ? rawSentiment : null,
     context_summary: typeof o.context_summary === 'string' && o.context_summary.trim() ? o.context_summary.trim().slice(0, 280) : null,
+    conversation_state: conversationState,
     reminder: rem,
     tool_calls: cleanToolCalls,
     collected: c

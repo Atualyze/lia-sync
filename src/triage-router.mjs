@@ -27,7 +27,8 @@ const SECTOR_KEYWORDS = {
   responsavel: [
     'falar com o responsavel', 'falar com a responsavel', 'responsavel', 'responsável', 'dono',
     'diretor', 'diretoria', 'urgente', 'urgência', 'emergencia', 'emergência'
-  ]
+  ],
+  reclamacao: ['reclamação', 'reclamacao', 'insatisfeito', 'insatisfeita', 'péssimo atendimento', 'pessimo atendimento', 'produto com defeito', 'serviço ruim', 'servico ruim', 'quero reclamar']
 };
 
 /**
@@ -64,6 +65,8 @@ function buildSectorMap(sectors = [], identity = {}) {
       sectorMap.suporte = s;
     } else if (sNameNorm.includes('financ') || sNameNorm.includes('cobranc') || sDescNorm.includes('boleto')) {
       sectorMap.financeiro = s;
+    } else if (sNameNorm.includes('reclam') || sDescNorm.includes('reclam') || sNameNorm.includes('ouvidoria')) {
+      sectorMap.reclamacao = s;
     } else if (sNameNorm.includes('responsavel') || sNameNorm.includes('diretor') || sDescNorm.includes('diretoria') ||
       ownerNames.some(name => sNameNorm.includes(name))) {
       sectorMap.responsavel = s;
@@ -90,7 +93,7 @@ export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
   const { sectorMap, ownerNames } = buildSectorMap(sectors, identity);
 
   // Pontuação por categoria
-  const scores = { vendas: 0, suporte: 0, financeiro: 0, responsavel: 0 };
+  const scores = { vendas: 0, suporte: 0, financeiro: 0, reclamacao: 0, responsavel: 0 };
 
   for (const [cat, keywords] of Object.entries(SECTOR_KEYWORDS)) {
     for (const kw of keywords) {
