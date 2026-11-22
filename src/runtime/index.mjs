@@ -175,7 +175,7 @@ export function createLiaRuntime({
     await setState('idle');
     const [activeGoals, pendingCommitments] = await Promise.all([
       goals.list({ status: 'active' }),
-      commitments.list({ status: 'pending' })
+      commitments.list({ status: ['pending', 'in_progress', 'overdue', 'uncertain', 'failed', 'missed'] })
     ]);
     await identity.syncOperationalView({
       currentStatus: 'idle',
@@ -330,9 +330,16 @@ export function createLiaRuntime({
               // O compromisso acompanha a tarefa até seu estado terminal.
               if (commitmentId && scheduledTask?.id) {
                 const current = await commitments.get(commitmentId).catch(() => null);
-                await commitments.start(commitmentId, {
-                  metadata: { ...(current?.metadata || meta), linkedTaskId: scheduledTask.id, linkedTaskStatus: scheduledTask.status || 'queued' }
-                }).catch(() => {});
+                const linkedMetadata = { ...(current?.metadata || meta), linkedTaskId: scheduledTask.id, linkedTaskStatus: scheduledTask.status || 'queued' };
+                if (scheduledTask.status === 'succeeded') {
+                  await commitments.fulfill(commitmentId).catch(() => {});
+                } else if (scheduledTask.status === 'failed') {
+                  await commitments.fail(commitmentId, scheduledTask.errorCode || 'linked_task_failed').catch(() => {});
+                } else if (scheduledTask.status === 'uncertain') {
+                  await commitments.markUncertain(commitmentId, scheduledTask.errorCode || 'linked_task_uncertain').catch(() => {});
+                } else {
+                  await commitments.start(commitmentId, { metadata: linkedMetadata }).catch(() => {});
+                }
               } else if (commitmentId) {
                 await commitments.markOverdue(commitmentId, 'scheduled_task_enqueue_failed').catch(() => {});
               }
@@ -436,7 +443,7 @@ export function createLiaRuntime({
       await setState(finalStatus, { last_sleep_at: new Date(now()).toISOString() });
       const [freshGoals, freshCommitments] = await Promise.all([
         goals.list({ status: 'active' }),
-        commitments.list({ status: 'pending' })
+        commitments.list({ status: ['pending', 'in_progress', 'overdue', 'uncertain', 'failed', 'missed'] })
       ]);
       await identity.syncOperationalView({
         currentStatus: finalStatus,

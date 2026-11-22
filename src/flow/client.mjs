@@ -784,6 +784,8 @@ export async function handleClientMessage({
             });
             if (trackedCommitment?.id) {
               await notify('📌 *Nova tarefa interna da Lia*\n\n• *Tarefa:* ' + String(trackedCommitment.title || proposed.title).slice(0, 180) + '\n• *Prazo:* ' + new Date(trackedCommitment.due_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '\n• *Cliente:* ' + String(s.clientName || pushName || s.phone));
+              // Este compromisso é interno do responsável; não o exponha como prazo prometido ao cliente.
+              result.reply = await buildPromiseFreeReply(result.reply || clean);
             }
           } catch (error) {
             logger.warn?.('[commitments] falha ao persistir tarefa interna:', error?.code || error?.name || 'commitment_create_failed');

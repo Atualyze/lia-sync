@@ -8,6 +8,14 @@ const RECIPIENT_TYPES = new Set(['client', 'owner']);
 const OWNER_TYPES = new Set(['bot', 'owner']);
 const COMMITMENT_CATEGORIES = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro']);
 
+function deterministicCommitmentId(key = '') {
+  const bytes = crypto.createHash('sha256').update(String(key)).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export class CommitmentStore {
   constructor({ store, now = () => Date.now() } = {}) {
     this.store = store;
@@ -49,9 +57,7 @@ export class CommitmentStore {
       if (existing) return existing;
     }
     const nowIso = new Date(this.now()).toISOString();
-    const deterministicId = dedupeKey
-      ? 'commit_' + crypto.createHash('sha256').update(dedupeKey).digest('hex').slice(0, 40)
-      : null;
+    const deterministicId = dedupeKey ? deterministicCommitmentId(dedupeKey) : null;
     const record = {
       id: deterministicId || crypto.randomUUID(),
       deduplication_key: dedupeKey,

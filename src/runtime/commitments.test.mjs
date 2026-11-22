@@ -46,6 +46,7 @@ test('CommitmentStore persists recipient, conversation, owner, category and idem
   const duplicate = await commitments.create({ ...input, title: 'Título repetido' });
 
   assert.equal(first.id, duplicate.id);
+  assert.match(first.id, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   assert.equal(duplicate.title, 'Retornar sobre o contrato');
   assert.equal(first.status, 'pending');
   assert.equal(first.recipient_type, 'client');
