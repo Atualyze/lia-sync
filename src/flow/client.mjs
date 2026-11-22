@@ -8,6 +8,7 @@ import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs'
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
 import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
+import { syncLeadToGoogleSheet } from '../tools/sheets_lead_sync.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
@@ -1078,6 +1079,16 @@ export async function handleClientMessage({
               };
               const toolRes = await executeToolCall(tc.name, tc.args || {}, toolContext);
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
+              if (tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && toolRes?.success === true) {
+                void syncLeadToGoogleSheet({
+                  session: s,
+                  stage: 'Agendado',
+                  interest: toolRes?.event?.title || s.sectorName || s.contextSummary || 'Agendamento',
+                  notes: [toolRes?.event?.date, toolRes?.event?.time, s.contextSummary].filter(Boolean).join(' · '),
+                  botConfig,
+                  now
+                });
+              }
               if (tc.name === 'gerar_cobranca_pix') {
                 pixHandledByTool = true;
                 if (toolRes?.success) {
@@ -1482,6 +1493,14 @@ export async function handleClientMessage({
           notify,
           identity
         });
+        void syncLeadToGoogleSheet({
+          session: s,
+          stage: 'Transbordo Humano',
+          interest: s.sectorName || s.contextSummary || '',
+          notes: handoffReason,
+          botConfig,
+          now
+        });
       }
 
       // 2.6 RESPOSTA EM ÁUDIO QUANDO O CLIENTE ENVIA ÁUDIO (OU PEDE ÁUDIO)
@@ -1493,6 +1512,17 @@ export async function handleClientMessage({
           if (s.history.length > maxStoredHistory) s.history = s.history.slice(-maxStoredHistory);
       s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
       store.markDirty();
+
+      if (!s.human && !s.lastSheetSyncAt && s.history.length >= 4 && (s.contextSummary || s.sectorName)) {
+        void syncLeadToGoogleSheet({
+          session: s,
+          stage: 'Qualificado',
+          interest: s.sectorName || s.contextSummary || '',
+          notes: s.contextSummary || '',
+          botConfig,
+          now
+        });
+      }
 
       if (clientWantsVoiceNow) {
         const targetJid = rawItem?.jid || phone;
