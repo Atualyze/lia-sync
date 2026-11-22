@@ -319,3 +319,96 @@ test('reconciliação pode manter execução incerta sem liberar reprocessamento
     assert.equal(await store.claimNext('worker-after-final-decision', 30), null);
   });
 });
+
+
+test('reconciliação Supabase usa CAS incluindo reconciled_at para impedir decisões concorrentes', async () => {
+  const id = '123e4567-e89b-42d3-a456-426614174000';
+  const row = {
+    id,
+    task_key: 'copilot:remote-uncertain',
+    owner_key: 'owner_self',
+    status: 'uncertain',
+    notification_status: 'unaddressable',
+    updated_at: '2026-11-22T12:00:00.000Z',
+    created_at: '2026-11-22T11:00:00.000Z',
+    steps: [{ name: 'gerenciar_drive_google', args: { acao: 'criar_pasta' } }]
+  };
+  const calls = [];
+  const client = {
+    enabled: true,
+    async select(table, query) {
+      assert.equal(table, 'copilot_tasks');
+      if (query === 'select=id&limit=1') return [{ id }];
+      return [{ ...row }];
+    },
+    async request(table, options) {
+      calls.push({ table, ...options });
+      if (options.forceConflict) return [];
+      Object.assign(row, {
+        status: options.body.status,
+        notification_status: options.body.notification_status,
+        reconciled_at: options.body.reconciled_at,
+        reconciled_by: options.body.reconciled_by,
+        reconciliation_outcome: options.body.reconciliation_outcome,
+        reconciliation_note: options.body.reconciliation_note,
+        updated_at: options.body.updated_at
+      });
+      return [{ ...row }];
+    }
+  };
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-copilot-remote-reconcile-'));
+  try {
+    const store = new CopilotTaskStore({
+      client,
+      filePath: path.join(dir, 'tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await store.load();
+    assert.equal(store.mode, 'supabase');
+
+    const reconciled = await store.reconcileUncertain(id, {
+      decision: 'confirmed_succeeded',
+      evidence: 'Conferi o Google Drive e confirmei que a pasta existe.',
+      actor: 'admin@example.com'
+    });
+    assert.equal(reconciled.status, 'succeeded');
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].query, /reconciled_at=is\.null/);
+    assert.match(calls[0].query, /status=eq\.uncertain/);
+    assert.match(calls[0].query, /notification_status=eq\.unaddressable/);
+    assert.equal(calls[0].body.notification_status, 'unaddressable');
+
+    const secondId = '123e4567-e89b-42d3-a456-426614174001';
+    const otherClient = {
+      ...client,
+      async select(table, query) {
+        if (query === 'select=id&limit=1') return [{ id: secondId }];
+        return [{
+          ...row,
+          id: secondId,
+          status: 'uncertain',
+          notification_status: 'unaddressable',
+          reconciled_at: null,
+          reconciliation_outcome: null
+        }];
+      },
+      async request() { return []; }
+    };
+    const conflictStore = new CopilotTaskStore({
+      client: otherClient,
+      filePath: path.join(dir, 'other-tasks.json'),
+      logger: { warn() {}, error() {} }
+    });
+    await conflictStore.load();
+    await assert.rejects(
+      () => conflictStore.reconcileUncertain(secondId, {
+        decision: 'confirmed_failed',
+        evidence: 'Verifiquei o sistema externo e a criação não ocorreu.',
+        actor: 'admin@example.com'
+      }),
+      /copilot_task_reconciliation_conflict/
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
