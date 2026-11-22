@@ -52,6 +52,15 @@ function compactText(value, maxChars) {
   return `${text.slice(0, headChars)}\n[contexto reduzido por limite do provedor]\n${tailChars ? text.slice(-tailChars) : ''}`;
 }
 
+function buildCompactToolPrompt(nativeTools = []) {
+  if (!Array.isArray(nativeTools) || !nativeTools.length) return '';
+  const list = nativeTools.map(tool => {
+    const props = Object.keys(tool?.parameters?.properties || {}).slice(0, 4).join(',');
+    return `${tool.name}(${props})`;
+  }).join(', ');
+  return `\n\n[FERRAMENTAS_ATIVAS_COMPACTAS]\nVocê TEM acesso real ao WhatsApp, banco de dados Supabase/CRM, Google Workspace (Agenda, Gmail, Planilhas, Drive), Infraestrutura, Pix, PDF e Web via ferramentas do sistema. NUNCA diga que "não tem acesso ao WhatsApp", "não tem acesso ao banco de dados" ou que "só conversa aqui".\nPara executar uma ação, responda em JSON válido: {"reply":"","tool_calls":[{"name":"NOME_DA_FERRAMENTA","args":{...}}]}.\nFerramentas ativas: ${list}\n[/FERRAMENTAS_ATIVAS_COMPACTAS]`;
+}
+
 function compactCloudflareHistory(history = []) {
   const normalized = normalizeHistory(history);
   const recent = normalized.slice(-8).map(item => ({
@@ -398,6 +407,7 @@ export async function call(provider, {
       if (!response.ok && (response.status === 413 || response.status === 429)) {
         const errBodyText = await response.clone().text().catch(() => '');
         if (response.status === 413 || /request too large|tokens per minute|tpm|context_length_exceeded|maximum context length/i.test(errBodyText)) {
+          const compactToolsSuffix = buildCompactToolPrompt(nativeTools);
           const compactBody = {
             model: candidateModel,
             temperature: adaptiveTemperature,
@@ -405,7 +415,7 @@ export async function call(provider, {
             ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
             ...(provider === 'openrouter' && isReasoningModel ? { reasoning: { effort: 'low' } } : {}),
             messages: [
-              { role: 'system', content: compactText(effectiveSystem, 7000) },
+              { role: 'system', content: compactText(effectiveSystem, 6200) + compactToolsSuffix },
               ...compactCloudflareHistory(history),
               { role: 'user', content: compactText(userText, 2500) }
             ]
@@ -436,6 +446,7 @@ export async function call(provider, {
         if (jsonMatch) {
           contentText = jsonMatch[0];
         } else if (!deadline || deadline - Date.now() > 2500) {
+          const compactToolsSuffix = buildCompactToolPrompt(nativeTools);
           const plainRetryBody = {
             model: candidateModel,
             temperature: adaptiveTemperature,
@@ -443,7 +454,7 @@ export async function call(provider, {
             ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
             ...(provider === 'openrouter' ? { reasoning: { effort: 'low' } } : {}),
             messages: [
-              { role: 'system', content: compactText(effectiveSystem, 8000) },
+              { role: 'system', content: compactText(effectiveSystem, 7000) + compactToolsSuffix },
               ...compactCloudflareHistory(history),
               { role: 'user', content: compactText(userText, 2500) }
             ]
