@@ -100,13 +100,15 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       return json(res, readiness.ok ? 200 : 503, readiness);
     }
     const requestHost = String(req.headers.host || '').replace(/:\d+$/, '').replace(/\.$/, '').toLowerCase();
-    const paymentPageEnabled = adminConfig?.active?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false;
+    const pixToolSettings = adminConfig?.active?.tools?.settings?.gerar_cobranca_pix || {};
+    const paymentPageEnabled = pixToolSettings.enablePaymentPage !== false;
+    const payHomeEnabled = pixToolSettings.enablePayHome !== false && paymentPageEnabled;
     const renderPaymentPageDisabled = () => {
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Página indisponível</title></head><body style="font-family:system-ui,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px"><div style="max-width:420px;text-align:center"><h2 style="margin:0 0 8px">Página de pagamento temporariamente desativada</h2><p style="color:#cbd5e1">Solicite a chave Pix ou QR Code diretamente pelo nosso WhatsApp.</p></div></body></html>');
     };
     if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
-      if (!paymentPageEnabled) return renderPaymentPageDisabled();
+      if (!payHomeEnabled) return renderPaymentPageDisabled();
       try {
         const generated = await toolGerarCobrancaPix.execute(
           { valor: 0, enviarWhatsApp: false },
