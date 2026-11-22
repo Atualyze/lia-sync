@@ -306,5 +306,16 @@ test('reconciliação pode manter execução incerta sem liberar reprocessamento
     assert.equal((await store.listUncertain()).length, 1);
     assert.equal(await store.claimPendingNotification(), null);
     assert.equal(await store.claimNext('worker-must-not-replay', 30), null);
+
+    const resolvedLater = await store.reconcileUncertain(queued.id, {
+      decision: 'confirmed_failed',
+      evidence: 'Conferi novamente com o histórico do Drive e confirmei que a criação não ocorreu.',
+      actor: 'admin@example.com'
+    });
+    assert.equal(resolvedLater.status, 'failed');
+    assert.equal(resolvedLater.notificationStatus, 'unaddressable');
+    assert.equal(resolvedLater.reconciliationOutcome, 'confirmed_failed');
+    assert.deepEqual(await store.listUncertain(), []);
+    assert.equal(await store.claimNext('worker-after-final-decision', 30), null);
   });
 });
