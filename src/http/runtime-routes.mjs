@@ -376,7 +376,7 @@ export async function handleRuntimeDashboardRoutes({
     if (!['confirmed_succeeded', 'confirmed_failed', 'notification_confirmed_sent', 'notification_confirmed_not_sent', 'still_uncertain'].includes(decision)) {
       return json(res, 400, { error: 'invalid_reconciliation_decision' });
     }
-    const actor = String(authContext?.email || authContext?.userId || 'admin').slice(0, 120);
+    const actor = String(authContext?.userId || authContext?.email || 'admin').slice(0, 120);
     try {
       // A trilha é pré-condição para qualquer mutação administrativa.
       await operationsStore.audit({
@@ -388,16 +388,24 @@ export async function handleRuntimeDashboardRoutes({
       });
       const task = await copilotTaskStore.reconcileUncertain(id, { decision, evidence, actor });
       if (!task) return json(res, 404, { error: 'copilot_task_not_found' });
-      await operationsStore.audit({
-        actorId: authContext?.userId || null,
-        action: 'copilot_task_reconciled',
-        entityType: 'copilot_task',
-        entityId: id,
-        metadata: { decision, outcome: task.reconciliationOutcome, status: task.status, notificationStatus: task.notificationStatus }
-      });
+      let finalAuditRecorded = true;
+      try {
+        await operationsStore.audit({
+          actorId: authContext?.userId || null,
+          action: 'copilot_task_reconciled',
+          entityType: 'copilot_task',
+          entityId: id,
+          metadata: { decision, outcome: task.reconciliationOutcome, status: task.status, notificationStatus: task.notificationStatus }
+        });
+      } catch {
+        // A intenção foi auditada antes da mutação e o próprio job contém o estado/evidência.
+        // Não retorne erro que induza novo clique: isso não pode reexecutar a tarefa.
+        finalAuditRecorded = false;
+      }
       return json(res, 200, {
         ok: true,
         replayed: false,
+        auditFinalized: finalAuditRecorded,
         task: {
           id: task.id,
           status: task.status,

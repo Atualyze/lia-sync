@@ -5474,11 +5474,13 @@ async function loadApiIntegrationsPanel() {
         return;
       }
       try {
-        await api('/api/dashboard/runtime/tasks/' + encodeURIComponent(taskId) + '/reconcile', {
+        const result = await api('/api/dashboard/runtime/tasks/' + encodeURIComponent(taskId) + '/reconcile', {
           method: 'POST',
           body: JSON.stringify({ decision, evidence })
         });
-        setRuntimeFeedback('#runtime-feedback', 'Conferência registrada e auditada. Nenhuma tarefa, cobrança ou mensagem foi repetida.');
+        setRuntimeFeedback('#runtime-feedback', result.auditFinalized === false
+          ? 'Estado reconciliado e salvo no job. O evento final da auditoria ficou pendente; não clique novamente, pois nenhuma execução foi repetida.'
+          : 'Conferência registrada e auditada. Nenhuma tarefa, cobrança ou mensagem foi repetida.');
         await renderUncertainTasks();
       } catch (error) {
         setRuntimeFeedback('#runtime-feedback', 'Falha ao reconciliar tarefa: ' + error.message, true);

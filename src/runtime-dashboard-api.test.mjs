@@ -367,3 +367,49 @@ test('reconciliação falha fechado quando a persistência de auditoria está in
   assert.equal(JSON.parse(raw).error, 'audit_persistence_unavailable');
   assert.equal(reconciled, false);
 });
+
+
+test('se auditoria final falhar depois da reconciliação, API informa estado salvo sem induzir replay', async () => {
+  const taskId = '123e4567-e89b-42d3-a456-426614174000';
+  let auditCalls = 0;
+  let reconciled = false;
+  const req = makeReq('POST', '/api/dashboard/runtime/tasks/' + taskId + '/reconcile', {
+    decision: 'confirmed_succeeded',
+    evidence: 'Conferi no Drive e confirmei que a pasta foi criada.'
+  });
+  let status = 0, raw = '';
+  const res = { writeHead(code) { status = code; }, end(chunk) { raw = String(chunk || ''); } };
+  await handleRuntimeDashboardRoutes({
+    req, res, u: new URL(req.url, 'http://localhost'),
+    authContext: { role: 'admin', userId: '123e4567-e89b-42d3-a456-426614174001' },
+    copilotTaskStore: {
+      available: true,
+      reconcileUncertain: async () => {
+        reconciled = true;
+        return {
+          id: taskId,
+          status: 'succeeded',
+          notificationStatus: 'unaddressable',
+          reconciledAt: '2026-11-22T12:10:00.000Z',
+          reconciledBy: '123e4567-e89b-42d3-a456-426614174001',
+          reconciliationOutcome: 'confirmed_succeeded',
+          reconciliationNote: 'Conferi no Drive e confirmei que a pasta foi criada.'
+        };
+      }
+    },
+    operationsStore: {
+      enabled: true,
+      audit: async () => {
+        auditCalls += 1;
+        if (auditCalls === 2) throw new Error('audit final unavailable');
+      }
+    }
+  });
+  assert.equal(reconciled, true);
+  assert.equal(status, 200);
+  const body = JSON.parse(raw);
+  assert.equal(body.replayed, false);
+  assert.equal(body.auditFinalized, false);
+  assert.equal(body.task.status, 'succeeded');
+  assert.equal(auditCalls, 2);
+});
