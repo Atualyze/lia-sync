@@ -615,9 +615,13 @@ export async function handleClientMessage({
         s.repeatCount = 0;
       }
 
+      const CANNED_ERROR_ECHO_RE = /Não consegui concluir essa ação com segurança|Quero te orientar com segurança, por isso encaminhei|Falha na comunicação com os provedores de IA/i;
+      const llmHistory = activeContext.history
+        .slice(-contextTurns, -1)
+        .filter(m => !(m?.role === 'assistant' && CANNED_ERROR_ECHO_RE.test(String(m.content || ''))));
       const result = await ai?.askAI?.({
         system: systemPrompt,
-        history: activeContext.history.slice(-contextTurns, -1),
+        history: llmHistory,
         userText,
         botConfig,
         deadline: aiDeadline
