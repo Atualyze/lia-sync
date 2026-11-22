@@ -107,7 +107,7 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
       ? `EXPEDIENTE DA EMPRESA PARA AGENDAMENTOS: ${diasSemanaTexto(activeBh.weekdays)}, das ${activeBh.start} às ${activeBh.end}. ${rawBh?.enabled === false ? 'Você atende o chat 24/7 (inclusive agora), mas NUNCA ofereça nem agende reuniões/atendimentos para dias fechados ou fora desse expediente da empresa.' : 'NUNCA ofereça nem agende horários em dias fechados ou fora desse expediente.'}`
       : '',
     !copilotMode
-      ? 'REGRA DE PAGAMENTO/PIX: Quem recebe o pagamento é a empresa — NUNCA peça a chave Pix do cliente para cobrar ou criar pagamento/checkout.'
+      ? `REGRA DE PAGAMENTO/PIX: Quem recebe o pagamento é a empresa — NUNCA peça a chave Pix do cliente para cobrar ou criar pagamento/checkout.${botConfig?.tools?.enabled?.checkout_infinitepay === false ? ' CHECKOUT INFINITEPAY DESATIVADO: NUNCA ofereça checkout, NUNCA pergunte o valor "para gerar o checkout" e NUNCA prometa link de cartão — se o cliente pedir checkout, informe educadamente que no momento só estamos recebendo via Pix (chave Pix ou código copia e cola).' : ''}`
       : ''
   ].filter(Boolean).join('\n');
 

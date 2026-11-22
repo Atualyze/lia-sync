@@ -365,9 +365,16 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     if (!answer) return null;
     // Ponto único de saída: nenhuma resposta chega ao WhatsApp sem passar por filterReply.
     const copilotTarget = isOwnerKey(job.phone);
+    const serverAllowedPrices = copilotTarget ? new Set() : new Set(getAllowedPrices());
+    if (!copilotTarget && /^💳\s*\*Aqui está seu (?:Pix|link de pagamento)/i.test(String(answer).trim())) {
+      const receiptPrices = String(answer).matchAll(/R\$\s*(\d+(?:[.,]\d{2})?)/gi);
+      for (const m of receiptPrices) {
+        if (m[1]) serverAllowedPrices.add(m[1]).add(m[1].replace(',', '.')).add(m[1].replace('.', ','));
+      }
+    }
     const filteredReply = filterReply(String(answer), {
       isCopilot: copilotTarget,
-      allowedPrices: copilotTarget ? new Set() : getAllowedPrices(),
+      allowedPrices: serverAllowedPrices,
       strictPrices: !copilotTarget
     });
     const safeAnswer = filteredReply.blocked && !copilotTarget
