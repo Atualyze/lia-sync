@@ -614,3 +614,38 @@ test('Instance Isolation - /api/dashboard/state filtra conversas pelo número co
   const dataAll = resAll.json();
   assert.equal(dataAll.sessions.some(s => s.phone === '5588999990002'), true);
 });
+
+test('Google OAuth2 (estilo n8n) - gera authUrl com escopos escolhidos, valida state de uso único e troca code', async () => {
+  const { buildGoogleOAuthStart, consumeGoogleOAuthState, exchangeGoogleOAuthCode } = await import('./tools/google_oauth.mjs');
+  const started = buildGoogleOAuthStart({
+    selectedIds: ['calendar', 'gmail'],
+    redirectUri: 'https://liasync.atualyze.com.br/api/oauth/google/callback',
+    clientId: 'cid-123',
+    clientSecret: 'csec-456'
+  });
+  assert.match(started.authUrl, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/);
+  assert.match(started.authUrl, /access_type=offline/);
+  assert.match(started.authUrl, /calendar/);
+  assert.match(started.authUrl, /gmail\.compose/);
+
+  const consumed = consumeGoogleOAuthState(started.state);
+  assert.ok(consumed);
+  assert.deepEqual(consumed.selectedIds, ['calendar', 'gmail']);
+  // Single-use: segunda chamada com mesmo state deve retornar null
+  assert.equal(consumeGoogleOAuthState(started.state), null);
+
+  const tokens = await exchangeGoogleOAuthCode({
+    code: 'auth-code-xyz',
+    redirectUri: started.redirectUri,
+    clientId: 'cid-123',
+    clientSecret: 'csec-456',
+    fetchImpl: async (url) => {
+      if (url.includes('oauth2.googleapis.com/token')) {
+        return new Response(JSON.stringify({ access_token: 'at-1', refresh_token: 'rt-999', scope: 'openid email' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ email: 'tauan@atualyze.com.br' }), { status: 200 });
+    }
+  });
+  assert.equal(tokens.refreshToken, 'rt-999');
+  assert.equal(tokens.email, 'tauan@atualyze.com.br');
+});

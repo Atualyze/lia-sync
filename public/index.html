@@ -1828,15 +1828,42 @@
           <section class="panel ops-section" id="tools-google-api-panel" data-role="admin">
             <div class="panel-head">
               <div>
-                <strong>Credenciais Google Workspace (Drive, Docs, Planilhas, Agenda &amp; Gmail)</strong>
-                <span>Fonte única de autenticação OAuth2 / Service Account e IDs padrão usados pelas ferramentas Google</span>
+                <strong>Google Workspace (Conectar Conta Google — Estilo n8n)</strong>
+                <span>Conecte sua conta Google com 1 clique e escolha exatamente o que a Lia pode acessar</span>
               </div>
-              <button type="button" class="btn-primary btn-sm" id="tools-google-api-save">Aplicar &amp; Salvar Google</button>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <span id="google-oauth-badge" class="badge-mini">Verificando…</span>
+                <button type="button" class="btn-primary btn-sm" id="google-oauth-connect-btn">🔗 Conectar com Google</button>
+                <button type="button" class="btn-secondary btn-sm hidden" id="google-oauth-disconnect-btn">Desconectar</button>
+              </div>
             </div>
             <div id="tools-google-api-feedback" class="admin-feedback hidden" role="status"></div>
-            <div id="tools-google-api-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding-top:8px">
-              <p class="muted">Carregando credenciais Google…</p>
+
+            <div style="margin:10px 0;padding:12px;border-radius:10px;border:1px solid var(--border,rgba(255,255,255,.1));background:rgba(255,255,255,.02)">
+              <div style="font-size:12px;font-weight:600;margin-bottom:8px">Escolha o que a Lia terá permissão de acessar:</div>
+              <div id="google-oauth-scopes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px">
+                <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="calendar" checked><span><strong>Google Agenda</strong> (livres, sugerir, eventos)</span></label>
+                <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="drive" checked><span><strong>Google Drive</strong> (buscar e enviar PDFs)</span></label>
+                <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="docs" checked><span><strong>Google Docs</strong> (ler e editar docs)</span></label>
+                <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="sheets" checked><span><strong>Google Planilhas</strong> (ler e registrar)</span></label>
+                <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="gmail" checked><span><strong>Gmail</strong> (leitura + rascunhos, sem envio)</span></label>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+                <span class="muted">Redirect URI (cole no Google Cloud Console → OAuth Client):</span>
+                <code id="google-oauth-redirect-uri" style="padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.25);user-select:all">-</code>
+                <button type="button" class="btn-secondary btn-sm" id="google-oauth-copy-uri">Copiar URI</button>
+              </div>
             </div>
+
+            <details id="google-oauth-advanced" open style="margin-top:8px">
+              <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0;display:flex;justify-content:space-between;align-items:center">
+                <span>Client ID / Secret, Service Account &amp; IDs Padrão (Drive / Sheets / Calendar)</span>
+                <button type="button" class="btn-secondary btn-sm" id="tools-google-api-save">Salvar Campos Google</button>
+              </summary>
+              <div id="tools-google-api-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding-top:8px">
+                <p class="muted">Carregando credenciais Google…</p>
+              </div>
+            </details>
           </section>
 
           <section class="panel ops-section">

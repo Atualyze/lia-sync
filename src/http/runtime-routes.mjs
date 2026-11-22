@@ -2,6 +2,7 @@ import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
 import { opened, failures } from '../ai/state.mjs';
 import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
+import { GOOGLE_OAUTH_SCOPE_CATALOG, buildGoogleOAuthStart } from '../tools/google_oauth.mjs';
 import { memoryStore, PARA_CATEGORIES } from '../core/memory.mjs';
 import { config } from '../config.mjs';
 
@@ -34,7 +35,64 @@ export async function handleRuntimeDashboardRoutes({
   const isAiProvidersPath = pathname === '/api/dashboard/ai-providers' || pathname.startsWith('/api/dashboard/ai-providers/');
   const isBaileysPath = pathname === '/api/dashboard/whatsapp/baileys' || pathname.startsWith('/api/dashboard/whatsapp/baileys/');
   const isMemoriesPath = pathname === '/api/dashboard/memories' || pathname.startsWith('/api/dashboard/memories/');
-  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath && !isBaileysPath && !isMemoriesPath) return NOT_HANDLED;
+  const isGoogleOAuthPath = pathname.startsWith('/api/dashboard/oauth/google/');
+  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath && !isBaileysPath && !isMemoriesPath && !isGoogleOAuthPath) return NOT_HANDLED;
+
+  // === 0.000 Google Workspace OAuth2 (Estilo n8n: Conectar conta + escolher permissões) ===
+  if (isGoogleOAuthPath) {
+    const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000').split(',')[0].trim();
+    const defaultRedirectUri = `${proto}://${host}/api/oauth/google/callback`;
+    const clientConfigured = Boolean((config.googleClientId || process.env.GOOGLE_CLIENT_ID) && (config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET));
+    const connected = Boolean(config.googleRefreshToken || process.env.GOOGLE_REFRESH_TOKEN);
+    const serviceAccountConfigured = Boolean((config.googleServiceAccountEmail || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) && (config.googleServiceAccountPrivateKey || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY));
+
+    if (req.method === 'GET' && pathname === '/api/dashboard/oauth/google/status') {
+      return json(res, 200, {
+        clientConfigured,
+        connected,
+        serviceAccountConfigured,
+        redirectUri: defaultRedirectUri,
+        scopes: Object.values(GOOGLE_OAUTH_SCOPE_CATALOG)
+      });
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/oauth/google/start') {
+      let body = {};
+      try { body = await readBody(req); } catch {}
+      try {
+        const origin = typeof body?.origin === 'string' && /^https?:\/\/[^/\s]+$/i.test(body.origin.trim())
+          ? body.origin.trim()
+          : `${proto}://${host}`;
+        const redirectUri = `${origin}/api/oauth/google/callback`;
+        const started = buildGoogleOAuthStart({
+          selectedIds: Array.isArray(body?.scopes) ? body.scopes : ['calendar', 'drive', 'docs', 'sheets', 'gmail'],
+          redirectUri
+        });
+        return json(res, 200, {
+          ok: true,
+          authUrl: started.authUrl,
+          redirectUri: started.redirectUri,
+          selectedIds: started.selectedIds
+        });
+      } catch (error) {
+        return json(res, 400, {
+          error: error?.message || 'google_oauth_start_failed',
+          message: error?.message === 'google_oauth_client_not_configured'
+            ? 'Salve primeiro o Google OAuth Client ID e Client Secret abaixo antes de clicar em Conectar com Google.'
+            : (error?.message || 'Falha ao iniciar OAuth Google.')
+        });
+      }
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/oauth/google/disconnect') {
+      if (apiSettingsStore) {
+        await apiSettingsStore.update({ googleRefreshToken: '__CLEAR__' });
+      }
+      config.googleRefreshToken = '';
+      clearGoogleTokenCache();
+      return json(res, 200, { ok: true, connected: false });
+    }
+    return json(res, 405, { error: 'method_not_allowed' });
+  }
 
   // === 0.00 Memória Estruturada PARA (Projetos, Áreas, Recursos, Arquivo) ===
   if (isMemoriesPath) {

@@ -5206,7 +5206,10 @@ async function loadApiIntegrationsPanel() {
       if (intGrid) intGrid.innerHTML = msg;
     }
   }
-  window.loadApiSettingsGroup = loadApiSettingsPanel;
+  window.loadApiSettingsGroup = async () => {
+    await loadApiSettingsPanel();
+    await loadGoogleOAuthStatus();
+  };
 
   $('#runtime-refresh-btn')?.addEventListener('click', () => renderRuntimeView());
 
@@ -5355,8 +5358,98 @@ async function loadApiIntegrationsPanel() {
     }
   }
 
+  async function loadGoogleOAuthStatus() {
+    if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) return;
+    const badge = $('#google-oauth-badge');
+    const uriEl = $('#google-oauth-redirect-uri');
+    const discBtn = $('#google-oauth-disconnect-btn');
+    const advEl = $('#google-oauth-advanced');
+    if (!badge) return;
+    try {
+      const st = await api('/api/dashboard/oauth/google/status');
+      const redirectUri = `${window.location.origin}/api/oauth/google/callback`;
+      if (uriEl) uriEl.textContent = redirectUri;
+      if (st.connected) {
+        badge.textContent = 'Conectado (OAuth2)';
+        badge.className = 'badge-mini ok';
+        discBtn?.classList.remove('hidden');
+        if (advEl) advEl.open = false;
+      } else if (st.serviceAccountConfigured) {
+        badge.textContent = 'Service Account Ativa';
+        badge.className = 'badge-mini ok';
+        discBtn?.classList.add('hidden');
+      } else if (st.clientConfigured) {
+        badge.textContent = 'Pronto para conectar';
+        badge.className = 'badge-mini warn';
+        discBtn?.classList.add('hidden');
+      } else {
+        badge.textContent = 'Informe Client ID + Secret';
+        badge.className = 'badge-mini';
+        discBtn?.classList.add('hidden');
+        if (advEl) advEl.open = true;
+      }
+    } catch {}
+  }
+
+  $('#google-oauth-copy-uri')?.addEventListener('click', () => {
+    const uri = $('#google-oauth-redirect-uri')?.textContent?.trim();
+    if (!uri || uri === '-') return;
+    navigator.clipboard?.writeText(uri).catch(() => {});
+    setRuntimeFeedback('#tools-google-api-feedback', `Redirect URI copiada: ${uri}`);
+  });
+
+  $('#google-oauth-connect-btn')?.addEventListener('click', async () => {
+    const scopes = Array.from(document.querySelectorAll('.google-scope-cb:checked')).map(cb => cb.value);
+    if (!scopes.length) {
+      setRuntimeFeedback('#tools-google-api-feedback', 'Selecione ao menos um serviço do Google para conceder acesso.', true);
+      return;
+    }
+    try {
+      const res = await api('/api/dashboard/oauth/google/start', {
+        method: 'POST',
+        body: JSON.stringify({ scopes, origin: window.location.origin })
+      });
+      if (!res?.authUrl) throw new Error('URL OAuth não retornada.');
+      window.open(res.authUrl, 'lia_google_oauth', 'width=560,height=680,noopener=no');
+      setRuntimeFeedback('#tools-google-api-feedback', 'Janela de autorização do Google aberta! Conclua o login e aceite as permissões.');
+    } catch (err) {
+      setRuntimeFeedback('#tools-google-api-feedback', err.message || 'Salve primeiro o Client ID e Client Secret abaixo.', true);
+      const advEl = $('#google-oauth-advanced');
+      if (advEl) advEl.open = true;
+    }
+  });
+
+  $('#google-oauth-disconnect-btn')?.addEventListener('click', async () => {
+    if (!confirm('Desconectar a conta Google Workspace da Lia?')) return;
+    try {
+      await api('/api/dashboard/oauth/google/disconnect', { method: 'POST', body: '{}' });
+      setRuntimeFeedback('#tools-google-api-feedback', 'Conta Google desconectada.');
+      await loadGoogleOAuthStatus();
+      await loadApiSettingsPanel();
+    } catch (err) {
+      setRuntimeFeedback('#tools-google-api-feedback', `Erro ao desconectar: ${err.message}`, true);
+    }
+  });
+
+  window.addEventListener('message', (ev) => {
+    if (ev.origin !== window.location.origin) return;
+    if (ev.data?.type === 'lia-google-oauth-success') {
+      const email = ev.data.email ? ` (${ev.data.email})` : '';
+      setRuntimeFeedback('#tools-google-api-feedback', `✅ Google Workspace conectado${email}! Ferramentas Google prontas em tempo real.`);
+      void loadGoogleOAuthStatus();
+      void loadApiSettingsPanel();
+      if (state.view === 'tools') renderTools();
+    } else if (ev.data?.type === 'lia-google-oauth-error') {
+      setRuntimeFeedback('#tools-google-api-feedback', `Falha na conexão Google: ${ev.data.error || 'erro desconhecido'}`, true);
+    }
+  });
+
   $('#api-settings-save')?.addEventListener('click', () => saveApiSettingsFromContainer('#api-settings-grid', '#api-settings-feedback'));
-  $('#tools-google-api-save')?.addEventListener('click', () => saveApiSettingsFromContainer('#tools-google-api-grid', '#tools-google-api-feedback'));
+  $('#tools-google-api-save')?.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    await saveApiSettingsFromContainer('#tools-google-api-grid', '#tools-google-api-feedback');
+    await loadGoogleOAuthStatus();
+  });
   $('#integrations-api-save')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     void saveApiSettingsFromContainer('#integrations-api-grid', '#integrations-api-feedback');

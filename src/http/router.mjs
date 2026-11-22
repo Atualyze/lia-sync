@@ -8,6 +8,8 @@ import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { renderPaymentLandingPage, renderPixPaymentPage } from './pix-page.mjs';
 import { handleInfinitePayWebhookRoute } from './infinitepay-webhook.mjs';
+import { consumeGoogleOAuthState, exchangeGoogleOAuthCode } from '../tools/google_oauth.mjs';
+import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
 import { handleProspectingRoutes } from './prospecting-routes.mjs';
 import { handleWebhookRoutes } from './webhook.mjs';
@@ -122,6 +124,37 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const infinitePayResult = await handleInfinitePayWebhookRoute({ req, res, u, store, getHumanPhone });
     if (infinitePayResult !== NOT_HANDLED) return infinitePayResult;
+    if (req.method === 'GET' && u.pathname === '/api/oauth/google/callback') {
+      const renderOAuthHtml = (ok, title, subtitle, payload = {}) => {
+        const safePayload = JSON.stringify({ type: ok ? 'lia-google-oauth-success' : 'lia-google-oauth-error', ...payload }).replace(/</g, '\\u003c');
+        res.writeHead(ok ? 200 : 400, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.card{max-width:440px;background:#1e293b;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:24px;text-align:center}h2{margin:0 0 8px}p{color:#cbd5e1;font-size:14px;line-height:1.5}</style></head><body><div class="card"><h2>${title}</h2><p>${subtitle}</p></div><script>try{if(window.opener){window.opener.postMessage(${safePayload}, window.location.origin);}}catch(e){}setTimeout(function(){try{window.close();}catch(e){}}, ${ok ? 1800 : 6000});</script></body></html>`);
+      };
+      const oauthError = u.searchParams.get('error');
+      if (oauthError) {
+        return renderOAuthHtml(false, 'Conexão cancelada', `O Google retornou: ${String(oauthError).replace(/[<>&"]/g, '')}.`, { error: oauthError });
+      }
+      const stateEntry = consumeGoogleOAuthState(u.searchParams.get('state') || '');
+      if (!stateEntry) {
+        return renderOAuthHtml(false, 'Sessão OAuth expirada', 'Inicie novamente clicando em "Conectar com Google" no painel da Lia Sync.', { error: 'invalid_state' });
+      }
+      const code = u.searchParams.get('code') || '';
+      try {
+        const tokens = await exchangeGoogleOAuthCode({ code, redirectUri: stateEntry.redirectUri });
+        if (!tokens.refreshToken) {
+          return renderOAuthHtml(false, 'Refresh Token não retornado', 'Remova o acesso anterior do app na sua Conta Google (Segurança → Apps de terceiros) e conecte novamente para gerar o token offline.', { error: 'missing_refresh_token' });
+        }
+        if (apiSettingsStore) {
+          await apiSettingsStore.update({ googleRefreshToken: tokens.refreshToken });
+        } else {
+          config.googleRefreshToken = tokens.refreshToken;
+        }
+        clearGoogleTokenCache();
+        return renderOAuthHtml(true, '✅ Google Workspace Conectado!', `Conta conectada${tokens.email ? ` (${tokens.email})` : ''}. Permissões aplicadas em tempo real na Lia! Esta janela fechará automaticamente.`, { email: tokens.email || '', selectedIds: stateEntry.selectedIds });
+      } catch (err) {
+        return renderOAuthHtml(false, 'Falha na conexão com o Google', String(err?.message || 'Erro ao trocar código OAuth.').replace(/[<>&"]/g, ''), { error: err?.message || 'oauth_exchange_failed' });
+      }
+    }
     if (isChatwootApiPath(u.pathname)) {
       // Esses endpoints validam assinatura, segredo ou verify token no Chatwoot upstream.
       if (isVerifiedWebhookEndpoint(req.method, u.pathname)) return proxyToChatwoot(req, res);
