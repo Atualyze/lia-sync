@@ -107,12 +107,14 @@ export function safeErrorDetail(body = '') {
 }
 
 export function buildOpenRouterBody({ model, fallbackModels = [], system, history = [], userText, structuredOutputs = false, requireParameters = false, tools = [] }) {
+  const isFreeOrReasoning = model === 'openrouter/free' || /:free$/i.test(String(model || '')) || /(?:nemotron|deepseek|r1|qwen3|gpt-oss|gemma-4|thinking)/i.test(String(model || ''));
   const body = {
     model,
     temperature: 0.2,
-    max_tokens: config.aiMaxOutputTokens,
+    max_tokens: isFreeOrReasoning ? Math.max(2048, config.aiMaxOutputTokens) : config.aiMaxOutputTokens,
     messages: [{ role: 'system', content: system }, ...normalizeHistory(history), { role: 'user', content: userText }],
-    response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' },
+    ...(!isFreeOrReasoning ? { response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' } } : {}),
+    ...(isFreeOrReasoning ? { reasoning: { effort: 'low' } } : {}),
     provider: { require_parameters: requireParameters, allow_fallbacks: true, sort: 'latency' },
     ...(Array.isArray(tools) && tools.length ? {
       tools: tools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters } })),

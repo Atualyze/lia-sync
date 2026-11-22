@@ -356,13 +356,17 @@ export async function call(provider, {
     const remainingMs = deadline ? deadline - Date.now() : config.aiTimeoutMs;
     if (remainingMs <= 100) break;
     const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
+    const isReasoningModel = /(?:gpt-oss|qwen3|deepseek|r1|nemotron|gemma-4|thinking)/i.test(candidateModel) || candidateModel === 'openrouter/free';
     const isReasoningJsonFragile = provider === 'groq' && /(?:gpt-oss|qwen|deepseek|r1)/i.test(candidateModel);
+    const isGroqGptOss = provider === 'groq' && /gpt-oss/i.test(candidateModel);
+    const effectiveMaxTokens = isReasoningModel ? Math.max(2048, config.aiMaxOutputTokens) : config.aiMaxOutputTokens;
     const body = provider === 'openrouter'
       ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system: effectiveSystem, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
       : {
           model: candidateModel,
           temperature: adaptiveTemperature,
-          max_tokens: config.aiMaxOutputTokens,
+          max_tokens: effectiveMaxTokens,
+          ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
           messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
           ...(!isReasoningJsonFragile ? { response_format: { type: 'json_object' } } : {}),
           ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {})
@@ -378,12 +382,14 @@ export async function call(provider, {
         delete fallbackBody.tool_choice;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
       }
-      // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format json_object (400 json_validate_failed); degrada graciosamente mantendo o contrato JSON via system prompt
-      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools)) {
+      // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format json_object ou reasoning_effort (400); degrada graciosamente mantendo o contrato JSON via system prompt
+      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools || body.reasoning_effort || body.reasoning)) {
         const plainBody = { ...body };
         delete plainBody.tools;
         delete plainBody.tool_choice;
         delete plainBody.response_format;
+        delete plainBody.reasoning_effort;
+        delete plainBody.reasoning;
         usedPlainBody = true;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
@@ -395,7 +401,9 @@ export async function call(provider, {
           const compactBody = {
             model: candidateModel,
             temperature: adaptiveTemperature,
-            max_tokens: Math.min(1536, Math.max(config.aiMaxOutputTokens, 1024)),
+            max_tokens: effectiveMaxTokens,
+            ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
+            ...(provider === 'openrouter' && isReasoningModel ? { reasoning: { effort: 'low' } } : {}),
             messages: [
               { role: 'system', content: compactText(effectiveSystem, 7000) },
               ...compactCloudflareHistory(history),
@@ -414,18 +422,20 @@ export async function call(provider, {
       let message = data.choices?.[0]?.message || {};
       let functionCalls = normalizeProviderToolCalls(message.tool_calls || (message.function_call ? [message.function_call] : []));
       let contentText = typeof message.content === 'string' ? message.content.trim() : '';
-      // Alguns modelos de raciocínio (OpenRouter :free / Groq gpt-oss) retornam content vazio com tools/response_format.
-      // Tenta recuperar JSON válido do campo reasoning ou refaz 1 chamada limpa sem tools/response_format.
+      // Alguns modelos de raciocínio (OpenRouter :free / Groq gpt-oss) retornam content vazio com tools/response_format ou finish_reason=length.
+      // Tenta recuperar JSON válido do campo reasoning ou refaz 1 chamada limpa com reasoning mínimo e max_tokens ampliado.
       if (!contentText && !functionCalls.length) {
         const reasoningText = String(message.reasoning || message.reasoning_content || '').trim();
         const jsonMatch = reasoningText.match(/\{[\s\S]*"reply"\s*:[\s\S]*\}/);
         if (jsonMatch) {
           contentText = jsonMatch[0];
-        } else if (!usedPlainBody && (!deadline || deadline - Date.now() > 2500)) {
+        } else if (!deadline || deadline - Date.now() > 2500) {
           const plainRetryBody = {
             model: candidateModel,
             temperature: adaptiveTemperature,
-            max_tokens: Math.max(1536, config.aiMaxOutputTokens),
+            max_tokens: Math.max(3072, effectiveMaxTokens),
+            ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
+            ...(provider === 'openrouter' ? { reasoning: { effort: 'low' } } : {}),
             messages: [
               { role: 'system', content: compactText(effectiveSystem, 8000) },
               ...compactCloudflareHistory(history),
