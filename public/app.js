@@ -3283,9 +3283,15 @@ function showView(view) {
   if (view === 'vps') renderVpsMonitor();
   if (view === 'admin') renderAdminData();
   if (view === 'overview') renderOverview();
-  if (view === 'tools') renderTools();
+  if (view === 'tools') {
+    renderTools();
+    window.loadApiSettingsGroup?.();
+  }
   if (view === 'users') renderUsers();
-  if (view === 'integrations') renderIntegrations();
+  if (view === 'integrations') {
+    renderIntegrations();
+    window.loadApiSettingsGroup?.();
+  }
   if (view === 'runtime') renderRuntimeView();
   setTimeout(() => decorateTechnicalTerms(document.body), 90);
 }
@@ -5151,34 +5157,56 @@ async function loadApiIntegrationsPanel() {
     }
   });
 
+  function renderApiSettingsCards(items = []) {
+    return items.map(item => `
+      <div class="panel" style="padding:10px">
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:6px">
+          <strong style="font-size:13px">${runtimeEscape(item.label)}</strong>
+          <span class="badge-mini">${item.source === 'panel' ? 'Painel' : (item.source === 'env' ? 'VPS (.env)' : 'Vazio')}</span>
+        </div>
+        <input
+          type="${item.secret ? 'password' : (item.isNumber ? 'number' : 'text')}"
+          class="api-setting-input"
+          data-api-key="${runtimeEscape(item.key)}"
+          data-is-secret="${item.secret ? '1' : '0'}"
+          placeholder="${item.secret ? (item.configured ? `Atual: ${runtimeEscape(item.masked)} (digite para trocar)` : 'Digite a chave...') : 'Digite o valor...'}"
+          value="${item.secret ? '' : runtimeEscape(item.value)}"
+          style="width:100%"
+        >
+        ${item.source === 'panel' ? `<button type="button" class="btn-secondary api-setting-clear" data-clear-key="${runtimeEscape(item.key)}" style="margin-top:6px;font-size:11px">Voltar para .env</button>` : ''}
+      </div>
+    `).join('');
+  }
+
   async function loadApiSettingsPanel() {
-    const grid = $('#api-settings-grid');
-    if (!grid) return;
+    if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) return;
+    const aiGrid = $('#api-settings-grid');
+    const googleGrid = $('#tools-google-api-grid');
+    const intGrid = $('#integrations-api-grid');
+    if (!aiGrid && !googleGrid && !intGrid) return;
     try {
       const data = await api('/api/dashboard/api-settings');
       const items = data.items || [];
-      grid.innerHTML = items.map(item => `
-        <div class="panel" style="padding:10px">
-          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:6px">
-            <strong style="font-size:13px">${runtimeEscape(item.label)}</strong>
-            <span class="badge-mini">${item.source === 'panel' ? 'Painel' : (item.source === 'env' ? 'VPS (.env)' : 'Vazio')}</span>
-          </div>
-          <input
-            type="${item.secret ? 'password' : (item.isNumber ? 'number' : 'text')}"
-            class="api-setting-input"
-            data-api-key="${runtimeEscape(item.key)}"
-            data-is-secret="${item.secret ? '1' : '0'}"
-            placeholder="${item.secret ? (item.configured ? `Atual: ${runtimeEscape(item.masked)} (digite para trocar)` : 'Digite a chave...') : 'Digite o valor...'}"
-            value="${item.secret ? '' : runtimeEscape(item.value)}"
-            style="width:100%"
-          >
-          ${item.source === 'panel' ? `<button type="button" class="btn-secondary api-setting-clear" data-clear-key="${runtimeEscape(item.key)}" style="margin-top:6px;font-size:11px">Voltar para .env</button>` : ''}
-        </div>
-      `).join('');
+      if (aiGrid) {
+        const aiItems = items.filter(i => i.group === 'ai');
+        aiGrid.innerHTML = aiItems.length ? renderApiSettingsCards(aiItems) : '<p class="muted">Nenhum provedor de IA listado.</p>';
+      }
+      if (googleGrid) {
+        const googleItems = items.filter(i => i.group === 'google');
+        googleGrid.innerHTML = googleItems.length ? renderApiSettingsCards(googleItems) : '<p class="muted">Nenhuma credencial Google listada.</p>';
+      }
+      if (intGrid) {
+        const intItems = items.filter(i => i.group === 'whatsapp' || i.group === 'integrations');
+        intGrid.innerHTML = intItems.length ? renderApiSettingsCards(intItems) : '<p class="muted">Nenhuma integração listada.</p>';
+      }
     } catch (err) {
-      grid.innerHTML = `<p class="muted">Indisponível: ${runtimeEscape(err.message)}</p>`;
+      const msg = `<p class="muted">Indisponível: ${runtimeEscape(err.message)}</p>`;
+      if (aiGrid) aiGrid.innerHTML = msg;
+      if (googleGrid) googleGrid.innerHTML = msg;
+      if (intGrid) intGrid.innerHTML = msg;
     }
   }
+  window.loadApiSettingsGroup = loadApiSettingsPanel;
 
   $('#runtime-refresh-btn')?.addEventListener('click', () => renderRuntimeView());
 
@@ -5309,21 +5337,29 @@ async function loadApiIntegrationsPanel() {
     }
   });
 
-  $('#api-settings-save')?.addEventListener('click', async () => {
+  async function saveApiSettingsFromContainer(gridSelector, feedbackSelector) {
     try {
+      const container = $(gridSelector);
       const payload = {};
-      document.querySelectorAll('.api-setting-input').forEach(input => {
+      (container || document).querySelectorAll('.api-setting-input').forEach(input => {
         const key = input.dataset.apiKey;
         const val = String(input.value || '').trim();
         if (val) payload[key] = val;
       });
       const res = await api('/api/dashboard/api-settings', { method: 'PUT', body: JSON.stringify(payload) });
-      setRuntimeFeedback('#api-settings-feedback', `APIs aplicadas em tempo real (hot-reload): ${(res.changedKeys || []).join(', ') || 'nenhuma alteração'}.`);
+      setRuntimeFeedback(feedbackSelector, `Aplicado em tempo real (hot-reload): ${(res.changedKeys || []).join(', ') || 'nenhuma alteração'}.`);
       await loadApiSettingsPanel();
       await refreshConfiguredProviders({ reloadCatalogs: true });
     } catch (err) {
-      setRuntimeFeedback('#api-settings-feedback', `Erro ao salvar APIs: ${err.message}`, true);
+      setRuntimeFeedback(feedbackSelector, `Erro ao salvar: ${err.message}`, true);
     }
+  }
+
+  $('#api-settings-save')?.addEventListener('click', () => saveApiSettingsFromContainer('#api-settings-grid', '#api-settings-feedback'));
+  $('#tools-google-api-save')?.addEventListener('click', () => saveApiSettingsFromContainer('#tools-google-api-grid', '#tools-google-api-feedback'));
+  $('#integrations-api-save')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    void saveApiSettingsFromContainer('#integrations-api-grid', '#integrations-api-feedback');
   });
 
   // ====================================================================

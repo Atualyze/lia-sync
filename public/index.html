@@ -1383,14 +1383,14 @@
             <div id="custom-providers-list" class="stack-list"></div>
           </section>
 
-          <!-- 3. CHAVES DE API & CREDENCIAIS (HOT-RELOAD) -->
+          <!-- 3. CHAVES DE API DOS PROVEDORES DE IA (HOT-RELOAD) -->
           <section class="panel ops-panel" id="api-settings-panel" data-role="admin" style="margin-top:16px">
             <div class="panel-head">
               <div>
-                <h3>Chaves de API &amp; Credenciais (Hot-Reload sem entrar na VPS)</h3>
-                <p>Atualize chaves de Gemini, Groq, NVIDIA, OpenRouter, Cloudflare, OpenAI, Qwen e Google Workspace em tempo real. Chaves salvas nunca são exibidas em texto claro.</p>
+                <h3>Chaves de API dos Provedores de IA (Hot-Reload)</h3>
+                <p>Atualize chaves de Gemini, Groq, NVIDIA NIM, OpenRouter, Cloudflare, OpenAI e Qwen em tempo real sem entrar na VPS. Chaves salvas nunca são exibidas em texto claro.</p>
               </div>
-              <button type="button" class="btn-primary" id="api-settings-save">Aplicar &amp; Salvar APIs</button>
+              <button type="button" class="btn-primary" id="api-settings-save">Aplicar &amp; Salvar Chaves de IA</button>
             </div>
             <div id="api-settings-feedback" class="admin-feedback hidden" role="status"></div>
             <div id="api-settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding-top:10px">
@@ -1825,6 +1825,20 @@
             <div id="tools-web-search-meta" class="ops-safe-copy" style="margin-top:8px;margin-bottom:0;"></div>
           </section>
 
+          <section class="panel ops-section" id="tools-google-api-panel" data-role="admin">
+            <div class="panel-head">
+              <div>
+                <strong>Credenciais Google Workspace (Drive, Docs, Planilhas, Agenda &amp; Gmail)</strong>
+                <span>Fonte única de autenticação OAuth2 / Service Account e IDs padrão usados pelas ferramentas Google</span>
+              </div>
+              <button type="button" class="btn-primary btn-sm" id="tools-google-api-save">Aplicar &amp; Salvar Google</button>
+            </div>
+            <div id="tools-google-api-feedback" class="admin-feedback hidden" role="status"></div>
+            <div id="tools-google-api-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding-top:8px">
+              <p class="muted">Carregando credenciais Google…</p>
+            </div>
+          </section>
+
           <section class="panel ops-section">
             <div class="panel-head">
               <div>
@@ -2032,6 +2046,21 @@
             </button>
           </div>
           <div id="integrations-feedback" class="admin-feedback hidden" role="status"></div>
+
+          <!-- CREDENCIAIS DE INTEGRAÇÕES & WHATSAPP LEGADO (HOT-RELOAD) -->
+          <details class="panel ops-panel" id="integrations-api-panel" data-role="admin" style="margin-bottom:16px">
+            <summary class="panel-head" style="cursor:pointer;list-style:none">
+              <div>
+                <h3>Credenciais de Canais &amp; Integrações (Chatwoot, Evolution, FAQ Remota, API v1)</h3>
+                <p>Configurações de URLs e limites de integrações externas em hot-reload</p>
+              </div>
+              <button type="button" class="btn-primary btn-sm" id="integrations-api-save">Aplicar &amp; Salvar</button>
+            </summary>
+            <div id="integrations-api-feedback" class="admin-feedback hidden" role="status"></div>
+            <div id="integrations-api-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding-top:10px">
+              <p class="muted">Carregando configurações de integrações…</p>
+            </div>
+          </details>
 
           <!-- CONEXÃO WHATSAPP NATIVA (BAILEYS EMBUTIDO - QR CODE & PAIRING CODE) -->
           <section class="panel ops-panel" id="baileys-native-panel" style="margin-bottom:16px">
