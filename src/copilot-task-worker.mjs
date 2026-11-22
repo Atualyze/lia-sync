@@ -210,7 +210,10 @@ export function createCopilotTaskWorker({
           planStep: index + 1
         });
         const verification = verifyCopilotToolResult(step.name, result);
-        if (!verification.continue) {
+        const isTerminalHealthWarning = step.name === 'consultar_saude_infra'
+          && verification.state === 'completed_with_warnings'
+          && index === plan.steps.length - 1;
+        if (!verification.continue && !isTerminalHealthWarning) {
           const code = String(result?.code || result?.error?.code || result?.error || verification.state || 'tool_result_not_successful').slice(0, 120);
           const partial = completedSteps.length ? `\n\nEtapas anteriores confirmadas:\n${fallbackSummary(completedSteps)}` : '';
           const reason = verification.state === 'no_match'

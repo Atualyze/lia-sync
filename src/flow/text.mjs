@@ -407,13 +407,17 @@ export function extractDispatchIntent(cleanCommand, { pendingRecipient, pendingA
     return { recipient: null, message: null, asAudio: false, isCancel: true };
   }
 
-  // Se for pedido explícito de áudio ou explicação para o PRÓPRIO responsável (chat interno)
-  const isForSelf = /(?:para\s+mim|pra\s+mim|no\s+chat\s+interno|comigo|me\s+(?:mande|envie|manda|grava|grave|fala|fale|explique|explica))\b/i.test(cleanCommand);
+  // Se for pedido explícito de áudio, aviso ou explicação para o PRÓPRIO responsável (chat interno)
+  const isForSelf = /(?:para\s+mim|pra\s+mim|no\s+chat\s+interno|comigo|me\s+(?:mande|envie|manda|grava|grave|fala|fale|explique|explica|avisa|avise|notifica|notifique|retorna|retorne|responde|responda|lembra|lembre))\b/i.test(cleanCommand);
 
   const IGNORED_RECIPIENTS = new Set([
     'o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'o contato', 'contato',
     'qualquer', 'mim', 'ele', 'ela', 'todos', 'todas', 'nós', 'você', 'voce',
-    'gente', 'ajuda', 'status', 'ver', 'hoje', 'amanhã', 'ontem', 'saber', 'recado', 'mensagem',
+    'gente', 'ajuda', 'status', 'ver', 'hoje', 'amanhã', 'amanha', 'ontem', 'daqui',
+    'agora', 'depois', 'logo', 'minuto', 'minutos', 'hora', 'horas', 'segundo', 'segundos',
+    'dia', 'dias', 'semana', 'mes', 'mês', 'verificar', 'verificacao', 'verificação',
+    'consulta', 'consultar', 'checar', 'saude', 'saúde', 'api', 'apis', 'sistema', 'resultado',
+    'saber', 'recado', 'mensagem',
     'número', 'numero', 'telefone', 'celular', 'cliente', 'ptbr', 'pt-br', 'pt_br', 'br'
   ]);
 
