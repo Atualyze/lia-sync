@@ -753,7 +753,9 @@ export async function handleOwnerSession({
                     disableToolCalling: true,
                     deadline: Date.now() + 20_000
                   });
-                  clientReply = String(crafted?.reply || '').trim();
+                  if (crafted && !crafted.provider_error) {
+                    clientReply = String(crafted.reply || '').trim();
+                  }
                 } catch {}
                 if (!clientReply) {
                   clientReply = `Oi! Acabei de confirmar aqui: ${consultAction.text}\n\nQualquer dúvida, sigo por aqui para te ajudar! 😊`;
@@ -769,6 +771,7 @@ export async function handleOwnerSession({
                 }
                 targetSession.history ??= [];
                 targetSession.history.push({ role: 'assistant', content: filteredClientReply, createdAt: timestamp });
+                targetSession.human = false;
                 targetSession.lastBotAt = timestamp;
                 targetSession.awaitingReply = true;
                 targetSession.pendingAdminConsult = null;

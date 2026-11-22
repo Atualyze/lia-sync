@@ -881,6 +881,26 @@ export async function handleClientMessage({
               requestedPixAmount,
               s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
             );
+          } else if (isPriceViolation && !filtered.violations.includes('clinica') && origin !== 'simulation' && origin !== 'preview') {
+            s.pendingAdminConsult = {
+              id: `consult-${Date.now().toString(36)}`,
+              phone: s.phone,
+              rawJid: rawItem?.jid || s.phone,
+              clientName: s.clientName || pushName || 'Cliente',
+              question: clean.slice(0, 400),
+              reason: 'Confirmação de valor/preço antes de informar ao cliente',
+              requestedAt: new Date(now()).toISOString(),
+              status: 'pending'
+            };
+            store.markDirty();
+            await notify(buildAdminConsultNotice({
+              clientName: s.clientName || pushName || 'Cliente',
+              phone: s.phone,
+              question: clean,
+              reason: 'Confirmação de valor/preço antes de informar ao cliente',
+              assistant
+            }));
+            safeReplyText = faqPriceReply || 'Para informar o valor corretamente, já estou confirmando essa informação com a equipe e te retorno aqui mesmo em instantes! Ainda não gerei nenhuma cobrança.';
           } else {
             await triggerHandoff(s, {
               reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,

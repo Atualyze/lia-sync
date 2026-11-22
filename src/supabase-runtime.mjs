@@ -253,6 +253,7 @@ function rowToSession(row, messages = []) {
       : null,
     pendingClientPayment: normalizePendingClientPayment(meta.pendingClientPayment),
     pendingAdminDecision: normalizePendingAdminDecision(meta.pendingAdminDecision),
+    pendingAdminConsult: meta.pendingAdminConsult && typeof meta.pendingAdminConsult === 'object' ? { ...meta.pendingAdminConsult } : null,
     pendingCheckout: meta.pendingCheckout && typeof meta.pendingCheckout === 'object' && !Array.isArray(meta.pendingCheckout)
       ? { ...meta.pendingCheckout }
       : null,
@@ -357,6 +358,7 @@ function sessionToConversation(key, session, contactId) {
         : null,
       pendingClientPayment: normalizePendingClientPayment(session.pendingClientPayment),
       pendingAdminDecision: normalizePendingAdminDecision(session.pendingAdminDecision),
+      pendingAdminConsult: session.pendingAdminConsult && typeof session.pendingAdminConsult === 'object' ? { ...session.pendingAdminConsult } : null,
       pendingCheckout: session.pendingCheckout && typeof session.pendingCheckout === 'object'
         ? { ...session.pendingCheckout }
         : null,
