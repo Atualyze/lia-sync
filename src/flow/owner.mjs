@@ -1225,6 +1225,51 @@ export async function handleOwnerSession({
         });
         if (quickCommandReply !== null) return quickCommandReply;
 
+        // 1.7.2 Fast-path determinístico para agendamento de verificações/lembretes autônomos no Lia Runtime
+        // Evita que modelos gratuitos prometam "Agendado!" sem chamar gerenciar_tarefas_autonomas.
+        if (liaRuntime?.available && !sSelf.pendingAudioConfirmation && !sSelf.pendingOutboundDispatch && isToolEnabled('gerenciar_tarefas_autonomas', botConfig)) {
+          const relTimeMatch = cleanCommand.match(/(?:daqui\s+a|em|dentro\s+de)\s+(\d{1,4})\s*(min(?:uto)?s?|h(?:ora)?s?)\b/i);
+          const hasScheduleVerb = /\b(?:agend\w*|program\w*|verific\w*|chec\w*|me\s+avis\w*|me\s+lembr\w*|lembre-?me)\b/i.test(cleanCommand);
+          const isExternalClientSend = /\b(?:envi\w*|mand\w*|dispar\w*|fal\w*)\b.{0,25}\b(?:para\s+o|para\s+a|pro|pra|ao|à|com\s+o|com\s+a)\s+[A-ZÀ-Ú]/i.test(cleanCommand);
+          const isCalendarMeeting = /\b(?:reuni[aã]o|google\s+calendar|google\s+agenda|evento\s+na\s+agenda|consulta\s+com)\b/i.test(cleanCommand);
+          if (relTimeMatch && hasScheduleVerb && !isExternalClientSend && !isCalendarMeeting) {
+            const qty = Number(relTimeMatch[1]);
+            const isHours = /^h/i.test(relTimeMatch[2]);
+            const inMinutes = Math.max(1, Math.min(43200, isHours ? qty * 60 : qty));
+            const isHealthCheck = /\b(?:sa[uú]de|apis?|infra(?:estrutura)?|event\s*loop|servi[cç]os?|servidor|vps|baileys|whatsapp|sistema)\b/i.test(cleanCommand);
+            const args = {
+              acao: 'agendar_verificacao',
+              titulo: isHealthCheck
+                ? 'Verificação autônoma de saúde da infraestrutura e APIs'
+                : cleanCommand.replace(/\s+/g, ' ').trim().slice(0, 140),
+              assunto: isHealthCheck ? 'infraestrutura' : 'owner',
+              inMinutes,
+              ...(isHealthCheck ? { actionTool: 'consultar_saude_infra', actionArgs: { target: 'geral' } } : {})
+            };
+            const schedRes = await executeToolCall('gerenciar_tarefas_autonomas', args, {
+              phone: OWNER_SELF_KEY,
+              clientName: `${owner} (Copiloto)`,
+              store,
+              reminderStore,
+              whatsapp,
+              ai,
+              botConfig,
+              session: sSelf,
+              userText: cleanCommand
+            });
+            if (schedRes?.success) {
+              const dueTime = schedRes.dueAt
+                ? new Date(schedRes.dueAt).toLocaleTimeString('pt-BR', { timeZone: config.businessTimeZone || 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+                : `em ${inMinutes} min`;
+              const shortId = String(schedRes.commitmentId || '').slice(0, 8).toUpperCase();
+              const confirmMsg = isHealthCheck
+                ? `⏰ *Verificação autônoma agendada no Lia Runtime!*\n• *ID:* #${shortId}\n• *Execução:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Ação:* diagnóstico real de saúde da infra, WhatsApp, Event Loop e APIs\n\nAssim que concluir, envio o resultado real automaticamente aqui no WhatsApp.`
+                : `⏰ *Compromisso autônomo registrado no Lia Runtime!*\n• *ID:* #${shortId}\n• *Horário:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Tarefa:* ${args.titulo}\n\nVou te avisar automaticamente aqui no WhatsApp no horário.`;
+              return recordSelfTurn(filterReply(confirmMsg, { isCopilot: true }).text);
+            }
+          }
+        }
+
         // 1.7.5 Confirmação Pendente de Áudio (Antes de Gravar e Enviar)
         if (sSelf.pendingAudioConfirmation) {
           const pendingAudio = sSelf.pendingAudioConfirmation;

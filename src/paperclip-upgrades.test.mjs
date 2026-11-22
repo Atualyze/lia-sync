@@ -370,3 +370,47 @@ test('AI resilience - Groq gpt-oss omite response_format estrito e OpenRouter em
     config.openrouterKey = prevOr;
   }
 });
+
+test('Autonomia - claimsUnexecutedToolWork bloqueia "Agendado!" falso e owner agenda verificação deterministicamente', async () => {
+  const { claimsUnexecutedToolWork } = await import('./flow/copilot-continuity.mjs');
+  assert.equal(
+    claimsUnexecutedToolWork('Agendado! Daqui a 2 minutos o sistema vai executar automaticamente o diagnóstico completo de saúde das APIs e te devolver o resultado.'),
+    true
+  );
+  assert.equal(claimsUnexecutedToolWork('Não agendei nada porque faltou confirmação.'), false);
+
+  const { createFlow } = await import('./flow.mjs');
+  const { SessionStore } = await import('./sessions.mjs');
+  const { LiaRuntimeStore, createLiaRuntime } = await import('./runtime/index.mjs');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-auto-sched-'));
+  const store = new SessionStore(path.join(dir, 'sessions.json'));
+  await store.load();
+  const rtStore = new LiaRuntimeStore({ filePath: path.join(dir, 'runtime.json'), allowLocalFallback: true, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+  const liaRuntime = createLiaRuntime({ store: rtStore, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+  await liaRuntime.start();
+
+  let aiCalled = 0;
+  const flow = createFlow({
+    store,
+    liaRuntime,
+    getHumanPhone: () => '5588999999999',
+    ai: {
+      askAI: async () => {
+        aiCalled += 1;
+        return { reply: 'Agendado fake!', tool_calls: [] };
+      }
+    }
+  });
+
+  const reply = await flow.process({
+    phone: '5588999999999',
+    text: 'Agenda uma verificação de saúde das apis para daqui a 2 minutos e me avisa o resultado',
+    origin: 'whatsapp'
+  });
+
+  assert.equal(aiCalled, 0, 'Fast-path determinístico não deve depender da IA para agendar verificação');
+  assert.match(reply, /Verificação autônoma agendada no Lia Runtime/i);
+  const pending = await liaRuntime.commitments.list({ status: 'pending' });
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].metadata?.actionTool, 'consultar_saude_infra');
+});
