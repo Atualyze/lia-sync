@@ -1258,10 +1258,13 @@ export async function handleOwnerSession({
               userText: cleanCommand
             });
             if (schedRes?.success) {
-              const dueTime = schedRes.dueAt
-                ? new Date(schedRes.dueAt).toLocaleTimeString('pt-BR', { timeZone: config.businessTimeZone || 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+              const resolvedDueAt = schedRes.dueAt || schedRes.commitment?.due_at || null;
+              const resolvedId = schedRes.commitmentId || schedRes.commitment?.id || '';
+              const tz = botConfig?.businessHours?.timezone || 'America/Sao_Paulo';
+              const dueTime = resolvedDueAt
+                ? new Date(resolvedDueAt).toLocaleTimeString('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
                 : `em ${inMinutes} min`;
-              const shortId = String(schedRes.commitmentId || '').slice(0, 8).toUpperCase();
+              const shortId = String(resolvedId).slice(0, 8).toUpperCase();
               const confirmMsg = isHealthCheck
                 ? `⏰ *Verificação autônoma agendada no Lia Runtime!*\n• *ID:* #${shortId}\n• *Execução:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Ação:* diagnóstico real de saúde da infra, WhatsApp, Event Loop e APIs\n\nAssim que concluir, envio o resultado real automaticamente aqui no WhatsApp.`
                 : `⏰ *Compromisso autônomo registrado no Lia Runtime!*\n• *ID:* #${shortId}\n• *Horário:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Tarefa:* ${args.titulo}\n\nVou te avisar automaticamente aqui no WhatsApp no horário.`;

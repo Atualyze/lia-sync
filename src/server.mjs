@@ -593,6 +593,22 @@ if (isDirectRun) {
     }
   };
   const maintenanceTimer = setInterval(maintenance, Math.max(30, config.inactivityCheckSeconds) * 1000); maintenanceTimer.unref();
+  // Scheduler dedicado do Lia Runtime (15s): garante que compromissos/verificações autônomas
+  // disparem no horário exato sem depender do intervalo longo de manutenção de inatividade.
+  let runtimeWakeRunning = false;
+  const runRuntimeScheduler = async () => {
+    if (runtimeWakeRunning || !app.liaRuntime?.available) return;
+    runtimeWakeRunning = true;
+    try {
+      await app.liaRuntime.wake({ reason: 'scheduler' });
+    } catch (e) {
+      console.error('[lia-runtime]', e?.message || e);
+    } finally {
+      runtimeWakeRunning = false;
+    }
+  };
+  const runtimeSchedulerTimer = setInterval(() => { void runRuntimeScheduler(); }, 15_000);
+  runtimeSchedulerTimer.unref();
   // Worker independente: reivindica jobs persistentes com lease no Supabase.
   // O intervalo não sobrepõe execuções locais; concorrência entre réplicas é controlada pela RPC claim_copilot_task.
   const runCopilotWorker = () => {
@@ -610,6 +626,7 @@ if (isDirectRun) {
     if (stopping) return;
     stopping = true;
     clearInterval(maintenanceTimer);
+    clearInterval(runtimeSchedulerTimer);
     clearInterval(copilotTaskTimer);
     clearInterval(aiRetryTimer);
     stopGlobalEventLoopMonitor();

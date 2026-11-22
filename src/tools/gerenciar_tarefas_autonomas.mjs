@@ -174,6 +174,8 @@ export const toolGerenciarTarefasAutonomas = {
       return {
         success: true,
         acao,
+        commitmentId: commitment.id,
+        dueAt: commitment.due_at,
         commitment: {
           id: commitment.id,
           title: commitment.title,

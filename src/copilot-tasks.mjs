@@ -419,7 +419,7 @@ export class CopilotTaskStore {
     if (!this.loaded) await this.load();
     if (this.mode === 'unavailable' || (!this.remoteEnabled && this.localCorrupt)) return null;
     if (this.remoteEnabled) {
-      const rows = await this.client.select('copilot_tasks', 'select=*&status=eq.succeeded&notification_status=eq.pending&order=completed_at.asc&limit=10');
+      const rows = await this.client.select('copilot_tasks', 'select=*&status=in.(succeeded,failed,uncertain)&notification_status=eq.pending&order=completed_at.asc&limit=10');
       for (const row of Array.isArray(rows) ? rows : []) {
         const claimed = await this.client.request('copilot_tasks', {
           method: 'PATCH',

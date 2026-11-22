@@ -410,6 +410,8 @@ test('Autonomia - claimsUnexecutedToolWork bloqueia "Agendado!" falso e owner ag
 
   assert.equal(aiCalled, 0, 'Fast-path determinístico não deve depender da IA para agendar verificação');
   assert.match(reply, /Verificação autônoma agendada no Lia Runtime/i);
+  assert.match(reply, /ID:\*? #[0-9A-F]{8}/i, 'Deve exibir o ID real do compromisso');
+  assert.match(reply, /\d{2}:\d{2}/, 'Deve exibir o horário real de execução');
   const pending = await liaRuntime.commitments.list({ status: 'pending' });
   assert.equal(pending.length, 1);
   assert.equal(pending[0].metadata?.actionTool, 'consultar_saude_infra');
