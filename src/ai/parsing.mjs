@@ -4,7 +4,7 @@ export const responseSchema = {
   type: 'OBJECT',
   properties: {
     reply: { type: 'STRING' },
-    intent: { type: 'STRING' },
+    intent: { type: 'STRING', enum: ['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro'] },
     red_flags: { type: 'BOOLEAN' },
     handoff: { type: 'BOOLEAN' },
     handoff_category: { type: 'STRING', nullable: true, enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia'] },

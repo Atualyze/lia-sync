@@ -93,6 +93,7 @@ test('schemas Gemini e OpenRouter exigem decisão de ferramenta e categoria de h
   assert.ok(responseSchema.required.includes('needs_tool'));
   assert.ok(responseSchema.required.includes('handoff_category'));
   assert.ok(responseSchema.required.includes('conversation_state'));
+  assert.ok(responseSchema.properties.intent.enum.includes('atendimento'));
   const schema = buildOpenRouterBody({
     model: 'google/gemma-4-31b:free',
     system: 'sistema',
