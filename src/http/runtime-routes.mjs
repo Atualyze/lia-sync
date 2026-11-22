@@ -384,7 +384,7 @@ export async function handleRuntimeDashboardRoutes({
         action: 'copilot_task_reconciliation_requested',
         entityType: 'copilot_task',
         entityId: id,
-        metadata: { decision, evidence, actor }
+        metadata: { decision, evidence, actorLabel: actor }
       });
       const task = await copilotTaskStore.reconcileUncertain(id, { decision, evidence, actor });
       if (!task) return json(res, 404, { error: 'copilot_task_not_found' });

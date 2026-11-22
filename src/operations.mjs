@@ -25,7 +25,7 @@ function safeErrorMessage(value = '') {
 }
 
 function safeMetadata(input = {}) {
-  const allowed = new Set(['source', 'recipientCount', 'role', 'active', 'status', 'revision', 'reasonCode', 'provider', 'model', 'estimatedUsd', 'attemptCount', 'toolName', 'actorRole', 'actorLabel', 'durationMs', 'planStep']);
+  const allowed = new Set(['source', 'recipientCount', 'role', 'active', 'status', 'revision', 'reasonCode', 'provider', 'model', 'estimatedUsd', 'attemptCount', 'toolName', 'actorRole', 'actorLabel', 'durationMs', 'planStep', 'decision', 'outcome', 'notificationStatus', 'evidence']);
   const out = {};
   for (const [key, value] of Object.entries(input || {})) {
     if (!allowed.has(key)) continue;

@@ -610,6 +610,7 @@ export class CopilotTaskStore {
     const reconciliationNote = note
       .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{24,}\b/g, '[redacted]')
       .replace(/\b\d{8,15}\b/g, '[number]')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
       .slice(0, 500);
     const nowIso = new Date(this.now()).toISOString();
 
