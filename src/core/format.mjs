@@ -30,10 +30,18 @@ function splitLongParagraphs(text = '') {
     .split('\n')
     .map(line => {
       const flat = line.trim();
-      // Linha densa e sem formatação: o WhatsApp precisa de respiro mesmo
-      // quando a IA devolve uma resposta curta em um único bloco.
-      if (flat.length <= 120 || flat.includes('*') || flat.includes('•')) return line;
-      const sentences = flat.match(/[^.!?]+[.!?]+["')\]]?\s*/g) || [flat];
+      // Nunca quebra blocos de código, códigos Pix EMV (000201... / br.gov.bcb.pix),
+      // URLs longas ou tokens sem espaços (boletos/chaves/hashes).
+      if (
+        flat.length <= 120
+        || flat.includes('*')
+        || flat.includes('•')
+        || flat.includes('`')
+        || /000201|br\.gov\.bcb\.pix|https?:\/\//i.test(flat)
+        || (flat.match(/\s/g) || []).length < 4
+      ) return line;
+      // Só quebra em pontuação seguida de espaço (nunca em pontos internos como domínios ou decimais)
+      const sentences = flat.match(/[^.!?]+(?:[.!?]+["')\]]?(?=\s+|$)|$)/g)?.map(s => s.trim()).filter(Boolean) || [flat];
       if (sentences.length < 2) return line;
       const blocks = [];
       let current = '';
@@ -41,10 +49,10 @@ function splitLongParagraphs(text = '') {
       for (const sentence of sentences) {
         if (current && ((current.length + sentence.length) > 220 || sentenceCount >= 2)) {
           blocks.push(current.trim());
-          current = sentence.trim();
+          current = sentence;
           sentenceCount = 1;
         } else {
-          current = current ? `${current} ${sentence.trim()}` : sentence.trim();
+          current = current ? `${current} ${sentence}` : sentence;
           sentenceCount += 1;
         }
       }

@@ -16,6 +16,7 @@ import { opened, failures } from './ai/state.mjs';
 import { toolGerenciarAgendaGoogle, computeSuggestedSlots } from './tools/gerenciar_agenda_google.mjs';
 import { filterReply } from './safety.mjs';
 import { processMaintenance } from './maintenance.mjs';
+import { formatOutgoingMessage } from './core/format.mjs';
 
 test('getModelCapabilities e learnModelCapability aprendem capacidades em runtime', () => {
   clearModelCapabilities();
@@ -252,4 +253,12 @@ test('processMaintenance executa onPostponedResume na abertura do expediente qua
   assert.deepEqual(resumed, ['5588921694598']);
   assert.equal(store.sessions['5588921694598'].pendingTurnPostponedUntil, null);
   assert.ok(notices.some(n => n.includes('Retomada Automática')));
+});
+
+test('formatOutgoingMessage preserva Pix EMV Copia e Cola intacto sem quebrar ou truncar', () => {
+  const payload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
+  const msg = `💳 *Cobrança Pix autorizada e gerada pela equipe:*\n\n• *Valor:* R$ 10,00\n\n• *Copia e Cola:*\n${payload}\n\n_O QR Code também foi enviado._`;
+  const formatted = formatOutgoingMessage(msg);
+  assert.ok(formatted.includes(payload), `Payload Pix corrompido: ${formatted}`);
+  assert.ok(!formatted.includes('br. gov.'));
 });
