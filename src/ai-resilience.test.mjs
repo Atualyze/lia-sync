@@ -262,3 +262,13 @@ test('formatOutgoingMessage preserva Pix EMV Copia e Cola intacto sem quebrar ou
   assert.ok(formatted.includes(payload), `Payload Pix corrompido: ${formatted}`);
   assert.ok(!formatted.includes('br. gov.'));
 });
+
+test('filterReply bloqueia código Pix fictício (1234567890) e placeholders como [link_para_qr_code]', () => {
+  const fake = filterReply('Código Pix: 1234567890\n\nPara facilitar, aqui está o QR Code: [link_para_qr_code]');
+  assert.equal(fake.blocked, true);
+  assert.ok(fake.violations.includes('pix_ficticio'));
+
+  const realPayload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
+  const real = filterReply(`• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`, { allowedPrices: new Set(['10.00', '10,00']), strictPrices: true });
+  assert.equal(real.blocked, false);
+});

@@ -341,6 +341,10 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
 
   if (/100% garantid[oa]|cura milagrosa|fique rico/i.test(text)) violations.push('absoluto');
   if (/(?:d[eê]\s+\d+\s*(?:mg|ml|gotas)|rem[eé]dio caseiro|remedio caseiro|prescri[cç]|posologia|antibi[oó]tico|dipirona|paracetamol|ibuprofeno)/i.test(text)) violations.push('clinica');
+  const hasPlaceholderBracket = /\[(?:link(?:_para)?_qr_code|qr_code|codigo_pix|c[oó]digo_pix|chave_pix|link_de_pagamento|inserir_[^\]]+)\]/i.test(text);
+  const fakePixCodeMatch = text.match(/(?:c[oó]digo\s+pix|copia\s+e\s+cola)\s*:?\s*`?([A-Za-z0-9._-]{4,40})`?/i);
+  const hasFakePixCode = Boolean(fakePixCodeMatch && !/^000201/.test(fakePixCodeMatch[1]) && !text.includes('br.gov.bcb.pix'));
+  if (hasPlaceholderBracket || hasFakePixCode) violations.push('pix_ficticio');
   const limit = maxLength || (isCopilot ? 4000 : 1200);
   if (text.length > limit) text = text.slice(0, limit).replace(/\s+\S*$/, '') + '…';
 

@@ -65,7 +65,7 @@ const CONSULT_ACTION_KEYBOARD = Object.freeze({
 function inferNotificationKeyboard(text = '', { withApprovalButtons = false } = {}) {
   if (withApprovalButtons) return APPROVAL_KEYBOARD;
   const raw = String(text || '');
-  if (/pode gerar o pix|aprova[cç][aã]o.*pix|autoriza[cç][aã]o.*pix|gerar\s+e\s+enviar\s+o?\s*pix/i.test(raw)) {
+  if (/decis[aã]o\s+necess[aá]ria.*pix|responda\s+\*?gerar\s+pix\*?|pode gerar o pix|aprova[cç][aã]o.*pix|autoriza[cç][aã]o.*pix|gerar\s+e\s+enviar\s+o?\s*pix/i.test(raw)) {
     return PIX_APPROVAL_KEYBOARD;
   }
   if (/Consulta da .*Atendimento em andamento|responda \*assumir\*.*\*cancelar\*/i.test(raw)) {
