@@ -78,7 +78,7 @@ export function requiredRole(pathname, method) {
   return rule ? rule.role : 'admin';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, onAIConfigUpdated = null, deliverReactivationReply = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -157,7 +157,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       if (!authorizedRequest) return json(res, authResult && typeof authResult === 'object' ? authResult.status || 401 : 401, { error: 'dashboard_auth_required' });
       return proxyToChatwoot(req, res, () => serveStatic(req, res, config));
     }
-    const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply });
+    const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply, getActiveInstancePhone });
     if (dashboardResult !== NOT_HANDLED) return dashboardResult;
     const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection, webhookEventStore, deliverReactivationReply });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;

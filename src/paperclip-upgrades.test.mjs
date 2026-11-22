@@ -566,3 +566,52 @@ test('Chat sync - dedupeMessages ordena cronologicamente e remove duplicatas sem
   assert.equal(out[0].id, 'ext-1');
   assert.equal(out[1].content, 'Resposta 2');
 });
+
+test('Instance Isolation - /api/dashboard/state filtra conversas pelo número conectado e permite toggle includeOtherInstances', async () => {
+  const { handleDashboardRoutes } = await import('./http/dashboard.mjs');
+  const { OWNER_SELF_KEY } = await import('./core/identity.mjs');
+  const store = {
+    persistence: 'supabase',
+    sessions: {
+      [OWNER_SELF_KEY]: { phone: OWNER_SELF_KEY, history: [{ role: 'user', content: 'oi', createdAt: '2026-11-22T12:00:00.000Z' }] },
+      '5588999990001': { phone: '5588999990001', instancePhone: '558898340085', history: [{ role: 'user', content: 'atual', createdAt: '2026-11-22T12:01:00.000Z' }] },
+      '5588999990002': { phone: '5588999990002', instancePhone: '5588921694598', history: [{ role: 'user', content: 'antigo', createdAt: '2026-11-22T12:02:00.000Z' }] }
+    }
+  };
+  const makeRes = () => {
+    let body = '';
+    return {
+      statusCode: 0,
+      writeHead(code) { this.statusCode = code; },
+      end(chunk) { body = String(chunk || ''); },
+      json() { return JSON.parse(body); }
+    };
+  };
+
+  const resFiltered = makeRes();
+  await handleDashboardRoutes({
+    req: { method: 'GET' },
+    res: resFiltered,
+    u: new URL('http://localhost/api/dashboard/state?mode=real'),
+    store,
+    f: null,
+    getActiveInstancePhone: () => '558898340085'
+  });
+  const dataFiltered = resFiltered.json();
+  assert.equal(dataFiltered.otherInstancesCount, 1);
+  assert.equal(dataFiltered.sessions.some(s => s.phone === '5588999990001'), true);
+  assert.equal(dataFiltered.sessions.some(s => s.phone === '5588999990002'), false);
+  assert.equal(dataFiltered.sessions.some(s => s.phone === OWNER_SELF_KEY), true);
+
+  const resAll = makeRes();
+  await handleDashboardRoutes({
+    req: { method: 'GET' },
+    res: resAll,
+    u: new URL('http://localhost/api/dashboard/state?mode=real&includeOtherInstances=1'),
+    store,
+    f: null,
+    getActiveInstancePhone: () => '558898340085'
+  });
+  const dataAll = resAll.json();
+  assert.equal(dataAll.sessions.some(s => s.phone === '5588999990002'), true);
+});

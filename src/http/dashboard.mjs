@@ -10,19 +10,43 @@ import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { readVpsMetrics } from '../vps-monitor.mjs';
 import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation } from './reactivation-notice.mjs';
 import { dedupeMessages } from '../supabase-runtime.mjs';
+import { normalizePhone } from '../sessions.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 
+function sameInstancePhone(a, b) {
+  const na = normalizePhone(String(a || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  const nb = normalizePhone(String(b || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  return Boolean(na && nb && na === nb);
+}
+
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
-export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null }) {
+export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/state') {
     await store.refresh?.();
     const mode = u.searchParams.get('mode') || 'all';
+    const includeOtherInstances = u.searchParams.get('includeOtherInstances') === '1';
+    const activeInstancePhone = typeof getActiveInstancePhone === 'function'
+      ? String(getActiveInstancePhone() || '').replace(/@.*$/, '').replace(/\D/g, '')
+      : '';
     const allEntries = Object.entries(store.sessions || {});
     let realCount = 0;
     let simCount = 0;
     let handoffCount = 0;
+    let otherInstancesCount = 0;
     for (const [k, s] of allEntries) {
       const isSim = k.startsWith('sim:') || s?.origin === 'simulation';
+      const rawPhone = s?.phone || k.replace(/^sim:/, '');
+      const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(k) || /^[a-z0-9_]+_self$/i.test(rawPhone);
+      const belongsToOtherInstance = Boolean(
+        activeInstancePhone
+        && !isSim
+        && !isCopilotSelf
+        && !sameInstancePhone(s?.instancePhone, activeInstancePhone)
+      );
+      if (belongsToOtherInstance) {
+        otherInstancesCount++;
+        if (!includeOtherInstances) continue;
+      }
       if (isSim) simCount++;
       else realCount++;
       if (s?.human) handoffCount++;
@@ -31,8 +55,15 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
     const sessions = allEntries
       .filter(([key, s]) => {
         const isSim = key.startsWith('sim:') || s?.origin === 'simulation';
-        if (mode === 'all') return true;
-        return mode === 'simulation' ? isSim : !isSim;
+        if (mode !== 'all' && (mode === 'simulation' ? !isSim : isSim)) return false;
+        if (activeInstancePhone && !includeOtherInstances && !isSim) {
+          const rawPhone = s?.phone || key.replace(/^sim:/, '');
+          const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(key) || /^[a-z0-9_]+_self$/i.test(rawPhone);
+          if (!isCopilotSelf && !sameInstancePhone(s?.instancePhone, activeInstancePhone)) {
+            return false;
+          }
+        }
+        return true;
       })
       .map(([key, s]) => {
         const rawPhone = s.phone || key.replace(/^sim:/, '');
@@ -95,6 +126,9 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
 
     return json(res, 200, {
       mode,
+      activeInstancePhone: activeInstancePhone || null,
+      includeOtherInstances,
+      otherInstancesCount,
       persistence: store.persistence || 'fallback',
       persistenceError: store.remoteError || null,
       counts: {
@@ -205,6 +239,12 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
       ...(safeReplyTo ? { replyTo: safeReplyTo } : {})
     });
     session.lastBotAt = new Date().toISOString();
+    const activeInst = typeof getActiveInstancePhone === 'function'
+      ? String(getActiveInstancePhone() || '').replace(/@.*$/, '').replace(/\D/g, '')
+      : '';
+    if (activeInst && !isOwnerKey(phone)) {
+      session.instancePhone = activeInst;
+    }
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
@@ -242,6 +282,12 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       }
     }
     session.handoffReminderAt = null;
+    const activeInst = typeof getActiveInstancePhone === 'function'
+      ? String(getActiveInstancePhone() || '').replace(/@.*$/, '').replace(/\D/g, '')
+      : '';
+    if (activeInst && !isOwnerKey(phone)) {
+      session.instancePhone = activeInst;
+    }
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});

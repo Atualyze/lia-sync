@@ -231,6 +231,7 @@ function rowToSession(row, messages = []) {
     jid: meta.jid || undefined,
     supportModeEnabled: Boolean(meta.supportModeEnabled),
     knowledgeBaseId: meta.knowledgeBaseId || null,
+    instancePhone: meta.instancePhone || null,
     contactRole: meta.contactRole || null,
     contactNotes: meta.contactNotes || meta.crmNotes || meta.notes || '',
     crmNotes: meta.crmNotes || meta.contactNotes || meta.notes || '',
@@ -334,6 +335,7 @@ function sessionToConversation(key, session, contactId) {
       jid: session.jid || null,
       supportModeEnabled: Boolean(session.supportModeEnabled),
       knowledgeBaseId: session.knowledgeBaseId || null,
+      instancePhone: session.instancePhone || null,
       contactRole: session.contactRole || null,
       contactNotes: session.contactNotes || session.crmNotes || session.notes || '',
       crmNotes: session.crmNotes || session.contactNotes || session.notes || '',
@@ -592,6 +594,9 @@ export class SupabaseSessionStore extends SessionStore {
           }
           if (lSession.knowledgeBaseId && (!rSession.knowledgeBaseId || lTime >= rTime)) {
             rSession.knowledgeBaseId = lSession.knowledgeBaseId;
+          }
+          if (lSession.instancePhone && (!rSession.instancePhone || lTime >= rTime)) {
+            rSession.instancePhone = lSession.instancePhone;
           }
           if (lSession.contactRole && (!rSession.contactRole || lTime >= rTime)) {
             rSession.contactRole = lSession.contactRole;

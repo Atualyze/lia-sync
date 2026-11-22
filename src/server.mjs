@@ -326,7 +326,15 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   await integrationsStore.load().catch(() => {});
   const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
   const deliver = (job) => store.enqueue(job.phone, async () => {
-    const wasHuman = Boolean(store.get(job.phone)?.human);
+    const incomingSession = store.get(job.phone);
+    const activeInst = getActiveInstancePhone();
+    if (incomingSession && activeInst && !isOwnerKey(job.phone) && job.origin !== 'simulation') {
+      if (incomingSession.instancePhone !== activeInst) {
+        incomingSession.instancePhone = activeInst;
+        store.markDirty?.();
+      }
+    }
+    const wasHuman = Boolean(incomingSession?.human);
     void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
     if (!wasHuman) {
       void sendPresence(deliveryTarget(job, getHumanPhone()), job.mediaType === 'audio' ? 'recording' : 'composing', 4000);
@@ -469,6 +477,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     }
   });
   setBaileysProvider(baileysProvider);
+  const getActiveInstancePhone = () => {
+    const bpPhone = baileysProvider?.getStatus?.()?.status === 'connected' ? (baileysProvider.getStatus().phone || '') : '';
+    const raw = bpPhone || cachedInstanceOwner || '';
+    return String(raw).replace(/@.*$/, '').replace(/\D/g, '');
+  };
 
   const deliverPendingAIReply = async (target, replyText, session) => {
     const dest = deliveryTarget(target || session?.phone || '');
@@ -543,9 +556,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     customProviderStore,
     baileysProvider,
     onAIConfigUpdated,
-    deliverReactivationReply
+    deliverReactivationReply,
+    getActiveInstancePhone
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -595,6 +609,7 @@ if (isDirectRun) {
       humanReminderMinutes: config.humanReminderMinutes,
       humanAutoResumeHours: config.humanAutoResumeHours,
       humanPhone: app.getHumanPhone(),
+      activeInstancePhone: app.getActiveInstancePhone?.() || '',
       disableInactivityPings: true,
       enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
     followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,

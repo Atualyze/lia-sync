@@ -3103,18 +3103,36 @@ async function refresh({ background = false } = {}) {
   const reqSeq = ++refreshSeq;
   if (!background) setTopProgress(true);
   try {
-    const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
+    const incOther = state.includeOtherInstances ? '&includeOtherInstances=1' : '';
+    const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}${incOther}`);
     if (reqSeq < latestAppliedRefreshSeq) return;
     latestAppliedRefreshSeq = reqSeq;
     state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    state.activeInstancePhone = data.activeInstancePhone || null;
+    state.otherInstancesCount = Number(data.otherInstancesCount || 0);
     if (data.counts) state.sessionCounts = data.counts;
     const subtitle = $('#inbox-subtitle');
     if (subtitle) {
-      subtitle.textContent = data.persistence === 'supabase'
+      const baseText = data.persistence === 'supabase'
         ? `${state.sessions.length} sessões (${state.mode === 'real' ? 'WhatsApp' : state.mode === 'simulation' ? 'Simulador' : 'Todas'}) · Supabase`
         : data.persistenceError
         ? 'fallback local - Supabase indisponível'
         : `${state.sessions.length} sessões ativas`;
+      if (state.otherInstancesCount > 0) {
+        const toggleLabel = state.includeOtherInstances
+          ? 'Filtrar só número atual'
+          : `Ver outros números (${state.otherInstancesCount})`;
+        subtitle.innerHTML = `${esc(baseText)} · <button type="button" id="toggle-other-instances-btn" class="link-btn" style="background:none;border:0;padding:0;color:var(--accent,#6366f1);cursor:pointer;font-size:inherit;text-decoration:underline">${esc(toggleLabel)}</button>`;
+        const btn = $('#toggle-other-instances-btn');
+        if (btn) {
+          btn.onclick = () => {
+            state.includeOtherInstances = !state.includeOtherInstances;
+            refresh({ background: false }).catch(() => {});
+          };
+        }
+      } else {
+        subtitle.textContent = baseText;
+      }
     }
     if (!state.sessions.some((item) => item.phone === state.selected)) {
       state.selected = state.sessions[0]?.phone || null;

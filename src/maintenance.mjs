@@ -23,6 +23,7 @@ export async function processMaintenance({
   humanReminderMinutes = 15,
   humanAutoResumeHours = 0,
   humanPhone = '',
+  activeInstancePhone = '',
   disableInactivityPings = false,
   enableLeadFollowUp = true,
   followUpMinHours = 24,
@@ -71,6 +72,11 @@ export async function processMaintenance({
     }
 
     // 2.0 Retomada de Turnos Adiados por Fora do Horário (Princípio "Adiar e não descartar")
+    const normActiveInstance = activeInstancePhone ? normalizePhone(activeInstancePhone) : '';
+    const normSessionInstance = session.instancePhone ? normalizePhone(session.instancePhone) : '';
+    if (normActiveInstance && normSessionInstance && normSessionInstance !== normActiveInstance) {
+      continue;
+    }
     if (session.pendingTurnPostponedUntil && !session.human) {
       const resumeTime = new Date(session.pendingTurnPostponedUntil).getTime();
       if (current >= resumeTime) {
