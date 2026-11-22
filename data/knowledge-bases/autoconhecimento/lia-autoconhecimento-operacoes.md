@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.1.0
+Versão do Sistema: 3.2.0
 
 ### Implantação na VPS
 - A aplicação ativa está em `/home/ubuntu/lia-assistente`; o serviço Compose `bot` cria o contêiner `lia-bot`.
@@ -264,3 +264,9 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
 - **Conexão e Visibilidade no Painel:** pareamento por **QR Code** ou **Pairing Code** direto no dashboard, com status em tempo real (`connected`, `qr`, `connecting`, `disconnected`), número conectado, contadores de mensagens e ocultação automática da entrada legada da Evolution API quando `WHATSAPP_PROVIDER=baileys`.
 - **Provedores Customizados e Hot-Reload:** novos provedores OpenAI-compatible podem ser cadastrados e priorizados no painel (`src/ai/custom-providers.mjs` + `src/api-settings.mjs`) com atualização em quente sem rebuild e diagnóstico detalhado de falhas (`src/ai/errors.mjs`).
 - **Continuidade Blindada entre Modelos:** a troca de modelo no painel ou o acionamento de fallback nunca reinicia o atendimento como primeiro contato — o sistema injeta `[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS]`, preserva o histórico recente mesmo ao trocar de tarefa no Copiloto, mantém turnos da assistente na janela de contexto e remove reapresentações redundantes antes da entrega.
+
+### 2.13. Google Workspace REST, Autonomia Recorrente, Memória PARA & Resiliência Operacional (v3.2.0)
+- **Google Workspace REST Endurecido (`src/tools/google_http.mjs`, `gerenciar_gmail_google.mjs`, `gerenciar_agenda_google.mjs`, `gerenciar_drive_google.mjs`):** chamadas diretas às APIs REST oficiais com allowlist de hosts/prefixos, bloqueio de redirects, timeout de 20s, retry seguro apenas em leitura (`GET`) e nunca em escrita. Inclui **Gmail** exclusivo do dono (busca, leitura MIME e rascunhos seguros sem envio/exclusão), **Calendar `sugerir_horarios`** multi-dia e **Docs `atualizar_documento`** (anexar/substituir texto).
+- **Autonomia Recorrente com Scheduler de 15s (`src/runtime/schedule-parser.mjs`, `src/runtime/index.mjs`, `src/server.mjs`):** o `Lia Runtime` possui relógio dedicado de 15 segundos para disparar compromissos no prazo exato, suportando tempo relativo (*"daqui a 2 minutos"*), horário fixo (*"amanhã às 9h"*) e rotinas recorrentes (*"todo dia às 8h"*, *"toda segunda às 9h"*, *"a cada 2 horas"*) com auto-reagendamento, além de listar e cancelar rotinas pelo WhatsApp e bloquear falsas confirmações de `"Agendado!"`.
+- **Memória Estruturada PARA (`src/core/memory.mjs`, `/api/dashboard/memories`):** organiza aprendizados em **Projetos (`project`)**, **Áreas (`area`)**, **Recursos (`resource`)** e **Arquivo (`archive`)**, com gestão visual (filtrar, criar, editar e apagar) na aba **Lia Runtime** do painel.
+- **Resiliência de VPS, Reações no WhatsApp & Smart `Retry-After` (`src/ops/log-redaction.mjs`, `src/ops/event-loop-monitor.mjs`, `src/whatsapp/baileys-provider.mjs`, `src/ai/state.mjs`, `src/safety.mjs`):** máscara automática de segredos em logs, monitor de stalls do Event Loop em `/ready` e `consultar_saude_infra`, recuperação imediata de tarefas interrompidas no restart, guarda anti-links inventados, conversão automática de tabelas Markdown em bullets limpos no WhatsApp, reações de progresso (`⏳` → `✅`/`⚠️`) via Baileys e respeito ao header `Retry-After` + `reasoning_effort: 'low'` em provedores de IA.

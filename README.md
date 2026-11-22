@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.1.0** (pacote, painel, metadata, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.2.0** (pacote, painel, metadata, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.2.0 — Google Workspace REST, Autonomia Recorrente, Memória PARA & Resiliência
+
+- **Google Workspace REST Puro (`src/tools/google_http.mjs`, `src/tools/gerenciar_gmail_google.mjs`, `src/tools/gerenciar_agenda_google.mjs`, `src/tools/gerenciar_drive_google.mjs`):** cliente HTTP endurecido com allowlist de hosts/prefixos, bloqueio de redirects, retry seguro apenas em `GET` (nunca em escritas), nova ferramenta **Gmail** exclusiva do dono (busca, leitura MIME e rascunhos seguros sem envio automático), **Google Calendar `sugerir_horarios`** em múltiplos dias e **Google Docs `atualizar_documento`** (anexar/substituir).
+- **Autonomia Completa & Rotinas Recorrentes (`src/runtime/schedule-parser.mjs`, `src/runtime/index.mjs`, `src/server.mjs`, `src/flow/owner.mjs`):** scheduler dedicado de **15 segundos** no `Lia Runtime`, agendamento em linguagem natural para tempo relativo, horário fixo (*"amanhã às 9h"*) e rotinas recorrentes (*"todo dia às 8h"*, *"toda segunda às 9h"*, *"a cada 2 horas"*) com auto-reagendamento, suporte a Saúde/Infra, Gmail, Agenda, Planilhas e Web, comandos naturais para listar/cancelar e bloqueio de promessas falsas (`"Agendado!"`).
+- **Memória Estruturada PARA + Painel (`src/core/memory.mjs`, `src/http/runtime-routes.mjs`, `public/index.html`, `public/app.js`):** organização automática em **Projetos**, **Áreas**, **Recursos** e **Arquivo**, com card dedicado na aba **Lia Runtime** para filtrar, adicionar, editar e excluir memórias.
+- **Resiliência de VPS, Reações no WhatsApp & Smart `Retry-After` (`src/ops/log-redaction.mjs`, `src/ops/event-loop-monitor.mjs`, `src/whatsapp/baileys-provider.mjs`, `src/ai/state.mjs`, `src/ai/call.mjs`, `src/safety.mjs`):** máscara automática de segredos em logs, monitor de stalls do Event Loop em `/ready` e `consultar_saude_infra`, guarda anti-links inventados, recuperação imediata de tarefas interrompidas no restart, reações de progresso no WhatsApp (`⏳` → `✅`/`⚠️`), conversão automática de tabelas Markdown em bullets limpos e controle de `reasoning_effort` + `Retry-After` para provedores de IA.
+
+Detalhes técnicos: [`docs/release-3.2.0.md`](docs/release-3.2.0.md).
 
 ## Novidades da Versão 3.1.0 — WhatsApp Nativo (Baileys), Provedores Customizados e Continuidade entre Modelos
 
