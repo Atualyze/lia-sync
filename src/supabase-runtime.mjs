@@ -160,13 +160,17 @@ function latestSessionActivityMs(s) {
   return candidates.reduce((max, v) => (Number.isFinite(v) && v > max ? v : max), 0);
 }
 
+function canonicalMessageId(rawId = '') {
+  return String(rawId || '').replace(/^wa:/i, '').trim();
+}
+
 export function dedupeMessages(messages = []) {
   const indexed = [];
   const seenIds = new Set();
   for (let i = 0; i < messages.length; i += 1) {
     const m = messages[i];
     if (!m || !m.content) continue;
-    const idStr = m.id ? String(m.id) : '';
+    const idStr = canonicalMessageId(m.id);
     if (idStr && seenIds.has(idStr)) continue;
     const normContent = String(m.content || '').replace(/\s+/g, ' ').trim();
     if (!normContent) continue;
