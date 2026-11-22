@@ -113,7 +113,7 @@ export function buildOpenRouterBody({ model, fallbackModels = [], system, histor
     temperature: 0.2,
     max_tokens: isFreeOrReasoning ? Math.max(2048, config.aiMaxOutputTokens) : config.aiMaxOutputTokens,
     messages: [{ role: 'system', content: system }, ...normalizeHistory(history), { role: 'user', content: userText }],
-    ...(!isFreeOrReasoning ? { response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' } } : {}),
+    response_format: structuredOutputs ? { type: 'json_schema', json_schema: { name: 'lia_sync_response', strict: true, schema: openRouterSchema } } : { type: 'json_object' },
     ...(isFreeOrReasoning ? { reasoning: { effort: 'low' } } : {}),
     provider: { require_parameters: requireParameters, allow_fallbacks: true, sort: 'latency' },
     ...(Array.isArray(tools) && tools.length ? {
