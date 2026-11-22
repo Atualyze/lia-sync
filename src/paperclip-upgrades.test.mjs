@@ -303,3 +303,70 @@ test('Package 2 - copilot-tasks: recoverInterruptedOnStartup re-enfileira leitur
   assert.equal(tWrite.errorCode, 'interrupted_by_restart');
   assert.equal(tWrite.notificationStatus, 'pending');
 });
+
+test('AI resilience - Groq gpt-oss omite response_format estrito e OpenRouter empty_reply faz retry limpo', async () => {
+  const { call } = await import('./ai/call.mjs');
+  const { config } = await import('./config.mjs');
+  const prevFetch = globalThis.fetch;
+  const prevGroq = config.groqKey;
+  const prevOr = config.openrouterKey;
+  config.groqKey = 'gsk_test_key_1234567890';
+  config.openrouterKey = 'sk-or-test-key-1234567890';
+
+  try {
+    // 1) Groq gpt-oss: não envia response_format json_object nem no compact retry após 413
+    const groqBodies = [];
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(init.body);
+      groqBodies.push(body);
+      if (groqBodies.length === 1) {
+        return new Response(JSON.stringify({ error: { message: 'Request too large for model' } }), { status: 413 });
+      }
+      return new Response(JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        choices: [{ message: { content: JSON.stringify({ reply: 'Tudo certo!', intent: 'outro', red_flags: false, handoff: false }) } }]
+      }), { status: 200 });
+    };
+    const groqRes = await call('groq', {
+      system: 'Responda em JSON.',
+      userText: 'Oi',
+      fixedModel: 'openai/gpt-oss-20b',
+      aiConfig: { provider: 'groq', model: 'openai/gpt-oss-20b' }
+    });
+    assert.equal(groqBodies.length, 2);
+    assert.equal(groqBodies[0].response_format, undefined);
+    assert.equal(groqBodies[1].response_format, undefined);
+    assert.match(groqRes.raw, /Tudo certo/);
+
+    // 2) OpenRouter: primeiro retorno vem com content vazio -> refaz 1 chamada limpa sem tools/response_format
+    const orBodies = [];
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(init.body);
+      orBodies.push(body);
+      if (orBodies.length === 1) {
+        return new Response(JSON.stringify({
+          model: 'openrouter/free',
+          choices: [{ message: { content: '' } }]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        model: 'openrouter/free',
+        choices: [{ message: { content: JSON.stringify({ reply: 'Resposta recuperada!', intent: 'outro', red_flags: false, handoff: false }) } }]
+      }), { status: 200 });
+    };
+    const orRes = await call('openrouter', {
+      system: 'Responda em JSON.',
+      userText: 'Verifica tudo',
+      fixedModel: 'openrouter/free',
+      aiConfig: { provider: 'openrouter', model: 'openrouter/free' }
+    });
+    assert.equal(orBodies.length, 2);
+    assert.equal(orBodies[1].response_format, undefined);
+    assert.equal(orBodies[1].tools, undefined);
+    assert.match(orRes.raw, /Resposta recuperada/);
+  } finally {
+    globalThis.fetch = prevFetch;
+    config.groqKey = prevGroq;
+    config.openrouterKey = prevOr;
+  }
+});

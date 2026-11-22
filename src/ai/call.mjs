@@ -356,43 +356,53 @@ export async function call(provider, {
     const remainingMs = deadline ? deadline - Date.now() : config.aiTimeoutMs;
     if (remainingMs <= 100) break;
     const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
+    const isReasoningJsonFragile = provider === 'groq' && /(?:gpt-oss|qwen|deepseek|r1)/i.test(candidateModel);
     const body = provider === 'openrouter'
       ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system: effectiveSystem, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
-      : { model: candidateModel, temperature: adaptiveTemperature, max_tokens: config.aiMaxOutputTokens, messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }], response_format: { type: 'json_object' }, ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {}) };
+      : {
+          model: candidateModel,
+          temperature: adaptiveTemperature,
+          max_tokens: config.aiMaxOutputTokens,
+          messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
+          ...(!isReasoningJsonFragile ? { response_format: { type: 'json_object' } } : {}),
+          ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {})
+        };
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
+      let usedPlainBody = !body.tools && !body.response_format;
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
-      // Se um modelo gratuito/customizado no OpenRouter, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, re-tenta sem 'tools' usando o catálogo no system prompt
+      // Se um modelo gratuito/customizado no OpenRouter, Groq, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, re-tenta sem 'tools' usando o catálogo no system prompt
       if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools) {
         const fallbackBody = { ...body };
         delete fallbackBody.tools;
         delete fallbackBody.tool_choice;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
       }
-      // Alguns modelos NIM / OpenAI-compatible não suportam response_format json_object; degrada graciosamente mantendo o contrato JSON via system prompt
-      if (!response.ok && (response.status === 400 || response.status === 422) && body.response_format) {
+      // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format json_object (400 json_validate_failed); degrada graciosamente mantendo o contrato JSON via system prompt
+      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools)) {
         const plainBody = { ...body };
         delete plainBody.tools;
         delete plainBody.tool_choice;
         delete plainBody.response_format;
+        usedPlainBody = true;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
       // Groq (tier free 6k TPM) e provedores OpenAI-compatible podem retornar 413/429 "Request too large".
-      // Compacta o system prompt + histórico (mantendo a âncora de continuidade no fim) e tenta uma vez antes de cair para outro provedor.
+      // Compacta o system prompt + histórico (sem response_format estrito para evitar 400 json_validate_failed em modelos de raciocínio) e tenta uma vez antes de cair para outro provedor.
       if (!response.ok && (response.status === 413 || response.status === 429)) {
         const errBodyText = await response.clone().text().catch(() => '');
         if (response.status === 413 || /request too large|tokens per minute|tpm|context_length_exceeded|maximum context length/i.test(errBodyText)) {
           const compactBody = {
             model: candidateModel,
             temperature: adaptiveTemperature,
-            max_tokens: Math.min(1024, config.aiMaxOutputTokens),
+            max_tokens: Math.min(1536, Math.max(config.aiMaxOutputTokens, 1024)),
             messages: [
               { role: 'system', content: compactText(effectiveSystem, 7000) },
               ...compactCloudflareHistory(history),
               { role: 'user', content: compactText(userText, 2500) }
-            ],
-            response_format: { type: 'json_object' }
+            ]
           };
+          usedPlainBody = true;
           response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(compactBody) });
         }
       }
@@ -400,10 +410,44 @@ export async function call(provider, {
         const detail = safeErrorDetail(await response.text());
         throw Error(`${provider} ${response.status}${detail ? ` - ${detail}` : ''}`);
       }
-      const data = await response.json();
-      const message = data.choices?.[0]?.message || {};
-      const functionCalls = normalizeProviderToolCalls(message.tool_calls || (message.function_call ? [message.function_call] : []));
-      const raw = functionCalls.length ? rawWithToolCalls(message.content, functionCalls) : (message.content || null);
+      let data = await response.json();
+      let message = data.choices?.[0]?.message || {};
+      let functionCalls = normalizeProviderToolCalls(message.tool_calls || (message.function_call ? [message.function_call] : []));
+      let contentText = typeof message.content === 'string' ? message.content.trim() : '';
+      // Alguns modelos de raciocínio (OpenRouter :free / Groq gpt-oss) retornam content vazio com tools/response_format.
+      // Tenta recuperar JSON válido do campo reasoning ou refaz 1 chamada limpa sem tools/response_format.
+      if (!contentText && !functionCalls.length) {
+        const reasoningText = String(message.reasoning || message.reasoning_content || '').trim();
+        const jsonMatch = reasoningText.match(/\{[\s\S]*"reply"\s*:[\s\S]*\}/);
+        if (jsonMatch) {
+          contentText = jsonMatch[0];
+        } else if (!usedPlainBody && (!deadline || deadline - Date.now() > 2500)) {
+          const plainRetryBody = {
+            model: candidateModel,
+            temperature: adaptiveTemperature,
+            max_tokens: Math.max(1536, config.aiMaxOutputTokens),
+            messages: [
+              { role: 'system', content: compactText(effectiveSystem, 8000) },
+              ...compactCloudflareHistory(history),
+              { role: 'user', content: compactText(userText, 2500) }
+            ]
+          };
+          const retryRes = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainRetryBody) });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json().catch(() => ({}));
+            const retryMsg = retryData.choices?.[0]?.message || {};
+            const retryCalls = normalizeProviderToolCalls(retryMsg.tool_calls || (retryMsg.function_call ? [retryMsg.function_call] : []));
+            const retryContent = typeof retryMsg.content === 'string' ? retryMsg.content.trim() : '';
+            if (retryContent || retryCalls.length) {
+              data = retryData;
+              message = retryMsg;
+              functionCalls = retryCalls;
+              contentText = retryContent;
+            }
+          }
+        }
+      }
+      const raw = functionCalls.length ? rawWithToolCalls(contentText || message.content, functionCalls) : (contentText || null);
       const usage = data.usage;
       const promptTokens = usage?.prompt_tokens || Math.ceil(((system?.length || 0) + (userText?.length || 0)) / 4);
       const completionTokens = usage?.completion_tokens || Math.ceil((raw?.length || 0) / 4);
