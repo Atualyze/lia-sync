@@ -27,6 +27,7 @@ export async function handleRuntimeDashboardRoutes({
   customProviderStore,
   baileysProvider,
   operationsStore,
+  copilotTaskStore = null,
   onAIConfigUpdated = null
 }) {
   const pathname = u.pathname;
@@ -330,6 +331,96 @@ export async function handleRuntimeDashboardRoutes({
       proposals: proposals.slice(0, 50),
       decisions: recentDecisions
     });
+  }
+
+  // === 2.5 Reconciliação administrativa de efeitos externos incertos ===
+  if (req.method === 'GET' && pathname === '/api/dashboard/runtime/uncertain-tasks') {
+    if (!copilotTaskStore?.available) return json(res, 503, { error: 'copilot_task_queue_unavailable' });
+    try {
+      const tasks = await copilotTaskStore.listUncertain({ limit: 50 });
+      const items = tasks.map(task => ({
+        id: task.id,
+        status: task.status,
+        notificationStatus: task.notificationStatus,
+        requestSummary: String(task.requestSummary || '').slice(0, 360),
+        resultText: String(task.resultText || '').slice(0, 1000),
+        errorCode: String(task.errorCode || '').slice(0, 120),
+        steps: (Array.isArray(task.steps) ? task.steps : []).map(step => String(step.name || '').slice(0, 64)),
+        target: String(task.targetPhone || '').replace(/\D/g, '').replace(/^(\d{2})\d+(\d{2})$/, '$1••••••$2'),
+        attemptCount: task.attemptCount,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        completedAt: task.completedAt,
+        reconciledAt: task.reconciledAt,
+        reconciliationOutcome: task.reconciliationOutcome,
+        reconciliationNote: task.reconciliationNote
+      }));
+      return json(res, 200, { ok: true, items });
+    } catch (error) {
+      return json(res, 503, { error: error?.code || 'uncertain_tasks_unavailable' });
+    }
+  }
+
+  const reconciliationMatch = pathname.match(/^\/api\/dashboard\/runtime\/tasks\/([0-9a-f-]{36})\/reconcile$/i);
+  if (req.method === 'POST' && reconciliationMatch) {
+    if (!copilotTaskStore?.available) return json(res, 503, { error: 'copilot_task_queue_unavailable' });
+    if (!operationsStore?.enabled) return json(res, 503, { error: 'audit_persistence_unavailable' });
+    let body;
+    try { body = await readBody(req); }
+    catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+    const decision = String(body?.decision || '').trim();
+    const evidence = String(body?.evidence || '').trim();
+    const id = reconciliationMatch[1];
+    if (evidence.length < 10 || evidence.length > 500) return json(res, 400, { error: 'reconciliation_evidence_required' });
+    if (!['confirmed_succeeded', 'confirmed_failed', 'notification_confirmed_sent', 'notification_confirmed_not_sent', 'still_uncertain'].includes(decision)) {
+      return json(res, 400, { error: 'invalid_reconciliation_decision' });
+    }
+    const actor = String(authContext?.email || authContext?.userId || 'admin').slice(0, 120);
+    try {
+      // A trilha é pré-condição para qualquer mutação administrativa.
+      await operationsStore.audit({
+        actorId: authContext?.userId || null,
+        action: 'copilot_task_reconciliation_requested',
+        entityType: 'copilot_task',
+        entityId: id,
+        metadata: { decision, evidence, actor }
+      });
+      const task = await copilotTaskStore.reconcileUncertain(id, { decision, evidence, actor });
+      if (!task) return json(res, 404, { error: 'copilot_task_not_found' });
+      await operationsStore.audit({
+        actorId: authContext?.userId || null,
+        action: 'copilot_task_reconciled',
+        entityType: 'copilot_task',
+        entityId: id,
+        metadata: { decision, outcome: task.reconciliationOutcome, status: task.status, notificationStatus: task.notificationStatus }
+      });
+      return json(res, 200, {
+        ok: true,
+        replayed: false,
+        task: {
+          id: task.id,
+          status: task.status,
+          notificationStatus: task.notificationStatus,
+          reconciledAt: task.reconciledAt,
+          reconciledBy: task.reconciledBy,
+          reconciliationOutcome: task.reconciliationOutcome,
+          reconciliationNote: task.reconciliationNote
+        }
+      });
+    } catch (error) {
+      if (error?.message === 'copilot_task_reconciliation_conflict'
+        || error?.message === 'copilot_task_already_reconciled'
+        || error?.message === 'copilot_task_not_uncertain'
+        || error?.message === 'reconciliation_decision_mismatch') {
+        return json(res, 409, { error: error.message });
+      }
+      if (error?.message === 'reconciliation_evidence_required'
+        || error?.message === 'invalid_reconciliation_decision'
+        || error?.message === 'reconciliation_actor_required') {
+        return json(res, 400, { error: error.message });
+      }
+      return json(res, 503, { error: error?.code || error?.message || 'copilot_task_reconciliation_failed' });
+    }
   }
 
   // === 3. Acordar Runtime manualmente ===

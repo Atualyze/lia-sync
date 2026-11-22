@@ -41,6 +41,8 @@ const DASHBOARD_ROLE_RULES = Object.freeze([
   { method: 'GET', path: '/api/dashboard/metrics', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/operations', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/runtime/overview', role: 'operator' },
+  { method: 'GET', path: '/api/dashboard/runtime/uncertain-tasks', role: 'admin' },
+  { method: 'POST', pattern: /^\/api\/dashboard\/runtime\/tasks\/[0-9a-f-]{36}\/reconcile$/i, role: 'admin' },
   { method: 'GET', path: '/api/dashboard/whatsapp/baileys', role: 'operator' },
   { method: 'GET', prefix: '/api/dashboard/prospecting', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/avatar', role: 'operator' },
@@ -81,7 +83,7 @@ export function requiredRole(pathname, method) {
   return rule ? rule.role : 'admin';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, copilotTaskStore = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -214,7 +216,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (prospectingResult !== NOT_HANDLED) return prospectingResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
-    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore, onAIConfigUpdated });
+    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore, copilotTaskStore, onAIConfigUpdated });
     if (liaEngineResult !== NOT_HANDLED) return liaEngineResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });
     if (webhookResult !== NOT_HANDLED) return webhookResult;

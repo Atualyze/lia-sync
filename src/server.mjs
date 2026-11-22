@@ -584,6 +584,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     apiSettingsStore,
     customProviderStore,
     baileysProvider,
+    copilotTaskStore,
     onAIConfigUpdated,
     deliverReactivationReply,
     getActiveInstancePhone
