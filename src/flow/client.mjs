@@ -1073,7 +1073,7 @@ export async function handleClientMessage({
             });
             safeReplyText = consult.commitmentId && consult.ownerNotified
               ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
-              : 'Ainda não consigo confirmar o valor com segurança, então não vou informar um número sem validação. Nenhuma cobrança foi gerada.';
+              : 'Preciso confirmar essa informação com a equipe antes de informar o preço; ainda não registrei a consulta e nenhuma cobrança foi gerada.';
           } else {
             await triggerHandoff(s, {
               reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,

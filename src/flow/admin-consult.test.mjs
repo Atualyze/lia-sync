@@ -212,7 +212,7 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
 
 
 test('consulta administrativa vencida continua rastreada e visível ao responsável até resolução/cancelamento', () => {
-  const requestedAt = Date.now() - ADMIN_CONSULT_TTL_MS - 1000;
+  const requestedAt = new Date(Date.now() - ADMIN_CONSULT_TTL_MS - 1000).toISOString();
   const sessions = {
     '5588999991111': {
       phone: '5588999991111',
