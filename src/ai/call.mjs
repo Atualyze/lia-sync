@@ -9,6 +9,15 @@ import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail,
 import { shouldEnableGoogleSearch } from './search.mjs';
 import { getEnabledTools, getGeminiToolDeclarations, getToolExecutionPolicy } from '../tools/index.mjs';
 import { resolveAdaptiveTemperature } from '../core/personality.mjs';
+import {
+  getModelCapabilities,
+  learnModelCapability,
+  extractMessageContent,
+  extractJsonFromReasoning,
+  applyReasoningControls,
+  buildProviderCandidateModels,
+  computeAttemptTimeoutMs
+} from './resilience.mjs';
 
 function openAIToolSchema(schema = {}) {
   const result = { ...schema };
@@ -354,72 +363,112 @@ export async function call(provider, {
     if (config.openrouterAppName) headers['X-Title'] = config.openrouterAppName;
   }
   const sameProviderFallbacks = provider === runtime.provider ? fallbackModelsForProvider(runtime, provider) : [];
-  const safeFallbacks = provider === 'openrouter' && runtime.openrouterFreeOnly
-    ? sameProviderFallbacks.filter(candidate => candidate === 'openrouter/free' || candidate.endsWith(':free'))
-    : sameProviderFallbacks;
-  const candidateModels = [...new Set([model, ...safeFallbacks].filter(candidate => typeof candidate === 'string' && candidate.trim()))].slice(0, 4);
+  const candidateModels = buildProviderCandidateModels({
+    provider,
+    primaryModel: model,
+    configuredFallbacks: sameProviderFallbacks,
+    customFallbacks: Array.isArray(customProv?.fallbackModels) ? customProv.fallbackModels : [],
+    openrouterFreeOnly: Boolean(runtime.openrouterFreeOnly),
+    maxCandidates: 4
+  });
   let lastError = null;
-  for (const candidateModel of candidateModels) {
+  for (let candidateIdx = 0; candidateIdx < candidateModels.length; candidateIdx += 1) {
+    const candidateModel = candidateModels[candidateIdx];
+    const hasMoreCandidates = candidateIdx < candidateModels.length - 1;
     let permit = null;
     const attemptStartedAt = Date.now();
     const remainingMs = deadline ? deadline - Date.now() : config.aiTimeoutMs;
     if (remainingMs <= 100) break;
-    const signal = AbortSignal.timeout(Math.max(1, Math.min(config.aiTimeoutMs, remainingMs)));
-    const isReasoningModel = /(?:gpt-oss|qwen3|deepseek|r1|nemotron|gemma-4|thinking)/i.test(candidateModel) || candidateModel === 'openrouter/free';
-    const isReasoningJsonFragile = provider === 'groq' && /(?:gpt-oss|qwen|deepseek|r1)/i.test(candidateModel);
-    const isGroqGptOss = provider === 'groq' && /gpt-oss/i.test(candidateModel);
-    const effectiveMaxTokens = isReasoningModel ? Math.max(2048, config.aiMaxOutputTokens) : config.aiMaxOutputTokens;
-    const body = provider === 'openrouter'
-      ? buildOpenRouterBody({ model: candidateModel, fallbackModels: [], system: effectiveSystem, history, userText, structuredOutputs: runtime.structuredOutputs, requireParameters: runtime.requireParameters, tools: nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) })
+    const attemptTimeoutMs = computeAttemptTimeoutMs({
+      remainingMs,
+      providerTimeoutMs: config.aiTimeoutMs,
+      hasMoreCandidates
+    });
+    const signal = AbortSignal.timeout(attemptTimeoutMs);
+    const caps = getModelCapabilities(provider, candidateModel);
+    const effectiveMaxTokens = caps.isReasoning ? Math.max(3072, config.aiMaxOutputTokens) : config.aiMaxOutputTokens;
+    const sendNativeTools = caps.supportsNativeTools && nativeTools.length > 0;
+    const systemForAttempt = (!sendNativeTools && nativeTools.length > 0)
+      ? `${effectiveSystem}${buildCompactToolPrompt(nativeTools)}`
+      : effectiveSystem;
+    let body = provider === 'openrouter'
+      ? buildOpenRouterBody({
+          model: candidateModel,
+          fallbackModels: [],
+          system: systemForAttempt,
+          history,
+          userText,
+          structuredOutputs: runtime.structuredOutputs && caps.supportsResponseFormat,
+          requireParameters: runtime.requireParameters,
+          tools: sendNativeTools ? nativeTools.map(tool => ({ ...tool, parameters: openAIToolSchema(tool.parameters) })) : []
+        })
       : {
           model: candidateModel,
           temperature: adaptiveTemperature,
           max_tokens: effectiveMaxTokens,
-          ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
-          messages: [{ role: 'system', content: effectiveSystem }, ...normalizeHistory(history), { role: 'user', content: userText }],
-          ...(!isReasoningJsonFragile ? { response_format: { type: 'json_object' } } : {}),
-          ...(nativeTools.length ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {})
+          messages: [{ role: 'system', content: systemForAttempt }, ...normalizeHistory(history), { role: 'user', content: userText }],
+          ...(caps.supportsResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+          ...(sendNativeTools ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {})
         };
+    if (provider !== 'openrouter') {
+      body = applyReasoningControls(body, { provider, model: candidateModel, caps });
+    }
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
       let usedPlainBody = !body.tools && !body.response_format;
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
-      // Se um modelo gratuito/customizado no OpenRouter, Groq, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, re-tenta sem 'tools' usando o catálogo no system prompt
+      // Se um modelo gratuito/customizado no OpenRouter, Groq, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, aprende e re-tenta sem 'tools' usando o catálogo compacto
       if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools) {
-        const fallbackBody = { ...body };
+        const errSnippet = await response.clone().text().catch(() => '');
+        if (/tool|function/i.test(errSnippet) || response.status === 404 || response.status === 422) {
+          learnModelCapability(provider, candidateModel, { supportsNativeTools: false });
+        }
+        const fallbackBody = {
+          ...body,
+          messages: [{ role: 'system', content: `${effectiveSystem}${buildCompactToolPrompt(nativeTools)}` }, ...normalizeHistory(history), { role: 'user', content: userText }]
+        };
         delete fallbackBody.tools;
         delete fallbackBody.tool_choice;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
       }
-      // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format json_object ou reasoning_effort (400); degrada graciosamente mantendo o contrato JSON via system prompt
-      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools || body.reasoning_effort || body.reasoning)) {
-        const plainBody = { ...body };
+      // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format, reasoning_effort ou chat_template_kwargs (400/422); aprende e degrada graciosamente
+      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools || body.reasoning_effort || body.reasoning || body.chat_template_kwargs)) {
+        const errSnippet = await response.clone().text().catch(() => '');
+        if (/response_format|json_validate_failed|json_object/i.test(errSnippet)) {
+          learnModelCapability(provider, candidateModel, { supportsResponseFormat: false });
+        }
+        if (/chat_template_kwargs|enable_thinking/i.test(errSnippet)) {
+          learnModelCapability(provider, candidateModel, { supportsThinkingToggle: false });
+        }
+        const plainBody = {
+          ...body,
+          messages: [{ role: 'system', content: `${effectiveSystem}${buildCompactToolPrompt(nativeTools)}` }, ...normalizeHistory(history), { role: 'user', content: userText }]
+        };
         delete plainBody.tools;
         delete plainBody.tool_choice;
         delete plainBody.response_format;
         delete plainBody.reasoning_effort;
         delete plainBody.reasoning;
+        delete plainBody.chat_template_kwargs;
         usedPlainBody = true;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
       // Groq (tier free 6k TPM) e provedores OpenAI-compatible podem retornar 413/429 "Request too large".
-      // Compacta o system prompt + histórico (sem response_format estrito para evitar 400 json_validate_failed em modelos de raciocínio) e tenta uma vez antes de cair para outro provedor.
+      // Compacta o system prompt + histórico preservando o catálogo compacto de ferramentas.
       if (!response.ok && (response.status === 413 || response.status === 429)) {
         const errBodyText = await response.clone().text().catch(() => '');
         if (response.status === 413 || /request too large|tokens per minute|tpm|context_length_exceeded|maximum context length/i.test(errBodyText)) {
           const compactToolsSuffix = buildCompactToolPrompt(nativeTools);
-          const compactBody = {
+          const compactBody = applyReasoningControls({
             model: candidateModel,
             temperature: adaptiveTemperature,
             max_tokens: effectiveMaxTokens,
-            ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
-            ...(provider === 'openrouter' && isReasoningModel ? { reasoning: { effort: 'low' } } : {}),
             messages: [
               { role: 'system', content: compactText(effectiveSystem, 6200) + compactToolsSuffix },
               ...compactCloudflareHistory(history),
               { role: 'user', content: compactText(userText, 2500) }
             ]
-          };
+          }, { provider, model: candidateModel, caps });
           usedPlainBody = true;
           response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(compactBody) });
         }
@@ -436,35 +485,36 @@ export async function call(provider, {
       }
       let data = await response.json();
       let message = data.choices?.[0]?.message || {};
+      if ((message.reasoning || message.reasoning_content) && !caps.isReasoning) {
+        learnModelCapability(provider, candidateModel, { isReasoning: true, supportsResponseFormat: false });
+      }
       let functionCalls = normalizeProviderToolCalls(message.tool_calls || (message.function_call ? [message.function_call] : []));
-      let contentText = typeof message.content === 'string' ? message.content.trim() : '';
-      // Alguns modelos de raciocínio (OpenRouter :free / Groq gpt-oss) retornam content vazio com tools/response_format ou finish_reason=length.
+      let contentText = extractMessageContent(message);
+      // Alguns modelos de raciocínio (OpenRouter :free / Groq gpt-oss / NVIDIA Nemotron) retornam content vazio com tools/response_format ou finish_reason=length.
       // Tenta recuperar JSON válido do campo reasoning ou refaz 1 chamada limpa com reasoning mínimo e max_tokens ampliado.
       if (!contentText && !functionCalls.length) {
-        const reasoningText = String(message.reasoning || message.reasoning_content || '').trim();
-        const jsonMatch = reasoningText.match(/\{[\s\S]*"reply"\s*:[\s\S]*\}/);
-        if (jsonMatch) {
-          contentText = jsonMatch[0];
+        const recoveredJson = extractJsonFromReasoning(message);
+        if (recoveredJson) {
+          contentText = recoveredJson;
         } else if (!deadline || deadline - Date.now() > 2500) {
           const compactToolsSuffix = buildCompactToolPrompt(nativeTools);
-          const plainRetryBody = {
+          const retryCaps = { ...caps, isReasoning: true };
+          const plainRetryBody = applyReasoningControls({
             model: candidateModel,
             temperature: adaptiveTemperature,
             max_tokens: Math.max(3072, effectiveMaxTokens),
-            ...(isGroqGptOss ? { reasoning_effort: 'low' } : {}),
-            ...(provider === 'openrouter' ? { reasoning: { effort: 'low' } } : {}),
             messages: [
-              { role: 'system', content: compactText(effectiveSystem, 7000) + compactToolsSuffix },
+              { role: 'system', content: compactText(effectiveSystem, 6800) + compactToolsSuffix },
               ...compactCloudflareHistory(history),
               { role: 'user', content: compactText(userText, 2500) }
             ]
-          };
+          }, { provider, model: candidateModel, caps: retryCaps });
           const retryRes = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainRetryBody) });
           if (retryRes.ok) {
             const retryData = await retryRes.json().catch(() => ({}));
             const retryMsg = retryData.choices?.[0]?.message || {};
             const retryCalls = normalizeProviderToolCalls(retryMsg.tool_calls || (retryMsg.function_call ? [retryMsg.function_call] : []));
-            const retryContent = typeof retryMsg.content === 'string' ? retryMsg.content.trim() : '';
+            const retryContent = extractMessageContent(retryMsg) || extractJsonFromReasoning(retryMsg);
             if (retryContent || retryCalls.length) {
               data = retryData;
               message = retryMsg;
@@ -474,7 +524,11 @@ export async function call(provider, {
           }
         }
       }
-      const raw = functionCalls.length ? rawWithToolCalls(contentText || message.content, functionCalls) : (contentText || null);
+      const raw = functionCalls.length ? rawWithToolCalls(contentText || extractMessageContent(message), functionCalls) : (contentText || null);
+      if (!raw) {
+        // Permite tentar o próximo modelo de contingência do mesmo provedor em vez de abortar com empty_reply
+        throw Error(`${provider} empty_reply`);
+      }
       const usage = data.usage;
       const promptTokens = usage?.prompt_tokens || Math.ceil(((system?.length || 0) + (userText?.length || 0)) / 4);
       const completionTokens = usage?.completion_tokens || Math.ceil((raw?.length || 0) / 4);
@@ -488,7 +542,7 @@ export async function call(provider, {
       }
       lastError = error;
       if (error.budgetDenied) continue;
-      if (!/\b(400|404|408|409|425|429|5\d\d)\b/.test(error.message)) throw error;
+      if (!/\b(400|404|408|409|413|422|425|429|5\d\d)\b|empty_reply|timeout|abort/i.test(error.message)) throw error;
     }
   }
   throw lastError || Error(`${provider} deadline_exceeded`);
