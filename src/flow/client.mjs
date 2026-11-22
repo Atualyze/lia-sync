@@ -986,9 +986,7 @@ export async function handleClientMessage({
         const checkoutEnabled = isCheckoutConfigured(botConfig);
         const pixEnabled = isPixConfigured(botConfig);
         if (choice === 'key') {
-          toolReplyOverride = pixEnabled
-            ? directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner })
-            : paymentChoiceReply({ hasCheckout: checkoutEnabled, hasPix: false });
+          toolReplyOverride = directPixKeyReply({ key: pixEnabled ? resolveConfiguredPixKey(botConfig) : '', owner });
         } else if (choice === 'checkout' && !checkoutEnabled) {
           const fallbackQ = pixEnabled
             ? 'No momento o checkout não está ativo por aqui, mas posso te enviar *só a chave Pix* ou gerar o *código Pix copia e cola*. Qual você prefere?'
