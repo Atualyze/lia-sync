@@ -652,10 +652,14 @@ export class CopilotTaskStore {
       const current = Array.isArray(rows) && rows[0] ? mapTask(rows[0]) : null;
       if (!current) return null;
       const next = applyDecision(current);
+      const reconciledCompare = current.reconciledAt
+        ? '&reconciled_at=eq.' + encodeURIComponent(current.reconciledAt)
+        : '&reconciled_at=is.null';
       const compare = 'id=eq.' + encodeURIComponent(id)
         + '&status=eq.' + encodeURIComponent(current.status)
         + '&notification_status=eq.' + encodeURIComponent(current.notificationStatus)
-        + '&updated_at=eq.' + encodeURIComponent(current.updatedAt || '');
+        + '&updated_at=eq.' + encodeURIComponent(current.updatedAt || '')
+        + reconciledCompare;
       const updated = await this.client.request('copilot_tasks', {
         method: 'PATCH',
         query: compare,
