@@ -95,12 +95,17 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     dateStyle: 'full',
     timeStyle: 'short'
   }).format(now);
-  const rawBh = botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
-  const activeBh = rawBh?.enabled === true ? normalizarJanelaDeAtendimento(rawBh) : null;
+  const rawBh = botConfig?.business?.hoursConfig || botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
+  const shouldRestrictSchedule = Boolean(
+    rawBh && (rawBh.enabled === true || rawBh.restrictScheduling === true)
+  );
+  const activeBh = shouldRestrictSchedule ? normalizarJanelaDeAtendimento({ ...rawBh, enabled: true }) : null;
   const dateAndHoursHeader = [
     `[DATA_E_HORA_ATUAL] Agora é ${local} (fuso ${activeTz}).`,
     'REGRA OBRIGATÓRIA DE DATA/HORA: Confie 100% nesta data e dia da semana acima — NUNCA invente ou troque o dia da semana. NUNCA exiba timestamps ISO (como 2026-11-22T15:00:00-03:00) para o usuário; escreva sempre em português natural (ex.: "segunda-feira, 23/11 às 15:00").',
-    activeBh ? `EXPEDIENTE ATIVO: ${diasSemanaTexto(activeBh.weekdays)}, das ${activeBh.start} às ${activeBh.end}. NUNCA ofereça nem agende horários em dias fechados ou fora desse expediente.` : ''
+    activeBh
+      ? `EXPEDIENTE DA EMPRESA PARA AGENDAMENTOS: ${diasSemanaTexto(activeBh.weekdays)}, das ${activeBh.start} às ${activeBh.end}. ${rawBh?.enabled === false ? 'Você atende o chat 24/7 (inclusive agora), mas NUNCA ofereça nem agende reuniões/atendimentos para dias fechados ou fora desse expediente da empresa.' : 'NUNCA ofereça nem agende horários em dias fechados ou fora desse expediente.'}`
+      : ''
   ].filter(Boolean).join('\n');
 
   const history = session.history || [];

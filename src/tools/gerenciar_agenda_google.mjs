@@ -21,8 +21,11 @@ const mockEnabled = () => process.env.GOOGLE_CALENDAR_MOCK === 'true' && ['devel
 
 const integration = (botConfig = {}) => {
   const configured = botConfig?.integrations?.googleCalendar || {};
-  const rawBh = botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
-  const bh = rawBh?.enabled === true ? normalizarJanelaDeAtendimento(rawBh) : null;
+  const rawBh = botConfig?.business?.hoursConfig || botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
+  const shouldRestrictSchedule = Boolean(
+    rawBh && (rawBh.enabled === true || rawBh.restrictScheduling === true)
+  );
+  const bh = shouldRestrictSchedule ? normalizarJanelaDeAtendimento({ ...rawBh, enabled: true }) : null;
   return {
     enabled: configured.enabled !== false,
     timezone: bh?.timezone || configured.timezone || 'America/Sao_Paulo',

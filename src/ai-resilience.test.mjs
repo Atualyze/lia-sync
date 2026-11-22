@@ -182,3 +182,44 @@ test('filterReply converte timestamps ISO crus para data/hora legível em BRT', 
   assert.ok(!res.text.includes('2026-11-22T15:00:00-03:00'));
   assert.ok(res.text.includes('22/11/2026 às 15:00'));
 });
+
+test('business.hoursConfig.restrictScheduling permite Lia 24/7 com agenda restrita ao expediente da loja', async () => {
+  // Lia 24/7 (enabled: false) + agenda restrita (restrictScheduling: true) -> bloqueia domingo
+  const cfgRestricted = {
+    business: {
+      hoursConfig: {
+        enabled: false,
+        restrictScheduling: true,
+        timezone: 'America/Sao_Paulo',
+        start: '08:00',
+        end: '18:00',
+        weekdays: [1, 2, 3, 4, 5]
+      }
+    }
+  };
+  const sunBlocked = await toolGerenciarAgendaGoogle.execute(
+    { action: 'criar_evento', date: '2026-11-22', startTime: '15:00', summary: 'Reunião' },
+    { botConfig: cfgRestricted }
+  );
+  assert.equal(sunBlocked.success, false);
+  assert.equal(sunBlocked.error, 'outside_business_hours');
+
+  // Lia 24/7 (enabled: false) + agenda livre (restrictScheduling: false) -> não bloqueia por outside_business_hours
+  const cfgOpen = {
+    business: {
+      hoursConfig: {
+        enabled: false,
+        restrictScheduling: false,
+        timezone: 'America/Sao_Paulo',
+        start: '08:00',
+        end: '18:00',
+        weekdays: [1, 2, 3, 4, 5]
+      }
+    }
+  };
+  const sunOpen = await toolGerenciarAgendaGoogle.execute(
+    { action: 'criar_evento', date: '2026-11-22', startTime: '15:00', summary: 'Reunião' },
+    { botConfig: cfgOpen }
+  );
+  assert.notEqual(sunOpen.error, 'outside_business_hours');
+});

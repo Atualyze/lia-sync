@@ -57,6 +57,7 @@ export const DEFAULT_BOT_CONFIG = {
     timezone: 'America/Sao_Paulo',
     hoursConfig: {
       enabled: false, // Por padrão desligado (24/7) até ser ativado pelo usuário no painel
+      restrictScheduling: true, // Mesmo com a Lia 24/7, agendamentos respeitam os dias/horários configurados da loja
       timezone: 'America/Sao_Paulo',
       start: '08:00',
       end: '18:00',
@@ -276,6 +277,7 @@ function validateHoursConfig(hours) {
     return ['A janela de atendimento deve ser um objeto de configuração.'];
   }
   if (typeof hours.enabled !== 'boolean') errors.push('A ativação da janela de atendimento deve ser verdadeiro/falso.');
+  if (hours.restrictScheduling !== undefined && typeof hours.restrictScheduling !== 'boolean') errors.push('A restrição de agendamentos ao expediente deve ser verdadeiro/falso.');
   if (hours.autoResumeOnOpen !== undefined && typeof hours.autoResumeOnOpen !== 'boolean') errors.push('A retomada automática na abertura deve ser verdadeiro/falso.');
   if (hours.outOfHoursNotice !== undefined && (typeof hours.outOfHoursNotice !== 'string' || hours.outOfHoursNotice.length > 2000)) errors.push('O aviso de fora do expediente deve ter até 2000 caracteres.');
   const timezone = typeof hours.timezone === 'string' ? hours.timezone.trim() : '';
