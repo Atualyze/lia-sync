@@ -1729,8 +1729,9 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
           if (toolCallsToRun.length === 0) {
             const claimedLookup = /(?:consultando|verificando|checando|buscando|olhando|puxando)\s+(?:agora\s+)?(?:o\s+)?(?:cadastro|hist[oó]rico|dados|contato|conversa|crm)/i.test(rawRep);
+            const userAskedLookup = /\b(?:consulte|consultar|atendimento|hist[oó]rico|conversa|cliente|contato)\b/i.test(cleanCommand) && !/\b(?:cnpj|cep|cpf)\b/i.test(cleanCommand);
             const rawDigits = cleanCommand.match(/\d{8,14}/)?.[0] || rawRep.match(/\d{8,14}/)?.[0] || '';
-            if ((claimedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
+            if ((claimedLookup || userAskedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
               toolCallsToRun.push({
                 name: 'consultar_contato_ou_lead',
                 args: { phone: rawDigits }

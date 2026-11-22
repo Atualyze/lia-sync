@@ -83,6 +83,47 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
     return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
   }
 
+  // 1.0.7.5 Atalho Direto: Consulta de Atendimento / Contato por Telefone
+  const isCnpjOrCep = /\b(?:cnpj|cep|cpf)\b/i.test(norm);
+  const isDispatchCmd = /\b(?:enviar|envie|mandar|mande|avisar|avise|disparar|dispare|mensagem\s+para)\b/i.test(norm);
+  const phoneLookupDigits = strippedCmd.match(/\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}\b/)?.[0]?.replace(/\D/g, '') || '';
+  const hasLookupVerb = /\b(?:consulte|consultar|consulta|atendimento|historico|hist[oó]rico|conversa|cliente|contato|lead|detalhes?|resumo\s+d[eo]|sobre\s+o?\s*(?:numero|n[uú]mero|atendimento|cliente|contato))\b/i.test(norm);
+  if (!isCnpjOrCep && !isDispatchCmd && phoneLookupDigits.length >= 8 && phoneLookupDigits.length <= 13 && (hasLookupVerb || /^\s*(?:\+?55)?\d{8,13}\s*$/.test(strippedCmd))) {
+    const contactRes = await executeToolCall('consultar_contato_ou_lead', { phone: phoneLookupDigits }, { store });
+    if (!contactRes?.found) {
+      return recordSelfTurn(filterReply(`🔎 Não encontrei nenhum atendimento ou cadastro registrado para *${phoneLookupDigits}*.`, { isCopilot: true }).text);
+    }
+    const fmtBr = (iso) => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '—';
+      return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d);
+    };
+    const att = contactRes.attendance;
+    const lines = [
+      `📋 *Consulta de Atendimento — ${contactRes.name || 'Cliente'}*`,
+      '',
+      `• *Telefone:* \`${contactRes.phone}\``,
+      `• *Estágio/Tipo:* ${contactRes.type || 'lead'}`,
+      att ? `• *Status:* ${att.statusLabel}` : '• *Status:* Sem sessão ativa recente',
+      att ? `• *Mensagens na sessão:* ${att.messageCount}` : '',
+      att?.updatedAt ? `• *Última atividade:* ${fmtBr(att.updatedAt)} (BRT)` : '',
+      contactRes.notes && contactRes.notes !== 'Sem observações adicionais.' ? `• *Notas:* ${contactRes.notes}` : ''
+    ].filter(Boolean);
+
+    if (att?.recentMessages?.length) {
+      lines.push('', '*💬 Últimas mensagens do atendimento:*');
+      for (const m of att.recentMessages.slice(-6)) {
+        const who = m.role === 'lia' ? assistant : (m.role === 'humano' ? 'Humano' : 'Cliente');
+        const ts = m.createdAt ? ` (${fmtBr(m.createdAt)})` : '';
+        lines.push(`• *${who}${ts}:* ${String(m.content || '').replace(/\s+/g, ' ').slice(0, 220)}`);
+      }
+    } else {
+      lines.push('', '_Cadastro encontrado no CRM, sem mensagens registradas na sessão atual._');
+    }
+    return recordSelfTurn(filterReply(lines.join('\n'), { isCopilot: true }).text);
+  }
+
   // 1.0.8 Documentos em PDF: SEMPRE pergunta quais informações usar antes de gerar
   const pdfDocMatch = norm.match(/(gerar|criar|emitir|fazer|montar|preparar)\s+(?:um\s+|uma\s+)?(relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o|pdf)|((?:relat[oó]rio|proposta|or[cç]amento|recibo|declara[cç][ãa]o))\s+em\s+pdf/);
   if (pdfDocMatch) {
