@@ -122,6 +122,7 @@ export function createCopilotTaskWorker({
   sendText,
   broadcastBridgeEvent = defaultBroadcastBridgeEvent,
   getHumanPhone = () => '',
+  onOwnerNotify = null,
   operationsStore = null,
   logger = console,
   workerId = `${os.hostname()}:copilot:${process.pid}`,
@@ -287,6 +288,9 @@ export function createCopilotTaskWorker({
           }
           await taskStore.finishNotification(pendingNotification, 'sent');
           await appendTaskResultToSession(pendingNotification, safe);
+          if (typeof onOwnerNotify === 'function') {
+            void Promise.resolve(onOwnerNotify(safe)).catch(() => {});
+          }
           return true;
         } catch (error) {
           await taskStore.finishNotification(pendingNotification, 'uncertain', error?.code || error?.name || 'notification_delivery_uncertain');

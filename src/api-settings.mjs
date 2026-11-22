@@ -39,6 +39,8 @@ export const API_SETTING_FIELDS = Object.freeze([
   { key: 'googleSheetsDefaultId', label: 'Google Sheets Spreadsheet ID (Padrão)', group: 'google', secret: false },
   { key: 'googleCalendarId', label: 'Google Calendar ID (ex: primary)', group: 'google', secret: false },
   // Integrações & API v1
+  { key: 'telegramBotToken', label: 'Telegram Bot Token (@BotFather)', group: 'integrations', secret: true },
+  { key: 'telegramAdminChatId', label: 'Telegram Admin Chat ID (use /meu_id no bot)', group: 'integrations', secret: false },
   { key: 'chatwootInternalUrl', label: 'Chatwoot Internal URL', group: 'integrations', secret: false, isUrl: true },
   { key: 'faqUrl', label: 'FAQ Remota URL', group: 'integrations', secret: false, isUrl: true },
   { key: 'apiV1RateLimitPerMin', label: 'API v1 Rate Limit (req/min)', group: 'integrations', secret: false, isNumber: true }

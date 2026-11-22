@@ -34,6 +34,7 @@ export function createFlow({
   rateLimitMax = 20,
   rateLimitWindowMs = 600000,
   adminConfig = null,
+  onOwnerNotify = null,
   logger = console
 }) {
   const dedupe = new Map();
@@ -66,6 +67,9 @@ export function createFlow({
       }
     } catch (e) {
       logger.error?.('[notify:copilot] erro ao salvar notificação no histórico interno:', e.message);
+    }
+    if (typeof onOwnerNotify === 'function') {
+      void Promise.resolve(onOwnerNotify(message)).catch(() => {});
     }
     if (!phone) {
       logger.warn?.('[notify] humanPhone não definido; notificação registrada apenas no painel.');

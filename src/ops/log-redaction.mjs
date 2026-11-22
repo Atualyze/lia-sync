@@ -14,7 +14,9 @@ const SECRET_VALUE_PATTERNS = [
   // Credentials embedded in URLs: https://user:pass@host
   /([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+):([^/\s@]+)@/gi,
   // Query-string tokens/keys
-  /([?&](?:api_?key|token|access_token|key|secret|password|apikey)=)([^&\s]+)/gi
+  /([?&](?:api_?key|token|access_token|key|secret|password|apikey)=)([^&\s]+)/gi,
+  // Telegram Bot API tokens (e.g. 123456789:AAH... ou /bot123456789:AAH...)
+  /(bot|\b)\d{6,12}:[A-Za-z0-9_-]{20,}\b/g
 ];
 
 export function redactSecrets(input) {
@@ -26,6 +28,7 @@ export function redactSecrets(input) {
   text = text.replace(SECRET_VALUE_PATTERNS[3], REDACTED);
   text = text.replace(SECRET_VALUE_PATTERNS[4], (_, proto) => `${proto}${REDACTED}@`);
   text = text.replace(SECRET_VALUE_PATTERNS[5], (_, prefix) => `${prefix}${REDACTED}`);
+  text = text.replace(SECRET_VALUE_PATTERNS[6], (_, prefix) => `${prefix}${REDACTED}`);
   return text;
 }
 

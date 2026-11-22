@@ -58,6 +58,8 @@ export const config = {
   inactivityCheckSeconds: num('INACTIVITY_CHECK_SECONDS', 30),
   dashboardOrigin: process.env.DASHBOARD_ORIGIN || '',
   chatwootInternalUrl: process.env.CHATWOOT_INTERNAL_URL || 'http://chatwoot-lia:4000',
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramAdminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID || '',
   // Retained for compatibility with older clients; unauthenticated access is disabled.
   allowUnauthenticatedDashboard: false,
   dashboardRoles: (process.env.DASHBOARD_ALLOWED_ROLES || '').split(',').map(s => s.trim()).filter(Boolean),

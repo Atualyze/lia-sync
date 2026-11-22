@@ -42,6 +42,7 @@ import { ApiSettingsStore } from './api-settings.mjs';
 import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { startGlobalEventLoopMonitor, stopGlobalEventLoopMonitor, getEventLoopHealthSnapshot } from './ops/event-loop-monitor.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
+import { createTelegramCopilot } from './channels/telegram.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -108,6 +109,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     allowLocalFallback: process.env.LIA_RUNTIME_LOCAL_FALLBACK === 'true',
     logger: console
   });
+  let telegramCopilot = null;
+  const mirrorToTelegram = (message, options = {}) => {
+    void telegramCopilot?.notifyAdmin?.(message, options).catch(() => {});
+  };
   const liaRuntime = createLiaRuntime({
     store: liaRuntimeStore,
     taskStore: copilotTaskStore,
@@ -115,6 +120,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
     notifyOwner: async (message) => {
+      mirrorToTelegram(message);
       const target = getHumanPhone();
       if (!target) return;
       await sendText(target, formatOutgoingMessage(message));
@@ -145,6 +151,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getBotConfig: () => adminConfig.active,
     sendText,
     getHumanPhone,
+    onOwnerNotify: (message) => mirrorToTelegram(message),
     operationsStore,
     logger: console
   });
@@ -223,7 +230,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     store.markDirty();
     try {
       await store.flush?.();
-      await sendText(operatorPhone, `🔔 *Aprovação de disparo automático necessária*\n\n${staged.preview}`);
+      const alertText = `🔔 *Aprovação de disparo automático necessária*\n\n${staged.preview}`;
+      mirrorToTelegram(alertText, { withApprovalButtons: true });
+      await sendText(operatorPhone, alertText);
       return staged.pending;
     } catch (error) {
       ownerSession.pendingOutboundDispatch = null;
@@ -291,7 +300,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       },
       reminders: {
         pending: reminderStore.listActive().length
-      }
+      },
+      telegram: telegramCopilot?.getStatus?.() || { configured: false, status: 'not_configured' }
     };
   };
 
@@ -312,7 +322,16 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     allowClientResume: config.humanAllowClientResume,
     maxInputChars: config.maxInputChars,
     rateLimitMax: config.rateLimitMax,
-    rateLimitWindowMs: config.rateLimitWindowMs
+    rateLimitWindowMs: config.rateLimitWindowMs,
+    onOwnerNotify: (message) => mirrorToTelegram(message)
+  });
+  telegramCopilot = createTelegramCopilot({
+    getConfig: () => config,
+    flow: f,
+    store,
+    transcribeAudio,
+    broadcastBridgeEvent,
+    logger: console
   });
   const runtimeAI = () => {
     const provider = adminConfig.active.ai?.activeProvider || (config.geminiKey ? 'gemini' : (config.openrouterKey ? 'openrouter' : 'gemini'));
@@ -522,8 +541,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       aiRetryRunning = false;
     }
   };
-  const onAIConfigUpdated = () => {
+  const onAIConfigUpdated = (reason = '') => {
     void runPendingAIRetries({ immediate: true });
+    if (reason === 'api_settings_updated') {
+      void telegramCopilot?.reload?.().catch(err => console.error('[telegram] Falha ao recarregar após salvar configurações:', redactSecrets(err?.message || String(err))));
+    }
   };
 
   const app = createRouter({
@@ -559,7 +581,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     deliverReactivationReply,
     getActiveInstancePhone
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -570,6 +592,9 @@ if (isDirectRun) {
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(redactSecrets(e?.stack || e?.message || String(e))); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
   if (config.whatsappProvider === 'baileys') {
     void app.baileysProvider?.start().catch(err => console.error('[baileys] Falha na inicialização automática:', err?.message || err));
+  }
+  if (config.telegramBotToken) {
+    void app.telegramCopilot?.start().catch(err => console.error('[telegram] Falha na inicialização automática:', redactSecrets(err?.message || String(err))));
   }
   // Conexões SSE (/api/bridge/events) não podem ser mortas pelo requestTimeout padrão do Node (300s)
   server.requestTimeout = 0;
@@ -602,7 +627,12 @@ if (isDirectRun) {
       store,
       send: sendText,
       stageOutboundDispatch: app.stageAutomatedOutbound,
-      notify: app.getHumanPhone() ? message => sendText(app.getHumanPhone(), message) : undefined,
+      notify: (app.getHumanPhone() || config.telegramBotToken)
+        ? async (message) => {
+            void app.telegramCopilot?.notifyAdmin?.(message).catch(() => {});
+            if (app.getHumanPhone()) await sendText(app.getHumanPhone(), message);
+          }
+        : undefined,
       reminderStore: app.reminderStore,
       timeZone: config.businessTimeZone,
       staleHours: config.inactivityStaleHours,
@@ -659,6 +689,7 @@ if (isDirectRun) {
     clearInterval(copilotTaskTimer);
     clearInterval(aiRetryTimer);
     stopGlobalEventLoopMonitor();
+    await app.telegramCopilot?.stop().catch(() => {});
     await app.baileysProvider?.stop({ logout: false }).catch(() => {});
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
