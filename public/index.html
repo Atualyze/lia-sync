@@ -113,22 +113,6 @@
               <span class="nav-label">Saúde & Operação</span>
               <b id="overview-status-badge" class="badge-mini ok">ok</b>
             </button>
-            <button class="nav-item" data-view="metrics" title="Monitoramento & Custos">
-              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              <span class="nav-label">Monitoramento</span>
-              <b id="metrics-status-badge" class="badge-mini ok">ok</b>
-            </button>
-            <button class="nav-item" data-view="vps" data-role="admin" title="Monitor VPS (Somente Leitura)">
-              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
-              <span class="nav-label">Monitor VPS</span>
-              <b id="vps-status-badge" class="badge-mini ok">ok</b>
-            </button>
-          </div>
-        </details>
-
-        <details class="nav-group" open>
-          <summary class="nav-group-label"><span>Atendimento</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="nav-group-items">
             <button class="nav-item" data-view="inbox" data-role="operator" title="Conversas em Tempo Real">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
               <span class="nav-label">Conversas</span>
@@ -143,32 +127,48 @@
         </details>
 
         <details class="nav-group" open>
-          <summary class="nav-group-label"><span>Motor IA & Controle</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <summary class="nav-group-label"><span>Inteligência &amp; Bot</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
-            <button class="nav-item" data-view="admin" data-role="admin" title="Configurações Completas da Lia">
-              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              <span class="nav-label">Ajustes do Motor</span>
-              <b id="admin-draft-badge" class="badge-mini warn hidden">editado</b>
+            <button class="nav-item" data-view="ai-hub" data-role="admin" title="Motor de IA, Modelos, Fallbacks, Provedores & Chaves de API">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              <span class="nav-label">Motor de IA &amp; APIs</span>
             </button>
-            <button class="nav-item" data-view="runtime" data-role="operator" title="Lia Runtime, Autonomia, Objetivos & APIs">
+            <button class="nav-item" data-view="runtime" data-role="operator" title="Lia Runtime, Autonomia, Rotinas & Memória PARA">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
-              <span class="nav-label">Autonomia &amp; APIs</span>
+              <span class="nav-label">Autonomia &amp; Memória</span>
             </button>
             <button class="nav-item" data-view="tools" title="Ferramentas & Busca Web">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-              <span class="nav-label">Ferramentas & Web</span>
+              <span class="nav-label">Ferramentas &amp; Web</span>
             </button>
-            <button class="nav-item" data-view="agent" title="Roteador de Capacidades & Arquitetura">
-              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-              <span class="nav-label">Roteador IA</span>
+            <button class="nav-item" data-view="admin" data-role="admin" title="Identidade, Voz, Expediente, Mensagens & FAQ">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span class="nav-label">Configurações do Bot</span>
+              <b id="admin-draft-badge" class="badge-mini warn hidden">editado</b>
             </button>
-            <button class="nav-item" data-view="integrations" title="Integrações, Ponte & Webhooks">
+          </div>
+        </details>
+
+        <details class="nav-group" open>
+          <summary class="nav-group-label"><span>Sistema</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="nav-group-items">
+            <button class="nav-item" data-view="integrations" title="WhatsApp Baileys, Ponte & Webhooks">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
               <span class="nav-label">Integrações</span>
             </button>
+            <button class="nav-item" data-view="metrics" title="Monitoramento & Custos">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              <span class="nav-label">Monitoramento</span>
+              <b id="metrics-status-badge" class="badge-mini ok">ok</b>
+            </button>
+            <button class="nav-item" data-view="vps" data-role="admin" title="Monitor VPS (Somente Leitura)">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>
+              <span class="nav-label">Monitor VPS</span>
+              <b id="vps-status-badge" class="badge-mini ok">ok</b>
+            </button>
             <button class="nav-item" data-view="users" data-role="admin" title="Usuários, Perfis & Auditoria">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              <span class="nav-label">Acessos & Auditoria</span>
+              <span class="nav-label">Acessos &amp; Auditoria</span>
             </button>
           </div>
         </details>
@@ -357,24 +357,9 @@
                 </div>
               </div>
               <div id="overview-models" class="ops-list"></div>
-              <div id="overview-providers-manager" class="hidden" data-role="admin" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,.1))">
-                <div id="overview-providers-feedback" class="admin-feedback hidden" role="status"></div>
-                <h4 style="margin:0 0 8px">Cadastrar Novo Provedor OpenAI-Compatible (Groq, DeepSeek, Mistral, xAI, Ollama…)</h4>
-                <form id="custom-provider-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:10px">
-                  <input type="text" id="cp-id" placeholder="ID (ex: groq, deepseek)" pattern="[a-z][a-z0-9_-]{1,31}" required>
-                  <input type="text" id="cp-name" placeholder="Nome (ex: Groq Cloud)" required>
-                  <input type="url" id="cp-url" placeholder="Base URL (ex: https://api.groq.com/openai/v1)" required>
-                  <input type="password" id="cp-key" placeholder="API Key (write-only)" required>
-                  <input type="text" id="cp-model" placeholder="Modelo padrão (ex: llama-3.3-70b-versatile)" required>
-                  <input type="number" step="0.001" min="0" id="cp-rate-in" placeholder="USD / 1M input (opcional)">
-                  <input type="number" step="0.001" min="0" id="cp-rate-out" placeholder="USD / 1M output (opcional)">
-                  <button type="submit" class="btn-primary">Salvar Provedor</button>
-                </form>
-                <div id="custom-providers-list" class="stack-list" style="margin-bottom:10px"></div>
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-                  <span class="muted" style="font-size:12px">Para editar chaves de Gemini, OpenRouter, Qwen, OpenAI ou Cloudflare em hot-reload:</span>
-                  <button type="button" class="btn-secondary btn-sm" id="overview-go-api-settings">Abrir Chaves &amp; APIs</button>
-                </div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,rgba(255,255,255,.1));display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap" data-role="admin">
+                <span class="muted" style="font-size:12px">Provedores, modelos, reservas e chaves de API estão centralizados na tela dedicada.</span>
+                <button type="button" class="btn-secondary btn-sm" id="overview-go-api-settings">Abrir Motor de IA &amp; APIs</button>
               </div>
             </section>
           </div>
@@ -753,98 +738,14 @@
               </div>
             </details>
 
-            <!-- MENU RECOLHÍVEL 3: MOTOR DE IA, ROTEAMENTO & FALLBACKS -->
-            <details class="config-accordion panel" id="acc-ai" data-section-keys="ai.activeProvider,ai.activeModel,ai.fallbackModels,ai.agentMode,ai.autoRouting,ai.contextTurns,ai.maxStoredHistory,ai.maxOutputTokens,ai.openrouterFreeOnly,ai.structuredOutputs,ai.requireParameters">
-              <summary class="config-accordion-head">
-                <div class="acc-title-group">
-                  <span class="acc-icon tint-purple">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                  </span>
-                  <div>
-                    <strong>Motor de IA &amp; Fallbacks</strong>
-                    <span>Provedor principal, modelo ativo, cadeia de reserva e janela de contexto</span>
-                  </div>
-                </div>
-                <div class="acc-meta">
-                  <span class="admin-status" data-section-badge="ai">Sincronizado</span>
-                  <svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </div>
-              </summary>
-              <div class="config-accordion-body">
-                <div class="admin-form-grid">
-                  <label>Provedor Principal
-                    <select id="admin-ai-provider" data-config="ai.activeProvider">
-                      <option value="gemini">Google Gemini</option>
-                      <option value="groq">Groq Cloud</option>
-                      <option value="nvidia">NVIDIA NIM</option>
-                      <option value="openrouter">OpenRouter</option>
-                      <option value="cloudflare">Cloudflare Workers AI</option>
-                      <option value="openai">OpenAI (ChatGPT)</option>
-                      <option value="qwen">Qwen (Alibaba)</option>
-                    </select>
-                  </label>
-                  <label>Modo Operacional da Lia
-                    <select id="admin-agent-mode" data-config="ai.agentMode">
-                      <option value="super_agente">Super Agente (Tool Calling + Web + Agenda + CRM)</option>
-                      <option value="assistente">Assistente Padrão (Conversacional sem Tools)</option>
-                    </select>
-                  </label>
-                  <div class="wide model-selector-box">
-                    <div class="model-selector-header">
-                      <div>
-                        <span class="section-tag">Modelo Principal Selecionado</span>
-                        <strong id="admin-ai-active-model" class="active-model-display">Carregando…</strong>
-                      </div>
-                      <div class="hero-actions">
-                        <button id="admin-ai-change-model" type="button" class="admin-ghost-btn btn-sm">Trocar Modelo</button>
-                        <button id="admin-ai-models-refresh" type="button" class="icon-btn btn-sm" title="Sincronizar catálogo da API" aria-label="Sincronizar catálogo da API">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <select id="admin-ai-model" data-config="ai.activeModel" class="hidden" aria-label="Selecionar novo modelo" style="margin-top:10px;">
-                      <option value="">Selecione um provedor e carregue os modelos</option>
-                    </select>
-                    <span id="admin-ai-models-status" class="field-hint" aria-live="polite"></span>
-                  </div>
-
-                  <div class="wide fallback-section-box">
-                    <div class="fallback-section-head">
-                      <strong>Cadeia de Modelos Reserva / Fallback (até 3)</strong>
-                      <small class="field-hint">Acionados automaticamente em caso de timeout, erro 429/5xx ou incompatibilidade.</small>
-                    </div>
-                    <div id="admin-fallback-rows" class="fallback-rows-grid"></div>
-                    <textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" class="hidden" aria-hidden="true"></textarea>
-                  </div>
-
-                  <label class="toggle-field">
-                    <input data-config="ai.autoRouting" type="checkbox" />
-                    <span>Roteamento dinâmico por capacidades (Fast / Tools / Web / Docs / Pro)</span>
-                  </label>
-                  <label class="toggle-field">
-                    <input type="checkbox" data-config="ai.openrouterFreeOnly" />
-                    <span>Restringir OpenRouter apenas a modelos gratuitos (<code>:free</code>)</span>
-                  </label>
-                  <label class="toggle-field">
-                    <input type="checkbox" data-config="ai.structuredOutputs" />
-                    <span>Forçar saída estruturada estrita (Structured Outputs)</span>
-                  </label>
-                  <label class="toggle-field">
-                    <input type="checkbox" data-config="ai.requireParameters" />
-                    <span>Exigir validação estrita de parâmetros nas ferramentas</span>
-                  </label>
-                  <label>Turnos de contexto enviados à IA (4–100)
-                    <input data-config="ai.contextTurns" type="number" min="4" max="100" step="1" />
-                  </label>
-                  <label>Histórico máximo armazenado por sessão (20–500)
-                    <input data-config="ai.maxStoredHistory" type="number" min="20" max="500" step="1" />
-                  </label>
-                  <label class="wide">Limite máximo de tokens de saída (Max Output Tokens)
-                    <input data-config="ai.maxOutputTokens" type="number" min="256" max="8192" step="128" />
-                  </label>
-                </div>
+            <!-- ATALHO PARA CENTRAL DE IA & APIS -->
+            <div class="panel" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <div>
+                <strong>Motor de IA, Modelos, Fallbacks &amp; Chaves de API</strong>
+                <div class="muted" style="font-size:12px">Agora centralizados em uma tela dedicada para facilitar a gestão.</div>
               </div>
-            </details>
+              <button type="button" class="btn-secondary btn-sm" id="admin-go-ai-hub">Abrir Motor de IA &amp; APIs</button>
+            </div>
 
             <!-- MENU RECOLHÍVEL 4: VOZ NATIVA & SÍNTESE DE ÁUDIO -->
             <details class="config-accordion panel" id="acc-voice" data-section-keys="voice">
@@ -1347,61 +1248,200 @@
       </section>
 
       <!-- ====================================================================
-           VIEW 4: CAPACIDADES & ROTEADOR IA (100% REAL DATA)
+           VIEW 4: CENTRAL DE MOTOR DE IA, MODELOS, PROVEDORES & CHAVES DE API
            ==================================================================== -->
-      <section id="agent-view" class="view">
+      <section id="ai-hub-view" class="view">
         <div class="ops-container">
           <div class="ops-hero panel">
             <div class="hero-copy">
-              <h2>Roteador de IA</h2>
-              <p>Modelos disponíveis, capacidades por tipo de tarefa e módulos ativos.</p>
+              <h2>Motor de IA &amp; APIs</h2>
+              <p>Central unificada de provedor principal, modelos reserva, provedores customizados, chaves de API (hot-reload) e roteador de capacidades.</p>
             </div>
-            <button class="icon-btn action-btn-ping" id="agent-refresh-btn" title="Atualizar arquitetura" aria-label="Atualizar arquitetura">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            </button>
-          </div>
-
-          <div class="kpi-strip" id="agent-runtime-strip"></div>
-
-          <section class="panel ops-section">
-            <div class="panel-head">
-              <div>
-                <strong>Matriz de Modelos & Capacidades Suportadas</strong>
-                <span>Catálogo técnico usado pelo motor para seleção automática e fallback</span>
-              </div>
-            </div>
-            <div class="metrics-table-wrapper">
-              <table class="metrics-table">
-                <thead>
-                  <tr>
-                    <th>Modelo</th>
-                    <th>Provedor</th>
-                    <th>Capacidades Habilitadas</th>
-                    <th>Thinking Budget</th>
-                    <th>Papel no Runtime</th>
-                  </tr>
-                </thead>
-                <tbody id="agent-capabilities-tbody">
-                  <tr><td colspan="5" class="table-empty">Carregando matriz de capacidades…</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <div class="ops-grid" id="agent-modules-container"></div>
-
-          <section id="agent-detail-drawer" class="panel agent-drawer hidden">
-            <div class="panel-head">
-              <div>
-                <strong id="agent-drawer-title">Detalhes do Módulo</strong>
-                <span id="agent-drawer-subtitle">Especificação técnica</span>
-              </div>
-              <button type="button" class="icon-btn" id="agent-drawer-close" aria-label="Fechar detalhes">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            <div class="hero-actions">
+              <button type="button" class="btn-secondary" id="ai-hub-save-draft" data-role="admin">Salvar Rascunho</button>
+              <button type="button" class="btn-primary" id="ai-hub-publish" data-role="admin">Publicar Motor IA</button>
+              <button class="icon-btn action-btn-ping" id="agent-refresh-btn" title="Atualizar arquitetura e modelos" aria-label="Atualizar arquitetura e modelos">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               </button>
             </div>
-            <div id="agent-drawer-content" class="agent-drawer-content"></div>
+          </div>
+
+          <div id="ai-hub-feedback" class="admin-feedback hidden" role="status"></div>
+
+          <!-- 1. MOTOR PRINCIPAL, MODELO ATIVO & CADEIA DE FALLBACKS -->
+          <details class="config-accordion panel" id="acc-ai" open data-section-keys="ai.activeProvider,ai.activeModel,ai.fallbackModels,ai.agentMode,ai.autoRouting,ai.contextTurns,ai.maxStoredHistory,ai.maxOutputTokens,ai.openrouterFreeOnly,ai.structuredOutputs,ai.requireParameters">
+            <summary class="config-accordion-head">
+              <div class="acc-title-group">
+                <span class="acc-icon tint-purple">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                </span>
+                <div>
+                  <strong>Motor de IA &amp; Cadeia de Reservas (Fallbacks)</strong>
+                  <span>Provedor principal, modelo ativo, reservas #1/#2/#3, modo agente e janela de contexto</span>
+                </div>
+              </div>
+              <div class="acc-meta">
+                <span class="admin-status" data-section-badge="ai">Sincronizado</span>
+                <svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </summary>
+            <div class="config-accordion-body">
+              <div class="admin-form-grid">
+                <label>Provedor Principal
+                  <select id="admin-ai-provider" data-config="ai.activeProvider">
+                    <option value="gemini">Google Gemini</option>
+                    <option value="groq">Groq Cloud</option>
+                    <option value="nvidia">NVIDIA NIM</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="cloudflare">Cloudflare Workers AI</option>
+                    <option value="openai">OpenAI (ChatGPT)</option>
+                    <option value="qwen">Qwen (Alibaba)</option>
+                  </select>
+                </label>
+                <label>Modo Operacional da Lia
+                  <select id="admin-agent-mode" data-config="ai.agentMode">
+                    <option value="super_agente">Super Agente (Tool Calling + Web + Agenda + CRM)</option>
+                    <option value="assistente">Assistente Padrão (Conversacional sem Tools)</option>
+                  </select>
+                </label>
+                <div class="wide model-selector-box">
+                  <div class="model-selector-header">
+                    <div>
+                      <span class="section-tag">Modelo Principal Selecionado</span>
+                      <strong id="admin-ai-active-model" class="active-model-display">Carregando…</strong>
+                    </div>
+                    <div class="hero-actions">
+                      <button id="admin-ai-change-model" type="button" class="admin-ghost-btn btn-sm">Trocar Modelo</button>
+                      <button id="admin-ai-models-refresh" type="button" class="icon-btn btn-sm" title="Sincronizar catálogo da API" aria-label="Sincronizar catálogo da API">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <select id="admin-ai-model" data-config="ai.activeModel" class="hidden" aria-label="Selecionar novo modelo" style="margin-top:10px;">
+                    <option value="">Selecione um provedor e carregue os modelos</option>
+                  </select>
+                  <span id="admin-ai-models-status" class="field-hint" aria-live="polite"></span>
+                </div>
+
+                <div class="wide fallback-section-box">
+                  <div class="fallback-section-head">
+                    <strong>Cadeia de Modelos Reserva / Fallback (até 3)</strong>
+                    <small class="field-hint">Acionados automaticamente em caso de timeout, erro 429/5xx ou incompatibilidade.</small>
+                  </div>
+                  <div id="admin-fallback-rows" class="fallback-rows-grid"></div>
+                  <textarea id="admin-ai-fallbacks" data-config="ai.fallbackModels" class="hidden" aria-hidden="true"></textarea>
+                </div>
+
+                <label class="toggle-field">
+                  <input data-config="ai.autoRouting" type="checkbox" />
+                  <span>Roteamento dinâmico por capacidades (Fast / Tools / Web / Docs / Pro)</span>
+                </label>
+                <label class="toggle-field">
+                  <input type="checkbox" data-config="ai.openrouterFreeOnly" />
+                  <span>Restringir OpenRouter apenas a modelos gratuitos (<code>:free</code>)</span>
+                </label>
+                <label class="toggle-field">
+                  <input type="checkbox" data-config="ai.structuredOutputs" />
+                  <span>Forçar saída estruturada estrita (Structured Outputs)</span>
+                </label>
+                <label class="toggle-field">
+                  <input type="checkbox" data-config="ai.requireParameters" />
+                  <span>Exigir validação estrita de parâmetros nas ferramentas</span>
+                </label>
+                <label>Turnos de contexto enviados à IA (4–100)
+                  <input data-config="ai.contextTurns" type="number" min="4" max="100" step="1" />
+                </label>
+                <label>Histórico máximo armazenado por sessão (20–500)
+                  <input data-config="ai.maxStoredHistory" type="number" min="20" max="500" step="1" />
+                </label>
+                <label class="wide">Limite máximo de tokens de saída (Max Output Tokens)
+                  <input data-config="ai.maxOutputTokens" type="number" min="256" max="8192" step="128" />
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <!-- 2. PROVEDORES CUSTOMIZADOS (OPENAI-COMPATIBLE) -->
+          <section class="panel ops-panel" id="overview-providers-manager" data-role="admin" style="margin-top:16px">
+            <div class="panel-head">
+              <div>
+                <h3>Provedores de IA Customizados (OpenAI-Compatible)</h3>
+                <p>Cadastre provedores adicionais (DeepSeek, Mistral, xAI, Ollama, vLLM…) com roteamento e custo integrados.</p>
+              </div>
+            </div>
+            <div id="overview-providers-feedback" class="admin-feedback hidden" role="status"></div>
+            <form id="custom-provider-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px">
+              <input type="text" id="cp-id" placeholder="ID (ex: deepseek, ollama)" pattern="[a-z][a-z0-9_-]{1,31}" required>
+              <input type="text" id="cp-name" placeholder="Nome (ex: DeepSeek Cloud)" required>
+              <input type="url" id="cp-url" placeholder="Base URL (ex: https://api.deepseek.com/v1)" required>
+              <input type="password" id="cp-key" placeholder="API Key (write-only)" required>
+              <input type="text" id="cp-model" placeholder="Modelo padrão" required>
+              <input type="number" step="0.001" min="0" id="cp-rate-in" placeholder="USD / 1M input (opcional)">
+              <input type="number" step="0.001" min="0" id="cp-rate-out" placeholder="USD / 1M output (opcional)">
+              <button type="submit" class="btn-primary">Salvar Provedor</button>
+            </form>
+            <div id="custom-providers-list" class="stack-list"></div>
           </section>
+
+          <!-- 3. CHAVES DE API & CREDENCIAIS (HOT-RELOAD) -->
+          <section class="panel ops-panel" id="api-settings-panel" data-role="admin" style="margin-top:16px">
+            <div class="panel-head">
+              <div>
+                <h3>Chaves de API &amp; Credenciais (Hot-Reload sem entrar na VPS)</h3>
+                <p>Atualize chaves de Gemini, Groq, NVIDIA, OpenRouter, Cloudflare, OpenAI, Qwen e Google Workspace em tempo real. Chaves salvas nunca são exibidas em texto claro.</p>
+              </div>
+              <button type="button" class="btn-primary" id="api-settings-save">Aplicar &amp; Salvar APIs</button>
+            </div>
+            <div id="api-settings-feedback" class="admin-feedback hidden" role="status"></div>
+            <div id="api-settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding-top:10px">
+              <p class="muted">Carregando configurações de API…</p>
+            </div>
+          </section>
+
+          <!-- 4. ROTEADOR DE CAPACIDADES & ARQUITETURA (MoA) -->
+          <div style="margin-top:16px">
+            <div class="kpi-strip" id="agent-runtime-strip"></div>
+
+            <section class="panel ops-section" style="margin-top:12px">
+              <div class="panel-head">
+                <div>
+                  <strong>Matriz de Modelos &amp; Capacidades Suportadas</strong>
+                  <span>Catálogo técnico usado pelo motor para seleção automática e fallback</span>
+                </div>
+              </div>
+              <div class="metrics-table-wrapper">
+                <table class="metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Modelo</th>
+                      <th>Provedor</th>
+                      <th>Capacidades Habilitadas</th>
+                      <th>Thinking Budget</th>
+                      <th>Papel no Runtime</th>
+                    </tr>
+                  </thead>
+                  <tbody id="agent-capabilities-tbody">
+                    <tr><td colspan="5" class="table-empty">Carregando matriz de capacidades…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <div class="ops-grid" id="agent-modules-container"></div>
+
+            <section id="agent-detail-drawer" class="panel agent-drawer hidden">
+              <div class="panel-head">
+                <div>
+                  <strong id="agent-drawer-title">Detalhes do Módulo</strong>
+                  <span id="agent-drawer-subtitle">Especificação técnica</span>
+                </div>
+                <button type="button" class="icon-btn" id="agent-drawer-close" aria-label="Fechar detalhes">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div id="agent-drawer-content" class="agent-drawer-content"></div>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -1809,7 +1849,7 @@
         <div class="ops-container">
           <div class="admin-hero panel">
             <div class="hero-copy">
-              <h2>Lia Runtime, Autonomia &amp; APIs</h2>
+              <h2>Lia Runtime, Autonomia &amp; Memória</h2>
               <p>Controle completo de objetivos, compromissos, políticas de autonomia, propostas de melhoria e credenciais de API sem precisar entrar na VPS.</p>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1974,21 +2014,6 @@
               <div id="runtime-decisions-list" class="stack-list"><p class="muted">Nenhuma decisão autônoma registrada ainda.</p></div>
             </section>
           </div>
-
-          <!-- CONFIGURAÇÃO DE APIS & PROVEDORES VIA INTERFACE (HOT-RELOAD SEM VPS) -->
-          <section class="panel ops-panel" id="api-settings-panel" data-role="admin" style="margin-top:16px">
-            <div class="panel-head">
-              <div>
-                <h3>Configuração de APIs &amp; Provedores (Sem entrar na VPS)</h3>
-                <p>Atualize URLs e chaves de API em tempo real (hot-reload) com persistência segura no Supabase. Chaves salvas nunca são exibidas em texto claro.</p>
-              </div>
-              <button type="button" class="btn-primary" id="api-settings-save">Aplicar &amp; Salvar APIs</button>
-            </div>
-            <div id="api-settings-feedback" class="admin-feedback hidden" role="status"></div>
-            <div id="api-settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding-top:10px">
-              <p class="muted">Carregando configurações de API…</p>
-            </div>
-          </section>
         </div>
       </section>
 

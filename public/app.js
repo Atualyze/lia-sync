@@ -3232,17 +3232,19 @@ const VIEW_TITLES = {
   overview: 'Saúde & Operação',
   inbox: 'Conversas',
   handoff: 'Fila Humana',
-  admin: 'Ajustes da Assistente',
+  'ai-hub': 'Motor de IA & APIs',
+  admin: 'Configurações do Bot',
   tools: 'Ferramentas & Busca Web',
-  agent: 'Roteador de IA',
+  agent: 'Motor de IA & APIs',
   integrations: 'Integrações & Webhooks',
   users: 'Acessos & Auditoria',
   metrics: 'Monitoramento & Custos',
   vps: 'Monitor da VPS',
-  runtime: 'Autonomia & Runtime'
+  runtime: 'Autonomia & Memória'
 };
 
 function showView(view) {
+  if (view === 'agent') view = 'ai-hub';
   state.view = view;
   document.querySelectorAll('.view').forEach((item) => item.classList.remove('active-view'));
   const activeViewEl = document.querySelector(`#${view}-view`);
@@ -3272,7 +3274,11 @@ function showView(view) {
     renderHandoff();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
   }
-  if (view === 'agent') renderAgent();
+  if (view === 'ai-hub') {
+    renderAdminData();
+    renderAgent();
+    window.loadAiHubExtras?.();
+  }
   if (view === 'metrics') renderMetrics();
   if (view === 'vps') renderVpsMonitor();
   if (view === 'admin') renderAdminData();
@@ -5352,16 +5358,39 @@ async function loadApiIntegrationsPanel() {
     }
   }
 
-  $('#overview-providers-toggle')?.addEventListener('click', async () => {
-    const mgr = $('#overview-providers-manager');
-    if (!mgr) return;
-    mgr.classList.toggle('hidden');
-    if (!mgr.classList.contains('hidden')) await loadCustomProvidersInline();
+  window.loadAiHubExtras = async () => {
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.admin) {
+      await Promise.allSettled([
+        loadCustomProvidersInline(),
+        loadApiSettingsPanel()
+      ]);
+    }
+  };
+
+  $('#overview-providers-toggle')?.addEventListener('click', () => {
+    showView('ai-hub');
   });
 
   $('#overview-go-api-settings')?.addEventListener('click', () => {
-    showView('runtime');
+    showView('ai-hub');
     setTimeout(() => document.getElementById('api-settings-panel')?.scrollIntoView({ behavior: 'smooth' }), 150);
+  });
+
+  $('#admin-go-ai-hub')?.addEventListener('click', () => {
+    showView('ai-hub');
+  });
+
+  $('#ai-hub-save-draft')?.addEventListener('click', async () => {
+    try {
+      await saveAdminDraft?.();
+      setRuntimeFeedback('#ai-hub-feedback', 'Rascunho do Motor de IA salvo! Clique em "Publicar Motor IA" para ativar no atendimento.');
+    } catch (err) {
+      setRuntimeFeedback('#ai-hub-feedback', `Erro ao salvar rascunho: ${err.message}`, true);
+    }
+  });
+
+  $('#ai-hub-publish')?.addEventListener('click', () => {
+    document.getElementById('admin-publish')?.click();
   });
 
   $('#custom-provider-form')?.addEventListener('submit', async (e) => {
