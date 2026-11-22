@@ -2195,6 +2195,8 @@ button.danger:hover:not(:disabled) {
 }
 
 .contact-avatar {
+  position: relative;
+  overflow: hidden;
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -2208,6 +2210,15 @@ button.danger:hover:not(:disabled) {
   font-size: 11.5px;
   flex-shrink: 0;
   transition: background 160ms var(--ease-spring), color 160ms var(--ease-spring);
+}
+.contact-avatar .avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
 }
 .conversation.selected .contact-avatar {
   background: #3a3b42;

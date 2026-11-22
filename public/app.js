@@ -1269,6 +1269,68 @@ function exportConversationTranscript(session) {
   showToast({ title: 'Transcrição Exportada', message: 'O arquivo .txt da conversa foi baixado.', type: 'success' });
 }
 
+const avatarCache = new Map();
+const avatarInFlight = new Set();
+
+function isAvatarEligiblePhone(phone = '') {
+  const p = String(phone || '').trim();
+  return Boolean(p && p !== 'owner_self' && !/^[a-z0-9_]+_self$/i.test(p) && !p.startsWith('sim:'));
+}
+
+function applyAvatarToElements(phone, url) {
+  if (!url) return;
+  document.querySelectorAll(`[data-avatar-phone="${CSS.escape(phone)}"]`).forEach((el) => {
+    if (!el.querySelector('img.avatar-img')) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.alt = '';
+      img.src = url;
+      img.onerror = () => img.remove();
+      el.appendChild(img);
+    }
+  });
+}
+
+async function ensureContactAvatar(phone) {
+  if (!isAvatarEligiblePhone(phone)) return;
+  if (avatarCache.has(phone)) {
+    const cached = avatarCache.get(phone);
+    if (cached) applyAvatarToElements(phone, cached);
+    return;
+  }
+  if (avatarInFlight.has(phone)) return;
+  avatarInFlight.add(phone);
+  try {
+    const headers = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const res = await fetch(`/api/dashboard/avatar?phone=${encodeURIComponent(phone)}`, { headers });
+    if (res.status === 200) {
+      const blob = await res.blob();
+      if (blob && blob.size > 0 && blob.type.startsWith('image/')) {
+        const url = URL.createObjectURL(blob);
+        avatarCache.set(phone, url);
+        applyAvatarToElements(phone, url);
+        return;
+      }
+    }
+    avatarCache.set(phone, null);
+  } catch {
+    avatarCache.set(phone, null);
+  } finally {
+    avatarInFlight.delete(phone);
+  }
+}
+
+function avatarHtml(phone, fallbackName) {
+  const init = esc(initials(fallbackName));
+  if (!isAvatarEligiblePhone(phone)) {
+    return `<div class="contact-avatar">${init}</div>`;
+  }
+  const cached = avatarCache.get(phone);
+  const imgTag = cached ? `<img class="avatar-img" src="${cached}" alt="" onerror="this.remove()" />` : '';
+  return `<div class="contact-avatar" data-avatar-phone="${esc(phone)}">${init}${imgTag}</div>`;
+}
+
 function renderList() {
   const query = ($('#search')?.value || '').toLowerCase();
   const filterMode = state.inboxFilter || 'all';
@@ -1329,7 +1391,7 @@ function renderList() {
       const originTag = item.origin === 'simulation' ? '<span class="ops-inline-sep">· Simulador</span>' : '';
 
       return `<div class="conversation ${isSelected}" data-phone="${esc(item.phone)}">
-        <div class="contact-avatar">${esc(initials(titleName))}</div>
+        ${avatarHtml(item.phone, titleName)}
         <div class="conversation-body">
           <div class="conversation-top"><strong title="${titleName}">${titleName}</strong><time>${timeLabel}</time></div>
           <div class="conversation-phone-tag">${phoneLabel}${originTag}</div>
@@ -1341,6 +1403,7 @@ function renderList() {
     .join('');
 
   container.querySelectorAll('.conversation').forEach((el) => {
+    void ensureContactAvatar(el.dataset.phone);
     el.addEventListener('click', () => {
       state.selected = el.dataset.phone;
       clearReplyTo();
@@ -1425,7 +1488,16 @@ function renderChat({ forceRender = false } = {}) {
   const cleanNum = String(session.phone || '').replace(/\D/g, '');
   const fPhone = session.phoneFormatted || session.phone || '';
 
-  $('#chat-avatar').textContent = initials(dName);
+  const chatAvatarEl = $('#chat-avatar');
+  if (chatAvatarEl) {
+    chatAvatarEl.textContent = initials(dName);
+    if (isAvatarEligiblePhone(session.phone)) {
+      chatAvatarEl.setAttribute('data-avatar-phone', session.phone);
+      void ensureContactAvatar(session.phone);
+    } else {
+      chatAvatarEl.removeAttribute('data-avatar-phone');
+    }
+  }
   $('#chat-name').textContent = dName;
   const phoneLink = $('#chat-phone-link');
   if (phoneLink) phoneLink.href = cleanNum ? `https://wa.me/${cleanNum}` : '#';
@@ -1694,7 +1766,7 @@ function renderChat({ forceRender = false } = {}) {
     <div class="detail-block">
       <h3>Identificação</h3>
       <div class="detail-profile">
-        <div class="contact-avatar">${esc(initials(dName))}</div>
+        ${avatarHtml(session.phone, dName)}
         <div>
           <strong>${esc(dName)}</strong>
           <span style="display:block;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);">${esc(fPhone)}</span>

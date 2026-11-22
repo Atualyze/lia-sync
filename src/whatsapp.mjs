@@ -176,6 +176,30 @@ async function providerSend(url, payload, kind, jid) {
   return { result, id: result?.key?.id || result?.data?.key?.id || result?.message?.key?.id };
 }
 
+export async function getProfilePictureUrl(phoneOrJid) {
+  const raw = String(phoneOrJid || '').trim();
+  if (!raw) return null;
+  if (isBaileysActive() && typeof activeBaileysProvider?.getProfilePictureUrl === 'function') {
+    return activeBaileysProvider.getProfilePictureUrl(raw);
+  }
+  if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) return null;
+  try {
+    const number = raw.replace(/@.*$/, '').replace(/\D/g, '');
+    if (!number) return null;
+    const res = await fetch(`${config.evolutionUrl}/chat/fetchProfilePictureUrl/${encodeURIComponent(config.evolutionInstance)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: config.evolutionKey },
+      body: JSON.stringify({ number }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data?.profilePictureUrl || data?.wpiUrl || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMediaBase64(item) {
   if (isBaileysActive()) {
     return activeBaileysProvider.getMediaBase64(item);

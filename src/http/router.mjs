@@ -43,6 +43,7 @@ const DASHBOARD_ROLE_RULES = Object.freeze([
   { method: 'GET', path: '/api/dashboard/runtime/overview', role: 'operator' },
   { method: 'GET', path: '/api/dashboard/whatsapp/baileys', role: 'operator' },
   { method: 'GET', prefix: '/api/dashboard/prospecting', role: 'operator' },
+  { method: 'GET', path: '/api/dashboard/avatar', role: 'operator' },
   // Administração: usuários, auditoria, inventário do host e reset de métricas.
   { prefix: '/api/dashboard/users', role: 'admin' },
   { path: '/api/dashboard/audit', role: 'admin' },

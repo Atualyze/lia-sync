@@ -583,12 +583,41 @@ export class BaileysProvider {
         || m.imageMessage?.mimetype
         || m.videoMessage?.mimetype
         || m.documentMessage?.mimetype
+        || m.documentWithCaptionMessage?.message?.documentMessage?.mimetype
         || 'application/octet-stream';
       return { base64: Buffer.from(buffer).toString('base64'), mimetype };
     } catch (error) {
       this.logger.error?.('[baileys:media] Falha ao baixar mídia:', error?.message || error);
       return null;
     }
+  }
+
+  async getProfilePictureUrl(phoneOrJid) {
+    if (!this.sock || this.status !== 'connected') return null;
+    const jid = toRemoteJid(phoneOrJid);
+    if (!jid) return null;
+    if (!this.profilePicCache) this.profilePicCache = new Map();
+    const cached = this.profilePicCache.get(jid);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.url;
+    }
+    let url = null;
+    try {
+      url = await this.sock.profilePictureUrl(jid, 'image');
+    } catch {
+      try {
+        url = await this.sock.profilePictureUrl(jid, 'preview');
+      } catch {
+        url = null;
+      }
+    }
+    const ttlMs = url ? 6 * 60 * 60 * 1000 : 30 * 60 * 1000;
+    this.profilePicCache.set(jid, { url: url || null, expiresAt: Date.now() + ttlMs });
+    if (this.profilePicCache.size > 500) {
+      const oldest = this.profilePicCache.keys().next().value;
+      if (oldest) this.profilePicCache.delete(oldest);
+    }
+    return url || null;
   }
 
   async markChatAsRead({ jid, messageId, fromMe = false } = {}) {

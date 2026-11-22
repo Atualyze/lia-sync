@@ -46,19 +46,6 @@ export async function analyzeDocument({ base64, mimetype = 'application/pdf', ca
   }
 
   const geminiKeys = [...new Set([config.geminiFreeKey, config.geminiKey].filter(Boolean))];
-  if (!geminiKeys.length) {
-    if (extractedPdfText.length >= 20) {
-      return {
-        summary: extractedPdfText.slice(0, 420),
-        docType: 'documento_geral',
-        keyPoints: extractedPdfText.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 5),
-        extractedText: extractedPdfText,
-        extractionSource: 'pdftotext',
-        actionNeeded: 'Revisar texto extraído localmente via pdftotext.'
-      };
-    }
-    return null;
-  }
   const promptText = `Você é a ${assistant}, IA assistente executiva de ${owner}${identityInfo.companyName ? ` (${identityInfo.companyName})` : ''}.
 Analise este documento ou imagem em anexo com máxima fidelidade, precisão e síntese executiva.
 Identifique com precisão se é comprovante de pagamento (PIX, TED, boleto), contrato, briefing, proposta, planilha, certidão ou imagem informativa.
@@ -79,6 +66,17 @@ Retorne um JSON estrito no seguinte formato:
   "actionNeeded": "Ação recomendada para ${owner} ou resposta sugerida."
 }
 ${caption ? `Contexto/Pedido enviado junto ao arquivo: "${caption}"` : ''}`;
+
+  const parseDocJson = (raw) => {
+    const cleaned = String(raw || '').replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+    if (!cleaned) return null;
+    try { return JSON.parse(cleaned); } catch {}
+    const objMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try { return JSON.parse(objMatch[0]); } catch {}
+    }
+    return { summary: cleaned.slice(0, 1200), docType: 'documento_geral', keyPoints: [], actionNeeded: 'Revisar anexo' };
+  };
 
   for (const apiKey of geminiKeys) {
     for (const model of DOCUMENT_MODELS) {
@@ -114,20 +112,88 @@ ${caption ? `Contexto/Pedido enviado junto ao arquivo: "${caption}"` : ''}`;
       const data = await res.json();
       const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!raw) continue;
-      try {
-        return JSON.parse(raw);
-      } catch {
-        const cleaned = String(raw).replace(/```json|```/gi, '').trim();
-        try {
-          return JSON.parse(cleaned);
-        } catch {
-          return { summary: cleaned, docType: 'documento_geral', keyPoints: [], actionNeeded: 'Revisar anexo' };
-        }
-      }
+      const parsed = parseDocJson(raw);
+      if (parsed) return parsed;
       } catch (e) {
         console.error(`[ai] analyzeDocument erro (${model}):`, e.message);
       }
     }
+  }
+
+  // Fallback universal para imagens (fotos, prints, comprovantes) e PDFs extraídos via Groq / OpenRouter
+  const isImage = cleanMime.startsWith('image/');
+  const visionCandidates = [];
+  if (isImage && config.groqKey) {
+    visionCandidates.push({
+      name: 'groq-vision',
+      url: `${config.groqBaseUrl}/chat/completions`,
+      key: config.groqKey,
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct'
+    });
+  }
+  if (isImage && config.openrouterKey) {
+    visionCandidates.push({
+      name: 'openrouter-vision',
+      url: `${config.openrouterBaseUrl}/chat/completions`,
+      key: config.openrouterKey,
+      model: 'openrouter/free'
+    });
+  }
+  if (!isImage && extractedPdfText.length >= 20 && config.groqKey) {
+    visionCandidates.push({
+      name: 'groq-pdf-summary',
+      url: `${config.groqBaseUrl}/chat/completions`,
+      key: config.groqKey,
+      model: 'llama-3.3-70b-versatile'
+    });
+  }
+
+  for (const cand of visionCandidates) {
+    try {
+      const userContent = isImage
+        ? [
+            { type: 'text', text: promptText },
+            { type: 'image_url', image_url: { url: `data:${cleanMime};base64,${cleanB64}` } }
+          ]
+        : `${promptText}\n\nTexto extraído do PDF via pdftotext:\n"""\n${extractedPdfText.slice(0, 14000)}\n"""`;
+      const res = await fetch(cand.url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${cand.key}`
+        },
+        signal: AbortSignal.timeout(config.aiTimeoutMs || 30000),
+        body: JSON.stringify({
+          model: cand.model,
+          temperature: 0.1,
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: userContent }]
+        })
+      });
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => ({}));
+      const raw = data?.choices?.[0]?.message?.content;
+      const parsed = parseDocJson(raw);
+      if (parsed) {
+        if (extractedPdfText.length >= 20 && !parsed.extractedText) {
+          parsed.extractedText = extractedPdfText;
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.error(`[ai] analyzeDocument fallback erro (${cand.name}):`, e.message);
+    }
+  }
+
+  if (extractedPdfText.length >= 20) {
+    return {
+      summary: extractedPdfText.slice(0, 420),
+      docType: 'documento_geral',
+      keyPoints: extractedPdfText.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 5),
+      extractedText: extractedPdfText,
+      extractionSource: 'pdftotext',
+      actionNeeded: 'Revisar texto extraído localmente via pdftotext.'
+    };
   }
   return null;
 }

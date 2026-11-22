@@ -1,7 +1,7 @@
 import { json, readBody, formatPhoneNumber, formatActivityTime, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
-import { sendText, deleteChatForSync } from '../whatsapp.mjs';
+import { sendText, deleteChatForSync, getProfilePictureUrl } from '../whatsapp.mjs';
 import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus } from '../ai.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
@@ -21,6 +21,46 @@ function sameInstancePhone(a, b) {
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null }) {
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/avatar') {
+    const rawPhone = String(u.searchParams.get('phone') || '').trim();
+    if (!rawPhone || isOwnerKey(rawPhone) || rawPhone.startsWith('sim:') || rawPhone.length > 64) {
+      res.writeHead(204, { 'cache-control': 'private, max-age=300' });
+      return res.end();
+    }
+    try {
+      const picUrl = await getProfilePictureUrl(rawPhone);
+      if (!picUrl) {
+        res.writeHead(204, { 'cache-control': 'private, max-age=1800' });
+        return res.end();
+      }
+      const parsed = new URL(picUrl);
+      const allowedHost = parsed.protocol === 'https:' && /(?:^|\.)(?:whatsapp\.net|fbcdn\.net)$/i.test(parsed.hostname);
+      if (!allowedHost) {
+        res.writeHead(204, { 'cache-control': 'private, max-age=1800' });
+        return res.end();
+      }
+      const imgRes = await fetch(parsed.toString(), { signal: AbortSignal.timeout(8000) });
+      if (!imgRes.ok) {
+        res.writeHead(204, { 'cache-control': 'private, max-age=600' });
+        return res.end();
+      }
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      if (!buf.length || buf.length > 2 * 1024 * 1024) {
+        res.writeHead(204, { 'cache-control': 'private, max-age=600' });
+        return res.end();
+      }
+      const ctype = String(imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+      res.writeHead(200, {
+        'content-type': ctype.startsWith('image/') ? ctype : 'image/jpeg',
+        'cache-control': 'private, max-age=3600',
+        'content-length': String(buf.length)
+      });
+      return res.end(buf);
+    } catch {
+      res.writeHead(204, { 'cache-control': 'private, max-age=600' });
+      return res.end();
+    }
+  }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/state') {
     await store.refresh?.();
     const mode = u.searchParams.get('mode') || 'all';
