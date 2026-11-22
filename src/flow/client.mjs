@@ -46,15 +46,28 @@ function hasActivePriceContext(currentText = '', history = [], pendingPayment = 
   return priceTopic.test(normalizedClientText(previousClientMessage?.content || ''));
 }
 
-function paymentChoiceReply({ hasCheckout = false } = {}) {
-  return hasCheckout
-    ? 'Claro! Você prefere que eu envie *só a chave Pix*, gere o *código copia e cola* ou crie um *checkout com Pix e cartão*?'
-    : 'Claro! Você prefere que eu envie *só a chave Pix* ou gere o *código copia e cola*?';
-}
-
 function isCheckoutConfigured(botConfig = {}) {
+  if (!isToolEnabled('checkout_infinitepay', botConfig)) return false;
   const settings = botConfig?.tools?.settings?.checkout_infinitepay || {};
   return Boolean(String(settings.handle || settings.apiKey || process.env.INFINITEPAY_HANDLE || process.env.INFINITEPAY_API_KEY || '').trim());
+}
+
+function isPixConfigured(botConfig = {}) {
+  if (!isToolEnabled('gerar_cobranca_pix', botConfig)) return false;
+  return Boolean(resolveConfiguredPixKey(botConfig));
+}
+
+function paymentChoiceReply({ hasCheckout = false, hasPix = true } = {}) {
+  if (hasPix && hasCheckout) {
+    return 'Claro! Como você prefere pagar: *só a chave Pix*, *código Pix copia e cola* ou *link de checkout* (Pix e cartão)?';
+  }
+  if (hasPix) {
+    return 'Claro! Você prefere que eu envie *só a chave Pix* ou gere o *código Pix copia e cola*?';
+  }
+  if (hasCheckout) {
+    return 'Claro! Posso gerar o *link de checkout* (Pix ou cartão) para você. Qual é o valor do pagamento?';
+  }
+  return 'No momento não temos uma opção de pagamento automático ativa por aqui. Vou pedir para a equipe te enviar os dados de pagamento!';
 }
 
 function directPixKeyReply({ key, owner }) {
@@ -921,6 +934,15 @@ export async function handleClientMessage({
         if (selected === 'key') {
           s.pendingClientPayment = null;
           toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
+        } else if (selected === 'checkout' && !isCheckoutConfigured(botConfig)) {
+          const pixEnabled = isPixConfigured(botConfig);
+          const fallbackQ = pixEnabled
+            ? 'No momento o checkout não está ativo por aqui, mas posso te enviar *só a chave Pix* ou gerar o *código Pix copia e cola*. Qual você prefere?'
+            : paymentChoiceReply({ hasCheckout: false, hasPix: false });
+          pendingPayment.choice = null;
+          pendingPayment.lastQuestion = fallbackQ;
+          s.pendingClientPayment = pixEnabled ? pendingPayment : null;
+          toolReplyOverride = fallbackQ;
         } else if (selected === 'pix' || selected === 'checkout') {
           const amount = amountFromText(actionText) || (!pendingPaymentPaused ? Number(pendingPayment.args?.valor) : 0) || 0;
           if (amount <= 0) {
@@ -961,8 +983,18 @@ export async function handleClientMessage({
       if (isClient && toolCalls.length === 0 && isPixActionRequest(actionText) && !pendingPayment) {
         const choice = resolvePaymentChoice(actionText);
         const amount = amountFromText(actionText);
+        const checkoutEnabled = isCheckoutConfigured(botConfig);
+        const pixEnabled = isPixConfigured(botConfig);
         if (choice === 'key') {
-          toolReplyOverride = directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner });
+          toolReplyOverride = pixEnabled
+            ? directPixKeyReply({ key: resolveConfiguredPixKey(botConfig), owner })
+            : paymentChoiceReply({ hasCheckout: checkoutEnabled, hasPix: false });
+        } else if (choice === 'checkout' && !checkoutEnabled) {
+          const fallbackQ = pixEnabled
+            ? 'No momento o checkout não está ativo por aqui, mas posso te enviar *só a chave Pix* ou gerar o *código Pix copia e cola*. Qual você prefere?'
+            : paymentChoiceReply({ hasCheckout: false, hasPix: false });
+          s.pendingClientPayment = pixEnabled ? { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: fallbackQ } : null;
+          toolReplyOverride = fallbackQ;
         } else if (choice === 'pix' || choice === 'checkout') {
           if (choice === 'checkout' && amount <= 0) {
             s.pendingClientPayment = { args: {}, choice, createdAt: new Date(now()).toISOString(), lastQuestion: 'Para gerar o checkout, qual é o valor do pagamento?' };
@@ -981,8 +1013,11 @@ export async function handleClientMessage({
             toolCalls = syntheticToolCalls;
           }
         } else {
-          s.pendingClientPayment = { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
-          toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
+          const promptQ = paymentChoiceReply({ hasCheckout: checkoutEnabled, hasPix: pixEnabled });
+          s.pendingClientPayment = (checkoutEnabled || pixEnabled)
+            ? { args: { ...(amount > 0 ? { valor: amount } : {}) }, choice: !pixEnabled && checkoutEnabled ? 'checkout' : null, createdAt: new Date(now()).toISOString(), lastQuestion: promptQ }
+            : null;
+          toolReplyOverride = promptQ;
         }
       }
 
@@ -1038,8 +1073,9 @@ export async function handleClientMessage({
                 continue;
               }
               if (!pendingPayment && !directChoice) {
-                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) }) };
-                toolReplyOverride = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig) });
+                const promptQ = paymentChoiceReply({ hasCheckout: isCheckoutConfigured(botConfig), hasPix: isPixConfigured(botConfig) });
+                s.pendingClientPayment = { args: { ...(tc.args || {}) }, choice: null, createdAt: new Date(now()).toISOString(), lastQuestion: promptQ };
+                toolReplyOverride = promptQ;
                 continue;
               }
               if (!pendingPayment && directChoice === 'checkout' && !(Number(tc.args?.valor) > 0 || amountFromText(actionText) > 0)) {
@@ -1163,6 +1199,11 @@ export async function handleClientMessage({
                     ).catch(() => null);
                     if (pixFallback?.success) {
                       pixHandledByTool = true;
+                      const fbAmount = Number(pixFallback.valor) || 0;
+                      if (fbAmount > 0) {
+                        const fixed = fbAmount.toFixed(2);
+                        toolAuthorizedPrices.add(fixed).add(fixed.replace('.', ','));
+                      }
                       toolReplyOverride = formatPixSuccessReply(pixFallback, {
                         owner,
                         pixKey: configuredPixKey,
