@@ -615,7 +615,7 @@ export class CopilotTaskStore {
 
     const applyDecision = current => {
       if (!current) return null;
-      if (current.reconciledAt || current.reconciliationOutcome) throw new Error('copilot_task_already_reconciled');
+      if (current.reconciledAt && current.reconciliationOutcome !== 'still_uncertain') throw new Error('copilot_task_already_reconciled');
       const executionUncertain = current.status === 'uncertain';
       const notificationUncertain = ['succeeded', 'failed'].includes(current.status)
         && current.notificationStatus === 'uncertain';
