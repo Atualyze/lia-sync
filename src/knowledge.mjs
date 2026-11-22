@@ -105,6 +105,9 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
     'REGRA OBRIGATÓRIA DE DATA/HORA: Confie 100% nesta data e dia da semana acima — NUNCA invente ou troque o dia da semana. NUNCA exiba timestamps ISO (como 2026-11-22T15:00:00-03:00) para o usuário; escreva sempre em português natural (ex.: "segunda-feira, 23/11 às 15:00").',
     activeBh
       ? `EXPEDIENTE DA EMPRESA PARA AGENDAMENTOS: ${diasSemanaTexto(activeBh.weekdays)}, das ${activeBh.start} às ${activeBh.end}. ${rawBh?.enabled === false ? 'Você atende o chat 24/7 (inclusive agora), mas NUNCA ofereça nem agende reuniões/atendimentos para dias fechados ou fora desse expediente da empresa.' : 'NUNCA ofereça nem agende horários em dias fechados ou fora desse expediente.'}`
+      : '',
+    !copilotMode
+      ? 'REGRA DE PAGAMENTO/PIX: Quem recebe o pagamento é a empresa — NUNCA peça a chave Pix do cliente para cobrar ou criar pagamento/checkout.'
       : ''
   ].filter(Boolean).join('\n');
 

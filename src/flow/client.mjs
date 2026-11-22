@@ -918,6 +918,9 @@ export async function handleClientMessage({
       const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
+      if (pendingPayment?.choice === 'checkout' && !isCheckoutConfigured(botConfig)) {
+        pendingPayment.choice = null;
+      }
       const pendingAgenda = isClient && s.pendingClientAgenda && typeof s.pendingClientAgenda === 'object'
         ? s.pendingClientAgenda
         : null;
