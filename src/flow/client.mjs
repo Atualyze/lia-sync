@@ -775,6 +775,10 @@ export async function handleClientMessage({
             });
             await notify('⚠️ *[Alerta ' + assistant + '] Retentativas de IA esgotadas*\n\n• *Cliente:* ' + clientLabel + ' (' + s.phone + ')\n• *Mensagem pendente:* "' + clean.slice(0, 140) + '"\n\n_O cliente recebeu uma atualização neutra contextual. Verifique os provedores e a fila de retentativas._' + (diagSummary ? '\n\n' + diagSummary : ''));
           }
+          if (s.pendingAIRetry) {
+            store.markDirty();
+            return null;
+          }
           store.markDirty();
         }
       } else if (s.pendingAIRetry) {
