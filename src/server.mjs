@@ -581,7 +581,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     deliverReactivationReply,
     getActiveInstancePhone
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.deliverReactivationReply = deliverReactivationReply; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
@@ -642,8 +642,36 @@ if (isDirectRun) {
       activeInstancePhone: app.getActiveInstancePhone?.() || '',
       disableInactivityPings: true,
       enableLeadFollowUp: app.adminConfig.active.behavior?.leadFollowUpEnabled !== false,
-    followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
-    followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72
+      followUpMinHours: app.adminConfig.active.behavior?.leadFollowUpMinHours ?? 24,
+      followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72,
+      autoResumeOnOpen: app.adminConfig.active.business?.hoursConfig?.autoResumeOnOpen !== false,
+      onPostponedResume: async (session) => {
+        if (!session?.phone || session.human || session.archivedAt) return { continued: false };
+        const history = Array.isArray(session.history) ? session.history : [];
+        const lastUser = [...history].reverse().find(m => m?.role === 'user' && String(m.content || '').trim());
+        if (!lastUser) return { continued: false };
+        const lastMs = Date.parse(lastUser.createdAt || session.lastUserAt || '');
+        if (Number.isFinite(lastMs) && Date.now() - lastMs > 72 * 3600000) return { continued: false };
+        const text = String(lastUser.content || '').trim();
+        const run = async () => {
+          const live = store.get?.(session.phone) || session;
+          if (!live || live.human || live.archivedAt) return { continued: false };
+          const reply = await app.flow.process({
+            phone: live.phone,
+            text,
+            origin: 'reactivation_auto',
+            nonText: false,
+            mediaType: 'text',
+            rawItem: { jid: live.rawJid || live.phone },
+            pushName: live.clientName || '',
+            messageId: ''
+          });
+          if (!reply) return { continued: false };
+          await app.deliverReactivationReply?.(live.rawJid || live.phone, reply, live);
+          return { continued: true };
+        };
+        return typeof store.enqueue === 'function' ? await store.enqueue(session.phone, run) : await run();
+      }
       }).catch(e => console.error('[maintenance]', e.message));
       await app.liaRuntime?.wake({ reason: 'scheduler' }).catch(e => console.error('[lia-runtime]', e.message));
       return await app.prospecting?.tick({ stageOutboundDispatch: app.stageAutomatedOutbound });

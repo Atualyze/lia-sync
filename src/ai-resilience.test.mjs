@@ -15,6 +15,7 @@ import { config } from './config.mjs';
 import { opened, failures } from './ai/state.mjs';
 import { toolGerenciarAgendaGoogle, computeSuggestedSlots } from './tools/gerenciar_agenda_google.mjs';
 import { filterReply } from './safety.mjs';
+import { processMaintenance } from './maintenance.mjs';
 
 test('getModelCapabilities e learnModelCapability aprendem capacidades em runtime', () => {
   clearModelCapabilities();
@@ -222,4 +223,33 @@ test('business.hoursConfig.restrictScheduling permite Lia 24/7 com agenda restri
     { botConfig: cfgOpen }
   );
   assert.notEqual(sunOpen.error, 'outside_business_hours');
+});
+
+test('processMaintenance executa onPostponedResume na abertura do expediente quando autoResumeOnOpen=true', async () => {
+  const resumed = [];
+  const notices = [];
+  const store = {
+    sessions: {
+      '5588921694598': {
+        phone: '5588921694598',
+        clientName: 'Atualyze',
+        human: false,
+        pendingTurnPostponedUntil: '2026-11-23T11:00:00.000Z',
+        history: [{ role: 'user', content: 'Quero agendar amanhã', createdAt: '2026-11-22T16:00:00.000Z' }]
+      }
+    },
+    markDirty() {}
+  };
+  await processMaintenance({
+    store,
+    now: () => Date.parse('2026-11-23T11:01:00.000Z'),
+    notify: async (msg) => { notices.push(msg); },
+    autoResumeOnOpen: true,
+    onPostponedResume: async (sess) => { resumed.push(sess.phone); return { continued: true }; },
+    disableInactivityPings: true,
+    enableLeadFollowUp: false
+  });
+  assert.deepEqual(resumed, ['5588921694598']);
+  assert.equal(store.sessions['5588921694598'].pendingTurnPostponedUntil, null);
+  assert.ok(notices.some(n => n.includes('Retomada Automática')));
 });

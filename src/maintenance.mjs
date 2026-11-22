@@ -28,6 +28,8 @@ export async function processMaintenance({
   enableLeadFollowUp = true,
   followUpMinHours = 24,
   followUpMaxHours = 72,
+  autoResumeOnOpen = true,
+  onPostponedResume = null,
   identity = {},
   logger = console
 }) {
@@ -84,10 +86,23 @@ export async function processMaintenance({
         session.pendingTurnPostponedAt = null;
         store.markDirty();
 
+        const clientName = (session.clientName || session.contactName || '').trim();
+        const cleanNum = String(session.phone).replace(/@.*$/, '').replace(/\D/g, '');
+        let autoResumed = false;
+        if (autoResumeOnOpen && typeof onPostponedResume === 'function') {
+          try {
+            const res = await onPostponedResume(session);
+            autoResumed = Boolean(res?.continued);
+          } catch (e) {
+            logger.error?.('[maintenance] Erro na retomada automática na abertura do expediente:', e.message);
+          }
+        }
         try {
-          const clientName = (session.clientName || session.contactName || '').trim();
-          const cleanNum = String(session.phone).replace(/@.*$/, '').replace(/\D/g, '');
-          await notify?.(`🌅 *Janela de Atendimento Iniciada!*\n\n*${clientName || 'Contato'}* (${cleanNum}) enviou mensagem fora do expediente e aguarda retorno.\n📱 https://wa.me/${cleanNum}`);
+          if (autoResumed) {
+            await notify?.(`🌅 *Expediente Iniciado — Retomada Automática!*\n\nJá retomei e respondi *${clientName || 'Contato'}* (${cleanNum}) sobre a mensagem deixada fora do expediente.`);
+          } else {
+            await notify?.(`🌅 *Janela de Atendimento Iniciada!*\n\n*${clientName || 'Contato'}* (${cleanNum}) enviou mensagem fora do expediente e aguarda retorno.\n📱 https://wa.me/${cleanNum}`);
+          }
         } catch (e) {
           logger.error?.('[maintenance] Erro ao notificar reabertura de expediente:', e.message);
         }
