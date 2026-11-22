@@ -1828,8 +1828,8 @@
           <section class="panel ops-section" id="tools-google-api-panel" data-role="admin">
             <div class="panel-head">
               <div>
-                <strong>Google Workspace (Conectar Conta Google — Estilo n8n)</strong>
-                <span>Conecte sua conta Google com 1 clique e escolha exatamente o que a Lia pode acessar</span>
+                <strong>Google Workspace (Fonte Única de Conexão &amp; Conteúdo)</strong>
+                <span>Conecte sua conta Google como no n8n, escolha as permissões e selecione sua Agenda, Pasta do Drive e Planilha diretamente da conta</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <span id="google-oauth-badge" class="badge-mini">Verificando…</span>
@@ -1839,9 +1839,10 @@
             </div>
             <div id="tools-google-api-feedback" class="admin-feedback hidden" role="status"></div>
 
+            <!-- PASSO 1: PERMISSÕES & CONEXÃO -->
             <div style="margin:10px 0;padding:12px;border-radius:10px;border:1px solid var(--border,rgba(255,255,255,.1));background:rgba(255,255,255,.02)">
-              <div style="font-size:12px;font-weight:600;margin-bottom:8px">Escolha o que a Lia terá permissão de acessar:</div>
-              <div id="google-oauth-scopes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:8px">1. Escolha o que a Lia poderá acessar na sua conta Google:</div>
+              <div id="google-oauth-scopes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:10px">
                 <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="calendar" checked><span><strong>Google Agenda</strong> (livres, sugerir, eventos)</span></label>
                 <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="drive" checked><span><strong>Google Drive</strong> (buscar e enviar PDFs)</span></label>
                 <label class="toggle-field"><input type="checkbox" class="google-scope-cb" value="docs" checked><span><strong>Google Docs</strong> (ler e editar docs)</span></label>
@@ -1855,10 +1856,36 @@
               </div>
             </div>
 
-            <details id="google-oauth-advanced" open style="margin-top:8px">
+            <!-- PASSO 2: SELEÇÃO DE CONTEÚDO REAL DA CONTA CONECTADA -->
+            <div id="google-resources-picker" style="margin:10px 0;padding:12px;border-radius:10px;border:1px solid var(--border,rgba(255,255,255,.1));background:rgba(255,255,255,.02)">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                <div style="font-size:12px;font-weight:600">2. Selecione o conteúdo padrão da sua conta Google (vale para todas as ferramentas abaixo):</div>
+                <div style="display:flex;gap:6px">
+                  <button type="button" class="btn-secondary btn-sm" id="google-resources-refresh">↻ Atualizar Listas</button>
+                  <button type="button" class="btn-primary btn-sm" id="google-resources-save">Salvar Seleção</button>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+                <label class="field">
+                  <span style="font-size:12px">📅 Agenda Padrão (Google Calendar)</span>
+                  <select id="google-pick-calendar" style="width:100%"><option value="primary">Agenda Principal (primary)</option></select>
+                </label>
+                <label class="field">
+                  <span style="font-size:12px">📁 Pasta Padrão (Google Drive)</span>
+                  <select id="google-pick-folder" style="width:100%"><option value="">Todo o Meu Drive (sem restrição)</option></select>
+                </label>
+                <label class="field">
+                  <span style="font-size:12px">📊 Planilha Padrão (Google Sheets)</span>
+                  <select id="google-pick-sheet" style="width:100%"><option value="">Nenhuma planilha padrão</option></select>
+                </label>
+              </div>
+            </div>
+
+            <!-- CONFIGURAÇÃO INICIAL OAUTH (CLIENT ID / SECRET) E SERVICE ACCOUNT OPCIONAL -->
+            <details id="google-oauth-advanced" style="margin-top:8px">
               <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0;display:flex;justify-content:space-between;align-items:center">
-                <span>Client ID / Secret, Service Account &amp; IDs Padrão (Drive / Sheets / Calendar)</span>
-                <button type="button" class="btn-secondary btn-sm" id="tools-google-api-save">Salvar Campos Google</button>
+                <span>Configuração do App Google OAuth (Client ID / Secret) ou Service Account</span>
+                <button type="button" class="btn-secondary btn-sm" id="tools-google-api-save">Salvar Credenciais</button>
               </summary>
               <div id="tools-google-api-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding-top:8px">
                 <p class="muted">Carregando credenciais Google…</p>

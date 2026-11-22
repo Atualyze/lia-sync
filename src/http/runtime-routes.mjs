@@ -2,7 +2,7 @@ import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
 import { opened, failures } from '../ai/state.mjs';
 import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
-import { GOOGLE_OAUTH_SCOPE_CATALOG, buildGoogleOAuthStart } from '../tools/google_oauth.mjs';
+import { GOOGLE_OAUTH_SCOPE_CATALOG, buildGoogleOAuthStart, fetchGoogleWorkspaceResources } from '../tools/google_oauth.mjs';
 import { memoryStore, PARA_CATEGORIES } from '../core/memory.mjs';
 import { config } from '../config.mjs';
 
@@ -55,6 +55,14 @@ export async function handleRuntimeDashboardRoutes({
         redirectUri: defaultRedirectUri,
         scopes: Object.values(GOOGLE_OAUTH_SCOPE_CATALOG)
       });
+    }
+    if (req.method === 'GET' && pathname === '/api/dashboard/oauth/google/resources') {
+      try {
+        const resources = await fetchGoogleWorkspaceResources();
+        return json(res, 200, resources);
+      } catch (error) {
+        return json(res, 200, { connected: false, calendars: [], folders: [], spreadsheets: [], error: error?.message || 'google_resources_failed' });
+      }
     }
     if (req.method === 'POST' && pathname === '/api/dashboard/oauth/google/start') {
       let body = {};

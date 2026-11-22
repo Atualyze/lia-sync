@@ -33,16 +33,6 @@ export const TOOL_SETTINGS_SCHEMA = {
     { key: 'apiKey', label: 'API Key (opcional)', type: 'password', placeholder: 'Chave para opções avançadas do Checkout' },
     { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://liasync.atualyze.com.br' },
     { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' }
-  ],
-  consultar_planilha_google: [
-    { key: 'defaultSpreadsheetId', label: 'ID da Planilha Padrão', type: 'text', placeholder: 'ID da URL do Google Sheets' },
-    { key: 'defaultRange', label: 'Intervalo Padrão', type: 'text', placeholder: 'Ex.: A1:Z100' }
-  ],
-  gerenciar_drive_google: [
-    { key: 'defaultFolderId', label: 'ID da Pasta Padrão', type: 'text', placeholder: 'ID da pasta no Google Drive' }
-  ],
-  gerenciar_agenda_google: [
-    { key: 'calendarId', label: 'ID da Agenda', type: 'text', placeholder: 'primary ou e-mail da agenda' }
   ]
 };
 

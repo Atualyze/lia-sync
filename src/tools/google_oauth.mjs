@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { config } from '../config.mjs';
+import { resolveGoogleAccessToken } from './google_auth.mjs';
+import { createGoogleHttp } from './google_http.mjs';
 
 export const GOOGLE_OAUTH_SCOPE_CATALOG = Object.freeze({
   calendar: {
@@ -161,5 +163,74 @@ export async function exchangeGoogleOAuthCode({
     refreshToken: data.refresh_token || '',
     scope: String(data.scope || ''),
     email
+  };
+}
+
+/**
+ * Busca recursos reais da conta Google conectada (agendas, pastas do Drive e planilhas)
+ * para preencher os seletores visuais do painel sem o usuário precisar copiar IDs manualmente.
+ */
+export async function fetchGoogleWorkspaceResources({ fetchImpl = globalThis.fetch } = {}) {
+  const token = await resolveGoogleAccessToken({
+    scopes: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/drive.readonly'
+    ]
+  });
+  if (!token) {
+    return { connected: false, calendars: [], folders: [], spreadsheets: [] };
+  }
+  const http = createGoogleHttp({ accessToken: token, fetchImpl, timeoutMs: 12_000 });
+  const [calRes, folderRes, sheetRes] = await Promise.allSettled([
+    http.send({
+      method: 'GET',
+      host: 'www.googleapis.com',
+      path: '/calendar/v3/users/me/calendarList',
+      query: { maxResults: 30 }
+    }),
+    http.send({
+      method: 'GET',
+      host: 'www.googleapis.com',
+      path: '/drive/v3/files',
+      query: {
+        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        pageSize: 30,
+        orderBy: 'modifiedTime desc',
+        fields: 'files(id,name)'
+      }
+    }),
+    http.send({
+      method: 'GET',
+      host: 'www.googleapis.com',
+      path: '/drive/v3/files',
+      query: {
+        q: "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
+        pageSize: 30,
+        orderBy: 'modifiedTime desc',
+        fields: 'files(id,name)'
+      }
+    })
+  ]);
+
+  const calendars = calRes.status === 'fulfilled' && Array.isArray(calRes.value?.items)
+    ? calRes.value.items.map(c => ({ id: c.id, name: c.summary || c.id, primary: Boolean(c.primary) }))
+    : [];
+  const folders = folderRes.status === 'fulfilled' && Array.isArray(folderRes.value?.files)
+    ? folderRes.value.files.map(f => ({ id: f.id, name: f.name || f.id }))
+    : [];
+  const spreadsheets = sheetRes.status === 'fulfilled' && Array.isArray(sheetRes.value?.files)
+    ? sheetRes.value.files.map(f => ({ id: f.id, name: f.name || f.id }))
+    : [];
+
+  return {
+    connected: true,
+    calendars,
+    folders,
+    spreadsheets,
+    selected: {
+      googleCalendarId: config.googleCalendarId || process.env.GOOGLE_CALENDAR_ID || 'primary',
+      googleDriveFolderId: config.googleDriveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '',
+      googleSheetsDefaultId: config.googleSheetsDefaultId || process.env.GOOGLE_SHEETS_DEFAULT_ID || ''
+    }
   };
 }

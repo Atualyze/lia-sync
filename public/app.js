@@ -5192,7 +5192,10 @@ async function loadApiIntegrationsPanel() {
         aiGrid.innerHTML = aiItems.length ? renderApiSettingsCards(aiItems) : '<p class="muted">Nenhum provedor de IA listado.</p>';
       }
       if (googleGrid) {
-        const googleItems = items.filter(i => i.group === 'google');
+        // Mostra apenas credenciais de autenticação (Client ID/Secret + Service Account);
+        // os IDs de Agenda/Pasta/Planilha agora ficam nos seletores visuais (Passo 2) sem duplicação!
+        const authOnlyKeys = new Set(['googleClientId', 'googleClientSecret', 'googleServiceAccountEmail', 'googleServiceAccountPrivateKey']);
+        const googleItems = items.filter(i => i.group === 'google' && authOnlyKeys.has(i.key));
         googleGrid.innerHTML = googleItems.length ? renderApiSettingsCards(googleItems) : '<p class="muted">Nenhuma credencial Google listada.</p>';
       }
       if (intGrid) {
@@ -5209,6 +5212,7 @@ async function loadApiIntegrationsPanel() {
   window.loadApiSettingsGroup = async () => {
     await loadApiSettingsPanel();
     await loadGoogleOAuthStatus();
+    await loadGoogleWorkspaceResourcesPicker();
   };
 
   $('#runtime-refresh-btn')?.addEventListener('click', () => renderRuntimeView());
@@ -5358,6 +5362,58 @@ async function loadApiIntegrationsPanel() {
     }
   }
 
+  async function loadGoogleWorkspaceResourcesPicker() {
+    if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) return;
+    const calSel = $('#google-pick-calendar');
+    const folderSel = $('#google-pick-folder');
+    const sheetSel = $('#google-pick-sheet');
+    if (!calSel || !folderSel || !sheetSel) return;
+    try {
+      const data = await api('/api/dashboard/oauth/google/resources');
+      if (!data?.connected) {
+        calSel.innerHTML = '<option value="primary">Conecte sua conta Google acima para listar agendas</option>';
+        folderSel.innerHTML = '<option value="">Conecte sua conta Google acima para listar pastas</option>';
+        sheetSel.innerHTML = '<option value="">Conecte sua conta Google acima para listar planilhas</option>';
+        return;
+      }
+      const selCal = data.selected?.googleCalendarId || 'primary';
+      const selFolder = data.selected?.googleDriveFolderId || '';
+      const selSheet = data.selected?.googleSheetsDefaultId || '';
+
+      const calOpts = [{ id: 'primary', name: 'Agenda Principal (primary)' }, ...(data.calendars || []).filter(c => c.id !== 'primary')];
+      if (selCal && !calOpts.some(c => c.id === selCal)) calOpts.push({ id: selCal, name: selCal });
+      calSel.innerHTML = calOpts.map(c => `<option value="${runtimeEscape(c.id)}" ${c.id === selCal ? 'selected' : ''}>${runtimeEscape(c.name)}${c.primary ? ' (Principal)' : ''}</option>`).join('');
+
+      const folderOpts = [{ id: '', name: 'Todo o Meu Drive (sem restrição)' }, ...(data.folders || [])];
+      if (selFolder && !folderOpts.some(f => f.id === selFolder)) folderOpts.push({ id: selFolder, name: `Pasta atual (${selFolder})` });
+      folderSel.innerHTML = folderOpts.map(f => `<option value="${runtimeEscape(f.id)}" ${f.id === selFolder ? 'selected' : ''}>${runtimeEscape(f.name)}</option>`).join('');
+
+      const sheetOpts = [{ id: '', name: 'Nenhuma planilha padrão' }, ...(data.spreadsheets || [])];
+      if (selSheet && !sheetOpts.some(s => s.id === selSheet)) sheetOpts.push({ id: selSheet, name: `Planilha atual (${selSheet})` });
+      sheetSel.innerHTML = sheetOpts.map(s => `<option value="${runtimeEscape(s.id)}" ${s.id === selSheet ? 'selected' : ''}>${runtimeEscape(s.name)}</option>`).join('');
+    } catch {}
+  }
+
+  $('#google-resources-refresh')?.addEventListener('click', async () => {
+    setRuntimeFeedback('#tools-google-api-feedback', 'Atualizando agendas, pastas e planilhas da sua conta Google…');
+    await loadGoogleWorkspaceResourcesPicker();
+    setRuntimeFeedback('#tools-google-api-feedback', 'Listas do Google Workspace atualizadas!');
+  });
+
+  $('#google-resources-save')?.addEventListener('click', async () => {
+    try {
+      const payload = {
+        googleCalendarId: $('#google-pick-calendar')?.value || 'primary',
+        googleDriveFolderId: $('#google-pick-folder')?.value || '__CLEAR__',
+        googleSheetsDefaultId: $('#google-pick-sheet')?.value || '__CLEAR__'
+      };
+      await api('/api/dashboard/api-settings', { method: 'PUT', body: JSON.stringify(payload) });
+      setRuntimeFeedback('#tools-google-api-feedback', '✅ Conteúdo padrão do Google Workspace salvo e aplicado em tempo real!');
+    } catch (err) {
+      setRuntimeFeedback('#tools-google-api-feedback', `Erro ao salvar seleção: ${err.message}`, true);
+    }
+  });
+
   async function loadGoogleOAuthStatus() {
     if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) return;
     const badge = $('#google-oauth-badge');
@@ -5438,6 +5494,7 @@ async function loadApiIntegrationsPanel() {
       setRuntimeFeedback('#tools-google-api-feedback', `✅ Google Workspace conectado${email}! Ferramentas Google prontas em tempo real.`);
       void loadGoogleOAuthStatus();
       void loadApiSettingsPanel();
+      void loadGoogleWorkspaceResourcesPicker();
       if (state.view === 'tools') renderTools();
     } else if (ev.data?.type === 'lia-google-oauth-error') {
       setRuntimeFeedback('#tools-google-api-feedback', `Falha na conexão Google: ${ev.data.error || 'erro desconhecido'}`, true);
