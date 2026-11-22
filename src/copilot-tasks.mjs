@@ -568,8 +568,8 @@ export class CopilotTaskStore {
     const max = Math.max(1, Math.min(100, Number(limit) || 50));
     if (this.remoteEnabled) {
       const [executionRows, notificationRows] = await Promise.all([
-        this.client.select('copilot_tasks', \`select=*&status=eq.uncertain&order=updated_at.desc&limit=\${max}\`),
-        this.client.select('copilot_tasks', \`select=*&status=in.(succeeded,failed)&notification_status=eq.uncertain&order=updated_at.desc&limit=\${max}\`)
+        this.client.select('copilot_tasks', 'select=*&status=eq.uncertain&order=updated_at.desc&limit=' + max),
+        this.client.select('copilot_tasks', 'select=*&status=in.(succeeded,failed)&notification_status=eq.uncertain&order=updated_at.desc&limit=' + max)
       ]);
       const merged = new Map();
       for (const row of [...(executionRows || []), ...(notificationRows || [])]) {
@@ -647,11 +647,14 @@ export class CopilotTaskStore {
     };
 
     if (this.remoteEnabled) {
-      const rows = await this.client.select('copilot_tasks', \`select=*&id=eq.\${encodeURIComponent(id)}&limit=1\`);
+      const rows = await this.client.select('copilot_tasks', 'select=*&id=eq.' + encodeURIComponent(id) + '&limit=1');
       const current = Array.isArray(rows) && rows[0] ? mapTask(rows[0]) : null;
       if (!current) return null;
       const next = applyDecision(current);
-      const compare = \`id=eq.\${encodeURIComponent(id)}&status=eq.\${encodeURIComponent(current.status)}&notification_status=eq.\${encodeURIComponent(current.notificationStatus)}&updated_at=eq.\${encodeURIComponent(current.updatedAt || '')}\`;
+      const compare = 'id=eq.' + encodeURIComponent(id)
+        + '&status=eq.' + encodeURIComponent(current.status)
+        + '&notification_status=eq.' + encodeURIComponent(current.notificationStatus)
+        + '&updated_at=eq.' + encodeURIComponent(current.updatedAt || '');
       const updated = await this.client.request('copilot_tasks', {
         method: 'PATCH',
         query: compare,

@@ -330,7 +330,7 @@ test('reconciliação de tarefas incertas é admin-only, auditada e nunca chama 
   assert.equal(list.status, 200);
   assert.equal(list.body.items[0].steps[0], 'gerenciar_drive_google');
   assert.equal(list.body.items[0].target, '55••••••88');
-  assert.equal('args' in list.body.items[0].steps[0], false);
+  assert.equal(typeof list.body.items[0].steps[0], 'string');
 
   const result = await invoke('POST', '/api/dashboard/runtime/tasks/' + taskId + '/reconcile', {
     decision: 'confirmed_succeeded',
