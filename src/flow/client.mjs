@@ -1006,25 +1006,14 @@ export async function handleClientMessage({
             s.human = true;
             s.handoffAt = new Date(now()).toISOString();
             s.handoffReason = 'Confirmação de valor/preço pendente com a equipe';
-            s.pendingAdminConsult = {
-              id: `consult-${Date.now().toString(36)}`,
-              phone: s.phone,
-              rawJid: rawItem?.jid || s.phone,
-              clientName: s.clientName || pushName || 'Cliente',
-              question: clean.slice(0, 400),
+            const consult = await createAdminConsultCommitment({
               reason: 'Confirmação de valor/preço antes de informar ao cliente',
-              requestedAt: new Date(now()).toISOString(),
-              status: 'pending'
-            };
-            store.markDirty();
-            await notify(buildAdminConsultNotice({
-              clientName: s.clientName || pushName || 'Cliente',
-              phone: s.phone,
-              question: clean,
-              reason: 'Confirmação de valor/preço antes de informar ao cliente',
-              assistant
-            }));
-            safeReplyText = faqPriceReply || 'Para informar o valor corretamente, vou confirmar essa informação com a equipe e te retorno aqui mesmo em instantes! Ainda não gerei nenhuma cobrança.';
+              title: 'Confirmar informação de preço com responsável',
+              category: 'financeiro'
+            });
+            safeReplyText = consult.commitmentId
+              ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
+              : 'Ainda não consigo confirmar o valor com segurança, então não vou informar um número sem validação. Nenhuma cobrança foi gerada.';
           } else {
             await triggerHandoff(s, {
               reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
