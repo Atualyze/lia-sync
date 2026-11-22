@@ -294,7 +294,9 @@ export async function handleClientMessage({
         } catch (error) {
           logger.warn?.('[admin-consult] não foi possível notificar o responsável:', error?.code || error?.name || 'admin_notify_failed');
         }
-        return { ...record, ownerNotified };
+        record.ownerNotified = ownerNotified;
+        store.markDirty();
+        return record;
       };
 
       // 2.1 TRATAMENTO DE ÁUDIO
@@ -1069,7 +1071,7 @@ export async function handleClientMessage({
               title: 'Confirmar informação de preço com responsável',
               category: 'financeiro'
             });
-            safeReplyText = consult.commitmentId
+            safeReplyText = consult.commitmentId && consult.ownerNotified
               ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
               : 'Ainda não consigo confirmar o valor com segurança, então não vou informar um número sem validação. Nenhuma cobrança foi gerada.';
           } else {
@@ -1619,7 +1621,7 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? (s.pendingAdminConsult?.commitmentId
+          ? (s.pendingAdminConsult?.commitmentId && s.pendingAdminConsult?.ownerNotified
             ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
             : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
@@ -1654,7 +1656,7 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? (s.pendingAdminConsult?.commitmentId
+          ? (s.pendingAdminConsult?.commitmentId && s.pendingAdminConsult?.ownerNotified
             ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
             : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
