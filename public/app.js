@@ -3096,10 +3096,16 @@ function render({ background = false } = {}) {
   if (!background) setTimeout(() => decorateTechnicalTerms(document.body), 60);
 }
 
+let refreshSeq = 0;
+let latestAppliedRefreshSeq = 0;
+
 async function refresh({ background = false } = {}) {
+  const reqSeq = ++refreshSeq;
   if (!background) setTopProgress(true);
   try {
     const data = await api(`/api/dashboard/state?mode=${encodeURIComponent(state.mode)}`);
+    if (reqSeq < latestAppliedRefreshSeq) return;
+    latestAppliedRefreshSeq = reqSeq;
     state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
     if (data.counts) state.sessionCounts = data.counts;
     const subtitle = $('#inbox-subtitle');
@@ -4218,7 +4224,8 @@ function startDashboard() {
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
       try {
         await refresh();
-        state.refreshTimer = setInterval(() => { if (!document.hidden) refresh({ background: true }).catch(() => {}); }, 5000);
+        if (state.refreshTimer) clearInterval(state.refreshTimer);
+        state.refreshTimer = setInterval(() => { if (!document.hidden) refresh({ background: true }).catch(() => {}); }, 2500);
       } catch (error) {
         $('#conversation-items').innerHTML = `<div class="detail-placeholder" style="padding:18px">Não foi possível carregar o dashboard.<br>${esc(error.message)}</div>`;
         showToast({ title: 'Erro ao Carregar Conversas', message: error.message, type: 'error' });
@@ -4245,9 +4252,10 @@ document.addEventListener('visibilitychange', () => {
     }
   } else if (!state.refreshTimer && state.initialized && (ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
     refresh({ background: true }).catch(() => {});
+    if (state.refreshTimer) clearInterval(state.refreshTimer);
     state.refreshTimer = setInterval(() => {
       if (!document.hidden) refresh({ background: true }).catch(() => {});
-    }, 5000);
+    }, 2500);
   }
 });
 

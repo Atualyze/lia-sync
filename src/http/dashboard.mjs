@@ -9,6 +9,7 @@ import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigid
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { readVpsMetrics } from '../vps-monitor.mjs';
 import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation } from './reactivation-notice.mjs';
+import { dedupeMessages } from '../supabase-runtime.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
@@ -40,7 +41,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
         const clientName = (s.clientName || s.contactName || s.pushName || (isCopilotSelf ? 'Copiloto Interno (Gestor)' : '')).trim();
         const displayName = clientName || phoneFormatted;
 
-        const history = Array.isArray(s.history) ? s.history : [];
+        const history = dedupeMessages(Array.isArray(s.history) ? s.history : []);
         const lastMsg = history.length > 0 ? history[history.length - 1] : null;
 
         let preview = 'Sem mensagens ainda';
@@ -50,9 +51,27 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           preview = prefix + (cleanContent.length > 80 ? cleanContent.slice(0, 80) + '…' : cleanContent);
         }
 
-        const lastActivityIso = lastMsg?.createdAt || s.lastUserAt || s.lastBotAt || s.updatedAt || s.createdAt || new Date().toISOString();
-        const lastActivityTime = new Date(lastActivityIso).getTime() || 0;
-        const time = formatActivityTime(lastActivityIso);
+        const tsCandidates = [
+          lastMsg?.createdAt,
+          s.lastUserAt,
+          s.lastBotAt,
+          s.updatedAt,
+          s.createdAt
+        ].filter(Boolean);
+        let bestTs = 0;
+        let lastActivityIso = '';
+        for (const candidate of tsCandidates) {
+          const parsed = Date.parse(candidate);
+          if (Number.isFinite(parsed) && parsed >= bestTs) {
+            bestTs = parsed;
+            lastActivityIso = new Date(parsed).toISOString();
+          }
+        }
+        if (!lastActivityIso) {
+          lastActivityIso = new Date(0).toISOString();
+        }
+        const lastActivityTime = bestTs;
+        const time = bestTs > 0 ? formatActivityTime(lastActivityIso) : '';
 
         return {
           ...s,
@@ -72,7 +91,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           history
         };
       })
-      .sort((a, b) => b.lastActivityTime - a.lastActivityTime);
+      .sort((a, b) => (b.lastActivityTime - a.lastActivityTime) || String(a.phone || '').localeCompare(String(b.phone || '')));
 
     return json(res, 200, {
       mode,

@@ -141,16 +141,61 @@ const externalIdFor = (key, _index, message) => {
   return `runtime:${key}:${tsPart}:${hash}`;
 };
 
-function dedupeMessages(messages = []) {
-  const out = [];
+function messageTimestampMs(m) {
+  const ts = Date.parse(m?.createdAt || m?.created_at || '');
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function latestSessionActivityMs(s) {
+  if (!s || typeof s !== 'object') return 0;
+  const hist = Array.isArray(s.history) ? s.history : [];
+  const lastHistMs = hist.reduce((max, m) => Math.max(max, messageTimestampMs(m)), 0);
+  const candidates = [
+    lastHistMs,
+    Date.parse(s.lastUserAt || ''),
+    Date.parse(s.lastBotAt || ''),
+    Date.parse(s.updatedAt || ''),
+    Date.parse(s.createdAt || '')
+  ];
+  return candidates.reduce((max, v) => (Number.isFinite(v) && v > max ? v : max), 0);
+}
+
+export function dedupeMessages(messages = []) {
+  const indexed = [];
   const seenIds = new Set();
-  for (const m of messages) {
+  for (let i = 0; i < messages.length; i += 1) {
+    const m = messages[i];
     if (!m || !m.content) continue;
-    if (m.id && seenIds.has(String(m.id))) continue;
-    if (m.id) seenIds.add(String(m.id));
-    out.push(m);
+    const idStr = m.id ? String(m.id) : '';
+    if (idStr && seenIds.has(idStr)) continue;
+    const normContent = String(m.content || '').replace(/\s+/g, ' ').trim();
+    if (!normContent) continue;
+    const ts = messageTimestampMs(m);
+    // Deduplica duplicatas sem ID (ou mesclagem local+remoto) com mesmo papel e conteúdo em janela de 15s
+    const dupIdx = indexed.findIndex(item => {
+      if (item.m.role !== m.role) return false;
+      if (item.normContent !== normContent) return false;
+      if (idStr && item.idStr && idStr !== item.idStr) return false;
+      if (ts && item.ts && Math.abs(ts - item.ts) > 15_000) return false;
+      return true;
+    });
+    if (dupIdx >= 0) {
+      // Prefere a versão que possui ID/timestamp mais completo
+      const prev = indexed[dupIdx];
+      if ((!prev.idStr && idStr) || (!prev.ts && ts)) {
+        if (idStr) seenIds.add(idStr);
+        indexed[dupIdx] = { m: { ...prev.m, ...m }, idStr: idStr || prev.idStr, normContent, ts: ts || prev.ts, order: prev.order };
+      }
+      continue;
+    }
+    if (idStr) seenIds.add(idStr);
+    indexed.push({ m, idStr, normContent, ts, order: i });
   }
-  return out;
+  indexed.sort((a, b) => {
+    if (a.ts && b.ts && a.ts !== b.ts) return a.ts - b.ts;
+    return a.order - b.order;
+  });
+  return indexed.map(item => item.m);
 }
 
 function rowToSession(row, messages = []) {
@@ -484,7 +529,9 @@ export class SupabaseSessionStore extends SessionStore {
       }
       const ids = rows.map(row => row.id).filter(Boolean);
       const grouped = new Map();
-      const CHUNK_SIZE = 50;
+      // Chunk de 15 conversas * 60 msgs = 900 <= limite padrão de 1000 linhas do PostgREST,
+      // evitando truncamento silencioso de mensagens de outras conversas no mesmo lote.
+      const CHUNK_SIZE = 15;
       for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
         const batch = await this.client.select(
@@ -500,11 +547,16 @@ export class SupabaseSessionStore extends SessionStore {
           return [];
         });
         if (!Array.isArray(batch)) continue;
-        for (const message of [...batch].reverse()) {
+        // batch vem em created_at.desc (mais recentes primeiro): coleta as 60 MAIS RECENTES
+        // por conversa e só depois ordena cronologicamente (antigas -> recentes).
+        for (const message of batch) {
           if (!grouped.has(message.conversation_id)) grouped.set(message.conversation_id, []);
           const arr = grouped.get(message.conversation_id);
           if (arr.length < 60) arr.push(message);
         }
+      }
+      for (const arr of grouped.values()) {
+        arr.reverse();
       }
       const remote = {};
       for (const row of rows) {
@@ -512,15 +564,22 @@ export class SupabaseSessionStore extends SessionStore {
         remote[key] = rowToSession(row, grouped.get(row.id) || []);
       }
       const local = { ...(this.sessions || {}) };
-      this.sessions = {};
+      const nextSessions = {};
       for (const [key, rSession] of Object.entries(remote)) {
         const lSession = local[key];
         if (lSession) {
-          lSession.history = dedupeMessages(lSession.history || []);
-          const lTime = new Date(lSession.lastUserAt || lSession.lastBotAt || lSession.updatedAt || 0).getTime();
-          const rTime = new Date(rSession.lastUserAt || rSession.lastBotAt || rSession.updatedAt || 0).getTime();
-          if (Array.isArray(lSession.history) && lSession.history.length > 0 && lTime >= rTime) {
-            rSession.history = lSession.history;
+          const lTime = latestSessionActivityMs(lSession);
+          const rTime = latestSessionActivityMs(rSession);
+          // Mescla + deduplica + ordena cronologicamente para nunca perder mensagens novas nem duplicar
+          const mergedHistory = dedupeMessages([
+            ...(Array.isArray(rSession.history) ? rSession.history : []),
+            ...(Array.isArray(lSession.history) ? lSession.history : [])
+          ]);
+          rSession.history = mergedHistory.slice(-60);
+          if (lTime > rTime) {
+            if (lSession.lastUserAt && Date.parse(lSession.lastUserAt) > Date.parse(rSession.lastUserAt || 0)) rSession.lastUserAt = lSession.lastUserAt;
+            if (lSession.lastBotAt && Date.parse(lSession.lastBotAt) > Date.parse(rSession.lastBotAt || 0)) rSession.lastBotAt = lSession.lastBotAt;
+            if (lSession.updatedAt && Date.parse(lSession.updatedAt) > Date.parse(rSession.updatedAt || 0)) rSession.updatedAt = lSession.updatedAt;
           }
           if (lSession.human !== undefined && (lTime >= rTime || lSession.humanSource === 'admin_command')) {
             rSession.human = lSession.human;
@@ -568,13 +627,15 @@ export class SupabaseSessionStore extends SessionStore {
           if (lSession.audioPreference) rSession.audioPreference = lSession.audioPreference;
           if (lSession.askedAudioPreference) rSession.askedAudioPreference = lSession.askedAudioPreference;
         }
-        this.sessions[key] = rSession;
+        nextSessions[key] = rSession;
       }
-      if (this.dirty) {
-        for (const [key, lSession] of Object.entries(local)) {
-          if (!this.sessions[key]) this.sessions[key] = lSession;
+      const recentCutoffMs = this.now() - 5 * 60_000;
+      for (const [key, lSession] of Object.entries(local)) {
+        if (!nextSessions[key] && (this.dirty || latestSessionActivityMs(lSession) >= recentCutoffMs)) {
+          nextSessions[key] = lSession;
         }
       }
+      this.sessions = nextSessions;
       const hasLocalOnly = Object.keys(local).some(key => !remote[key]);
       this.persistence = 'supabase';
       this.remoteError = null;
@@ -592,7 +653,7 @@ export class SupabaseSessionStore extends SessionStore {
 
   async refresh() {
     if (!this.client?.enabled || this.refreshing) return this.refreshing;
-    if (this.lastRefreshAt && this.now() - this.lastRefreshAt < 4000 && Object.keys(this.sessions || {}).length > 0) {
+    if (this.lastRefreshAt && this.now() - this.lastRefreshAt < 1500 && Object.keys(this.sessions || {}).length > 0) {
       return this.sessions;
     }
     this.refreshing = this.load({ isRefresh: true }).finally(() => {

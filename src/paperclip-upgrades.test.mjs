@@ -552,3 +552,17 @@ test('Package 5 - Rate-Limit Recovery (Retry-After) e Reações de Progresso no 
   });
   assert.deepEqual(reactions, ['⏳', '✅']);
 });
+
+test('Chat sync - dedupeMessages ordena cronologicamente e remove duplicatas sem ID em janela de 15s', async () => {
+  const { dedupeMessages } = await import('./supabase-runtime.mjs');
+  const out = dedupeMessages([
+    { role: 'assistant', content: 'Resposta 2', createdAt: '2026-11-22T12:00:10.000Z' },
+    { role: 'user', content: 'Bom dia', createdAt: '2026-11-22T12:00:00.000Z' },
+    { role: 'user', content: 'Bom dia', id: 'ext-1', createdAt: '2026-11-22T12:00:02.000Z' },
+    { role: 'assistant', content: 'Resposta 2', createdAt: '2026-11-22T12:00:11.000Z' }
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].content, 'Bom dia');
+  assert.equal(out[0].id, 'ext-1');
+  assert.equal(out[1].content, 'Resposta 2');
+});
