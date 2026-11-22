@@ -95,9 +95,9 @@ async function classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget
 
 /** Classificação secundária por regex, mantida como fallback quando a IA falha. */
 function classifyByRegex(cmd) {
-  const wantsHuman = /\b(eu\s+resolv|eu\s+mesm|deixa\s+comigo|mant[eé]m\s+no\s+humano|fica\s+no\s+humano|modo\s+humano|eu\s+atendo|vou\s+responder|assum[eo])\b/i.test(cmd);
-  const wantsClose = /\b(j[aá]\s+resolv|pode\s+encerrar|encerr[ae]|conclu[ií]|finaliz[ae]|j[aá]\s+atendi|tudo\s+resolvido)\b/i.test(cmd);
-  const wantsBotContinue = /\b(pode\s+(?:continuar|responder|seguir|assumir|dar\s+continuidade)|segue\s+(?:a[ií]|com)|responde\s+(?:ele|ela|o\s+cliente)|vai\s+l[aá]|sim\b|pode\s+sim)\b/i.test(cmd);
+  const wantsHuman = /\b(eu\s+resolv|eu\s+mesm|deixa\s+comigo|mant[eé]m\s+no\s+humano|fica\s+no\s+humano|modo\s+humano|eu\s+atendo|vou\s+responder|assum[eo]|^humano$)\b/i.test(cmd);
+  const wantsClose = /\b(j[aá]\s+resolv|pode\s+encerrar|encerr[ae]r?|conclu[ií]r?|finaliz[ae]r?|j[aá]\s+atendi|tudo\s+resolvido)\b/i.test(cmd);
+  const wantsBotContinue = /\b(pode\s+(?:continuar|responder|seguir|assumir|dar\s+continuidade)|segue\s+(?:a[ií]|com)|responde\s+(?:ele|ela|o\s+cliente)|vai\s+l[aá]|sim\b|pode\s+sim|continu[ae]r?|retom[ae]r?|prossig[ae]|seguir|pode\s+retomar)\b/i.test(cmd);
   if (wantsHuman) return 'HUMAN';
   if (wantsClose) return 'CLOSE';
   if (wantsBotContinue) return 'BOT_CONTINUE';
