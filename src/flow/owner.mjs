@@ -743,10 +743,64 @@ export async function handleOwnerSession({
                 return recordSelfTurn(`👍 Consulta pendente de *${targetName}* cancelada. Nenhuma mensagem foi enviada ao cliente.`);
               }
               if (consultAction.action === 'reply') {
+                const adminAuthorizedPixInConsult = /\b(?:pix|copia\s+e\s+cola|qr\s*code)\b/i.test(consultAction.text)
+                  && /\b(?:gerar|gera|gere|liberar|libera|liberado|enviar|envia|envie|mandar|manda|mande|pode|autoriz)\b/i.test(consultAction.text);
+                const consultPixAmountMatch = consultAction.text.match(/(?:r\$\s*)?(\d{1,5}(?:[.,]\d{1,2})?)/i);
+                const consultPixAmount = consultPixAmountMatch
+                  ? Number(consultPixAmountMatch[1].replace(',', '.'))
+                  : Number(targetSession.pendingClientPayment?.args?.valor || targetSession.pendingAdminDecision?.amount || 0);
+
+                if (adminAuthorizedPixInConsult && isToolEnabled('gerar_cobranca_pix', botConfig)) {
+                  const targetDest = consult.rawJid || targetSession.jid || targetSession.phone;
+                  const pixRes = await executeToolCall('gerar_cobranca_pix', {
+                    valor: Number.isFinite(consultPixAmount) && consultPixAmount > 0 ? consultPixAmount : 0,
+                    descricao: targetSession.pendingClientPayment?.args?.descricao || 'Pagamento via Pix',
+                    enviarWhatsApp: true
+                  }, {
+                    actor: 'owner',
+                    isOwner: true,
+                    phone: OWNER_SELF_KEY,
+                    targetPhone: targetDest,
+                    clientName: targetName,
+                    store,
+                    whatsapp,
+                    botConfig,
+                    identity,
+                    session: targetSession
+                  });
+                  if (pixRes?.success) {
+                    const valFmt = pixRes.valor ? `R$ ${Number(pixRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
+                    const showPage = botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false;
+                    const msgParts = [
+                      '💳 *Aqui está seu Pix para pagamento:*',
+                      `• *Valor:* ${valFmt}`,
+                      `• *Favorecido:* ${pixRes.favorecido || identity.companyName || owner}`,
+                      (showPage && pixRes.paymentUrl) ? `• *Link de pagamento:* ${pixRes.paymentUrl}` : ''
+                    ].filter(Boolean).join('\n\n');
+                    if (typeof whatsapp?.sendText === 'function') {
+                      await whatsapp.sendText(targetDest, formatOutgoingMessage(msgParts));
+                      if (pixRes.pixCopiaECola) {
+                        await whatsapp.sendText(targetDest, `\`\`\`${pixRes.pixCopiaECola}\`\`\``);
+                      }
+                    }
+                    targetSession.history ??= [];
+                    targetSession.history.push({ role: 'assistant', content: `${msgParts}\n\n${pixRes.pixCopiaECola || ''}`.trim(), createdAt: timestamp });
+                    targetSession.human = false;
+                    targetSession.lastBotAt = timestamp;
+                    targetSession.awaitingReply = true;
+                    targetSession.pendingAdminConsult = null;
+                    targetSession.pendingClientPayment = null;
+                    targetSession.updatedAt = timestamp;
+                    store.markDirty();
+                    await store.flush?.().catch(() => {});
+                    return recordSelfTurn(`✅ Pix real de *${valFmt}* gerado e enviado para *${targetName}* (QR Code + link + copia e cola)! A Lia continua o atendimento normalmente.`);
+                  }
+                }
+
                 let clientReply = '';
                 try {
                   const crafted = await ai?.askAI?.({
-                    system: `Você é a ${assistant}, assistente de atendimento. O cliente ${targetName} perguntou: "${consult.question}". O responsável (${owner}) acabou de te responder internamente com a seguinte orientação/informação: "${consultAction.text}".\n\nEscreva uma resposta natural, acolhedora e objetiva para enviar agora ao cliente no WhatsApp, continuando o atendimento normalmente. NÃO diga "a mando de ${owner}" e NÃO se reapresente. Retorne JSON: {"reply":"...","intent":"atendimento","red_flags":false,"handoff":false}.`,
+                    system: `Você é a ${assistant}, assistente de atendimento. O cliente ${targetName} perguntou: "${consult.question}". O responsável (${owner}) acabou de te responder internamente com a seguinte orientação/informação: "${consultAction.text}".\n\nEscreva uma resposta natural, acolhedora e objetiva para enviar agora ao cliente no WhatsApp, continuando o atendimento normalmente. NÃO diga "a mando de ${owner}", NÃO se reapresente e NUNCA diga "vou enviar o link/Pix/QR Code agora" ou "já está pronto" sem incluir o dado real. Retorne JSON: {"reply":"...","intent":"atendimento","red_flags":false,"handoff":false}.`,
                     history: (targetSession.history || []).slice(-6),
                     userText: consult.question,
                     botConfig,
