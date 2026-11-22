@@ -247,6 +247,17 @@ test('Package 2 - safety: remove links inventados/localhost e reescreve rotas co
   const filtered = filterReply('Veja em https://seu-dominio.com/falso ou https://docs.google.com/document/d/123');
   assert.doesNotMatch(filtered.text, /seu-dominio\.com/);
   assert.match(filtered.text, /docs\.google\.com/);
+
+  const tableReply = filterReply([
+    'Componentes:',
+    '| Componente | Status | Detalhes |',
+    '|---|---|---|',
+    '| WhatsApp | Online | Conectado |',
+    '| Supabase | Online | 200 |'
+  ].join('\n'), { isCopilot: true });
+  assert.doesNotMatch(tableReply.text, /\|---\|/);
+  assert.match(tableReply.text, /• \*WhatsApp:\* Online - Conectado/);
+  assert.match(tableReply.text, /• \*Supabase:\* Online - 200/);
 });
 
 test('Package 2 - copilot-tasks: recoverInterruptedOnStartup re-enfileira leitura e marca escrita como incerta', async () => {

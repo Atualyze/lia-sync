@@ -245,8 +245,40 @@ export function sanitizeInventedLinks(text = '', { ownOrigin = '' } = {}) {
   return { text: normalized, removedCount, rewrittenCount };
 }
 
+export function convertMarkdownTablesToBullets(text = '') {
+  const lines = String(text || '').split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const header = lines[i];
+    const sep = lines[i + 1];
+    if (
+      /^\s*\|.+\|\s*$/.test(header)
+      && typeof sep === 'string'
+      && /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(sep)
+    ) {
+      const headers = header.trim().replace(/^\||\|$/g, '').split('|').map(s => s.trim());
+      i += 2;
+      while (i < lines.length && /^\s*\|.+\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(s => s.trim());
+        const first = cells[0] || '';
+        const rest = cells.slice(1).filter(Boolean).join(' — ');
+        if (first || rest) {
+          const prefix = first ? `*${first}:*` : (headers[0] ? `*${headers[0]}:*` : '');
+          out.push(`• ${prefix}${rest ? ` ${rest}` : ''}`.trim());
+        }
+        i += 1;
+      }
+      continue;
+    }
+    out.push(header);
+    i += 1;
+  }
+  return out.join('\n');
+}
+
 export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot = false, maxLength, strictPrices = false, alreadyIntroduced = false, botName = 'Lia', ownOrigin = '' } = {}) {
-  let text = String(reply || '')
+  let text = convertMarkdownTablesToBullets(String(reply || ''))
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
     .replace(/\s*—\s*/g, ' - ')
