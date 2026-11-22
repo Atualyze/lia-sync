@@ -909,7 +909,7 @@ export async function handleClientMessage({
               reason: 'Confirmação de valor/preço antes de informar ao cliente',
               assistant
             }));
-            safeReplyText = faqPriceReply || 'Para informar o valor corretamente, já estou confirmando essa informação com a equipe e te retorno aqui mesmo em instantes! Ainda não gerei nenhuma cobrança.';
+            safeReplyText = faqPriceReply || 'Para informar o valor corretamente, vou confirmar essa informação com a equipe e te retorno aqui mesmo em instantes! Ainda não gerei nenhuma cobrança.';
           } else {
             await triggerHandoff(s, {
               reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
