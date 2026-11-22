@@ -268,6 +268,9 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
   assert.equal(fake.blocked, true);
   assert.ok(fake.violations.includes('pix_ficticio'));
 
+  const question = filterReply('Claro! Você prefere que eu envie *só a chave Pix* ou gere o *código Pix copia e cola*?');
+  assert.equal(question.blocked, false);
+
   const realPayload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
   const real = filterReply(`• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`, { allowedPrices: new Set(['10.00', '10,00']), strictPrices: true });
   assert.equal(real.blocked, false);

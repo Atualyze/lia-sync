@@ -1441,8 +1441,36 @@ export async function handleClientMessage({
         }
       }
 
+      let toolBlockNotified = false;
+      const notifyToolBlockToAdmin = async (violations = []) => {
+        if (toolBlockNotified || origin === 'simulation' || origin === 'preview') return;
+        toolBlockNotified = true;
+        const reason = `Resposta de ferramenta bloqueada pelo filtro (${violations.join(', ') || 'segurança'})`;
+        s.pendingAdminConsult = {
+          id: `consult-${Date.now().toString(36)}`,
+          phone: s.phone,
+          rawJid: rawItem?.jid || s.phone,
+          clientName: s.clientName || pushName || 'Cliente',
+          question: clean.slice(0, 400),
+          reason,
+          requestedAt: new Date(now()).toISOString(),
+          status: 'pending'
+        };
+        store.markDirty();
+        await notify(buildAdminConsultNotice({
+          clientName: s.clientName || pushName || 'Cliente',
+          phone: s.phone,
+          question: clean,
+          reason,
+          assistant
+        }));
+      };
+
       if (toolReplyOverride) {
         const toolFiltered = filterReply(toolReplyOverride, { allowedPrices: new Set([...(allowedPrices || []), ...toolAuthorizedPrices]), strictPrices: true });
+        if (toolFiltered.blocked) {
+          await notifyToolBlockToAdmin(toolFiltered.violations);
+        }
         finalReply = toolFiltered.blocked
           ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
           : toolFiltered.text;
@@ -1477,6 +1505,9 @@ export async function handleClientMessage({
       // Se a IA julgou pelo contexto que deve transferir ou direcionar o assunto para o responsável / empresa
       if (toolReplyOverride) {
         const toolFiltered = filterReply(toolReplyOverride, { allowedPrices: new Set([...(allowedPrices || []), ...toolAuthorizedPrices]), strictPrices: true });
+        if (toolFiltered.blocked) {
+          await notifyToolBlockToAdmin(toolFiltered.violations);
+        }
         finalReply = toolFiltered.blocked
           ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
           : toolFiltered.text;
