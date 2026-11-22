@@ -70,9 +70,16 @@ function paymentChoiceReply({ hasCheckout = false, hasPix = true } = {}) {
   return 'No momento não temos uma opção de pagamento automático ativa por aqui. Vou pedir para a equipe te enviar os dados de pagamento!';
 }
 
+function formatPixKeyForDisplay(key = '') {
+  const s = String(key || '').trim();
+  const brPhone = s.match(/^\+55(\d{10,11})$/);
+  return brPhone ? brPhone[1] : s;
+}
+
 function directPixKeyReply({ key, owner }) {
-  return key
-    ? '💳 *Chave Pix para pagamento:*' + '\n\n• *Chave:* `' + key + '`\n• *Favorecido:* ' + owner
+  const displayKey = formatPixKeyForDisplay(key);
+  return displayKey
+    ? '💳 *Chave Pix para pagamento:*' + '\n\n• *Chave:* `' + displayKey + '`\n• *Favorecido:* ' + owner
     : 'No momento a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.';
 }
 function resolveConfiguredPixKey(botConfig) {
@@ -89,12 +96,13 @@ function resolveConfiguredPixKey(botConfig) {
 
 function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false, includePaymentUrl = true } = {}) {
   const valorFmt = toolRes.valor ? 'R$ ' + Number(toolRes.valor).toFixed(2).replace('.', ',') : 'Valor livre';
-  const showKey = Boolean(pixKey && (includeKey || !includePaymentUrl));
+  const displayKey = formatPixKeyForDisplay(pixKey);
+  const showKey = Boolean(displayKey && (includeKey || !includePaymentUrl));
   return [
     '💳 *Aqui está seu Pix para pagamento:*',
     '• *Valor:* ' + valorFmt,
     '• *Favorecido:* ' + (toolRes.favorecido || owner),
-    showKey ? '• *Chave Pix:* `' + pixKey + '`' : '',
+    showKey ? '• *Chave Pix:* `' + displayKey + '`' : '',
     (includePaymentUrl && toolRes.paymentUrl) ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
     '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```'
   ].filter(Boolean).join('\n\n');
@@ -1234,7 +1242,7 @@ export async function handleClientMessage({
                         includePaymentUrl: botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false
                       });
                     } else {
-                      toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${configuredPixKey}\`\n• *Favorecido:* ${owner}`;
+                      toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${formatPixKeyForDisplay(configuredPixKey)}\`\n• *Favorecido:* ${owner}`;
                     }
                   } else {
                     toolReplyOverride = toolRes?.error === 'invalid_amount'
