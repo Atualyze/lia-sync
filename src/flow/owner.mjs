@@ -936,7 +936,7 @@ export async function handleOwnerSession({
               '💳 *Cobrança Pix autorizada e gerada pela equipe:*',
               `• *Valor:* R$ ${valueLabel}`,
               `• *Favorecido:* ${pixResult.favorecido || identity.companyName || owner}`,
-              pixResult.paymentUrl ? `• *Link de pagamento:* ${pixResult.paymentUrl}` : '',
+              (botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false && pixResult.paymentUrl) ? `• *Link de pagamento:* ${pixResult.paymentUrl}` : '',
               `• *Copia e Cola:*\n\`\`\`${pixResult.pixCopiaECola}\`\`\``,
               pixResult.qrCodeSent ? '_O QR Code também foi enviado._' : ''
             ].filter(Boolean).join('\n\n');
@@ -2329,7 +2329,7 @@ ${errMsg}`;
             `💳 *Cobrança Pix gerada!*`,
             `• *Valor:* ${valorFmt}`,
             `• *Favorecido:* ${r.favorecido || owner}`,
-            r.paymentUrl ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
+            (botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false && r.paymentUrl) ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
             `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
             r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
           ].filter(Boolean).join('\n\n');

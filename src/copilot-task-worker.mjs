@@ -29,16 +29,17 @@ function isToolResultSuccessful(name, result) {
   return verifyCopilotToolResult(name, result).state === 'verified';
 }
 
-function formatPixResult(result = {}) {
+function formatPixResult(result = {}, botConfig = {}) {
   const amount = Number(result.valor || 0);
   const amountLabel = amount > 0 ? `R$ ${amount.toFixed(2).replace('.', ',')}` : 'Valor livre';
+  const showPaymentPage = botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false;
   return [
     '💳 *Cobrança Pix criada com sucesso!*',
     '• *Status:* cobrança criada; isso não confirma o pagamento do pagador.',
     `• *Valor:* ${amountLabel}`,
     `• *Favorecido:* ${result.favorecido || 'não informado'}`,
     result.txid ? `• *Identificador:* \`${result.txid}\`` : '',
-    result.paymentUrl ? `• *Link de pagamento:* ${result.paymentUrl}` : '',
+    (showPaymentPage && result.paymentUrl) ? `• *Link de pagamento:* ${result.paymentUrl}` : '',
     result.pixCopiaECola ? `• *Copia e Cola:*\n\`\`\`\n${result.pixCopiaECola}\n\`\`\`` : ''
   ].filter(Boolean).join('\n\n');
 }
@@ -70,7 +71,7 @@ function fallbackSummary(steps = []) {
 }
 
 async function summarizeResults({ ai, botConfig, requestSummary, steps }) {
-  if (steps.length === 1 && steps[0].name === 'gerar_cobranca_pix') return formatPixResult(steps[0].result);
+  if (steps.length === 1 && steps[0].name === 'gerar_cobranca_pix') return formatPixResult(steps[0].result, botConfig);
   const payload = steps.map(item => ({
     tool: item.name,
     result: item.result

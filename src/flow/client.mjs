@@ -87,14 +87,15 @@ function resolveConfiguredPixKey(botConfig) {
   return normalizePixKey(configured, keyType);
 }
 
-function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false } = {}) {
+function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false, includePaymentUrl = true } = {}) {
   const valorFmt = toolRes.valor ? 'R$ ' + Number(toolRes.valor).toFixed(2).replace('.', ',') : 'Valor livre';
+  const showKey = Boolean(pixKey && (includeKey || !includePaymentUrl));
   return [
     '💳 *Aqui está seu Pix para pagamento:*',
     '• *Valor:* ' + valorFmt,
     '• *Favorecido:* ' + (toolRes.favorecido || owner),
-    (includeKey && pixKey) ? '• *Chave Pix:* `' + pixKey + '`' : '',
-    toolRes.paymentUrl ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
+    showKey ? '• *Chave Pix:* `' + pixKey + '`' : '',
+    (includePaymentUrl && toolRes.paymentUrl) ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
     '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```'
   ].filter(Boolean).join('\n\n');
 }
@@ -1157,7 +1158,8 @@ export async function handleClientMessage({
                   toolReplyOverride = formatPixSuccessReply(toolRes, {
                     owner,
                     pixKey: configuredPixKey,
-                    includeKey: !toolRes.valor || askedPixKeyOrFree
+                    includeKey: !toolRes.valor || askedPixKeyOrFree,
+                    includePaymentUrl: botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false
                   });
                 } else {
                   s.pendingClientPayment = null;
@@ -1228,7 +1230,8 @@ export async function handleClientMessage({
                       toolReplyOverride = formatPixSuccessReply(pixFallback, {
                         owner,
                         pixKey: configuredPixKey,
-                        includeKey: !pixFallback.valor || askedPixKeyOrFree
+                        includeKey: !pixFallback.valor || askedPixKeyOrFree,
+                        includePaymentUrl: botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false
                       });
                     } else {
                       toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${configuredPixKey}\`\n• *Favorecido:* ${owner}`;
