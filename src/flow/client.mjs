@@ -891,6 +891,9 @@ export async function handleClientMessage({
               s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
             );
           } else if (isPriceViolation && !filtered.violations.includes('clinica') && origin !== 'simulation' && origin !== 'preview') {
+            s.human = true;
+            s.handoffAt = new Date(now()).toISOString();
+            s.handoffReason = 'Confirmação de valor/preço pendente com a equipe';
             s.pendingAdminConsult = {
               id: `consult-${Date.now().toString(36)}`,
               phone: s.phone,
