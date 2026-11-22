@@ -32,6 +32,8 @@ export class CommitmentStore {
     if (!cleanTitle) throw new Error('commitment_title_required');
     const dueTs = Date.parse(dueAt || '');
     if (!Number.isFinite(dueTs)) throw new Error('commitment_due_at_required');
+    const currentTs = this.now();
+    if (dueTs <= currentTs || dueTs > currentTs + 90 * 24 * 60 * 60_000) throw new Error('commitment_due_at_out_of_range');
     const recipient = String(recipientType || 'owner').trim().toLowerCase();
     const owner = String(ownerType || 'owner').trim().toLowerCase();
     const kind = String(category || 'outro').trim().toLowerCase();

@@ -202,7 +202,6 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     },
     logger: console
   });
-  await liaRuntime.start();
   const liaAutonomyStore = new LiaAutonomyStore({
     client: store.client,
     filePath: path.join(path.dirname(config.dataFile), 'lia-autonomy.json'),
@@ -223,6 +222,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   await liaAutonomy.start();
+  await liaRuntime.start();
   const copilotTaskWorker = createCopilotTaskWorker({
     taskStore: copilotTaskStore,
     store,
