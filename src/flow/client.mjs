@@ -112,6 +112,7 @@ export async function handleClientMessage({
   allowClientResume, maxInputChars, notify, isOwnerSender,
   botConfig, identity, messages, owner, assistant, sectors = [],
   operationsStore = null,
+  liaRuntime = null,
   phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
 }) {
       const auditPhoneDigits = String(phone || '').replace(/\D/g, '');
