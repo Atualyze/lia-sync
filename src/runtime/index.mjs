@@ -33,6 +33,7 @@ export function createLiaRuntime({
   getBotConfig = () => ({}),
   getHumanPhone = () => '',
   notifyOwner = null,
+  notifyCommitmentRecipient = null,
   workingTimeoutMs = DEFAULT_WORKING_TIMEOUT_MS,
   logger = console,
   now = () => Date.now()
@@ -240,6 +241,11 @@ export function createLiaRuntime({
             title: commitment.title,
             due_at: commitment.due_at,
             goal_id: commitment.goal_id,
+            conversation_id: commitment.conversation_id || '',
+            recipient_type: commitment.recipient_type || 'owner',
+            recipient_phone: commitment.recipient_phone || '',
+            owner_type: commitment.owner_type || 'owner',
+            category: commitment.category || 'outro',
             metadata: commitment.metadata || {}
           }
         });
@@ -321,14 +327,49 @@ export function createLiaRuntime({
                 steps: [{ name: meta.actionTool, args: meta.actionArgs || {} }]
               });
               if (scheduledTask?.created) summary.tasksCreated += 1;
-              if (commitmentId) await commitments.fulfill(commitmentId).catch(() => {});
-            } else if (meta.notifyOwner && typeof notifyOwner === 'function') {
-              const label = evt.payload?.title || 'Compromisso agendado';
-              const subject = evt.subject && evt.subject !== 'owner' && evt.subject !== commitmentId
-                ? `\n• *Assunto/Contato:* ${evt.subject}`
-                : '';
-              await notifyOwner(`⏰ *Compromisso autônomo vencendo:*\n\n• *Tarefa:* ${label}${subject}`).catch(() => {});
-              if (commitmentId) await commitments.fulfill(commitmentId).catch(() => {});
+              // Enfileirar uma tarefa não cumpre a promessa. A tarefa deve
+              // realizar a transição para fulfilled quando concluir de fato.
+              if (commitmentId && !scheduledTask?.created) {
+                await commitments.markOverdue(commitmentId, 'scheduled_task_enqueue_failed').catch(() => {});
+              }
+            } else {
+              const commitment = {
+                ...evt.payload,
+                id: commitmentId,
+                title: evt.payload?.title || 'Compromisso agendado',
+                subject: evt.subject || '',
+                metadata: meta
+              };
+              let recipientResult = null;
+              if (evt.payload?.recipient_type === 'client' && typeof notifyCommitmentRecipient === 'function') {
+                recipientResult = await notifyCommitmentRecipient(commitment).catch(error => ({
+                  sent: false,
+                  reason: error?.code || error?.name || 'client_notification_failed'
+                }));
+              }
+              const clientWasNotified = recipientResult?.sent === true;
+              const mustNotifyOwner = evt.payload?.owner_type === 'owner'
+                || evt.payload?.recipient_type !== 'client'
+                || !clientWasNotified
+                || meta.notifyOwner === true;
+              if (mustNotifyOwner && typeof notifyOwner === 'function') {
+                const label = evt.payload?.title || 'Compromisso agendado';
+                const subject = evt.payload?.conversation_id || evt.subject;
+                const reason = recipientResult?.reason
+                  ? '\\n• *Motivo:* ' + String(recipientResult.reason).slice(0, 180)
+                  : '';
+                await notifyOwner(
+                  '⚠️ *Compromisso vencido — precisa de conferência*\\n\\n• *Tarefa:* ' + label
+                  + (subject ? '\\n• *Conversa/Contato:* ' + subject : '') + reason
+                  + '\\n\\nO compromisso continua rastreado até ser cumprido ou cancelado.'
+                ).catch(() => {});
+              }
+              if (commitmentId) {
+                await commitments.markOverdue(
+                  commitmentId,
+                  clientWasNotified ? 'deadline_elapsed_customer_followup_sent' : (recipientResult?.reason || 'deadline_elapsed_owner_notified')
+                ).catch(() => {});
+              }
             }
             // Se for rotina recorrente, agenda automaticamente a próxima ocorrência preservando metadata
             if (meta.recurrence && typeof meta.recurrence === 'object') {
@@ -340,6 +381,11 @@ export function createLiaRuntime({
                   subject: evt.subject || 'owner',
                   dueAt: nextDueAt,
                   goalId: evt.payload?.goal_id || null,
+                  conversationId: evt.payload?.conversation_id || '',
+                  recipientType: evt.payload?.recipient_type || 'owner',
+                  recipientPhone: evt.payload?.recipient_phone || '',
+                  ownerType: evt.payload?.owner_type || 'owner',
+                  category: evt.payload?.category || 'outro',
                   metadata: { ...meta }
                 }).catch(() => {});
               }
