@@ -48,6 +48,32 @@ const APPROVAL_KEYBOARD = Object.freeze({
   ]]
 });
 
+const PIX_APPROVAL_KEYBOARD = Object.freeze({
+  inline_keyboard: [[
+    { text: '💳 Gerar e enviar Pix', callback_data: 'pix:approve' },
+    { text: '👤 Assumir atendimento', callback_data: 'pix:assume' }
+  ]]
+});
+
+const CONSULT_ACTION_KEYBOARD = Object.freeze({
+  inline_keyboard: [[
+    { text: '👤 Assumir atendimento', callback_data: 'consult:takeover' },
+    { text: '❌ Ignorar', callback_data: 'consult:cancel' }
+  ]]
+});
+
+function inferNotificationKeyboard(text = '', { withApprovalButtons = false } = {}) {
+  if (withApprovalButtons) return APPROVAL_KEYBOARD;
+  const raw = String(text || '');
+  if (/pode gerar o pix|aprova[cç][aã]o.*pix|autoriza[cç][aã]o.*pix|gerar\s+e\s+enviar\s+o?\s*pix/i.test(raw)) {
+    return PIX_APPROVAL_KEYBOARD;
+  }
+  if (/Consulta da .*Atendimento em andamento|responda \*assumir\*.*\*cancelar\*/i.test(raw)) {
+    return CONSULT_ACTION_KEYBOARD;
+  }
+  return undefined;
+}
+
 export function parseAdminChatIds(raw = '') {
   return String(raw || '')
     .split(/[,\s;]+/)
@@ -454,9 +480,18 @@ export function createTelegramCopilot({
     const data = String(query.data || '');
     const pushName = [query.from?.first_name, query.from?.last_name].filter(Boolean).join(' ').trim() || query.from?.username || '';
 
-    if (data === 'outbound:approve' || data === 'outbound:cancel') {
-      const label = data === 'outbound:approve' ? 'Aprovando disparo...' : 'Cancelando disparo...';
-      await apiCall('answerCallbackQuery', { callback_query_id: callbackId, text: label }).catch(() => {});
+    const CALLBACK_ACTIONS = {
+      'outbound:approve': { toast: 'Aprovando disparo...', command: 'sim, aprovar disparo' },
+      'outbound:cancel': { toast: 'Cancelando disparo...', command: 'cancelar disparo' },
+      'pix:approve': { toast: 'Autorizando geração do Pix...', command: 'pode gerar o pix' },
+      'pix:assume': { toast: 'Assumindo atendimento...', command: 'assumir atendimento' },
+      'consult:takeover': { toast: 'Assumindo atendimento...', command: 'assumir' },
+      'consult:cancel': { toast: 'Ignorando consulta...', command: 'cancelar' }
+    };
+
+    const action = CALLBACK_ACTIONS[data];
+    if (action) {
+      await apiCall('answerCallbackQuery', { callback_query_id: callbackId, text: action.toast }).catch(() => {});
       if (query.message?.message_id) {
         await apiCall('editMessageReplyMarkup', {
           chat_id: chatId,
@@ -464,9 +499,8 @@ export function createTelegramCopilot({
           reply_markup: { inline_keyboard: [] }
         }).catch(() => {});
       }
-      const commandText = data === 'outbound:approve' ? 'sim, aprovar disparo' : 'cancelar disparo';
       try {
-        await runOwnerTurn({ chatId, text: commandText, pushName, messageId: `cb:${callbackId}` });
+        await runOwnerTurn({ chatId, text: action.command, pushName, messageId: `cb:${callbackId}` });
       } catch (err) {
         safeLogError('[telegram] Erro ao processar callback:', err);
       }
@@ -602,12 +636,13 @@ export function createTelegramCopilot({
     if (!token || !adminIds.length) return { sent: 0 };
     const clean = String(text || '').trim();
     if (!clean) return { sent: 0 };
+    const keyboard = inferNotificationKeyboard(clean, { withApprovalButtons });
     let sent = 0;
     for (const chatId of adminIds) {
       try {
         await sendMessage(chatId, clean, {
           token,
-          replyMarkup: withApprovalButtons ? APPROVAL_KEYBOARD : undefined
+          replyMarkup: keyboard
         });
         sent += 1;
       } catch (err) {

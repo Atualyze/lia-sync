@@ -9,6 +9,7 @@ import {
 } from './channels/telegram.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
+import { toolConsultarContato } from './tools/consultar_contato.mjs';
 
 test('parseAdminChatIds aceita múltiplos IDs positivos e negativos', () => {
   assert.deepEqual(parseAdminChatIds('123456, -987654 ; abc 555'), ['123456', '-987654', '555']);
@@ -185,4 +186,70 @@ test('notifyAdmin espelha alertas e faz fallback para texto puro se HTML retorna
   assert.equal(apiCalls.length, 2);
   assert.equal(apiCalls[0].body.parse_mode, 'HTML');
   assert.equal(apiCalls[1].body.parse_mode, undefined);
+});
+
+test('notifyAdmin anexa botões inline de Pix e Consulta e callbacks acionam Copiloto', async () => {
+  const apiCalls = [];
+  const processed = [];
+  const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
+  const fetchImpl = async (url, init) => {
+    const method = url.split('/').pop();
+    const body = init?.body ? JSON.parse(init.body) : {};
+    apiCalls.push({ method, body });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 99 } }) };
+  };
+  const bot = createTelegramCopilot({
+    getConfig: () => cfg,
+    flow: { process: async (p) => { processed.push(p.text); return 'Feito!'; } },
+    fetchImpl,
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  await bot.notifyAdmin('💳 Aprovação de Pix pendente para João (R$ 150). Responda pode gerar o pix.');
+  assert.equal(apiCalls[0].body.reply_markup.inline_keyboard[0][0].callback_data, 'pix:approve');
+
+  await bot.notifyAdmin('💬 *Consulta da Lia — Atendimento em andamento*\n• Cliente: Maria');
+  assert.equal(apiCalls[1].body.reply_markup.inline_keyboard[0][0].callback_data, 'consult:takeover');
+
+  await bot.handleUpdate({
+    callback_query: {
+      id: 'cb_pix',
+      data: 'pix:approve',
+      from: { first_name: 'Tauan' },
+      message: { message_id: 99, chat: { id: 999888 } }
+    }
+  });
+  await bot.handleUpdate({
+    callback_query: {
+      id: 'cb_consult',
+      data: 'consult:takeover',
+      from: { first_name: 'Tauan' },
+      message: { message_id: 100, chat: { id: 999888 } }
+    }
+  });
+  assert.deepEqual(processed, ['pode gerar o pix', 'assumir']);
+});
+
+test('consultar_contato_ou_lead encontra sessão sem DDI 55 e retorna histórico do atendimento', async () => {
+  const store = {
+    sessions: {
+      '5588921694598': {
+        phone: '5588921694598',
+        clientName: 'Cliente Teste',
+        human: false,
+        updatedAt: '2026-11-22T15:04:18.000Z',
+        history: [
+          { role: 'user', content: 'Oi, gostaria de um orçamento', createdAt: '2026-11-22T15:00:00.000Z' },
+          { role: 'assistant', content: 'Olá! Claro, qual serviço você procura?', createdAt: '2026-11-22T15:00:05.000Z' }
+        ]
+      }
+    }
+  };
+  const res = await toolConsultarContato.execute({ phone: '88921694598' }, { store });
+  assert.equal(res.found, true);
+  assert.equal(res.phone, '5588921694598');
+  assert.equal(res.attendance.messageCount, 2);
+  assert.equal(res.attendance.mode, 'bot');
+  assert.equal(res.attendance.recentMessages[0].role, 'cliente');
+  assert.ok(res.attendance.recentMessages[0].content.includes('orçamento'));
 });
