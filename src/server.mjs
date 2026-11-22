@@ -108,6 +108,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     learningEngine: liaLearning,
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
+    notifyOwner: async (message) => {
+      const target = getHumanPhone();
+      if (!target) return;
+      await sendText(target, formatOutgoingMessage(message));
+    },
     logger: console
   });
   await liaRuntime.start();
@@ -287,6 +292,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     reminderStore,
     operationsStore,
     copilotTaskStore,
+    liaRuntime,
     getTelemetry,
     getSectors: () => sectorProjection.active(),
     allowClientResume: config.humanAllowClientResume,

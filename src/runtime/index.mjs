@@ -31,6 +31,7 @@ export function createLiaRuntime({
   learningEngine = null,
   getBotConfig = () => ({}),
   getHumanPhone = () => '',
+  notifyOwner = null,
   workingTimeoutMs = DEFAULT_WORKING_TIMEOUT_MS,
   logger = console,
   now = () => Date.now()
@@ -237,7 +238,8 @@ export function createLiaRuntime({
             commitment_id: commitment.id,
             title: commitment.title,
             due_at: commitment.due_at,
-            goal_id: commitment.goal_id
+            goal_id: commitment.goal_id,
+            metadata: commitment.metadata || {}
           }
         });
         await commitments.markDueEventEmitted(commitment.id, emitted.event.id);
@@ -304,6 +306,29 @@ export function createLiaRuntime({
             await setState('working');
             const task = await enqueuePlannedTask({ event: evt, attention, steps: attention.suggested_plan });
             if (task?.created) summary.tasksCreated += 1;
+          } else if (evt.type === 'commitment.due') {
+            const meta = evt.payload?.metadata || {};
+            const commitmentId = evt.payload?.commitment_id;
+            if (meta.actionTool) {
+              await setState('planning');
+              const scheduledTask = await enqueuePlannedTask({
+                event: evt,
+                attention: {
+                  ...attention,
+                  attention_reason: evt.payload?.title || 'Verificação autônoma agendada'
+                },
+                steps: [{ name: meta.actionTool, args: meta.actionArgs || {} }]
+              });
+              if (scheduledTask?.created) summary.tasksCreated += 1;
+              if (commitmentId) await commitments.fulfill(commitmentId).catch(() => {});
+            } else if (meta.notifyOwner && typeof notifyOwner === 'function') {
+              const label = evt.payload?.title || 'Compromisso agendado';
+              const subject = evt.subject && evt.subject !== 'owner' && evt.subject !== commitmentId
+                ? `\n• *Assunto/Contato:* ${evt.subject}`
+                : '';
+              await notifyOwner(`⏰ *Compromisso autônomo vencendo:*\n\n• *Tarefa:* ${label}${subject}`).catch(() => {});
+              if (commitmentId) await commitments.fulfill(commitmentId).catch(() => {});
+            }
           }
           if (learningEngine?.available) {
             const outcomeMap = {

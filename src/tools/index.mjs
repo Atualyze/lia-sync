@@ -17,6 +17,7 @@ import { toolCheckoutInfinitePay } from './checkout_infinitepay.mjs';
 import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
 import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
+import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerar_cobranca_pix: [
@@ -62,7 +63,8 @@ export const ALL_TOOLS = [
   toolCheckoutInfinitePay,
   toolGerenciarMemoria,
   toolGerenciarCodigo,
-  toolGerenciarConfiguracao
+  toolGerenciarConfiguracao,
+  toolGerenciarTarefasAutonomas
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -156,7 +158,8 @@ export const TOOL_EXECUTION_POLICIES = Object.freeze({
   checkout_infinitepay: { mode: 'payment_checkout', approval: 'separate_payment_flow', retry: 'never', effects: 'checkout_creation_or_status_read' },
   gerenciar_memoria: { mode: 'memory_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_memory' },
   gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
-  gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' }
+  gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' },
+  gerenciar_tarefas_autonomas: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'runtime_commitment_or_goal' }
 });
 
 export function getToolExecutionPolicy(toolName) {

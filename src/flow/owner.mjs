@@ -40,7 +40,7 @@ import {
 import { handleOwnerQuickCommands } from './owner-commands.mjs';
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, liaRuntime = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
@@ -50,6 +50,8 @@ export async function handleOwnerSession({
           actor: context.actor || 'owner',
           isOwner: context.isOwner ?? true,
           operationsStore: context.operationsStore || operationsStore,
+          liaRuntime: context.liaRuntime || liaRuntime,
+          now,
           auditActorLabel: context.auditActorLabel || 'responsável'
         });
         const aiDeadline = Date.now() + 35000;
@@ -2528,18 +2530,75 @@ ${errMsg}`;
           }
         }
 
-        const activeOperationalTask = activeTask && (
-          activeTask.type !== 'general'
-          || (Array.isArray(activeTask.allowedTools) && activeTask.allowedTools.length > 0)
-        );
-        const explicitOperationalIntent = Boolean(activeOperationalTask)
-          || hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
-          || hasOtherExplicitToolIntent(cleanCommand);
-        if (!toolOutputs.length && explicitOperationalIntent && claimsUnexecutedToolWork(rawReply)) {
-          return recordSelfTurn(filterReply(
-            '⚠️ Não iniciei essa ação: nenhuma ferramenta confirmou a execução e nenhuma tarefa foi registrada. Não vou afirmar que estou pesquisando ou gerando algo sem ter iniciado de verdade. Envie novamente o pedido para eu tentar iniciar a operação.',
-            { isCopilot: true }
-          ).text, { preserveTask: Boolean(activeTask) });
+        // Guarda universal contra promessa vazia + auto-execução agêntica no mesmo turno:
+        // Se o modelo prometeu "vou verificar / estou consultando" com tool_calls vazios,
+        // re-chama uma vez exigindo a tool_call real (ou bloqueia a promessa vazia se ainda não executar).
+        const SAFE_AUTO_EXEC_TOOLS = new Set([
+          'consultar_saude_infra',
+          'consultar_web',
+          'consultar_contato_ou_lead',
+          'consultar_base_conhecimento',
+          'consultar_dados_brasil',
+          'consultar_planilha_google',
+          'gerenciar_drive_google',
+          'gerenciar_agenda_google',
+          'gerenciar_tarefas_autonomas'
+        ]);
+        if (!toolOutputs.length && !suppressToolExecution && !isPureGreeting && claimsUnexecutedToolWork(rawReply)) {
+          const retryPrompt = `${sys}\n\n[CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]\nVocê respondeu "${rawReply.slice(0, 220)}" prometendo consultar/verificar algo, mas deixou "tool_calls": []. É PROIBIDO prometer consulta sem executar a ferramenta AGORA. Emita "tool_calls" com a ferramenta adequada (ex.: "consultar_saude_infra", "consultar_web", "gerenciar_tarefas_autonomas", "gerenciar_drive_google") ou responda diretamente com os dados reais que já possui.\n[/CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]`;
+          const forced = await ai?.askAI?.({
+            system: retryPrompt,
+            history: recentHistory,
+            userText: cleanCommand,
+            botConfig,
+            isOwner: true,
+            deadline: Math.min(aiDeadline, Date.now() + 18_000)
+          }).catch(() => null);
+          const forcedCalls = Array.isArray(forced?.tool_calls) ? forced.tool_calls.slice(0, 2) : [];
+          if (forcedCalls.length > 0 && forcedCalls.every(tc => SAFE_AUTO_EXEC_TOOLS.has(tc?.name))) {
+            const autoResults = [];
+            for (const fc of forcedCalls) {
+              if (!isToolEnabled(fc.name, botConfig)) continue;
+              const autoRes = await executeToolCall(fc.name, fc.args || {}, {
+                phone: OWNER_SELF_KEY,
+                clientName: `${owner} (Copiloto)`,
+                store,
+                reminderStore,
+                whatsapp,
+                ai,
+                botConfig,
+                session: sSelf,
+                userText: cleanCommand
+              }).catch(err => ({ success: false, error: err?.message || 'tool_error' }));
+              autoResults.push({ tool: fc.name, result: autoRes });
+            }
+            if (autoResults.length > 0) {
+              const synth = await ai?.askAI?.({
+                system: `${sys}\n\n[TOOL_RESULTS_JSON]\nAs ferramentas abaixo ACABARAM DE SER EXECUTADAS com sucesso. Apresente o resultado real ao responsável de forma clara e direta, sem prometer novas verificações.\n${JSON.stringify(autoResults).slice(0, 14_000)}\n[/TOOL_RESULTS_JSON]`,
+                history: recentHistory,
+                userText: cleanCommand,
+                botConfig,
+                isOwner: true,
+                disableToolCalling: true,
+                deadline: Date.now() + 15_000
+              }).catch(() => null);
+              const synthReply = String(synth?.reply || '').trim();
+              if (synthReply && !claimsUnexecutedToolWork(synthReply)) {
+                return recordSelfTurn(filterReply(synthReply, { isCopilot: true }).text);
+              }
+              const plainSummary = autoResults.map(r => `• *${r.tool}:* ${r.result?.message || JSON.stringify(r.result).slice(0, 600)}`).join('\n');
+              return recordSelfTurn(filterReply(`✅ *Verificação concluída:*\n\n${plainSummary}`, { isCopilot: true }).text);
+            }
+          }
+          const forcedReply = String(forced?.reply || '').trim();
+          if (forcedReply && !claimsUnexecutedToolWork(forcedReply)) {
+            rawReply = forcedReply;
+          } else {
+            return recordSelfTurn(filterReply(
+              '⚠️ Não iniciei essa ação: nenhuma ferramenta confirmou a execução e nenhuma tarefa foi registrada. Não vou afirmar que estou pesquisando ou gerando algo sem ter iniciado de verdade. Envie novamente o pedido para eu tentar iniciar a operação.',
+              { isCopilot: true }
+            ).text, { preserveTask: Boolean(activeTask) });
+          }
         }
 
         if (rawReply && /\b(?:pix|cobran[cç]a)\b/i.test(rawReply)

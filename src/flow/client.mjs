@@ -890,6 +890,7 @@ export async function handleClientMessage({
       // Valores autoritativos vindos de resultados de ferramentas (Pix gerado, checkout
       // criado): são preços reais da operação e devem passar pelo filtro de segurança.
       const toolAuthorizedPrices = new Set();
+      const clientReadToolOutputs = [];
       let webSearchResult = null;
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
@@ -1256,6 +1257,9 @@ export async function handleClientMessage({
                 result.handoff_reason = toolRes.motivo || `Transferência via tool ${tc.name}`;
               }
               if (tc.name === 'consultar_web') webSearchResult = toolRes;
+              if (['gerenciar_drive_google', 'consultar_planilha_google'].includes(tc.name) && toolRes?.success) {
+                clientReadToolOutputs.push({ tool: tc.name, args: tc.args || {}, result: toolRes });
+              }
             } catch (err) {
               logger.error?.(`[flow:tool] Falha em ${tc.name}; tipo: ${err?.name || 'Error'}`);
               if (tc.name === 'agendar_retorno_ou_followup') reminderHandledByTool = true;
@@ -1297,6 +1301,50 @@ export async function handleClientMessage({
           toolReplyOverride = String(answerResult?.reply || '').trim() || `Não consegui concluir a pesquisa web com segurança.\n\nFontes:\n${sources || 'Nenhuma fonte retornada.'}`;
         } else {
           toolReplyOverride = 'Não consegui consultar a web neste momento. Posso tentar novamente ou encaminhar sua dúvida para a equipe.';
+        }
+      }
+
+      // Loop agêntico multi-etapa (ReAct até 2 passos extras) para ferramentas de leitura do cliente
+      // Ex.: buscar_arquivo no Drive -> ler_documento -> resposta completa em 1 único turno!
+      if (clientReadToolOutputs.length > 0 && !toolReplyOverride && !webSearchResult) {
+        let reactResults = [...clientReadToolOutputs];
+        for (let step = 0; step < 2; step += 1) {
+          const isLastStep = step === 1;
+          const followUp = await ai?.askAI?.({
+            system: `${systemPrompt}\n\n[TOOL_RESULTS_JSON]\nResultados reais das consultas já executadas neste turno:\n${JSON.stringify(reactResults).slice(0, 12_000)}\n${isLastStep ? 'Agora entregue a resposta final clara e objetiva ao cliente com base nesses dados. Não chame mais ferramentas.' : 'Se precisar ler o conteúdo de um arquivo encontrado (ex: gerenciar_drive_google com acao="ler_documento"), emita a tool_call agora; caso contrário, entregue a resposta final ao cliente.'}\n[/TOOL_RESULTS_JSON]`,
+            history: activeContext.history.slice(-contextTurns, -1),
+            userText,
+            botConfig,
+            disableToolCalling: isLastStep,
+            deadline: Math.min(aiDeadline, Date.now() + 15_000)
+          }).catch(() => null);
+          const nextCalls = !isLastStep && Array.isArray(followUp?.tool_calls)
+            ? followUp.tool_calls.filter(c =>
+                (c?.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(c?.args?.acao))
+                || (c?.name === 'consultar_planilha_google' && ['ler_intervalo', 'buscar_linhas'].includes(c?.args?.acao))
+              ).slice(0, 1)
+            : [];
+          if (nextCalls.length > 0) {
+            const nextRes = await executeToolCall(nextCalls[0].name, nextCalls[0].args || {}, {
+              actor: 'client',
+              phone: s.phone,
+              clientName: s.clientName || pushName || 'Contato',
+              store,
+              reminderStore,
+              whatsapp,
+              ai,
+              botConfig,
+              session: s,
+              userText: clean
+            }).catch(err => ({ success: false, error: err?.message || 'tool_error' }));
+            reactResults.push({ tool: nextCalls[0].name, args: nextCalls[0].args || {}, result: nextRes });
+            continue;
+          }
+          const followText = String(followUp?.reply || '').trim();
+          if (followText) {
+            toolReplyOverride = followText;
+          }
+          break;
         }
       }
 

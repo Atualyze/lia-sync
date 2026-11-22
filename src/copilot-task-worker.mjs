@@ -17,7 +17,7 @@ const BACKGROUND_READ_TOOLS = new Set([
 export function isBackgroundCopilotTool(name, args = {}) {
   if (BACKGROUND_READ_TOOLS.has(String(name || ''))) return true;
   if (name === 'consultar_planilha_google') return ['ler_intervalo', 'buscar_linhas'].includes(String(args?.acao || ''));
-  if (name === 'gerenciar_drive_google') return ['listar_arquivos', 'buscar_arquivo'].includes(String(args?.acao || ''));
+  if (name === 'gerenciar_drive_google') return ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(String(args?.acao || ''));
   if (name === 'gerenciar_agenda_google') return ['consultar_livres', 'listar_eventos'].includes(String(args?.action || ''));
   if (name === 'gerar_cobranca_pix') return true;
   if (name === 'checkout_infinitepay') return String(args?.acao || '') === 'verificar_pagamento';
@@ -308,6 +308,11 @@ export function createCopilotTaskWorker({
         const worked = await runOnce();
         if (!worked) break;
         processed += 1;
+      }
+      // Garante envio imediato de notificação terminal pendente mesmo quando a última tarefa falhou
+      if (processed < limit) {
+        const delivered = await runOnce();
+        if (delivered) processed += 1;
       }
       return processed;
     },

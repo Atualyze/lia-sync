@@ -25,6 +25,7 @@ export function createFlow({
   reminderStore = null,
   operationsStore = null,
   copilotTaskStore = null,
+  liaRuntime = null,
   getTelemetry = async () => ({}),
   // Projeção de runtime dos setores vindos do Chatwoot; nunca duplicada na config publicada.
   getSectors = () => [],
@@ -217,7 +218,7 @@ export function createFlow({
       // ==========================================
       if (isOwnerSession) {
         return handleOwnerSession({
-          store, ai, whatsapp, reminderStore, operationsStore, copilotTaskStore, logger, now, getHumanPhone, getTelemetry,
+          store, ai, whatsapp, reminderStore, operationsStore, copilotTaskStore, liaRuntime, logger, now, getHumanPhone, getTelemetry,
           botConfig, adminConfig, identity, owner, assistant, ownerLabel,
           isOwnerSender, getWaitingList, findSessionByTarget,
           phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
