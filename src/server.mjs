@@ -122,10 +122,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
     notifyCommitmentRecipient: async (commitment) => {
-      const phone = String(commitment?.recipient_phone || '').replace(/\\D/g, '');
+      const phone = String(commitment?.recipient_phone || '').replace(/\D/g, '');
       if (commitment?.recipient_type !== 'client' || !phone) return { sent: false, reason: 'client_recipient_missing' };
       const session = store.get(phone);
-      if (!session || session.human || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
+      const matchingConsult = session?.pendingAdminConsult?.commitmentId === commitment?.id;
+      if (!session || (session.human && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
       const optOut = await campaignStore.isSuppressed(phone).catch(() => true);
       if (optOut) return { sent: false, reason: 'client_opted_out' };
       const businessWindow = avaliarJanelaDeAtendimento(adminConfig.active?.business?.hoursConfig, new Date());
@@ -144,9 +145,9 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
           'Não prometa novo prazo, retorno futuro, envio, contato ou ação que ainda não ocorreu.',
           'Não mencione IA, API, provedor, erro técnico ou detalhes internos.',
           'Não peça pagamento e não gere cobrança. Escreva no máximo duas frases.'
-        ].join('\\n'),
+        ].join('\n'),
         history,
-        userText: 'Compromisso vencido: ' + String(commitment.title || 'verificação') + '\\nDetalhes: ' + String(commitment.metadata?.description || commitment.description || '') + '\\nEscreva uma atualização honesta para o cliente, sem criar outra promessa.',
+        userText: 'Compromisso vencido: ' + String(commitment.title || 'verificação') + '\nDetalhes: ' + String(commitment.metadata?.description || commitment.description || '') + '\nEscreva uma atualização honesta para o cliente, sem criar outra promessa.',
         botConfig: adminConfig.active,
         disableToolCalling: true,
         deadline: Date.now() + 9000
@@ -190,7 +191,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       session.lastBotAt = new Date().toISOString();
       session.updatedAt = new Date().toISOString();
       store.markDirty?.();
-      await store.flush?.().catch?.(() => {});
+      if (typeof store.flush === 'function') await store.flush().catch(() => {});
       return { sent: true };
     },
     notifyOwner: async (message) => {
