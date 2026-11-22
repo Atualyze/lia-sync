@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
 import { createFlow } from '../flow.mjs';
+import { ADMIN_CONSULT_TTL_MS, listPendingAdminConsults } from './admin-consult.mjs';
 import { SessionStore } from '../sessions.mjs';
 import { getEnabledTools } from '../tools/index.mjs';
 import { toolGerenciarDriveGoogle } from '../tools/gerenciar_drive_google.mjs';
@@ -192,4 +193,20 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
     else process.env.GOOGLE_DRIVE_ACCESS_TOKEN = prevToken;
     globalThis.fetch = prevFetch;
   }
+});
+
+
+test('consulta administrativa vencida continua rastreada e visível ao responsável até resolução/cancelamento', () => {
+  const requestedAt = Date.now() - ADMIN_CONSULT_TTL_MS - 1000;
+  const sessions = {
+    '5588999991111': {
+      phone: '5588999991111',
+      pendingAdminConsult: { id: 'consult-old', status: 'pending', requestedAt, commitmentId: 'commitment-1' }
+    }
+  };
+  const pending = listPendingAdminConsults(sessions, { nowMs: Date.now() });
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].consult.commitmentId, 'commitment-1');
+  assert.equal(pending[0].overdue, true);
+  assert.ok(pending[0].ageMs > ADMIN_CONSULT_TTL_MS);
 });
