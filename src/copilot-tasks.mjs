@@ -633,7 +633,7 @@ export class CopilotTaskStore {
           : current.status,
         // Never put a notification back in pending: reconciliation must not replay an external effect.
         notificationStatus: executionUncertain
-          ? 'uncertain'
+          ? 'unaddressable'
           : (decision === 'notification_confirmed_sent' ? 'sent' : decision === 'notification_confirmed_not_sent' ? 'unaddressable' : 'uncertain'),
         reconciledAt: nowIso,
         reconciledBy: actorLabel,
