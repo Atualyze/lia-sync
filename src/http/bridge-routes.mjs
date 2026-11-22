@@ -13,7 +13,7 @@ import { markBridgeConfigRead } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
 import { memoryStore } from '../core/memory.mjs';
-import { notifyReactivationToInternalChat } from './reactivation-notice.mjs';
+import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation } from './reactivation-notice.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { getIntegrations } from './operations.mjs';
 
@@ -128,7 +128,7 @@ async function handleSectorProjection({ req, res, sectorProjection }) {
 }
 
 // Rotas /api/bridge/* (inclui o stream SSE de eventos).
-export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection = new SectorProjection(), webhookEventStore }) {
+export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection = new SectorProjection(), webhookEventStore, deliverReactivationReply = null }) {
   if (u.pathname === '/api/bridge/v1/config') {
     if (!await isBridgeAuthorized(req, webhookAuthorize)) return json(res, 401, { ok: false, error: 'unauthorized' });
     return handlePublishedConfigRead({ req, res, adminConfig });
@@ -242,7 +242,11 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         session.handoffReminder60Sent = false;
         session.inactivityClosed = false;
         if (wasHuman) {
-          notifyReactivationToInternalChat({ store, session, phone: digits });
+          if (body.autoContinue !== false && deliverReactivationReply && f) {
+            void triggerSmartReactivationContinuation({ store, session, phone: digits, flow: f, sendReply: deliverReactivationReply });
+          } else {
+            notifyReactivationToInternalChat({ store, session, phone: digits });
+          }
         }
       }
       session.handoffReminderAt = null;

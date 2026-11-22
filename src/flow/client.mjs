@@ -301,7 +301,8 @@ export async function handleClientMessage({
       }
 
       if (!clean) { store.markDirty(); return null; }
-      if (!isAIRetry && mediaType !== 'audio' && !mediaAnalyzedForAI) {
+      const isAutoReactivation = origin === 'reactivation_auto';
+      if (!isAIRetry && !isAutoReactivation && mediaType !== 'audio' && !mediaAnalyzedForAI) {
         s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
       }
 

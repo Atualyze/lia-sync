@@ -483,6 +483,19 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       source: 'ai_retry'
     });
   };
+  const deliverReactivationReply = async (target, replyText, session) => {
+    const dest = deliveryTarget(target || session?.phone || '');
+    if (!dest || !replyText) return;
+    const parts = splitReply(replyText);
+    for (const part of parts) {
+      await sendText(dest, formatOutgoingMessage(part));
+    }
+    broadcastBridgeEvent('outbound_message', {
+      phone: session?.phone || dest,
+      content: replyText,
+      source: 'reactivation_auto'
+    });
+  };
   let aiRetryRunning = false;
   const runPendingAIRetries = async ({ immediate = false } = {}) => {
     if (aiRetryRunning) return { processed: 0, delivered: 0 };
@@ -529,7 +542,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     apiSettingsStore,
     customProviderStore,
     baileysProvider,
-    onAIConfigUpdated
+    onAIConfigUpdated,
+    deliverReactivationReply
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }

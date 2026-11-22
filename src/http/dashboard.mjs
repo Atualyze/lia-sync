@@ -8,11 +8,11 @@ import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
 import { ALL_TOOLS, isClientToolAllowed } from '../tools/index.mjs';
 import { readVpsMetrics } from '../vps-monitor.mjs';
-import { notifyReactivationToInternalChat } from './reactivation-notice.mjs';
+import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation } from './reactivation-notice.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
-export async function handleDashboardRoutes({ req, res, u, store, f }) {
+export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/state') {
     await store.refresh?.();
     const mode = u.searchParams.get('mode') || 'all';
@@ -215,7 +215,11 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       session.handoffReminder60Sent = false;
       session.inactivityClosed = false;
       if (wasHuman) {
-        notifyReactivationToInternalChat({ store, session, phone: body.phone });
+        if (body.autoContinue !== false && deliverReactivationReply && f) {
+          void triggerSmartReactivationContinuation({ store, session, phone: body.phone, flow: f, sendReply: deliverReactivationReply });
+        } else {
+          notifyReactivationToInternalChat({ store, session, phone: body.phone });
+        }
       }
     }
     session.handoffReminderAt = null;
