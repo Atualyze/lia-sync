@@ -2,6 +2,7 @@ import { json, readBody, NOT_HANDLED } from './utils.mjs';
 import { getCircuitBreakers } from '../ai/config.mjs';
 import { opened, failures } from '../ai/state.mjs';
 import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
+import { memoryStore, PARA_CATEGORIES } from '../core/memory.mjs';
 import { config } from '../config.mjs';
 
 /**
@@ -32,7 +33,59 @@ export async function handleRuntimeDashboardRoutes({
   const isApiSettingsPath = pathname === '/api/dashboard/api-settings';
   const isAiProvidersPath = pathname === '/api/dashboard/ai-providers' || pathname.startsWith('/api/dashboard/ai-providers/');
   const isBaileysPath = pathname === '/api/dashboard/whatsapp/baileys' || pathname.startsWith('/api/dashboard/whatsapp/baileys/');
-  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath && !isBaileysPath) return NOT_HANDLED;
+  const isMemoriesPath = pathname === '/api/dashboard/memories' || pathname.startsWith('/api/dashboard/memories/');
+  if (!isRuntimePath && !isApiSettingsPath && !isAiProvidersPath && !isBaileysPath && !isMemoriesPath) return NOT_HANDLED;
+
+  // === 0.00 Memória Estruturada PARA (Projetos, Áreas, Recursos, Arquivo) ===
+  if (isMemoriesPath) {
+    if (req.method === 'GET' && pathname === '/api/dashboard/memories') {
+      const category = u.searchParams.get('category') || '';
+      const search = u.searchParams.get('search') || '';
+      const scopeKey = u.searchParams.get('scopeKey') || '';
+      const result = memoryStore.listAll({ category, search, scopeKey, limit: 150 });
+      return json(res, 200, { categories: PARA_CATEGORIES, ...result });
+    }
+    if (req.method === 'POST' && pathname === '/api/dashboard/memories') {
+      let body;
+      try { body = await readBody(req); }
+      catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+      const content = String(body?.content || '').trim();
+      const scopeKey = String(body?.scopeKey || 'default:business').trim();
+      const type = String(body?.type || 'fact').trim();
+      const saved = memoryStore.remember({ scopeKey, type, content, importance: 0.85, confidence: 0.95, source: 'dashboard_para' });
+      if (!saved?.saved) {
+        return json(res, 400, { error: saved?.reason || 'memory_save_failed' });
+      }
+      if (body?.category && saved.memory?.id) {
+        memoryStore.updateById(saved.memory.id, { category: body.category });
+      }
+      return json(res, 201, { ok: true, memory: memoryStore.items.get(saved.memory.id) || saved.memory });
+    }
+    const memMatch = pathname.match(/^\/api\/dashboard\/memories\/([^/]+)$/);
+    if (memMatch) {
+      const id = decodeURIComponent(memMatch[1]);
+      if (req.method === 'PATCH') {
+        let body;
+        try { body = await readBody(req); }
+        catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+        const resUpdate = memoryStore.updateById(id, {
+          content: body?.content,
+          category: body?.category,
+          type: body?.type
+        });
+        if (!resUpdate.updated) {
+          return json(res, resUpdate.reason === 'not_found' ? 404 : 400, { error: resUpdate.reason || 'memory_update_failed' });
+        }
+        return json(res, 200, { ok: true, memory: resUpdate.memory });
+      }
+      if (req.method === 'DELETE') {
+        const resDel = memoryStore.deleteById(id);
+        if (!resDel.deleted) return json(res, 404, { error: 'not_found' });
+        return json(res, 200, { ok: true });
+      }
+    }
+    return json(res, 405, { error: 'method_not_allowed' });
+  }
 
   // === 0.0 Gestão do Motor WhatsApp Baileys Nativo (QR Code, Pairing Code, Desconectar) ===
   if (isBaileysPath) {

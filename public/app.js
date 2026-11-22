@@ -5022,11 +5022,102 @@ async function loadApiIntegrationsPanel() {
 
       if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.admin) {
         await loadApiSettingsPanel();
+        await loadParaMemoriesPanel();
       }
     } catch (err) {
       setRuntimeFeedback('#runtime-feedback', `Erro ao carregar Runtime: ${err.message}`, true);
     }
   }
+
+  let activeParaCategory = '';
+  const PARA_LABELS = { project: 'Projeto', area: 'Área', resource: 'Recurso', archive: 'Arquivo' };
+
+  async function loadParaMemoriesPanel(category = activeParaCategory) {
+    const listEl = $('#para-memories-list');
+    if (!listEl) return;
+    activeParaCategory = category || '';
+    try {
+      const qs = activeParaCategory ? `?category=${encodeURIComponent(activeParaCategory)}` : '';
+      const data = await api(`/api/dashboard/memories${qs}`);
+      const counts = data.counts || {};
+      document.querySelectorAll('.para-filter-btn').forEach(btn => {
+        const cat = btn.dataset.paraCat || '';
+        const count = cat ? (counts[cat] || 0) : (counts.total || 0);
+        const base = cat ? (PARA_LABELS[cat] || cat) : 'Todos';
+        btn.textContent = `${base} (${count})`;
+        btn.classList.toggle('active', cat === activeParaCategory);
+      });
+      const items = data.items || [];
+      if (!items.length) {
+        listEl.innerHTML = '<p class="muted">Nenhuma memória nesta categoria ainda.</p>';
+        return;
+      }
+      listEl.innerHTML = items.map(m => `
+        <div class="panel" style="padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+              <span class="badge-mini">${runtimeEscape(PARA_LABELS[m.category] || m.category)}</span>
+              <span class="muted" style="font-size:11px">${runtimeEscape(m.scopeKey)} · ${runtimeEscape(m.source || 'conversa')}</span>
+            </div>
+            <div style="font-size:13px;word-break:break-word">${runtimeEscape(m.content)}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button type="button" class="btn-secondary btn-sm para-edit-btn" data-mem-id="${runtimeEscape(m.id)}" data-mem-content="${runtimeEscape(m.content)}" data-mem-cat="${runtimeEscape(m.category)}">Editar</button>
+            <button type="button" class="btn-secondary btn-sm para-del-btn" data-mem-id="${runtimeEscape(m.id)}">Apagar</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      listEl.innerHTML = `<p class="muted">Erro ao carregar memórias: ${runtimeEscape(err.message)}</p>`;
+    }
+  }
+
+  document.addEventListener('click', async (ev) => {
+    const filterBtn = ev.target.closest?.('.para-filter-btn');
+    if (filterBtn) {
+      await loadParaMemoriesPanel(filterBtn.dataset.paraCat || '');
+      return;
+    }
+    const delBtn = ev.target.closest?.('.para-del-btn');
+    if (delBtn) {
+      const id = delBtn.dataset.memId;
+      if (!id || !confirm('Apagar esta memória definitivamente?')) return;
+      await api(`/api/dashboard/memories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadParaMemoriesPanel();
+      return;
+    }
+    const editBtn = ev.target.closest?.('.para-edit-btn');
+    if (editBtn) {
+      const id = editBtn.dataset.memId;
+      const nextContent = prompt('Editar conteúdo da memória:', editBtn.dataset.memContent || '');
+      if (!nextContent || !nextContent.trim()) return;
+      await api(`/api/dashboard/memories/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content: nextContent.trim() })
+      });
+      await loadParaMemoriesPanel();
+    }
+  });
+
+  document.addEventListener('submit', async (ev) => {
+    if (ev.target?.id !== 'para-memory-form') return;
+    ev.preventDefault();
+    const contentEl = $('#para-memory-content');
+    const catEl = $('#para-memory-category');
+    const content = contentEl?.value?.trim();
+    if (!content) return;
+    try {
+      await api('/api/dashboard/memories', {
+        method: 'POST',
+        body: JSON.stringify({ content, category: catEl?.value || 'area', scopeKey: 'default:business' })
+      });
+      if (contentEl) contentEl.value = '';
+      await loadParaMemoriesPanel();
+      setRuntimeFeedback('#runtime-feedback', 'Memória salva no sistema PARA!');
+    } catch (err) {
+      setRuntimeFeedback('#runtime-feedback', `Erro ao salvar memória: ${err.message}`, true);
+    }
+  });
 
   async function loadApiSettingsPanel() {
     const grid = $('#api-settings-grid');

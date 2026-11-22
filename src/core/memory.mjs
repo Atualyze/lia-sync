@@ -5,6 +5,18 @@ import { config } from '../config.mjs';
 
 const DEFAULT_MEMORY_FILE = path.resolve(process.cwd(), 'data', 'memories.json');
 const VALID_TYPES = new Set(['preference', 'project', 'decision', 'fact']);
+export const PARA_CATEGORIES = Object.freeze(['project', 'area', 'resource', 'archive']);
+const VALID_PARA_CATEGORIES = new Set(PARA_CATEGORIES);
+
+export function classifyParaCategory({ type = 'fact', content = '', scopeKey = '', category = '' } = {}) {
+  const explicit = String(category || '').trim().toLowerCase();
+  if (VALID_PARA_CATEGORIES.has(explicit)) return explicit;
+  const text = String(content || '');
+  if (/\b(?:arquivad[oa]|conclu[ií]d[oa]|encerrad[oa]|descontinuad[oa]|hist[oó]rico\s+antigo)\b/i.test(text)) return 'archive';
+  if (type === 'project' || /\b(?:projeto|campanha|lan[cç]amento|cronograma|sprint|meta)\b/i.test(text)) return 'project';
+  if (type === 'preference' || type === 'decision' || String(scopeKey || '').endsWith(':business') || /\b(?:regra|pol[ií]tica|expediente|atendimento|pre[cç]o|processo|procedimento|padr[aã]o|prefiro)\b/i.test(text)) return 'area';
+  return 'resource';
+}
 const MEMORY_STOP_WORDS = new Set(['a', 'ao', 'aos', 'as', 'com', 'da', 'das', 'de', 'do', 'dos', 'e', 'em', 'na', 'nas', 'no', 'nos', 'o', 'os', 'para', 'pela', 'pelas', 'pelo', 'pelos', 'por', 'pra', 'pro', 'que', 'qual', 'quais', 'como', 'quando', 'onde', 'um', 'uma', 'uns', 'umas', 'me', 'meu', 'minha', 'meus', 'minhas', 'seu', 'sua', 'seus', 'suas', 'eu', 'voce', 'voces']);
 
 export function cosineSimilarity(a, b) {
@@ -182,6 +194,7 @@ export class MemoryStore {
       id: crypto.randomUUID(),
       scopeKey: cleanScope,
       type: cleanType,
+      category: classifyParaCategory({ type: cleanType, content: cleanContent, scopeKey: cleanScope }),
       content: cleanContent,
       importance: numImp,
       confidence: numConf,
@@ -363,6 +376,77 @@ export class MemoryStore {
 
     if (count > 0) this._persist();
     return { forgotten: count > 0, count };
+  }
+
+  listAll({ category = '', scopeKey = '', search = '', limit = 100 } = {}) {
+    this._ensureLoaded();
+    const cleanCat = String(category || '').trim().toLowerCase();
+    const cleanScope = String(scopeKey || '').trim();
+    const needle = String(search || '').trim().toLowerCase();
+    const counts = { project: 0, area: 0, resource: 0, archive: 0, total: 0 };
+
+    const all = [...this.items.values()]
+      .filter(m => m && m.status === 'active')
+      .map(m => {
+        const para = classifyParaCategory(m);
+        counts[para] = (counts[para] || 0) + 1;
+        counts.total += 1;
+        return {
+          id: m.id,
+          scopeKey: m.scopeKey,
+          type: m.type,
+          category: para,
+          content: m.content,
+          source: m.source || 'conversation',
+          importance: m.importance ?? 0.7,
+          createdAt: m.createdAt,
+          updatedAt: m.updatedAt
+        };
+      })
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+
+    const filtered = all.filter(item => {
+      if (cleanCat && VALID_PARA_CATEGORIES.has(cleanCat) && item.category !== cleanCat) return false;
+      if (cleanScope && item.scopeKey !== cleanScope) return false;
+      if (needle && !item.content.toLowerCase().includes(needle) && !item.scopeKey.toLowerCase().includes(needle)) return false;
+      return true;
+    });
+
+    return {
+      items: filtered.slice(0, Math.max(1, Math.min(300, Number(limit) || 100))),
+      counts
+    };
+  }
+
+  updateById(id, { content, category, type } = {}) {
+    this._ensureLoaded();
+    const target = this.items.get(String(id || '').trim());
+    if (!target || target.status !== 'active') return { updated: false, reason: 'not_found' };
+    if (content !== undefined) {
+      const cleanNew = String(content || '').trim().slice(0, 400);
+      if (cleanNew.length < 3) return { updated: false, reason: 'too_short' };
+      if (containsSensitiveData(cleanNew)) return { updated: false, reason: 'sensitive_data_blocked' };
+      target.content = cleanNew;
+    }
+    if (type !== undefined && VALID_TYPES.has(type)) target.type = type;
+    if (category !== undefined && VALID_PARA_CATEGORIES.has(String(category).trim().toLowerCase())) {
+      target.category = String(category).trim().toLowerCase();
+    } else if (!target.category) {
+      target.category = classifyParaCategory(target);
+    }
+    target.updatedAt = new Date().toISOString();
+    this.items.set(target.id, target);
+    this._persist();
+    return { updated: true, memory: { ...target, embedding: undefined } };
+  }
+
+  deleteById(id) {
+    this._ensureLoaded();
+    const key = String(id || '').trim();
+    if (!this.items.has(key)) return { deleted: false };
+    this.items.delete(key);
+    this._persist();
+    return { deleted: true };
   }
 }
 

@@ -17,7 +17,11 @@ export const SAFE_RUNTIME_READ_TOOLS = Object.freeze(new Set([
   'consultar_contato_ou_lead',
   'consultar_base_conhecimento',
   'consultar_dados_brasil',
-  'consultar_web'
+  'consultar_web',
+  'gerenciar_agenda_google',
+  'gerenciar_gmail_google',
+  'consultar_planilha_google',
+  'gerenciar_drive_google'
 ]));
 
 function clampScore(value) {

@@ -489,6 +489,28 @@ export class BaileysProvider {
     return { result: res, id: res?.key?.id };
   }
 
+  async sendReaction(jid, messageKey, emoji = '⏳') {
+    if (!this.sock || this.status !== 'connected' || !messageKey?.id) return false;
+    try {
+      const remoteJid = toRemoteJid(jid || messageKey.remoteJid || '');
+      if (!remoteJid) return false;
+      await this.sock.sendMessage(remoteJid, {
+        react: {
+          text: String(emoji || ''),
+          key: {
+            remoteJid: messageKey.remoteJid || remoteJid,
+            fromMe: Boolean(messageKey.fromMe),
+            id: String(messageKey.id),
+            ...(messageKey.participant ? { participant: messageKey.participant } : {})
+          }
+        }
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async sendDocument(jid, { cleanB64, fileName = 'documento.pdf', mimetype = 'application/pdf', caption = '' }) {
     const sock = this._requireConnected();
     const remoteJid = toRemoteJid(jid);

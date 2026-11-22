@@ -38,6 +38,7 @@ import {
   classifyNaturalControl
 } from './owner-helpers.mjs';
 import { handleOwnerQuickCommands } from './owner-commands.mjs';
+import { parseAutonomousCommand } from '../runtime/schedule-parser.mjs';
 
 export async function handleOwnerSession({
   store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, liaRuntime = null, logger, now, getHumanPhone, getTelemetry,
@@ -45,15 +46,25 @@ export async function handleOwnerSession({
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
 }) {
-        const executeToolCall = (toolName, args = {}, context = {}) => executeToolCallRaw(toolName, args, {
-          ...context,
-          actor: context.actor || 'owner',
-          isOwner: context.isOwner ?? true,
-          operationsStore: context.operationsStore || operationsStore,
-          liaRuntime: context.liaRuntime || liaRuntime,
-          now,
-          auditActorLabel: context.auditActorLabel || 'responsável'
-        });
+        const incomingMessageKey = rawItem?.key?.id ? rawItem.key : (messageId ? { id: messageId, remoteJid: phone } : null);
+        const reactProgress = (emoji) => {
+          if (!incomingMessageKey || typeof whatsapp?.sendReaction !== 'function') return;
+          void whatsapp.sendReaction(phone, incomingMessageKey, emoji).catch(() => {});
+        };
+        const executeToolCall = async (toolName, args = {}, context = {}) => {
+          reactProgress('⏳');
+          const res = await executeToolCallRaw(toolName, args, {
+            ...context,
+            actor: context.actor || 'owner',
+            isOwner: context.isOwner ?? true,
+            operationsStore: context.operationsStore || operationsStore,
+            liaRuntime: context.liaRuntime || liaRuntime,
+            now,
+            auditActorLabel: context.auditActorLabel || 'responsável'
+          });
+          reactProgress(res?.success === false && !res?.requiresConfirmation ? '⚠️' : '✅');
+          return res;
+        };
         const aiDeadline = Date.now() + 35000;
         const sSelf = store.get(OWNER_SELF_KEY);
         sSelf.human = false;
@@ -1225,49 +1236,65 @@ export async function handleOwnerSession({
         });
         if (quickCommandReply !== null) return quickCommandReply;
 
-        // 1.7.2 Fast-path determinístico para agendamento de verificações/lembretes autônomos no Lia Runtime
-        // Evita que modelos gratuitos prometam "Agendado!" sem chamar gerenciar_tarefas_autonomas.
+        // 1.7.2 Fast-path determinístico para autonomia completa no Lia Runtime
+        // (horário relativo, horário fixo, rotinas recorrentes, listar e cancelar compromissos)
         if (liaRuntime?.available && !sSelf.pendingAudioConfirmation && !sSelf.pendingOutboundDispatch && isToolEnabled('gerenciar_tarefas_autonomas', botConfig)) {
-          const relTimeMatch = cleanCommand.match(/(?:daqui\s+a|em|dentro\s+de)\s+(\d{1,4})\s*(min(?:uto)?s?|h(?:ora)?s?)\b/i);
-          const hasScheduleVerb = /\b(?:agend\w*|program\w*|verific\w*|chec\w*|me\s+avis\w*|me\s+lembr\w*|lembre-?me)\b/i.test(cleanCommand);
-          const isExternalClientSend = /\b(?:envi\w*|mand\w*|dispar\w*|fal\w*)\b.{0,25}\b(?:para\s+o|para\s+a|pro|pra|ao|à|com\s+o|com\s+a)\s+[A-ZÀ-Ú]/i.test(cleanCommand);
-          const isCalendarMeeting = /\b(?:reuni[aã]o|google\s+calendar|google\s+agenda|evento\s+na\s+agenda|consulta\s+com)\b/i.test(cleanCommand);
-          if (relTimeMatch && hasScheduleVerb && !isExternalClientSend && !isCalendarMeeting) {
-            const qty = Number(relTimeMatch[1]);
-            const isHours = /^h/i.test(relTimeMatch[2]);
-            const inMinutes = Math.max(1, Math.min(43200, isHours ? qty * 60 : qty));
-            const isHealthCheck = /\b(?:sa[uú]de|apis?|infra(?:estrutura)?|event\s*loop|servi[cç]os?|servidor|vps|baileys|whatsapp|sistema)\b/i.test(cleanCommand);
+          const tz = botConfig?.businessHours?.timezone || 'America/Sao_Paulo';
+          const autoCmd = parseAutonomousCommand(cleanCommand, { nowMs: now(), timezone: tz });
+          const toolCtx = {
+            phone: OWNER_SELF_KEY,
+            clientName: `${owner} (Copiloto)`,
+            store,
+            reminderStore,
+            whatsapp,
+            ai,
+            botConfig,
+            session: sSelf,
+            userText: cleanCommand
+          };
+          if (autoCmd?.kind === 'list') {
+            const listRes = await executeToolCall('gerenciar_tarefas_autonomas', { acao: 'listar_pendentes' }, toolCtx);
+            const items = Array.isArray(listRes?.pendingCommitments) ? listRes.pendingCommitments : [];
+            if (!items.length) {
+              return recordSelfTurn(filterReply('📋 Não há nenhuma verificação ou rotina autônoma agendada no momento.', { isCopilot: true }).text);
+            }
+            const lines = items.map(c => {
+              const id = String(c.id || '').slice(0, 8).toUpperCase();
+              const when = c.due_at ? new Date(c.due_at).toLocaleString('pt-BR', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+              return `• *#${id}* (${when}) - ${c.title}`;
+            }).join('\n');
+            return recordSelfTurn(filterReply(`📋 *Agendamentos autônomos ativos (${items.length}):*\n\n${lines}\n\nPara cancelar algum, diga: _cancela #ID_.`, { isCopilot: true }).text);
+          }
+          if (autoCmd?.kind === 'cancel') {
+            const cancelRes = await executeToolCall('gerenciar_tarefas_autonomas', { acao: 'cancelar_compromisso', commitmentId: autoCmd.targetId }, toolCtx);
+            return recordSelfTurn(filterReply(cancelRes?.success ? `🗑️ ${cancelRes.message}` : `⚠️ ${cancelRes?.message || 'Não encontrei esse agendamento.'}`, { isCopilot: true }).text);
+          }
+          if (autoCmd?.kind === 'schedule') {
             const args = {
               acao: 'agendar_verificacao',
-              titulo: isHealthCheck
-                ? 'Verificação autônoma de saúde da infraestrutura e APIs'
-                : cleanCommand.replace(/\s+/g, ' ').trim().slice(0, 140),
-              assunto: isHealthCheck ? 'infraestrutura' : 'owner',
-              inMinutes,
-              ...(isHealthCheck ? { actionTool: 'consultar_saude_infra', actionArgs: { target: 'geral' } } : {})
+              titulo: autoCmd.titulo,
+              assunto: autoCmd.assunto,
+              dueAt: autoCmd.dueAt,
+              ...(autoCmd.inMinutes ? { inMinutes: autoCmd.inMinutes } : {}),
+              ...(autoCmd.actionTool ? { actionTool: autoCmd.actionTool, actionArgs: autoCmd.actionArgs || {} } : {}),
+              ...(autoCmd.recurrence ? { recurrence: autoCmd.recurrence, recurrenceLabel: autoCmd.recurrenceLabel || '' } : {})
             };
-            const schedRes = await executeToolCall('gerenciar_tarefas_autonomas', args, {
-              phone: OWNER_SELF_KEY,
-              clientName: `${owner} (Copiloto)`,
-              store,
-              reminderStore,
-              whatsapp,
-              ai,
-              botConfig,
-              session: sSelf,
-              userText: cleanCommand
-            });
+            const schedRes = await executeToolCall('gerenciar_tarefas_autonomas', args, toolCtx);
             if (schedRes?.success) {
-              const resolvedDueAt = schedRes.dueAt || schedRes.commitment?.due_at || null;
+              const resolvedDueAt = schedRes.dueAt || schedRes.commitment?.due_at || autoCmd.dueAt;
               const resolvedId = schedRes.commitmentId || schedRes.commitment?.id || '';
-              const tz = botConfig?.businessHours?.timezone || 'America/Sao_Paulo';
               const dueTime = resolvedDueAt
-                ? new Date(resolvedDueAt).toLocaleTimeString('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
-                : `em ${inMinutes} min`;
+                ? new Date(resolvedDueAt).toLocaleString('pt-BR', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : `em ${autoCmd.inMinutes || 5} min`;
               const shortId = String(resolvedId).slice(0, 8).toUpperCase();
-              const confirmMsg = isHealthCheck
-                ? `⏰ *Verificação autônoma agendada no Lia Runtime!*\n• *ID:* #${shortId}\n• *Execução:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Ação:* diagnóstico real de saúde da infra, WhatsApp, Event Loop e APIs\n\nAssim que concluir, envio o resultado real automaticamente aqui no WhatsApp.`
-                : `⏰ *Compromisso autônomo registrado no Lia Runtime!*\n• *ID:* #${shortId}\n• *Horário:* ~${dueTime} (daqui a ${inMinutes} min)\n• *Tarefa:* ${args.titulo}\n\nVou te avisar automaticamente aqui no WhatsApp no horário.`;
+              const recLine = autoCmd.recurrenceLabel ? `\n• *Recorrência:* 🔁 ${autoCmd.recurrenceLabel}` : '';
+              const header = autoCmd.actionTool
+                ? '⏰ *Verificação autônoma agendada no Lia Runtime!*'
+                : '⏰ *Compromisso autônomo registrado no Lia Runtime!*';
+              const actionLine = autoCmd.actionTool
+                ? `\n• *Ação:* ${autoCmd.titulo} (${autoCmd.actionTool})`
+                : `\n• *Tarefa:* ${autoCmd.titulo}`;
+              const confirmMsg = `${header}\n• *ID:* #${shortId}\n• *Próxima execução:* ${dueTime}${recLine}${actionLine}\n\nAssim que executar, envio o resultado automaticamente aqui no WhatsApp.`;
               return recordSelfTurn(filterReply(confirmMsg, { isCopilot: true }).text);
             }
           }

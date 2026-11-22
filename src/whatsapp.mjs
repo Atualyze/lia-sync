@@ -199,6 +199,14 @@ export async function getMediaBase64(item) {
   }
 }
 
+export async function sendReaction(jid, messageKey, emoji = '⏳') {
+  if (!jid || !messageKey?.id) return false;
+  if (isBaileysActive() && typeof activeBaileysProvider?.sendReaction === 'function') {
+    return activeBaileysProvider.sendReaction(jid, messageKey, emoji).catch(() => false);
+  }
+  return false;
+}
+
 export async function sendPresence(jid, presence = 'composing', delay = 1200) {
   if (!jid) return;
   if (isBaileysActive()) {

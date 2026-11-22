@@ -1,5 +1,6 @@
 import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions } from '../safety.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
+import { getNextProviderRecoveryDelayMs } from '../ai/state.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
 import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
@@ -675,7 +676,11 @@ export async function handleClientMessage({
           const lastAlertAt = s.fallbackHandoffAt ? new Date(s.fallbackHandoffAt).getTime() : 0;
 
           if (nextAttempts <= AI_RETRY_BACKOFF_MS.length && elapsedMs < AI_RETRY_MAX_TTL_MS) {
-            const delayMs = AI_RETRY_BACKOFF_MS[nextAttempts - 1];
+            const baseDelay = AI_RETRY_BACKOFF_MS[nextAttempts - 1];
+            const providerResetMs = getNextProviderRecoveryDelayMs(currentNow);
+            const delayMs = providerResetMs
+              ? Math.max(2_000, Math.min(baseDelay, providerResetMs + 1_000))
+              : baseDelay;
             s.pendingAIRetry = {
               userText: clean,
               pushName: pushName || s.clientName || '',

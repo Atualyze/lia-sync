@@ -1,7 +1,7 @@
 import { config } from '../config.mjs';
 import { recordAICall, getMetricsSummary, resetMetrics } from '../metrics.mjs';
 import { decidirModeloPorContexto } from '../model-router.mjs';
-import { failures, opened, lastErrors, PROVIDERS } from './state.mjs';
+import { failures, opened, lastErrors, PROVIDERS, parseRetryAfterMs } from './state.mjs';
 import { resolveAIConfig, providers, available, providerDefaultModel, fallbackModelsForProvider, getCircuitBreakers } from './config.mjs';
 import { getCustomProvider } from './custom-providers.mjs';
 import { describeAIError } from './errors.mjs';
@@ -415,8 +415,14 @@ export async function call(provider, {
         }
       }
       if (!response.ok) {
-        const detail = safeErrorDetail(await response.text());
-        throw Error(`${provider} ${response.status}${detail ? ` - ${detail}` : ''}`);
+        const rawErrText = await response.text();
+        const detail = safeErrorDetail(rawErrText);
+        const err = Error(`${provider} ${response.status}${detail ? ` - ${detail}` : ''}`);
+        if (response.status === 429) {
+          const retryMs = parseRetryAfterMs(response.headers, rawErrText);
+          if (retryMs) err.retryAfterMs = retryMs;
+        }
+        throw err;
       }
       let data = await response.json();
       let message = data.choices?.[0]?.message || {};
@@ -594,7 +600,10 @@ export async function askAI(args) {
       failures.set(provider, count);
       lastErrors.set(provider, { code: diag.code, message: diag.message, model: attemptedModel, at: new Date().toISOString() });
       if (count >= 3 || /\b(429|401|403)\b/.test(error.message)) {
-        opened.set(provider, Date.now() + Math.max(60_000, diag.quarantineMs || 60_000));
+        const waitMs = Number.isFinite(error?.retryAfterMs)
+          ? error.retryAfterMs
+          : Math.max(60_000, diag.quarantineMs || 60_000);
+        opened.set(provider, Date.now() + waitMs);
       }
       if (!error?.budgetAttemptsLogged) await recordAICall({
           provider,

@@ -1923,6 +1923,34 @@
             </section>
           </div>
 
+          <!-- MEMÓRIA ESTRUTURADA PARA (PROJETOS, ÁREAS, RECURSOS, ARQUIVO) -->
+          <section class="panel ops-panel" id="para-memory-panel" data-role="admin" style="margin-top:16px">
+            <div class="panel-head">
+              <div>
+                <h3>Memória Estruturada (PARA)</h3>
+                <p>Conhecimento aprendido pela Lia organizado em Projetos, Áreas, Recursos e Arquivo</p>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap" id="para-filter-bar">
+                <button type="button" class="btn-secondary btn-sm para-filter-btn active" data-para-cat="">Todos</button>
+                <button type="button" class="btn-secondary btn-sm para-filter-btn" data-para-cat="project">Projetos</button>
+                <button type="button" class="btn-secondary btn-sm para-filter-btn" data-para-cat="area">Áreas</button>
+                <button type="button" class="btn-secondary btn-sm para-filter-btn" data-para-cat="resource">Recursos</button>
+                <button type="button" class="btn-secondary btn-sm para-filter-btn" data-para-cat="archive">Arquivo</button>
+              </div>
+            </div>
+            <form id="para-memory-form" style="display:grid;grid-template-columns:1fr 160px auto;gap:8px;margin-bottom:12px">
+              <input type="text" id="para-memory-content" placeholder="Adicionar memória (ex.: Regra de entrega, projeto ativo, preferência...)" required>
+              <select id="para-memory-category">
+                <option value="area">Área (Regra/Operação)</option>
+                <option value="project">Projeto</option>
+                <option value="resource">Recurso</option>
+                <option value="archive">Arquivo</option>
+              </select>
+              <button type="submit" class="btn-primary">Salvar Memória</button>
+            </form>
+            <div id="para-memories-list" class="stack-list"><p class="muted">Carregando memórias…</p></div>
+          </section>
+
           <!-- PROPOSTAS DE MELHORIA & AUDITORIA -->
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px">
             <section class="panel ops-panel">

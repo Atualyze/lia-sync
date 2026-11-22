@@ -10,7 +10,7 @@ import { setPricingSource, getAllowedPrices } from './faq.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { askAI, getCircuitBreakers, transcribeAudio, analyzeDocument, searchWebWithGemini, synthesizeVoice } from './ai.mjs';
 import { loadFaq } from './faq.mjs';
-import { sendText, sendPresence, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck, setBaileysProvider } from './whatsapp.mjs';
+import { sendText, sendPresence, sendReaction, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck, setBaileysProvider } from './whatsapp.mjs';
 import { BaileysProvider } from './whatsapp/baileys-provider.mjs';
 import { processWhatsAppWebhookPayload } from './http/webhook.mjs';
 import { authCache } from './dashboard.mjs';
@@ -301,7 +301,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     faq: faqWithAdmin,
     getBotConfig: () => adminConfig.active,
     adminConfig,
-    whatsapp: { sendText, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64 },
+    whatsapp: { sendText, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, sendReaction },
     getHumanPhone,
     reminderStore,
     operationsStore,

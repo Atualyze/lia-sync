@@ -426,4 +426,129 @@ test('Autonomia - claimsUnexecutedToolWork bloqueia "Agendado!" falso e owner ag
   const pending = await liaRuntime.commitments.list({ status: 'pending' });
   assert.equal(pending.length, 1);
   assert.equal(pending[0].metadata?.actionTool, 'consultar_saude_infra');
+
+  // Listar e cancelar via linguagem natural
+  const listReply = await flow.process({ phone: '5588999999999', text: 'Quais tarefas estão agendadas?', origin: 'whatsapp' });
+  assert.match(listReply, /Agendamentos autônomos ativos/i);
+  const shortId = pending[0].id.slice(0, 8).toUpperCase();
+  const cancelReply = await flow.process({ phone: '5588999999999', text: `cancela #${shortId}`, origin: 'whatsapp' });
+  assert.match(cancelReply, /cancelado/i);
+  assert.equal((await liaRuntime.commitments.list({ status: 'pending' })).length, 0);
+});
+
+test('Package 3 - schedule-parser: horário fixo, rotina recorrente, Gmail/Agenda/Web e auto-reagendamento no Runtime', async () => {
+  const { parseAutonomousCommand, computeNextRecurrenceIso } = await import('./runtime/schedule-parser.mjs');
+  const baseNow = Date.parse('2026-11-22T11:00:00.000Z'); // 08:00 BRT
+
+  const dailyGmail = parseAutonomousCommand('Todo dia às 8h30 resume meus e-mails não lidos no Gmail', { nowMs: baseNow });
+  assert.equal(dailyGmail.kind, 'schedule');
+  assert.equal(dailyGmail.actionTool, 'gerenciar_gmail_google');
+  assert.equal(dailyGmail.recurrence.kind, 'daily');
+  assert.equal(dailyGmail.recurrence.hour, 8);
+  assert.equal(dailyGmail.recurrence.minute, 30);
+
+  const weeklyAgenda = parseAutonomousCommand('Toda segunda às 9h verifica minha agenda de hoje', { nowMs: baseNow });
+  assert.equal(weeklyAgenda.kind, 'schedule');
+  assert.equal(weeklyAgenda.actionTool, 'gerenciar_agenda_google');
+  assert.equal(weeklyAgenda.recurrence.kind, 'weekly');
+  assert.equal(weeklyAgenda.recurrence.weekday, 1);
+
+  const fixedTomorrow = parseAutonomousCommand('Amanhã às 14:15 verifica a saúde das APIs e me avisa', { nowMs: baseNow });
+  assert.equal(fixedTomorrow.kind, 'schedule');
+  assert.equal(fixedTomorrow.actionTool, 'consultar_saude_infra');
+  assert.equal(fixedTomorrow.recurrence, null);
+
+  const nextRun = computeNextRecurrenceIso({ kind: 'interval_minutes', intervalMinutes: 30 }, baseNow);
+  assert.equal(Date.parse(nextRun), baseNow + 30 * 60_000);
+
+  // Runtime re-agenda automaticamente a próxima ocorrência ao executar rotina recorrente
+  const { LiaRuntimeStore, createLiaRuntime } = await import('./runtime/index.mjs');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-rec-'));
+  let fakeNow = baseNow;
+  const rtStore = new LiaRuntimeStore({ filePath: path.join(dir, 'rt.json'), allowLocalFallback: true, now: () => fakeNow, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+  const notified = [];
+  const rt = createLiaRuntime({
+    store: rtStore,
+    now: () => fakeNow,
+    notifyOwner: async msg => notified.push(msg),
+    logger: { log: () => {}, warn: () => {}, error: () => {} }
+  });
+  await rt.start();
+  await rt.commitments.create({
+    title: 'Lembrete recorrente de caixa',
+    subject: 'owner',
+    dueAt: new Date(baseNow + 60_000).toISOString(),
+    metadata: { notifyOwner: true, recurrence: { kind: 'interval_minutes', intervalMinutes: 60 }, recurrenceLabel: 'a cada 1h' }
+  });
+  fakeNow += 120_000;
+  await rt.wake({ reason: 'scheduler' });
+  assert.equal(notified.length, 1);
+  const nextPending = await rt.commitments.list({ status: 'pending' });
+  assert.equal(nextPending.length, 1, 'Rotina recorrente deve criar automaticamente a próxima ocorrência');
+  assert.ok(Date.parse(nextPending[0].due_at) > fakeNow);
+});
+
+test('Package 4 - Memória Estruturada PARA: classifica, lista com contadores, edita e apaga', async () => {
+  const { MemoryStore, classifyParaCategory } = await import('./core/memory.mjs');
+  assert.equal(classifyParaCategory({ type: 'project', content: 'Projeto lançamento v4' }), 'project');
+  assert.equal(classifyParaCategory({ type: 'preference', content: 'Prefiro respostas curtas' }), 'area');
+  assert.equal(classifyParaCategory({ type: 'fact', content: 'Link da documentação de referência' }), 'resource');
+  assert.equal(classifyParaCategory({ type: 'fact', content: 'Campanha antiga encerrada em 2025' }), 'archive');
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-para-'));
+  const ms = new MemoryStore(path.join(dir, 'mem.json'));
+  const r1 = ms.remember({ scopeKey: 'default:business', type: 'fact', content: 'Política de entrega: prazo de 24h' });
+  const r2 = ms.remember({ scopeKey: 'default:owner', type: 'project', content: 'Projeto expansão clínica norte' });
+  const list = ms.listAll();
+  assert.equal(list.counts.total, 2);
+  assert.equal(list.counts.area, 1);
+  assert.equal(list.counts.project, 1);
+
+  const upd = ms.updateById(r1.memory.id, { content: 'Política de entrega: prazo de 48h', category: 'archive' });
+  assert.equal(upd.updated, true);
+  assert.equal(ms.listAll({ category: 'archive' }).items.length, 1);
+
+  assert.equal(ms.deleteById(r2.memory.id).deleted, true);
+  assert.equal(ms.listAll().counts.total, 1);
+});
+
+test('Package 5 - Rate-Limit Recovery (Retry-After) e Reações de Progresso no WhatsApp', async () => {
+  const { parseRetryAfterMs, opened, getNextProviderRecoveryDelayMs } = await import('./ai/state.mjs');
+  assert.equal(parseRetryAfterMs(new Headers({ 'retry-after': '12' }), ''), 12_000);
+  assert.equal(parseRetryAfterMs(null, 'Rate limit reached. Please try again in 8.4s.'), 8_400);
+  assert.equal(parseRetryAfterMs(null, 'Please try again in 1m15s.'), 75_000);
+
+  const nowMs = Date.now();
+  opened.set('groq', nowMs + 9_000);
+  opened.set('openrouter', nowMs + 45_000);
+  const nextDelay = getNextProviderRecoveryDelayMs(nowMs);
+  assert.ok(nextDelay >= 8_500 && nextDelay <= 9_500);
+  opened.delete('groq');
+  opened.delete('openrouter');
+
+  // Reações de progresso no owner flow
+  const { createFlow } = await import('./flow.mjs');
+  const { SessionStore } = await import('./sessions.mjs');
+  const { LiaRuntimeStore, createLiaRuntime } = await import('./runtime/index.mjs');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-react-'));
+  const store = new SessionStore(path.join(dir, 's.json'));
+  await store.load();
+  const rtStore = new LiaRuntimeStore({ filePath: path.join(dir, 'r.json'), allowLocalFallback: true, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+  const liaRuntime = createLiaRuntime({ store: rtStore, logger: { log: () => {}, warn: () => {}, error: () => {} } });
+  await liaRuntime.start();
+  const reactions = [];
+  const flow = createFlow({
+    store,
+    liaRuntime,
+    getHumanPhone: () => '5588999999999',
+    whatsapp: { sendReaction: async (_phone, _key, emoji) => { reactions.push(emoji); return true; } },
+    ai: { askAI: async () => ({ reply: 'ok', tool_calls: [] }) }
+  });
+  await flow.process({
+    phone: '5588999999999',
+    text: 'Agenda uma verificação de saúde das apis para daqui a 2 minutos',
+    origin: 'whatsapp',
+    messageId: 'MSG123'
+  });
+  assert.deepEqual(reactions, ['⏳', '✅']);
 });

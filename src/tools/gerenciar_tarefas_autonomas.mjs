@@ -6,7 +6,8 @@ const ALLOWED_AUTONOMOUS_TOOLS = new Set([
   'consultar_dados_brasil',
   'consultar_planilha_google',
   'gerenciar_drive_google',
-  'gerenciar_agenda_google'
+  'gerenciar_agenda_google',
+  'gerenciar_gmail_google'
 ]);
 
 function resolveDueAt({ dueAt, inMinutes }, nowMs = Date.now()) {
@@ -31,7 +32,7 @@ export const toolGerenciarTarefasAutonomas = {
     properties: {
       acao: {
         type: 'STRING',
-        enum: ['agendar_verificacao', 'criar_objetivo', 'listar_pendentes', 'concluir_compromisso'],
+        enum: ['agendar_verificacao', 'criar_objetivo', 'listar_pendentes', 'concluir_compromisso', 'cancelar_compromisso'],
         description: 'Ação no motor de autonomia e compromissos persistentes.'
       },
       titulo: {
@@ -69,7 +70,15 @@ export const toolGerenciarTarefasAutonomas = {
       },
       commitmentId: {
         type: 'STRING',
-        description: 'ID do compromisso (para concluir_compromisso).'
+        description: 'ID (ou prefixo de 8 caracteres) do compromisso (para concluir_compromisso ou cancelar_compromisso).'
+      },
+      recurrence: {
+        type: 'OBJECT',
+        description: 'Regra opcional de recorrência ({ kind: "daily" | "weekly" | "interval_minutes", hour, minute, weekday, intervalMinutes }).'
+      },
+      recurrenceLabel: {
+        type: 'STRING',
+        description: 'Descrição legível da recorrência (ex.: "todo dia às 08:00").'
       }
     },
     required: ['acao']
@@ -141,12 +150,27 @@ export const toolGerenciarTarefasAutonomas = {
       };
     }
 
-    if (acao === 'concluir_compromisso') {
-      const id = String(args.commitmentId || '').trim();
-      if (!id) return { success: false, error: 'missing_commitment_id', message: 'Informe o commitmentId.' };
-      const updated = await liaRuntime.commitments.fulfill(id);
-      if (!updated) return { success: false, error: 'commitment_not_found', message: 'Compromisso não encontrado.' };
-      return { success: true, acao, commitment: { id: updated.id, title: updated.title, status: updated.status } };
+    if (acao === 'concluir_compromisso' || acao === 'cancelar_compromisso') {
+      const rawId = String(args.commitmentId || '').replace(/^#/, '').trim().toLowerCase();
+      if (!rawId) return { success: false, error: 'missing_commitment_id', message: 'Informe o commitmentId.' };
+      let targetId = rawId;
+      if (rawId.length < 36) {
+        const pending = await liaRuntime.commitments.list({ status: 'pending' });
+        const matched = pending.find(c => String(c.id || '').toLowerCase().startsWith(rawId));
+        if (matched) targetId = matched.id;
+      }
+      const updated = acao === 'cancelar_compromisso'
+        ? await liaRuntime.commitments.cancel(targetId)
+        : await liaRuntime.commitments.fulfill(targetId);
+      if (!updated) return { success: false, error: 'commitment_not_found', message: `Compromisso #${rawId.toUpperCase()} não encontrado.` };
+      return {
+        success: true,
+        acao,
+        commitment: { id: updated.id, title: updated.title, status: updated.status },
+        message: acao === 'cancelar_compromisso'
+          ? `Compromisso/rotina #${String(updated.id).slice(0, 8).toUpperCase()} ("${updated.title}") cancelado.`
+          : `Compromisso #${String(updated.id).slice(0, 8).toUpperCase()} marcado como concluído.`
+      };
     }
 
     if (acao === 'agendar_verificacao') {
@@ -160,6 +184,10 @@ export const toolGerenciarTarefasAutonomas = {
       const actionArgs = actionTool && args.actionArgs && typeof args.actionArgs === 'object' && !Array.isArray(args.actionArgs)
         ? args.actionArgs
         : {};
+      const recurrence = args.recurrence && typeof args.recurrence === 'object' && !Array.isArray(args.recurrence)
+        ? args.recurrence
+        : null;
+      const recurrenceLabel = recurrence ? String(args.recurrenceLabel || '').trim().slice(0, 80) : '';
 
       const commitment = await liaRuntime.commitments.create({
         title,
@@ -168,6 +196,7 @@ export const toolGerenciarTarefasAutonomas = {
         metadata: {
           source: 'copilot_autonomous',
           ...(actionTool ? { actionTool, actionArgs } : {}),
+          ...(recurrence ? { recurrence, recurrenceLabel } : {}),
           notifyOwner: true
         }
       });
@@ -176,13 +205,17 @@ export const toolGerenciarTarefasAutonomas = {
         acao,
         commitmentId: commitment.id,
         dueAt: commitment.due_at,
+        recurrence,
+        recurrenceLabel,
         commitment: {
           id: commitment.id,
           title: commitment.title,
           due_at: commitment.due_at,
-          actionTool
+          actionTool,
+          recurrence,
+          recurrenceLabel
         },
-        message: `Verificação/compromisso "${commitment.title}" agendado para ${new Date(commitment.due_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}${actionTool ? ` (executando ${actionTool} automaticamente)` : ''}.`
+        message: `Verificação/compromisso "${commitment.title}" agendado para ${new Date(commitment.due_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}${recurrenceLabel ? ` (🔁 ${recurrenceLabel})` : ''}${actionTool ? ` (executando ${actionTool} automaticamente)` : ''}.`
       };
     }
 

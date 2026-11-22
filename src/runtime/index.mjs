@@ -3,6 +3,7 @@ import { LiaIdentityStore } from './identity.mjs';
 import { GoalEngine } from './goals.mjs';
 import { EventEngine } from './events.mjs';
 import { CommitmentStore } from './commitments.mjs';
+import { computeNextRecurrenceIso } from './schedule-parser.mjs';
 import { evaluateAttention, SAFE_RUNTIME_READ_TOOLS } from './attention.mjs';
 import { createCopilotTaskKey } from '../copilot-tasks.mjs';
 import { isBackgroundCopilotTool } from '../copilot-task-worker.mjs';
@@ -328,6 +329,20 @@ export function createLiaRuntime({
                 : '';
               await notifyOwner(`⏰ *Compromisso autônomo vencendo:*\n\n• *Tarefa:* ${label}${subject}`).catch(() => {});
               if (commitmentId) await commitments.fulfill(commitmentId).catch(() => {});
+            }
+            // Se for rotina recorrente, agenda automaticamente a próxima ocorrência preservando metadata
+            if (meta.recurrence && typeof meta.recurrence === 'object') {
+              const tz = getBotConfig()?.businessHours?.timezone || 'America/Sao_Paulo';
+              const nextDueAt = computeNextRecurrenceIso(meta.recurrence, now(), tz);
+              if (nextDueAt) {
+                await commitments.create({
+                  title: evt.payload?.title || 'Rotina autônoma recorrente',
+                  subject: evt.subject || 'owner',
+                  dueAt: nextDueAt,
+                  goalId: evt.payload?.goal_id || null,
+                  metadata: { ...meta }
+                }).catch(() => {});
+              }
             }
           }
           if (learningEngine?.available) {
