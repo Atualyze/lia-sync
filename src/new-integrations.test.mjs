@@ -1100,7 +1100,9 @@ test('IA-first multimodal + triagem híbrida + transferência contextualizada (w
           sector: 'financeiro',
           sentiment: 'frustrado',
           context_summary: 'Cliente cobrando boleto há 2 dias e frustrado com o atraso.',
-          handoff: false,
+          handoff: true,
+          handoff_category: 'financeiro',
+          handoff_reason: 'Cobrança pendente há dois dias exige validação financeira',
           tool_calls: []
         };
       }
@@ -1123,7 +1125,7 @@ test('IA-first multimodal + triagem híbrida + transferência contextualizada (w
   assert.equal(sess1.sectorName, 'Financeiro');
   assert.equal(sess1.contextSummary, 'Cliente enviou print de erro ao pagar boleto de R$ 150,00.');
 
-  // 2) Sentimento frustrado aciona warm transfer com Setor, Sentimento e Resumo do contexto
+  // 2) Solicitação financeira explícita aciona warm transfer; frustração sozinha não é critério
   const rFrustrated = await flow.process({
     phone: '5585988887777',
     text: 'Já estou há 2 dias esperando isso e ninguém resolve!',

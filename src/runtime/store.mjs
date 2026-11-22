@@ -310,6 +310,18 @@ export class LiaRuntimeStore {
     return clone(this.snapshot.commitments);
   }
 
+  async getCommitmentByDeduplicationKey(key) {
+    this._assertAvailable();
+    const safeKey = String(key || '').trim();
+    if (!safeKey) return null;
+    if (this.remoteEnabled) {
+      const rows = await this.client.select('lia_commitments', `select=*&deduplication_key=eq.${encodeURIComponent(safeKey)}&limit=1`);
+      return Array.isArray(rows) && rows[0] ? rows[0] : null;
+    }
+    const found = this.snapshot.commitments.find(item => item.deduplication_key === safeKey);
+    return found ? clone(found) : null;
+  }
+
   async getCommitment(id) {
     this._assertAvailable();
     const safeId = String(id || '').trim();

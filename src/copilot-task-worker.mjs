@@ -124,6 +124,7 @@ export function createCopilotTaskWorker({
   broadcastBridgeEvent = defaultBroadcastBridgeEvent,
   getHumanPhone = () => '',
   onOwnerNotify = null,
+  onTaskFinished = null,
   operationsStore = null,
   logger = console,
   workerId = `${os.hostname()}:copilot:${process.pid}`,
@@ -258,6 +259,17 @@ export function createCopilotTaskWorker({
       }
       logger.error?.(`[copilot-worker] tarefa ${String(task.id).slice(0, 8)} interrompida (${code}).`);
       return false;
+    } finally {
+      if (typeof onTaskFinished === 'function') {
+        try {
+          const latest = await taskStore.getById(task.id, task.ownerKey);
+          if (latest && ['succeeded', 'failed', 'uncertain'].includes(latest.status)) {
+            await onTaskFinished(latest);
+          }
+        } catch (error) {
+          logger.warn?.('[copilot-worker] falha ao reconciliar compromisso da tarefa:', error?.code || error?.name || 'task_reconcile_failed');
+        }
+      }
     }
   };
 

@@ -43,6 +43,7 @@ import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { startGlobalEventLoopMonitor, stopGlobalEventLoopMonitor, getEventLoopHealthSnapshot } from './ops/event-loop-monitor.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
 import { createTelegramCopilot } from './channels/telegram.mjs';
+import { avaliarJanelaDeAtendimento } from './business-hours.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
@@ -110,6 +111,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   let telegramCopilot = null;
+  let liaAutonomy = null;
   const mirrorToTelegram = (message, options = {}) => {
     void telegramCopilot?.notifyAdmin?.(message, options).catch(() => {});
   };
@@ -119,6 +121,79 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     learningEngine: liaLearning,
     getBotConfig: () => adminConfig.active,
     getHumanPhone,
+    notifyCommitmentRecipient: async (commitment) => {
+      const phone = String(commitment?.recipient_phone || '').replace(/\D/g, '');
+      if (commitment?.recipient_type !== 'client' || !phone) return { sent: false, reason: 'client_recipient_missing' };
+      const session = store.get(phone);
+      const matchingConsult = session?.pendingAdminConsult?.commitmentId === commitment?.id;
+      if (!session || (session.human && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
+      const optOut = await campaignStore.isSuppressed(phone).catch(() => true);
+      if (optOut) return { sent: false, reason: 'client_opted_out' };
+      const businessWindow = avaliarJanelaDeAtendimento(adminConfig.active?.business?.hoursConfig, new Date());
+      if (!businessWindow?.isOpen) return { sent: false, reason: 'outside_business_hours' };
+      if (!liaAutonomy) return { sent: false, reason: 'autonomy_engine_unavailable' };
+
+      const history = (Array.isArray(session.history) ? session.history : []).slice(-12).map(item => ({
+        role: item?.role === 'assistant' ? 'assistant' : 'user',
+        content: String(item?.content || '').slice(0, 1200)
+      })).filter(item => item.content.trim());
+      const generated = await copilotAI.askAI({
+        system: [
+          'Você escreve uma atualização em português brasileiro para o cliente sobre um compromisso que venceu.',
+          'Use o histórico e o título/descrição do compromisso para explicar exatamente o que ainda não foi confirmado.',
+          'Seja responsável, empática e direta. Não invente resultado, dado, preço, desconto ou reembolso.',
+          'Não prometa novo prazo, retorno futuro, envio, contato ou ação que ainda não ocorreu.',
+          'Não mencione IA, API, provedor, erro técnico ou detalhes internos.',
+          'Não peça pagamento e não gere cobrança. Escreva no máximo duas frases.'
+        ].join('\n'),
+        history,
+        userText: 'Compromisso vencido: ' + String(commitment.title || 'verificação') + '\nDetalhes: ' + String(commitment.metadata?.description || commitment.description || '') + '\nEscreva uma atualização honesta para o cliente, sem criar outra promessa.',
+        botConfig: adminConfig.active,
+        disableToolCalling: true,
+        deadline: Date.now() + 9000
+      });
+      const rawReply = String(generated?.reply || '').trim();
+      const filtered = filterReply(rawReply, { allowedPrices: getAllowedPrices(), strictPrices: true });
+      if (!rawReply || filtered.blocked || !filtered.text) return { sent: false, reason: 'customer_update_blocked_by_safety_filter' };
+      const deduplicationKey = 'tracked-commitment-overdue:' + String(commitment.id || 'unknown');
+      const outcome = await liaAutonomy.decideAndAct({
+        tenantId: 'default',
+        why: 'Enviar atualização de um compromisso prometido que venceu, respeitando autorização e guardas de comunicação.',
+        event: { id: commitment.id, type: 'commitment.due' },
+        context: { commitmentId: commitment.id, category: commitment.category || 'outro', complexity: 'low' },
+        proposedAction: 'follow_up',
+        expectedOutcome: 'Atualização contextual entregue ao destinatário final sem criar nova promessa.',
+        risk: 'low',
+        confidence: 0.9,
+        verificationPlan: 'confirmar envio pelo canal WhatsApp e registro no guard de comunicação',
+        targetPhone: phone,
+        optOut: false,
+        withinBusinessHours: true,
+        execute: async () => {
+          const result = await liaAutonomy.communicateProactively({
+            tenantId: 'default',
+            reason: 'tracked_commitment_overdue',
+            deduplicationKey,
+            subject: phone,
+            message: filtered.text,
+            relevant: true,
+            userNeedsToKnow: true,
+            rightTiming: true,
+            permitted: true
+          });
+          if (!result.sent) throw new Error(result.reason || 'proactive_communication_blocked');
+          return { success: true, sent: true };
+        }
+      });
+      if (!outcome.executed) return { sent: false, reason: outcome.authorization?.reason || outcome.reason || outcome.decision || 'follow_up_not_authorized' };
+      session.history ??= [];
+      session.history.push({ role: 'assistant', content: filtered.text, createdAt: new Date().toISOString(), metadata: { commitmentId: commitment.id, followUp: true } });
+      session.lastBotAt = new Date().toISOString();
+      session.updatedAt = new Date().toISOString();
+      store.markDirty?.();
+      if (typeof store.flush === 'function') await store.flush().catch(() => {});
+      return { sent: true };
+    },
     notifyOwner: async (message) => {
       mirrorToTelegram(message);
       const target = getHumanPhone();
@@ -127,23 +202,27 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     },
     logger: console
   });
-  await liaRuntime.start();
   const liaAutonomyStore = new LiaAutonomyStore({
     client: store.client,
     filePath: path.join(path.dirname(config.dataFile), 'lia-autonomy.json'),
     allowLocalFallback: process.env.LIA_AUTONOMY_LOCAL_FALLBACK === 'true',
     logger: console
   });
-  const liaAutonomy = createAutonomyEngine({
+  liaAutonomy = createAutonomyEngine({
     store: liaAutonomyStore,
     runtime: liaRuntime,
     learning: liaLearning,
     taskStore: copilotTaskStore,
     isSuppressed: phone => campaignStore.isSuppressed(phone),
+    notifyProactive: async ({ subject, message }) => {
+      if (!subject || !message) throw new Error('proactive_message_target_or_body_missing');
+      await sendText(subject, formatOutgoingMessage(message));
+    },
     getBotConfig: () => adminConfig.active,
     logger: console
   });
   await liaAutonomy.start();
+  await liaRuntime.start();
   const copilotTaskWorker = createCopilotTaskWorker({
     taskStore: copilotTaskStore,
     store,
@@ -152,6 +231,14 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     sendText,
     getHumanPhone,
     onOwnerNotify: (message) => mirrorToTelegram(message),
+    onTaskFinished: async (task) => {
+      const commitments = await liaRuntime.commitments.list();
+      const linked = commitments.find(item => item.metadata?.linkedTaskId === task.id);
+      if (!linked) return;
+      if (task.status === 'succeeded') await liaRuntime.commitments.fulfill(linked.id);
+      else if (task.status === 'uncertain') await liaRuntime.commitments.markUncertain(linked.id, task.errorCode || 'linked_task_outcome_uncertain');
+      else if (task.status === 'failed') await liaRuntime.commitments.fail(linked.id, task.errorCode || 'linked_task_failed');
+    },
     operationsStore,
     logger: console
   });

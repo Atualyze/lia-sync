@@ -286,6 +286,60 @@ test('Runtime Commitments: persiste, gera commitment.due no prazo e compromisso 
   }
 });
 
+test('Runtime Commitments: vencimento notifica cliente somente pelo gate fornecido e mantém alerta do responsável', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-rt-commit-recipient-'));
+  try {
+    let clock = Date.parse('2026-11-22T12:00:00Z');
+    const store = new LiaRuntimeStore({ filePath: path.join(dir, 'lia-runtime.json'), logger: silentLogger, now: () => clock });
+    const clientNotifications = [];
+    const ownerNotifications = [];
+    const rt = createLiaRuntime({
+      store,
+      logger: silentLogger,
+      now: () => clock,
+      notifyCommitmentRecipient: async commitment => {
+        clientNotifications.push(commitment.id);
+        return { sent: commitment.title === 'Atualizar cliente', reason: 'outside_business_hours' };
+      },
+      notifyOwner: async message => ownerNotifications.push(message)
+    });
+    await rt.start();
+
+    const blocked = await rt.commitments.create({
+      title: 'Aguardar autorização',
+      dueAt: new Date(clock + 1000).toISOString(),
+      recipientType: 'client',
+      recipientPhone: '5588999990001',
+      ownerType: 'owner',
+      conversationId: '5588999990001'
+    });
+    const sent = await rt.commitments.create({
+      title: 'Atualizar cliente',
+      dueAt: new Date(clock + 1000).toISOString(),
+      recipientType: 'client',
+      recipientPhone: '5588999990002',
+      ownerType: 'bot',
+      conversationId: '5588999990002'
+    });
+
+    clock += 2000;
+    const first = await rt.wake({ reason: 'scheduler' });
+    assert.equal(first.dueCommitments, 2);
+    assert.deepEqual(new Set(clientNotifications), new Set([blocked.id, sent.id]));
+    assert.equal(ownerNotifications.length, 1);
+    assert.match(ownerNotifications[0], /Aguardar autorização/);
+    assert.equal((await rt.commitments.get(blocked.id)).status, 'overdue');
+    assert.equal((await rt.commitments.get(sent.id)).status, 'overdue');
+
+    const second = await rt.wake({ reason: 'scheduler' });
+    assert.equal(second.dueCommitments, 0);
+    assert.equal(clientNotifications.length, 2);
+    assert.equal(ownerNotifications.length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 // === 8. Security & Readiness ===
 test('Runtime Security & Readiness: bloqueia Pix automático, outbound proibido, replay incerto e falha fechado em corrupção', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-rt-sec-'));
