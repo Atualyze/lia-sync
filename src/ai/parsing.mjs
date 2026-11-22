@@ -8,6 +8,21 @@ export const responseSchema = {
     red_flags: { type: 'BOOLEAN' },
     handoff: { type: 'BOOLEAN' },
     handoff_reason: { type: 'STRING' },
+    commitment_required: { type: 'BOOLEAN' },
+    commitment: {
+      type: 'OBJECT',
+      nullable: true,
+      properties: {
+        title: { type: 'STRING' },
+        description: { type: 'STRING' },
+        due_at: { type: 'STRING' },
+        recipient_type: { type: 'STRING', enum: ['client', 'owner'] },
+        owner_type: { type: 'STRING', enum: ['bot', 'owner'] },
+        category: { type: 'STRING', enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'] }
+      },
+      required: ['title', 'description', 'due_at', 'recipient_type', 'owner_type', 'category']
+    },
+
     sector: { type: 'STRING', nullable: true },
     sentiment: { type: 'STRING', nullable: true },
     context_summary: { type: 'STRING', nullable: true },
@@ -66,7 +81,7 @@ export const responseSchema = {
       }
     }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'commitment_required', 'commitment']
 };
 
 const openRouterSchema = {
@@ -78,6 +93,21 @@ const openRouterSchema = {
     red_flags: { type: 'boolean' },
     handoff: { type: 'boolean' },
     handoff_reason: { type: ['string', 'null'] },
+    commitment_required: { type: 'boolean' },
+    commitment: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        due_at: { type: 'string' },
+        recipient_type: { type: 'string', enum: ['client', 'owner'] },
+        owner_type: { type: 'string', enum: ['bot', 'owner'] },
+        category: { type: 'string', enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'] }
+      },
+      required: ['title', 'description', 'due_at', 'recipient_type', 'owner_type', 'category']
+    },
+
     sector: { type: ['string', 'null'] },
     sentiment: { type: ['string', 'null'] },
     context_summary: { type: ['string', 'null'] },
@@ -94,7 +124,7 @@ const openRouterSchema = {
     },
     collected: { type: 'object', additionalProperties: true }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_reason', 'collected']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_reason', 'commitment_required', 'commitment', 'collected']
 };
 
 export function safeErrorDetail(body = '') {
@@ -200,9 +230,9 @@ export function parseAIResponse(raw) {
     const source = String(raw || '').replace(/```json|```/gi, '').trim();
     if (/^\s*\{|"reply"\s*:/.test(source)) {
       const recovered = extractTruncatedReply(source);
-      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
+      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, commitment_required: false, commitment: null, collected: {} };
     }
-    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, collected: {} };
+    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_reason: null, commitment_required: false, commitment: null, collected: {} };
   }
   const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
@@ -222,12 +252,33 @@ export function parseAIResponse(raw) {
   const rawSector = typeof o.sector === 'string' ? o.sector.trim().toLowerCase() : '';
   const validSentiments = new Set(['positivo', 'neutro', 'confuso', 'frustrado', 'urgente']);
   const rawSentiment = typeof o.sentiment === 'string' ? o.sentiment.trim().toLowerCase() : '';
+  const commitmentRequired = o.commitment_required === true;
+  const candidateCommitment = o.commitment && typeof o.commitment === 'object' && !Array.isArray(o.commitment) ? o.commitment : null;
+  const dueAt = Date.parse(candidateCommitment?.due_at || '');
+  const validCommitmentCategories = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro']);
+  const validCommitment = commitmentRequired && candidateCommitment
+    && typeof candidateCommitment.title === 'string' && candidateCommitment.title.trim()
+    && typeof candidateCommitment.description === 'string'
+    && Number.isFinite(dueAt)
+    && ['client', 'owner'].includes(candidateCommitment.recipient_type)
+    && ['bot', 'owner'].includes(candidateCommitment.owner_type)
+    && validCommitmentCategories.has(candidateCommitment.category);
+  const commitment = validCommitment ? {
+    title: candidateCommitment.title.trim().slice(0, 200),
+    description: candidateCommitment.description.trim().slice(0, 1000),
+    due_at: new Date(dueAt).toISOString(),
+    recipient_type: candidateCommitment.recipient_type,
+    owner_type: candidateCommitment.owner_type,
+    category: candidateCommitment.category
+  } : null;
   return {
     reply: typeof o.reply === 'string' ? o.reply : '',
     intent: intents.has(o.intent) ? o.intent : (isHandoff ? 'falar_com_responsavel' : 'outro'),
     red_flags: o.red_flags === true,
     handoff: isHandoff,
     handoff_reason: typeof o.handoff_reason === 'string' ? o.handoff_reason : null,
+    commitment_required: commitmentRequired,
+    commitment,
     sector: validSectors.has(rawSector) ? (rawSector === 'comercial' ? 'vendas' : rawSector) : null,
     sentiment: validSentiments.has(rawSentiment) ? rawSentiment : null,
     context_summary: typeof o.context_summary === 'string' && o.context_summary.trim() ? o.context_summary.trim().slice(0, 280) : null,
