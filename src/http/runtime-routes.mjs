@@ -13,6 +13,7 @@ import { config } from '../config.mjs';
  * Controle de papel aplicado em src/http/router.mjs:
  * - GET /api/dashboard/runtime/overview: operator+
  * - GET /api/dashboard/whatsapp/baileys: operator+
+ * - GET /api/dashboard/runtime/uncertain-tasks e POST /tasks/:id/reconcile: admin (trilha auditável, sem replay)
  * - Demais rotas (políticas, objetivos, compromissos, propostas, wake, api-settings, ai-providers, whatsapp/baileys/*): admin
  */
 export async function handleRuntimeDashboardRoutes({

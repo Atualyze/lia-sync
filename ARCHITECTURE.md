@@ -149,3 +149,8 @@ A camada **`src/autonomy/*`** integra Runtime e Learning em autonomia operaciona
 - **`src/autonomy/verification.mjs`**: `VerificationEngine` (diferencia tentativa de resultado confirmado), `planRecovery` (proíbe retry de efeitos externos/incertos e pausa LLM em `AI_PROVIDER_CREDITS_EXHAUSTED`), `evaluateSystemHealth` e `AutonomyAuditStore` com métricas de Runtime e Sales.
 - **`src/autonomy/domains.mjs`**: CRM Ports desacoplados (`LeadProvider`, `ContactProvider`, `CompanyProvider`, `OpportunityProvider`, `ActivityProvider`, `PipelineProvider`), `RelationshipEngine`, `SalesAutonomy` (estados comerciais, scoring por fatores, cadência adaptativa e personalização factual) e `SupportAutonomy`.
 - **`src/autonomy/engine.mjs`**: `AutonomyEngine` com contrato de decisão auditável, priorização multi-objetivo anti-starvation, revisão diária proativa (`runDailyReview`) e integração ao `/ready` (`lia_autonomy`). Migration dedicada: `supabase/migrations/20261121150000_lia_autonomy.sql`.
+
+
+## Administrative reconciliation of uncertain Copilot effects
+
+Jobs whose external result or WhatsApp notification is `uncertain` are listed in the admin-only Runtime panel. Reconciliation requires evidence and is stored on the job and in `audit_log`. It may confirm execution, confirm notification delivery/non-delivery, or leave the result uncertain. This operation changes only the recorded state; it never claims a job, enqueues work, replays a tool, repeats a Pix charge, or sends a WhatsApp message. Unresolved outcomes remain visible until new evidence permits a later administrative decision.
