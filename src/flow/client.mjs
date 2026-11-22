@@ -16,7 +16,7 @@ import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixAct
 import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
-import { buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
+import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
@@ -169,6 +169,113 @@ export async function handleClientMessage({
         store.touch(s);
       }
       s.history ??= [];
+
+      const createTrackedClientCommitment = async ({
+        title,
+        description = '',
+        dueAt,
+        ownerType = 'owner',
+        category = 'outro',
+        metadata = {}
+      } = {}) => {
+        if (typeof liaRuntime?.commitments?.create !== 'function') return null;
+        const dueTs = Date.parse(dueAt || '');
+        const currentTs = now();
+        if (!Number.isFinite(dueTs) || dueTs <= currentTs || dueTs > currentTs + 90 * 24 * 60 * 60_000) return null;
+        const recipientPhone = String(s.phone || phone || '').replace(/\D/g, '');
+        if (!recipientPhone || recipientPhone.length < 8) return null;
+        try {
+          const created = await liaRuntime.commitments.create({
+            title: String(title || 'Retorno ao cliente').slice(0, 200),
+            description: String(description || '').slice(0, 1000),
+            subject: s.clientName || pushName || recipientPhone,
+            dueAt: new Date(dueTs).toISOString(),
+            conversationId: String(s.phone || phone),
+            recipientType: 'client',
+            recipientPhone,
+            ownerType: ownerType === 'bot' ? 'bot' : 'owner',
+            category: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'].includes(category) ? category : 'outro',
+            metadata: { ...metadata, source: metadata.source || 'client_conversation' }
+          });
+          if (created?.id) {
+            s.activeCommitments ??= [];
+            s.activeCommitments.push({ id: created.id, due_at: created.due_at, status: created.status || 'pending' });
+            s.activeCommitments = s.activeCommitments.slice(-20);
+            store.markDirty();
+            return created;
+          }
+        } catch (error) {
+          logger.warn?.('[commitments] falha ao persistir promessa do cliente:', error?.code || error?.name || 'commitment_create_failed');
+        }
+        return null;
+      };
+
+      const buildPromiseFreeReply = async (topic = clean) => {
+        const recent = (Array.isArray(s.history) ? s.history : []).slice(-10).map(item => ({
+          role: item?.role === 'assistant' ? 'assistant' : 'user',
+          content: String(item?.content || '').slice(0, 1000)
+        })).filter(item => item.content.trim());
+        try {
+          const rewritten = await ai?.askAI?.({
+            system: [
+              'Reescreva a resposta em português brasileiro para este cliente.',
+              'Explique apenas o que pode ser confirmado agora.',
+              'Não prometa retorno, prazo, consulta, aviso, envio, contato humano ou qualquer ação futura.',
+              'Não afirme que uma equipe foi avisada se isso não estiver confirmado.',
+              'Não invente fatos, disponibilidade, preço, desconto, reembolso ou cobrança.',
+              'Use até duas frases curtas e não use ferramentas.'
+            ].join('\n'),
+            history: recent,
+            userText: 'Pedido atual: ' + String(topic || '').slice(0, 500) + '\nReescreva sem nenhuma promessa futura.',
+            botConfig,
+            disableToolCalling: true,
+            deadline: now() + 4000
+          });
+          const reply = String(rewritten?.reply || '').trim();
+          if (reply && !/\b(?:vou\s+(?:verificar|consultar|retornar|avisar|confirmar|enviar|resolver)|te\s+retorno|te\s+aviso|em\s+instantes|assim\s+que\s+(?:eu\s+)?(?:souber|confirmar|verificar)|já\s+(?:te\s+)?(?:aviso|retorno|envio))\b/i.test(reply)) return reply;
+        } catch {}
+        const subject = String(topic || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 130);
+        return subject
+          ? 'Sobre "' + subject + '", ainda não tenho uma confirmação segura para te passar. Prefiro não afirmar que algo foi verificado ou enviado sem ter essa confirmação.'
+          : 'Ainda não tenho uma confirmação segura para te passar. Prefiro não afirmar que algo foi verificado ou enviado sem ter essa confirmação.';
+      };
+
+      const createAdminConsultCommitment = async ({ reason, category = 'outro', title = 'Verificação solicitada pelo cliente' } = {}) => {
+        const consultId = 'consult-' + Date.now().toString(36);
+        const requestedAt = new Date(now()).toISOString();
+        const dueAt = new Date(now() + ADMIN_CONSULT_TTL_MS).toISOString();
+        const commitment = await createTrackedClientCommitment({
+          title,
+          description: String(reason || clean).slice(0, 500),
+          dueAt,
+          ownerType: 'owner',
+          category,
+          metadata: { kind: 'admin_consult', consultId, description: String(reason || clean).slice(0, 500) }
+        });
+        const record = {
+          id: consultId,
+          commitmentId: commitment?.id || null,
+          trackingFailed: !commitment,
+          phone: s.phone,
+          rawJid: rawItem?.jid || s.phone,
+          clientName: s.clientName || pushName || 'Cliente',
+          question: clean.slice(0, 400),
+          reason: String(reason || '').slice(0, 500),
+          requestedAt,
+          dueAt,
+          status: 'pending'
+        };
+        s.pendingAdminConsult = record;
+        store.markDirty();
+        await notify(buildAdminConsultNotice({
+          clientName: record.clientName,
+          phone: s.phone,
+          question: clean,
+          reason: record.reason,
+          assistant
+        }));
+        return record;
+      };
 
       // 2.1 TRATAMENTO DE ÁUDIO
       if (mediaType === 'audio') {
