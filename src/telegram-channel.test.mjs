@@ -117,7 +117,7 @@ test('Telegram Copiloto roteia comandos, áudio e botões inline de aprovação 
           ownerSession.pendingOutboundDispatch = { target: '558899999999' };
           return 'Prévia pronta! Deseja aprovar o disparo?';
         }
-        if (payload.text === 'sim, aprovar disparo') {
+        if (payload.text === 'sim') {
           ownerSession.pendingOutboundDispatch = null;
           return '✅ Disparo enviado com sucesso!';
         }
@@ -156,7 +156,7 @@ test('Telegram Copiloto roteia comandos, áudio e botões inline de aprovação 
     }
   });
   assert.equal(processed.length, 2);
-  assert.equal(processed[1].text, 'sim, aprovar disparo');
+  assert.equal(processed[1].text, 'sim');
   assert.ok(apiCalls.some(c => c.method === 'answerCallbackQuery'));
   assert.ok(apiCalls.some(c => c.method === 'editMessageReplyMarkup'));
   assert.ok(apiCalls.some(c => c.method === 'sendMessage' && c.body.text.includes('Disparo enviado')));

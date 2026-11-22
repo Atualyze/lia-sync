@@ -1431,7 +1431,8 @@ function renderChat({ forceRender = false } = {}) {
   if (phoneLink) phoneLink.href = cleanNum ? `https://wa.me/${cleanNum}` : '#';
   $('#chat-phone').textContent = fPhone;
 
-  const rawHistory = session.history || [];
+  const pendingOptimistic = state.pendingOutboundByPhone?.get(session.phone) || [];
+  const rawHistory = [...(session.history || []), ...pendingOptimistic];
   const searchQ = (state.chatSearchQuery || '').trim().toLowerCase();
   const filteredHistory = rawHistory
     .map((m, idx) => ({ ...m, _idx: idx }))
@@ -1444,7 +1445,7 @@ function renderChat({ forceRender = false } = {}) {
 
   const lastMsg = rawHistory[rawHistory.length - 1];
   const lastMsgStamp = lastMsg ? `${lastMsg.createdAt || ''}:${String(lastMsg.content || '').length}` : '0';
-  const chatSig = `${session.phone}::${rawHistory.length}::${lastMsgStamp}::${searchQ}::${session.human}`;
+  const chatSig = `${session.phone}::${rawHistory.length}::${pendingOptimistic.length}::${lastMsgStamp}::${searchQ}::${session.human}`;
   const switchedSession = state.lastSelectedPhone !== session.phone;
   state.lastSelectedPhone = session.phone;
 
@@ -3458,28 +3459,59 @@ function openAdminSection(accId) {
 async function sendChatMessage({ text, mediaType = 'text', fileName = '' } = {}) {
   const cleanText = String(text || '').trim();
   if (!cleanText || !state.selected) return;
+  const targetPhone = state.selected;
   const sess = selectedSession();
   const isSim = sess ? sess.origin === 'simulation' : state.mode === 'simulation';
+  const isInternal = Boolean(sess?.isInternalChat || targetPhone === 'owner_self' || /^[a-z0-9_]+_self$/i.test(targetPhone));
   const endpoint = isSim ? '/api/dashboard/simulate' : '/api/dashboard/send';
   const replyPayload = state.replyTo ? { ...state.replyTo } : null;
   clearReplyTo();
+
+  if (!state.pendingOutboundByPhone) state.pendingOutboundByPhone = new Map();
+  const optimisticId = `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const optimisticMsg = {
+    id: optimisticId,
+    role: (isInternal || isSim) ? 'user' : 'assistant',
+    content: `${cleanText}\n\n⏳ _Enviando..._`,
+    createdAt: new Date().toISOString(),
+    _optimistic: true
+  };
+  const existingPending = state.pendingOutboundByPhone.get(targetPhone) || [];
+  state.pendingOutboundByPhone.set(targetPhone, [...existingPending, optimisticMsg]);
+  const sendBtn = $('#composer button[type="submit"]');
+  if (sendBtn) sendBtn.disabled = true;
+  renderChat({ forceRender: true });
+
+  const removeOptimistic = () => {
+    const list = (state.pendingOutboundByPhone.get(targetPhone) || []).filter(m => m.id !== optimisticId);
+    if (list.length) state.pendingOutboundByPhone.set(targetPhone, list);
+    else state.pendingOutboundByPhone.delete(targetPhone);
+  };
 
   try {
     const res = await api(endpoint, {
       method: 'POST',
       body: JSON.stringify({
-        phone: state.selected,
+        phone: targetPhone,
         text: cleanText,
         replyTo: replyPayload,
         mediaType,
         fileName
       })
     });
+    removeOptimistic();
     if (res?.selectedPhone) state.selected = res.selectedPhone;
     await refresh();
+    renderChat({ forceRender: true });
     if (state.view === 'metrics') renderMetrics();
   } catch (err) {
+    removeOptimistic();
+    const input = $('#message-input');
+    if (input && !input.value.trim()) input.value = cleanText;
+    renderChat({ forceRender: true });
     showToast({ title: 'Falha ao Enviar Mensagem', message: err.message || 'Erro de comunicação', type: 'error' });
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
   }
 }
 

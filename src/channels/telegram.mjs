@@ -481,8 +481,8 @@ export function createTelegramCopilot({
     const pushName = [query.from?.first_name, query.from?.last_name].filter(Boolean).join(' ').trim() || query.from?.username || '';
 
     const CALLBACK_ACTIONS = {
-      'outbound:approve': { toast: 'Aprovando disparo...', command: 'sim, aprovar disparo' },
-      'outbound:cancel': { toast: 'Cancelando disparo...', command: 'cancelar disparo' },
+      'outbound:approve': { toast: 'Aprovando disparo...', command: 'sim' },
+      'outbound:cancel': { toast: 'Cancelando disparo...', command: 'cancelar' },
       'pix:approve': { toast: 'Autorizando geração do Pix...', command: 'pode gerar o pix' },
       'pix:assume': { toast: 'Assumindo atendimento...', command: 'assumir atendimento' },
       'consult:takeover': { toast: 'Assumindo atendimento...', command: 'assumir' },
