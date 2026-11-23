@@ -246,6 +246,73 @@ export class LiaAutonomyStore {
     });
   }
 
+  async hasProactiveNotification({ deduplicationKey } = {}) {
+    this._assertAvailable();
+    const key = String(deduplicationKey || '').trim().slice(0, 200);
+    if (!key) return false;
+    if (this.remoteEnabled) {
+      const rows = await this.client.select(
+        'lia_proactive_notifications',
+        `select=id&deduplication_key=eq.${encodeURIComponent(key)}&limit=1`
+      );
+      return Array.isArray(rows) && rows.length > 0;
+    }
+    return this.snapshot.notifications.some(item => item.deduplication_key === key);
+  }
+
+  async claimProactiveNotification({ tenantId = 'default', deduplicationKey, subject = 'owner', reason = 'daily_review' } = {}) {
+    this._assertAvailable();
+    const key = String(deduplicationKey || '').trim().slice(0, 200);
+    if (!key) throw new Error('proactive_notification_deduplication_key_required');
+    const row = {
+      id: crypto.randomUUID(),
+      tenant_id: String(tenantId || 'default'),
+      deduplication_key: key,
+      subject: String(subject || 'owner').slice(0, 160),
+      reason: String(reason || 'daily_review').slice(0, 120),
+      status: 'deferred',
+      created_at: new Date(this.now()).toISOString()
+    };
+    if (this.remoteEnabled) {
+      const inserted = await this.client.request('lia_proactive_notifications', {
+        method: 'POST',
+        query: 'on_conflict=deduplication_key',
+        body: [row],
+        prefer: 'resolution=ignore-duplicates,return=representation'
+      });
+      return Array.isArray(inserted) && inserted.some(item => item?.deduplication_key === key);
+    }
+    return this._serial(async () => {
+      if (this.snapshot.notifications.some(item => item.deduplication_key === key)) return false;
+      this.snapshot.notifications.push(clone(row));
+      await this._saveLocal();
+      return true;
+    });
+  }
+
+  async finalizeProactiveNotification({ deduplicationKey, status = 'sent' } = {}) {
+    this._assertAvailable();
+    const key = String(deduplicationKey || '').trim().slice(0, 200);
+    if (!key) throw new Error('proactive_notification_deduplication_key_required');
+    const safeStatus = ['sent', 'suppressed', 'deferred', 'failed'].includes(status) ? status : 'failed';
+    if (this.remoteEnabled) {
+      await this.client.patch(
+        'lia_proactive_notifications',
+        `deduplication_key=eq.${encodeURIComponent(key)}`,
+        { status: safeStatus },
+        { returnRepresentation: false }
+      );
+      return true;
+    }
+    return this._serial(async () => {
+      const row = this.snapshot.notifications.find(item => item.deduplication_key === key);
+      if (!row) return false;
+      row.status = safeStatus;
+      await this._saveLocal();
+      return true;
+    });
+  }
+
   async recordProactiveNotification({ tenantId = 'default', deduplicationKey, subject = 'owner', reason = 'daily_review', status = 'sent' } = {}) {
     this._assertAvailable();
     const row = {

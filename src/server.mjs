@@ -217,8 +217,12 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     taskStore: copilotTaskStore,
     isSuppressed: phone => campaignStore.isSuppressed(phone),
     notifyProactive: async ({ subject, message }) => {
-      if (!subject || !message) throw new Error('proactive_message_target_or_body_missing');
-      await sendText(subject, formatOutgoingMessage(message));
+      const rawSubject = String(subject || '').trim();
+      const target = /^owner(?::|$)/i.test(rawSubject) ? getHumanPhone() : rawSubject.replace(/\D/g, '');
+      if (!target || !message) throw new Error('proactive_message_target_or_body_missing');
+      const filtered = filterReply(String(message), { allowedPrices: getAllowedPrices(), strictPrices: true });
+      if (filtered.blocked || !filtered.text) throw new Error('proactive_message_blocked_by_safety_filter');
+      await sendText(target, formatOutgoingMessage(filtered.text));
     },
     getBotConfig: () => adminConfig.active,
     logger: console
@@ -796,6 +800,7 @@ if (isDirectRun) {
   // Scheduler dedicado do Lia Runtime (15s): garante que compromissos/verificações autônomas
   // disparem no horário exato sem depender do intervalo longo de manutenção de inatividade.
   let runtimeWakeRunning = false;
+  let lastDailyReviewDay = '';
   const runRuntimeScheduler = async () => {
     if (runtimeWakeRunning) return;
     if (!app.liaRuntime?.available) {
@@ -808,6 +813,36 @@ if (isDirectRun) {
     runtimeWakeRunning = true;
     try {
       await app.liaRuntime.wake({ reason: 'scheduler' });
+      if (app.liaAutonomy?.readiness?.().status === 'ready') {
+        let identity = null;
+        try { identity = await app.liaRuntime.identity?.get?.(); } catch {}
+        const configuredHour = Number(identity?.owner_preferences?.digestHour ?? 9);
+        const reviewHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23 ? configuredHour : 9;
+        const activeConfig = app.adminConfig?.active || {};
+        let timeZone = activeConfig.businessHours?.timezone
+          || activeConfig.business?.hoursConfig?.timezone
+          || activeConfig.business?.timezone
+          || 'America/Sao_Paulo';
+        let localHour;
+        try {
+          localHour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+        } catch {
+          timeZone = 'America/Sao_Paulo';
+          localHour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+        }
+        const dateParts = new Intl.DateTimeFormat('en-US', {
+          timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).formatToParts(new Date());
+        const dateValues = Object.fromEntries(dateParts.map(part => [part.type, part.value]));
+        const reviewDay = `${dateValues.year}-${dateValues.month}-${dateValues.day}`;
+        if (Number.isFinite(localHour) && localHour >= reviewHour && lastDailyReviewDay !== reviewDay) {
+          lastDailyReviewDay = reviewDay;
+          await app.liaAutonomy.runDailyReview({ tenantId: 'default', timeZone });
+        }
+      }
     } catch (e) {
       console.error('[lia-runtime]', e?.message || e);
     } finally {
