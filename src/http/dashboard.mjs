@@ -330,7 +330,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     const activeInst = typeof getActiveInstancePhone === 'function'
       ? String(getActiveInstancePhone() || '').replace(/@.*$/, '').replace(/\D/g, '')
       : '';
-    if (activeInst && !isOwnerKey(phone)) {
+    if (activeInst && !isOwnerKey(body.phone)) {
       session.instancePhone = activeInst;
     }
     session.updatedAt = new Date().toISOString();
