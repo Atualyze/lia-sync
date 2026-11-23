@@ -3,7 +3,7 @@ import { OWNER_SELF_KEY } from '../core/identity.mjs';
 
 export const ADMIN_CONSULT_TTL_MS = 2 * 60 * 60 * 1000;
 
-const UNEXECUTED_PROMISE_RE = /\b(?:vou\s+(?:buscar|procurar|pegar|checar|consultar|verificar|enviar|mandar|anexar)|estou\s+(?:buscando|procurando|pegando|checando|consultando|verificando|enviando|anexando)|procurando\s+aqui|j[aá]\s+(?:te\s+)?(?:envio|mando|anexo))\b.{0,80}\b(?:drive|google\s*drive|planilha|sheets|arquivo|contrato|modelo\s+de\s+contrato|pdf|documento|cat[aá]logo|agenda)\b/i;
+const UNEXECUTED_PROMISE_RE = /\b(?:vou\s+(?:buscar|procurar|pegar|checar|consultar|verificar|enviar|mandar|anexar|retornar|avisar|confirmar|resolver)|estou\s+(?:buscando|procurando|checando|consultando|verificando|enviando|anexando)|te\s+retorno|te\s+aviso|já\s+retorno|assim\s+que\s+(?:eu\s+)?(?:souber|confirmar|verificar)|em\s+instantes|já\s+(?:te\s+)?(?:envio|mando|aviso|retorno))\b(?:.{0,100}\b(?:drive|google\s*drive|planilha|sheets|arquivo|contrato|pdf|documento|cat[aá]logo|agenda|equipe|responsável|resposta|informação|confirmação)\b)?/i;
 
 const FAKE_ATTACHMENT_RE = /\b(?:aqui\s+est[aá]|segue(?:\s+em\s+anexo)?|enviei|mandei|anexei|acabei\s+de\s+enviar)\b.{0,60}\b(?:modelo\s+de\s+contrato|contrato|arquivo|pdf|documento|cat[aá]logo|planilha)\b|\barquivo\s+n[aã]o\s+foi\s+anexado\b/i;
 
@@ -34,7 +34,7 @@ export function buildAdminConsultNotice({
     `• *Pedido do cliente:* "${String(question || '').trim().slice(0, 320)}"`,
     reason ? `• *Motivo:* ${reason}` : '',
     '',
-    `_Responda aqui com a resposta, orientação ou confirmação que eu já retorno de forma natural para o cliente e continuo o atendimento automaticamente!_`,
+    `_Responda aqui com a resposta, orientação ou confirmação. A consulta permanece rastreada até ser resolvida ou cancelada; se o prazo vencer, o cliente e você serão avisados._`,
     `_(Se preferir assumir o atendimento direto, responda *assumir*; para ignorar, responda *cancelar*.)_`
   ].filter(Boolean).join('\n');
 }
@@ -47,11 +47,17 @@ export function listPendingAdminConsults(sessions = {}, { nowMs = Date.now() } =
     const consult = session.pendingAdminConsult;
     if (!consult || consult.status !== 'pending') continue;
     const requestedMs = Date.parse(consult.requestedAt || '');
-    if (Number.isFinite(requestedMs) && nowMs - requestedMs > ADMIN_CONSULT_TTL_MS) {
-      session.pendingAdminConsult = null;
-      continue;
-    }
-    items.push({ key, session, consult, requestedMs: Number.isFinite(requestedMs) ? requestedMs : 0 });
+    const ageMs = Number.isFinite(requestedMs) ? Math.max(0, nowMs - requestedMs) : 0;
+    // TTL agora indica atraso, não descarte. A consulta continua visível ao
+    // responsável até ser respondida ou cancelada explicitamente.
+    items.push({
+      key,
+      session,
+      consult,
+      requestedMs: Number.isFinite(requestedMs) ? requestedMs : 0,
+      ageMs,
+      overdue: Number.isFinite(requestedMs) && ageMs > ADMIN_CONSULT_TTL_MS
+    });
   }
   return items.sort((a, b) => b.requestedMs - a.requestedMs);
 }
