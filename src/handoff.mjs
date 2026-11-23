@@ -1,4 +1,5 @@
 import { resolveIdentity } from './core/identity.mjs';
+import { enterHumanHandoff, isHumanHandoffActive } from './flow/human-handoff-state.mjs';
 
 export function summary(session, reason = 'solicitação de atendimento', urgency = 'normal', identityInput = {}) {
   const identity = resolveIdentity(identityInput);
@@ -42,11 +43,11 @@ export async function triggerHandoff(session, {
     session.history = [...(session.history || []), { role: 'user', content: lastUserText }];
   }
 
-  const wasAlreadyHuman = Boolean(session.human);
-  session.human = true;
-  session.handoffAt = new Date(now).toISOString();
-  session.handoffReason = reason;
-  session.handoffUrgency = urgency;
+  const { wasAlreadyHuman } = enterHumanHandoff(session, {
+    at: now,
+    reason,
+    urgency
+  });
 
   if (send) await send?.();
 
