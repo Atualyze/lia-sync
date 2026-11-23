@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { hasSecretEncryptionKey } from './security/secrets.mjs';
 
 const bool = (name, fallback = false) => process.env[name] === undefined ? fallback : process.env[name] === 'true';
 const num = (name, fallback) => Number.isFinite(Number(process.env[name])) ? Number(process.env[name]) : fallback;
@@ -81,6 +82,9 @@ export function validateConfig({ strict = false } = {}) {
   }
   if (config.whatsappProvider === 'evolution' && !config.evolutionInstance) {
     errors.push('EVOLUTION_INSTANCE não configurada para o provedor legado Evolution');
+  }
+  if (process.env.NODE_ENV === 'production' && !hasSecretEncryptionKey()) {
+    errors.push('API_SECRETS_ENCRYPTION_KEY não configurada ou inválida (gere 32 bytes aleatórios em Base64)');
   }
   if (!config.webhookToken && !config.allowInsecureWebhook) {
     errors.push('WEBHOOK_TOKEN não configurado (use ALLOW_INSECURE_WEBHOOK=true apenas em desenvolvimento)');
