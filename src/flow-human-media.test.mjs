@@ -55,9 +55,9 @@ test('mídia recebida durante handoff humano não é baixada nem enviada à IA',
   assert.deepEqual(
     session.history.map(message => message.content),
     [
-      '[Áudio recebida durante atendimento humano]',
+      '[Áudio recebido durante atendimento humano]',
       '[Imagem recebida durante atendimento humano]',
-      '[Documento recebida durante atendimento humano]'
+      '[Documento recebido durante atendimento humano]'
     ]
   );
   assert.equal(session.human, true);
