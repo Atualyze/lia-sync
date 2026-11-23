@@ -14,7 +14,7 @@ import { sendText, sendPresence, sendReaction, getInstanceOwnerPhone, sendWhatsA
 import { BaileysProvider } from './whatsapp/baileys-provider.mjs';
 import { processWhatsAppWebhookPayload } from './http/webhook.mjs';
 import { createInboundMessageScheduler } from './message-scheduler.mjs';
-import { isHumanHandoffActive } from './flow/human-handoff-state.mjs';
+import { isHumanHandoffActive, canSendAutomatedClientMessage } from './flow/human-handoff-state.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -132,7 +132,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       if (commitment?.recipient_type !== 'client' || !phone) return { sent: false, reason: 'client_recipient_missing' };
       const session = store.get(phone);
       const matchingConsult = session?.pendingAdminConsult?.commitmentId === commitment?.id;
-      if (!session || (isHumanHandoffActive(session) && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
+      if (!canSendAutomatedClientMessage(session, { allowMatchingAdminConsult: true, hasMatchingAdminConsult: matchingConsult })) return { sent: false, reason: 'client_session_not_eligible' };
       const optOut = await campaignStore.isSuppressed(phone).catch(() => true);
       if (optOut) return { sent: false, reason: 'client_opted_out' };
       const businessWindow = avaliarJanelaDeAtendimento(adminConfig.active?.business?.hoursConfig, new Date());
@@ -178,12 +178,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         execute: async () => {
           const liveSession = store.get(phone);
           const liveMatchingConsult = liveSession?.pendingAdminConsult?.commitmentId === commitment?.id;
-          if (
-            !liveSession ||
-            (isHumanHandoffActive(liveSession) && !liveMatchingConsult) ||
-            liveSession.archivedAt ||
-            liveSession.inactivityClosed
-          ) {
+          if (!canSendAutomatedClientMessage(liveSession, {
+            allowMatchingAdminConsult: true,
+            hasMatchingAdminConsult: liveMatchingConsult
+          })) {
             throw new Error('client_session_not_eligible');
           }
           const result = await liaAutonomy.communicateProactively({
