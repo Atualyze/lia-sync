@@ -182,6 +182,7 @@ const PLACEHOLDER_HOSTS = new Set([
   'example.com', 'www.example.com', 'exemplo.com', 'exemplo.com.br',
   'seu-dominio.com', 'seu-dominio.com.br', 'seudominio.com', 'seudominio.com.br',
   'seusite.com', 'seusite.com.br', 'meusite.com', 'meusite.com.br',
+  'empresa.com.br', 'pix.empresa.com.br',
   'lia', 'lia-bot', 'paperclip'
 ]);
 const KNOWN_LIA_ROUTES = /^\/(?:pix|pay|painel|api\/public)(?:\/|$)/i;
@@ -349,7 +350,9 @@ export function filterReply(reply = '', { allowedPrices = new Set(), isCopilot =
     && !/^000201/.test(fakePixCodeMatch[1])
     && !text.includes('br.gov.bcb.pix')
   );
-  if (hasPlaceholderBracket || hasFakePixCode) violations.push('pix_ficticio');
+  const removedPaymentLink = linkCheck.removedCount > 0
+    && /\b(?:pix|pagamento|checkout|c[oó]pia\s+e\s+cola|c[oó]digo\s+pix)\b/i.test(text);
+  if (hasPlaceholderBracket || hasFakePixCode || removedPaymentLink) violations.push('pix_ficticio');
   const limit = maxLength || (isCopilot ? 4000 : 1200);
   if (text.length > limit) text = text.slice(0, limit).replace(/\s+\S*$/, '') + '…';
 

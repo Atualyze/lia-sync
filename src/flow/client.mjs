@@ -1796,6 +1796,20 @@ export async function handleClientMessage({
         result.handoff_reason = null;
       }
 
+      // Nunca envie cobrança, QR/link ou Pix copia e cola que veio apenas da
+      // redação da IA. Esses dados só são válidos após resultado real e
+      // bem-sucedido da ferramenta unificada neste turno.
+      const unverifiedPaymentClaim = /https?:\/\/|\b(?:aqui\s+est[aá]|vou\s+gerar|j[aá]\s+gerei|foi\s+gerad[oa]|gera[cç][aã]o\s+conclu[ií]da)\b/i.test(finalReply);
+      if (isClient && isPixActionRequest(actionText) && !pixHandledByTool && unverifiedPaymentClaim) {
+        finalReply = paymentUnavailableReply({
+          hasCheckout: isCheckoutConfigured(botConfig),
+          hasPix: isPixConfigured(botConfig)
+        });
+        safeReplyText = finalReply;
+        toolReplyOverride = null;
+        s.pendingClientPayment = null;
+      }
+
       if (botConfig?.style?.emoji === 'off' && safeReplyText) {
         safeReplyText = String(safeReplyText).replace(/\p{Extended_Pictographic}/gu, '').replace(/\uFE0F/g, '').replace(/[ \t]{2,}/g, ' ').trim();
         finalReply = safeReplyText;
