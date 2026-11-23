@@ -122,9 +122,11 @@ test('falha do lote rejeita todos os chamadores e libera a entrada pendente', as
   const second = scheduler.schedule({ phone: '5511999990006', text: 'B' });
   const flushed = scheduler.flush('5511999990006');
 
-  await assert.rejects(first, /falha de processamento/);
-  await assert.rejects(second, /falha de processamento/);
-  await assert.rejects(flushed, /falha de processamento/);
+  await Promise.all([
+    assert.rejects(first, /falha de processamento/),
+    assert.rejects(second, /falha de processamento/),
+    assert.rejects(flushed, /falha de processamento/)
+  ]);
   assert.equal(scheduler.pendingCount, 0);
 });
 
