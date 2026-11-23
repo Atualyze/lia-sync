@@ -16,6 +16,7 @@ import { memoryStore } from '../core/memory.mjs';
 import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation } from './reactivation-notice.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { getIntegrations } from './operations.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 
 const bridgeActions = new TtlIdempotencyStore({ ttlMs: Number(process.env.BRIDGE_IDEMPOTENCY_TTL_MS || 10 * 60 * 1000) });
 const safeError = error => error?.code || (error?.name === 'TimeoutError' ? 'provider_timeout' : 'request_failed');
@@ -202,8 +203,8 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         phone: digits,
         reply: reply || null,
         audioBase64: lastAudio,
-        mode: session.human ? 'human' : 'bot',
-        handoff: Boolean(session.human),
+        mode: isHumanHandoffActive(session) ? 'human' : 'bot',
+        handoff: isHumanHandoffActive(session),
         handoffReason: session.handoffReason || null,
         clientName: session.clientName || session.contactName || pushName || digits
       });
@@ -228,18 +229,21 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     if (!digits || !['human', 'bot'].includes(body.mode)) return json(res, 400, { ok: false, error: 'invalid_mode_or_phone' });
     try {
       const session = store.get(digits);
-      const wasHuman = Boolean(session.human);
+      const wasHuman = isHumanHandoffActive(session);
       const isHuman = body.mode === 'human';
-      session.human = isHuman;
-      session.humanSource = isHuman ? 'dashboard' : 'resume';
       if (isHuman) {
-        session.handoffAt = new Date().toISOString();
-        session.handoffReason = body.reason || 'assumido pelo Chatwoot';
+        enterHumanHandoff(session, {
+          source: 'dashboard',
+          at: new Date().toISOString(),
+          reason: body.reason || 'assumido pelo Chatwoot'
+        });
       } else {
-        session.handoffAt = null;
-        session.handoffNotified = false;
-        session.handoffReminder1Sent = false;
-        session.handoffReminder60Sent = false;
+        resumeHumanHandoff(session, {
+          source: 'resume',
+          clearHandoffAt: true,
+          clearNotifications: true,
+          clearReminderFlags: true
+        });
         session.inactivityClosed = false;
         if (wasHuman) {
           if (body.autoContinue !== false && deliverReactivationReply && f) {
@@ -255,11 +259,11 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
       await store.flush?.().catch(() => {});
       broadcastBridgeEvent('mode_change', {
         phone: digits,
-        mode: session.human ? 'human' : 'bot',
+        mode: isHumanHandoffActive(session) ? 'human' : 'bot',
         reason: session.handoffReason,
         timestamp: Date.now()
       });
-      return json(res, 200, { ok: true, phone: digits, mode: session.human ? 'human' : 'bot', human: session.human });
+      return json(res, 200, { ok: true, phone: digits, mode: isHumanHandoffActive(session) ? 'human' : 'bot', human: isHumanHandoffActive(session) });
     } catch (err) {
       return json(res, 400, { ok: false, error: safeError(err) });
     }
@@ -281,10 +285,11 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     try {
       if (!skipSession && (digits.length >= 8 || /@lid$/i.test(rawPhone))) {
         const session = store.get(targetJid);
-        session.human = true;
-        session.humanSource = 'dashboard';
-        session.handoffAt = new Date().toISOString();
-        session.handoffReason = body.reason || 'atendimento humano via Chatwoot';
+        enterHumanHandoff(session, {
+          source: 'dashboard',
+          at: new Date().toISOString(),
+          reason: body.reason || 'atendimento humano via Chatwoot'
+        });
         session.handoffReminderAt = null;
         if (!Array.isArray(session.history)) session.history = [];
         session.history.push({

@@ -1,4 +1,5 @@
 import { normalizePhone } from '../sessions.mjs';
+import { isHumanHandoffActive } from '../flow/human-handoff-state.mjs';
 
 const OPTOUT_PATTERNS = [
   /^\s*(?:pare|parar|sair|cancelar|remover|descadastrar|stop|unsubscribe|me\s+remove|sai\s+fora)\s*[!.]*\s*$/i,
@@ -15,7 +16,7 @@ function hasActiveSession(sessionStore, phone) {
   try {
     if (!sessionStore?.has?.(phone)) return false;
     const session = sessionStore.get(phone);
-    return Boolean(session?.human || (session?.history?.length || 0) > 0);
+    return Boolean(isHumanHandoffActive(session) || (session?.history?.length || 0) > 0);
   } catch {
     return true;
   }

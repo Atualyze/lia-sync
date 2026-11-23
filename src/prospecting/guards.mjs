@@ -1,3 +1,5 @@
+import { isHumanHandoffActive } from '../flow/human-handoff-state.mjs';
+
 function parseClockMinutes(hhmm = '09:00') {
   const [h, m] = String(hhmm).split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
@@ -76,7 +78,7 @@ export async function evaluateProspectGuards({
   try {
     const hasSession = typeof sessionStore?.has === 'function' ? sessionStore.has(lead.phone) : false;
     const existingSession = hasSession && sessionStore.get(lead.phone);
-    if (existingSession && ((existingSession.history?.length || 0) > 0 || existingSession.human)) {
+    if (existingSession && ((existingSession.history?.length || 0) > 0 || isHumanHandoffActive(existingSession))) {
       return { allowed: false, reason: 'existing_session' };
     }
   } catch {

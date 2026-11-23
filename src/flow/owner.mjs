@@ -1,4 +1,5 @@
 import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction } from '../safety.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { getAllowedPrices } from '../faq.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
@@ -596,10 +597,11 @@ export async function handleOwnerSession({
           }
           sSelf.pendingOutboundDispatch = null;
           if (pending.resumeBot) {
-            target.human = false;
-            target.humanSource = null;
-            target.handoffAt = null;
-            target.handoffReminderAt = null;
+            resumeHumanHandoff(target, {
+              source: null,
+              clearHandoffAt: true,
+              clearReminderAt: true
+            });
             target.inactivityClosed = false;
             target.awaitingReply = true;
             target.lastBotAt = sentAt;
@@ -620,11 +622,12 @@ export async function handleOwnerSession({
           const sTarget = findSessionByTarget(targetArg);
           if (!sTarget) return `⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*.`;
           sTarget.history = [];
-          sTarget.human = false;
-          sTarget.humanSource = null;
-          sTarget.handoffAt = null;
-          sTarget.handoffReminderAt = null;
-          sTarget.handoffNotified = false;
+          resumeHumanHandoff(sTarget, {
+            source: null,
+            clearHandoffAt: true,
+            clearReminderAt: true,
+            clearNotifications: true
+          });
           sTarget.inactivityClosed = false;
           sTarget.updatedAt = new Date(now()).toISOString();
           store.markDirty();
@@ -733,10 +736,11 @@ export async function handleOwnerSession({
               if (consultAction.action === 'takeover') {
                 if (consult.commitmentId) await liaRuntime?.commitments?.cancel?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
-                targetSession.human = true;
-                targetSession.humanSource = 'admin';
-                targetSession.handoffAt = timestamp;
-                targetSession.handoffReason = `Responsável assumiu atendimento após consulta interna (${targetName})`;
+                enterHumanHandoff(targetSession, {
+                  source: 'admin',
+                  at: timestamp,
+                  reason: `Responsável assumiu atendimento após consulta interna (${targetName})`
+                });
                 store.markDirty();
                 return recordSelfTurn(`✅ Entendido! Pausei meu atendimento com *${targetName}* e deixei a conversa em *Modo Humano* para você responder diretamente.`);
               }
@@ -781,7 +785,7 @@ export async function handleOwnerSession({
                       targetSession.pendingAdminConsult = null;
                       targetSession.pendingAdminDecision = null;
                       targetSession.pendingClientPayment = null;
-                      targetSession.human = false;
+                      resumeHumanHandoff(targetSession);
                       targetSession.lastBotAt = timestamp;
                       targetSession.awaitingReply = true;
                       targetSession.updatedAt = timestamp;
@@ -810,7 +814,7 @@ export async function handleOwnerSession({
                     }
                     targetSession.history ??= [];
                     targetSession.history.push({ role: 'assistant', content: `${msgParts}\n\n${pixRes.pixCopiaECola || ''}`.trim(), createdAt: timestamp });
-                    targetSession.human = false;
+                    resumeHumanHandoff(targetSession);
                     targetSession.lastBotAt = timestamp;
                     targetSession.awaitingReply = true;
                     if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
@@ -865,7 +869,7 @@ export async function handleOwnerSession({
                 }
                 targetSession.history ??= [];
                 targetSession.history.push({ role: 'assistant', content: filteredClientReply, createdAt: timestamp });
-                targetSession.human = false;
+                resumeHumanHandoff(targetSession);
                 targetSession.lastBotAt = timestamp;
                 targetSession.awaitingReply = true;
                 if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
@@ -926,20 +930,19 @@ export async function handleOwnerSession({
               const snapshot = {
                 decision: { ...decision },
                 pendingClientPayment: targetSession.pendingClientPayment,
-                human: targetSession.human,
-                humanSource: targetSession.humanSource,
-                handoffAt: targetSession.handoffAt,
-                handoffReason: targetSession.handoffReason,
-                updatedAt: targetSession.updatedAt
+                handoffState: captureHumanHandoffSnapshot(targetSession, [
+                  'human', 'humanSource', 'handoffAt', 'handoffReason', 'updatedAt'
+                ])
               };
               decision.status = 'assumed';
               decision.decidedAt = timestamp;
               decision.decidedBy = String(owner || 'responsável').slice(0, 80);
               targetSession.pendingClientPayment = null;
-              targetSession.human = true;
-              targetSession.humanSource = 'admin';
-              targetSession.handoffAt = timestamp;
-              targetSession.handoffReason = `Responsável assumiu a cobrança Pix de ${targetName}`;
+              enterHumanHandoff(targetSession, {
+                source: 'admin',
+                at: timestamp,
+                reason: `Responsável assumiu a cobrança Pix de ${targetName}`
+              });
               targetSession.updatedAt = timestamp;
               store.markDirty();
               try {
@@ -947,11 +950,7 @@ export async function handleOwnerSession({
               } catch (error) {
                 targetSession.pendingAdminDecision = snapshot.decision;
                 targetSession.pendingClientPayment = snapshot.pendingClientPayment;
-                targetSession.human = snapshot.human;
-                targetSession.humanSource = snapshot.humanSource;
-                targetSession.handoffAt = snapshot.handoffAt;
-                targetSession.handoffReason = snapshot.handoffReason;
-                targetSession.updatedAt = snapshot.updatedAt;
+                restoreHumanHandoffSnapshot(targetSession, snapshot.handoffState);
                 store.markDirty();
                 await persistAdminPixDecisionBestEffort();
                 return recordSelfTurn(filterReply(
@@ -1028,16 +1027,14 @@ export async function handleOwnerSession({
                 await whatsapp.sendText(targetAddress, formatOutgoingMessage(clientFailure));
                 targetSession.history ??= [];
                 targetSession.history.push({ role: 'assistant', content: clientFailure, createdAt: timestamp });
-                targetSession.human = false;
-                targetSession.humanSource = null;
+                resumeHumanHandoff(targetSession, { source: null });
                 targetSession.awaitingReply = true;
                 targetSession.lastBotAt = timestamp;
                 targetSession.updatedAt = timestamp;
                 store.markDirty();
                 await persistAdminPixDecisionBestEffort();
               } catch (error) {
-                targetSession.human = true;
-                targetSession.humanSource = 'admin';
+                enterHumanHandoff(targetSession, { source: 'admin' });
                 targetSession.updatedAt = timestamp;
                 store.markDirty();
                 await persistAdminPixDecisionBestEffort();
@@ -1064,7 +1061,7 @@ export async function handleOwnerSession({
             } catch (error) {
               decision.status = 'uncertain';
               decision.error = String(error?.message || 'O provedor não confirmou a entrega da mensagem.').replace(/[\r\n]+/g, ' ').slice(0, 180);
-              targetSession.human = true;
+              enterHumanHandoff(targetSession);
               targetSession.updatedAt = new Date(now()).toISOString();
               store.markDirty();
               await persistAdminPixDecisionBestEffort();
@@ -1078,14 +1075,15 @@ export async function handleOwnerSession({
             decision.completedAt = new Date(now()).toISOString();
             decision.error = '';
             targetSession.pendingClientPayment = null;
-            targetSession.human = false;
-            targetSession.humanSource = null;
-            targetSession.handoffAt = null;
-            targetSession.handoffReason = null;
-            targetSession.handoffUrgency = null;
-            targetSession.handoffNotified = false;
-            targetSession.handoffNotifyFailed = false;
-            targetSession.handoffReminderAt = null;
+            resumeHumanHandoff(targetSession, {
+              source: null,
+              clearHandoffAt: true,
+              clearHandoffReason: true,
+              clearHandoffUrgency: true,
+              clearReminderAt: true,
+              clearNotifications: true,
+              clearNotifyFailed: true
+            });
             targetSession.awaitingReply = true;
             targetSession.lastBotAt = decision.completedAt;
             targetSession.updatedAt = decision.completedAt;
@@ -1095,7 +1093,7 @@ export async function handleOwnerSession({
             } catch (error) {
               decision.status = 'uncertain';
               decision.error = 'Pix enviado ao cliente, mas o estado final não foi confirmado no banco.';
-              targetSession.human = true;
+              enterHumanHandoff(targetSession);
               store.markDirty();
               await persistAdminPixDecisionBestEffort();
               return recordSelfTurn(filterReply(
@@ -1324,7 +1322,7 @@ export async function handleOwnerSession({
             // Relatório operacional com dados reais em tempo real
             const sessionsArr = Object.values(store.sessions);
             const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
-            const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
+            const humanWaiting = sessionsArr.filter(s => isHumanHandoffActive(s) && !s.inactivityClosed && s.phone);
             const remList = reminderStore ? reminderStore.listActive() : [];
             const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
             const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini';

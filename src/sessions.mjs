@@ -273,7 +273,8 @@ export class SessionStore {
 
   enqueue(phone, fn) {
     const norm = normalizePhone(phone);
-    const key = String(norm.replace(/^sim:/, ''));
+    // Sessões simuladas e reais têm histórico isolado; suas filas também.
+    const key = String(norm);
     const prior = this.queues.get(key) || Promise.resolve();
     const next = prior.catch(() => {}).then(fn);
     let tracked;

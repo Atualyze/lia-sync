@@ -5,6 +5,7 @@ import { parsePayload, isMessageUpsert, isIgnoredJid, wasSentByBot, sendText, ma
 import { resolveIdentity, isOwnerContact, escapeRegExp, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { broadcastBridgeEvent } from './bridge.mjs';
 import { handleInboundOptOut } from '../prospecting/optout.mjs';
+import { enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 
 export function stableIdlessEventKey(item, event) {
   const timestamp = item.eventTimestamp;
@@ -142,13 +143,13 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
           if (!isSelfChat && /^[!/#]?(?:bot|reativar)\b/i.test(item.text?.trim())) {
             const session = store.get(item.phone);
             if (session) {
-              session.human = false;
-              session.humanSource = 'resume';
-              session.handoffAt = null;
-              session.handoffReminderAt = null;
-              session.handoffReminder1Sent = false;
-              session.handoffReminder60Sent = false;
-              session.handoffNotified = false;
+              resumeHumanHandoff(session, {
+                source: 'resume',
+                clearHandoffAt: true,
+                clearReminderAt: true,
+                clearNotifications: true,
+                clearReminderFlags: true
+              });
               session.inactivityClosed = false;
               session.updatedAt = new Date().toISOString();
               store.markDirty();
@@ -183,11 +184,13 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
           }
           const session = store.get(item.phone);
           if (session) {
-            session.human = true;
-            session.humanSource = 'takeover';
-            session.handoffAt = new Date().toISOString();
-            session.takeoverAt = new Date().toISOString();
-            session.handoffReason = 'atendente humano respondeu no WhatsApp';
+            const takeoverAt = new Date().toISOString();
+            enterHumanHandoff(session, {
+              source: 'takeover',
+              at: takeoverAt,
+              reason: 'atendente humano respondeu no WhatsApp'
+            });
+            session.takeoverAt = takeoverAt;
             session.handoffReminderAt = null;
             session.updatedAt = new Date().toISOString();
             if (item.text && item.text.trim()) {
@@ -290,7 +293,17 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
     });
     await finish('processed');
   } catch (error) {
-    await finish('failed', error?.code || error?.name || 'processing_failed');
+    const deliveryUncertain = error?.deliveryOutcomeUncertain === true;
+    if (deliveryUncertain) {
+      // Não reprocessar automaticamente quando um envio pode ter chegado ao
+      // WhatsApp: isso poderia duplicar uma resposta parcialmente entregue.
+      await finish('ignored', 'delivery_outcome_uncertain');
+    } else {
+      await finish('failed', error?.code || error?.name || 'processing_failed');
+      // Se a falha ocorreu antes de qualquer envio, libera a chave em memória
+      // para que a próxima tentativa do mesmo evento possa ser processada.
+      f?.releaseDuplicate?.(id);
+    }
     console.error('[webhook] processamento falhou', error?.code || error?.name || 'processing_failed');
   }
 }

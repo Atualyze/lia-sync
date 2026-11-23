@@ -5,6 +5,7 @@ import { handleOwnerSession } from './flow/owner.mjs';
 import { handleClientMessage } from './flow/client.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { normalize } from './safety.mjs';
+import { isHumanHandoffActive } from './flow/human-handoff-state.mjs';
 
 export {
   collectedValid, isHumanRequest, isTalkToOwnerRequest, isAtendimentoOption,
@@ -90,7 +91,7 @@ export function createFlow({
 
   const getWaitingList = () => {
     return Object.entries(store.sessions || {}).filter(([key, s]) =>
-      s && !isSimulationSession(key, s) && s.human && !s.archivedAt && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
+      s && !isSimulationSession(key, s) && isHumanHandoffActive(s) && !s.archivedAt && s.phone && s.phone !== OWNER_SELF_KEY && !isOwnerSender(s.phone)
     ).map(([, session]) => session).sort((a, b) => {
       const tA = a.handoffAt ? new Date(a.handoffAt).getTime() : 0;
       const tB = b.handoffAt ? new Date(b.handoffAt).getTime() : 0;
@@ -168,6 +169,13 @@ export function createFlow({
       if (dedupe.size > 1000) dedupe.delete(dedupe.keys().next().value);
       return false;
     },
+    // Chamado pelo webhook somente quando o processamento falhou antes de
+    // iniciar uma entrega ao WhatsApp. Falhas de entrega permanecem deduplicadas
+    // porque o resultado remoto pode ser incerto.
+    releaseDuplicate(id) {
+      if (!id) return false;
+      return dedupe.delete(id);
+    },
     allowRate(phone) {
       if (isOwnerSender(phone) || phone === OWNER_SELF_KEY) return true;
       const t = now();
@@ -242,7 +250,7 @@ export function createFlow({
       let delivered = 0;
       const entries = Object.entries(store.sessions || {});
       for (const [key, session] of entries) {
-        if (!session || isSimulationSession(key, session) || session.human || session.archivedAt) continue;
+        if (!session || isSimulationSession(key, session) || isHumanHandoffActive(session) || session.archivedAt) continue;
         if (!session.phone || session.phone === OWNER_SELF_KEY || isOwnerSender(session.phone)) continue;
         const pending = session.pendingAIRetry;
         if (!pending || !pending.userText) continue;
@@ -251,7 +259,7 @@ export function createFlow({
 
         const runRetry = async () => {
           const live = store.sessions?.[key] || session;
-          if (!live || live.human || live.archivedAt || !live.pendingAIRetry?.userText) return;
+          if (!live || isHumanHandoffActive(live) || live.archivedAt || !live.pendingAIRetry?.userText) return;
           const retryMeta = { ...live.pendingAIRetry };
           processed += 1;
           const reply = await handleClientMessage({

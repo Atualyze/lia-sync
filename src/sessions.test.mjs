@@ -241,3 +241,33 @@ test('SupabaseSessionStore persiste e restaura pendingOutboundDispatch na sessã
   assert.deepEqual(restored.pendingOutboundDispatch, { ...pending, status: 'sending' });
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('SessionStore serializa pelo contato, mas mantém fila de simulação isolada', async () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-queues-${Date.now()}.json`));
+  let releaseReal;
+  let startedReal;
+  const realStarted = new Promise(resolve => { startedReal = resolve; });
+  const realGate = new Promise(resolve => { releaseReal = resolve; });
+  const order = [];
+
+  const real = store.enqueue('5511999991111', async () => {
+    order.push('real-start');
+    startedReal();
+    await realGate;
+    order.push('real-end');
+  });
+  await realStarted;
+
+  const sameRealContact = store.enqueue('5511999991111', async () => {
+    order.push('real-next');
+  });
+  const simulation = store.enqueue('sim:5511999991111', async () => {
+    order.push('simulation');
+  });
+
+  await simulation;
+  assert.deepEqual(order, ['real-start', 'simulation']);
+  releaseReal();
+  await Promise.all([real, sameRealContact]);
+  assert.deepEqual(order, ['real-start', 'simulation', 'real-end', 'real-next']);
+});

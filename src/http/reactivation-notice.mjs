@@ -1,6 +1,7 @@
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { isEmergency } from '../safety.mjs';
 import { broadcastBridgeEvent } from './bridge.mjs';
+import { isHumanHandoffActive } from '../flow/human-handoff-state.mjs';
 
 const DEFAULT_MAX_UNANSWERED_AGE_MS = 12 * 3600_000;
 
@@ -73,7 +74,7 @@ export async function triggerSmartReactivationContinuation({
   maxAgeMs = DEFAULT_MAX_UNANSWERED_AGE_MS,
   logger = console
 } = {}) {
-  if (!store || !session || session.human || session.archivedAt) {
+  if (!store || !session || isHumanHandoffActive(session) || session.archivedAt) {
     return { continued: false, reason: 'session_not_eligible' };
   }
   const history = Array.isArray(session.history) ? session.history : [];
@@ -96,7 +97,7 @@ export async function triggerSmartReactivationContinuation({
 
   const runContinuation = async () => {
     const live = store.get?.(session.phone || phone) || session;
-    if (!live || live.human || live.archivedAt) return { continued: false, reason: 'reverted_to_human' };
+    if (!live || isHumanHandoffActive(live) || live.archivedAt) return { continued: false, reason: 'reverted_to_human' };
     const reply = await flow.process({
       phone: live.phone || phone,
       text: lastText,

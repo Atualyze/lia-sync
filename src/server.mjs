@@ -13,6 +13,8 @@ import { loadFaq } from './faq.mjs';
 import { sendText, sendPresence, sendReaction, getInstanceOwnerPhone, sendWhatsAppAudio, sendDocument, sendImage, getMediaBase64, setOutboundSuppressionCheck, setBaileysProvider } from './whatsapp.mjs';
 import { BaileysProvider } from './whatsapp/baileys-provider.mjs';
 import { processWhatsAppWebhookPayload } from './http/webhook.mjs';
+import { createInboundMessageScheduler } from './message-scheduler.mjs';
+import { isHumanHandoffActive, canSendAutomatedClientMessage } from './flow/human-handoff-state.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -130,7 +132,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       if (commitment?.recipient_type !== 'client' || !phone) return { sent: false, reason: 'client_recipient_missing' };
       const session = store.get(phone);
       const matchingConsult = session?.pendingAdminConsult?.commitmentId === commitment?.id;
-      if (!session || (session.human && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
+      if (!canSendAutomatedClientMessage(session, { allowMatchingAdminConsult: true, hasMatchingAdminConsult: matchingConsult })) return { sent: false, reason: 'client_session_not_eligible' };
       const optOut = await campaignStore.isSuppressed(phone).catch(() => true);
       if (optOut) return { sent: false, reason: 'client_opted_out' };
       const businessWindow = avaliarJanelaDeAtendimento(adminConfig.active?.business?.hoursConfig, new Date());
@@ -174,6 +176,14 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         optOut: false,
         withinBusinessHours: true,
         execute: async () => {
+          const liveSession = store.get(phone);
+          const liveMatchingConsult = liveSession?.pendingAdminConsult?.commitmentId === commitment?.id;
+          if (!canSendAutomatedClientMessage(liveSession, {
+            allowMatchingAdminConsult: true,
+            hasMatchingAdminConsult: liveMatchingConsult
+          })) {
+            throw new Error('client_session_not_eligible');
+          }
           const result = await liaAutonomy.communicateProactively({
             tenantId: 'default',
             reason: 'tracked_commitment_overdue',
@@ -371,7 +381,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     }
 
     const activeSessions = Object.values(store.sessions).filter(s => !s.inactivityClosed);
-    const waitingContacts = activeSessions.filter(s => s.human).map(s => ({
+    const waitingContacts = activeSessions.filter(s => isHumanHandoffActive(s)).map(s => ({
       name: s.clientName || 'Contato',
       phone: s.phone,
       lastMsg: s.history?.at(-1)?.content || ''
@@ -438,94 +448,90 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   };
   const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });
   await integrationsStore.load().catch(() => {});
-  const auth = dashboardAuth || authCache(); const pending = new Map(); const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
-  const deliver = (job) => store.enqueue(job.phone, async () => {
-    const incomingSession = store.get(job.phone);
-    const activeInst = getActiveInstancePhone();
-    if (incomingSession && activeInst && !isOwnerKey(job.phone) && job.origin !== 'simulation') {
-      if (incomingSession.instancePhone !== activeInst) {
-        incomingSession.instancePhone = activeInst;
+  const auth = dashboardAuth || authCache();
+  const rateMessage = 'Recebi muitas mensagens em pouco tempo por aqui! ⏳\n\nVou pausar nosso atendimento por alguns minutinhos para organizar tudo com calma. Logo em seguida você já pode escrever novamente! 💛';
+  const deliver = (job) => {
+    let outboundStarted = false;
+    return store.enqueue(job.phone, async () => {
+      const incomingSession = store.get(job.phone);
+      const activeInst = getActiveInstancePhone();
+      if (incomingSession && activeInst && !isOwnerKey(job.phone) && job.origin !== 'simulation') {
+        if (incomingSession.instancePhone !== activeInst) {
+          incomingSession.instancePhone = activeInst;
+          store.markDirty?.();
+        }
+      }
+      const wasHuman = isHumanHandoffActive(incomingSession);
+      void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
+      if (!wasHuman) {
+        void sendPresence(deliveryTarget(job, getHumanPhone()), job.mediaType === 'audio' ? 'recording' : 'composing', 4000);
+      }
+      const answer = await f.process({ ...job, messageId: job.keyId || '' });
+      if (!wasHuman && isHumanHandoffActive(store.get(job.phone))) {
+        void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
+      }
+      if (!answer) return null;
+      // Ponto único de saída: nenhuma resposta chega ao WhatsApp sem passar por filterReply.
+      const copilotTarget = isOwnerKey(job.phone);
+      const serverAllowedPrices = copilotTarget ? new Set() : new Set(getAllowedPrices());
+      if (!copilotTarget && /^💳\s*\*Aqui está seu (?:Pix|link de pagamento)/i.test(String(answer).trim())) {
+        const receiptPrices = String(answer).matchAll(/R\$\s*(\d+(?:[.,]\d{2})?)/gi);
+        for (const m of receiptPrices) {
+          if (m[1]) serverAllowedPrices.add(m[1]).add(m[1].replace(',', '.')).add(m[1].replace('.', ','));
+        }
+      }
+      const filteredReply = filterReply(String(answer), {
+        isCopilot: copilotTarget,
+        allowedPrices: serverAllowedPrices,
+        strictPrices: !copilotTarget
+      });
+      const safeAnswer = filteredReply.blocked && !copilotTarget
+        ? 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.'
+        : filteredReply.text;
+      const parts = splitReply(formatOutgoingMessage(safeAnswer));
+      for (let i = 0; i < parts.length; i++) {
+        if (i) await new Promise(resolve => setTimeout(resolve, 600));
+        outboundStarted = true;
+        await sendText(deliveryTarget(job, getHumanPhone()), parts[i]);
+        broadcastBridgeEvent('bot_reply', {
+          phone: job.phone,
+          text: parts[i],
+          timestamp: Date.now()
+        });
+      }
+      if (incomingSession?.sendFailed) {
+        incomingSession.sendFailed = false;
         store.markDirty?.();
       }
-    }
-    const wasHuman = Boolean(incomingSession?.human);
-    void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
-    if (!wasHuman) {
-      void sendPresence(deliveryTarget(job, getHumanPhone()), job.mediaType === 'audio' ? 'recording' : 'composing', 4000);
-    }
-    const answer = await f.process({ ...job, messageId: job.keyId || '' });
-    if (!wasHuman && store.get(job.phone)?.human) {
-      void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
-    }
-    if (!answer) return null;
-    // Ponto único de saída: nenhuma resposta chega ao WhatsApp sem passar por filterReply.
-    const copilotTarget = isOwnerKey(job.phone);
-    const serverAllowedPrices = copilotTarget ? new Set() : new Set(getAllowedPrices());
-    if (!copilotTarget && /^💳\s*\*Aqui está seu (?:Pix|link de pagamento)/i.test(String(answer).trim())) {
-      const receiptPrices = String(answer).matchAll(/R\$\s*(\d+(?:[.,]\d{2})?)/gi);
-      for (const m of receiptPrices) {
-        if (m[1]) serverAllowedPrices.add(m[1]).add(m[1].replace(',', '.')).add(m[1].replace('.', ','));
+      return answer;
+    }).catch(error => {
+      const session = store.get(job.phone);
+      if (outboundStarted && session) {
+        session.sendFailed = true;
+        store.markDirty?.();
       }
-    }
-    const filteredReply = filterReply(String(answer), {
-      isCopilot: copilotTarget,
-      allowedPrices: serverAllowedPrices,
-      strictPrices: !copilotTarget
+      const failure = new Error(error?.message || String(error || 'delivery_failed'), { cause: error });
+      if (error?.code) failure.code = error.code;
+      failure.deliveryOutcomeUncertain = outboundStarted;
+      console.error('[webhook]', failure.message);
+      throw failure;
     });
-    const safeAnswer = filteredReply.blocked && !copilotTarget
-      ? 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.'
-      : filteredReply.text;
-    const parts = splitReply(formatOutgoingMessage(safeAnswer));
-    for (let i = 0; i < parts.length; i++) {
-      if (i) await new Promise(resolve => setTimeout(resolve, 600));
-      await sendText(deliveryTarget(job, getHumanPhone()), parts[i]);
-      broadcastBridgeEvent('bot_reply', {
-        phone: job.phone,
-        text: parts[i],
-        timestamp: Date.now()
-      });
+  };
+
+  const inboundScheduler = createInboundMessageScheduler({
+    deliver,
+    delayMs: config.debounceMs,
+    isImmediate: job => Boolean(
+      job.nonText ||
+      ['audio', 'image', 'video'].includes(String(job.mediaType || '').toLowerCase()) ||
+      isOwnerKey(job.phone)
+    ),
+    onError: (error, context) => {
+      console.error('[webhook:scheduler]', context?.phase || 'delivery_failed', error?.message || error);
     }
-    return answer;
-  }).catch(e => {
-    try { const session = store.get(job.phone); if (session) { session.sendFailed = true; store.markDirty(); } } catch {}
-    console.error('[webhook]', e.message);
-    throw e;
   });
-  const runBatch = (batch) => {
-    const waiters = Array.isArray(batch.waiters) ? batch.waiters : [];
-    return deliver(batch).then(
-      result => { for (const waiter of waiters) waiter.resolve(result); return result; },
-      error => { for (const waiter of waiters) waiter.reject(error); }
-    );
-  };
-  const schedule = (job) => {
-    if (job.nonText || job.mediaType === 'audio' || job.mediaType === 'image' || job.mediaType === 'video' || isOwnerKey(job.phone)) {
-      return deliver(job);
-    }
-    return new Promise((resolve, reject) => {
-      const old = pending.get(job.phone);
-      if (old) {
-        clearTimeout(old.timer);
-        old.text = `${old.text}\n${job.text}`;
-        old.keyId = job.keyId || old.keyId;
-        old.waiters.push({ resolve, reject });
-        old.timer = setTimeout(() => { pending.delete(job.phone); void runBatch(old); }, config.debounceMs);
-        return;
-      }
-      const entry = { ...job, waiters: [{ resolve, reject }] };
-      entry.timer = setTimeout(() => { pending.delete(job.phone); void runBatch(entry); }, config.debounceMs);
-      pending.set(job.phone, entry);
-    });
-  };
-  const drainPending = async () => {
-    const batches = [];
-    for (const [phone, job] of pending.entries()) {
-      clearTimeout(job.timer);
-      pending.delete(phone);
-      batches.push(runBatch(job));
-    }
-    if (batches.length) await Promise.allSettled(batches);
-  };
+  const schedule = inboundScheduler.schedule;
+  const drainPending = inboundScheduler.drain;
   const proxyToChatwoot = createChatwootProxy({ chatwootInternalUrl });
   const prospecting = createProspecting({
     client: supabaseRuntime.client,
@@ -756,7 +762,6 @@ if (isDirectRun) {
       timeZone: config.businessTimeZone,
       staleHours: config.inactivityStaleHours,
       humanReminderMinutes: config.humanReminderMinutes,
-      humanAutoResumeHours: config.humanAutoResumeHours,
       humanPhone: app.getHumanPhone(),
       activeInstancePhone: app.getActiveInstancePhone?.() || '',
       disableInactivityPings: true,
@@ -765,7 +770,7 @@ if (isDirectRun) {
       followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72,
       autoResumeOnOpen: app.adminConfig.active.business?.hoursConfig?.autoResumeOnOpen !== false,
       onPostponedResume: async (session) => {
-        if (!session?.phone || session.human || session.archivedAt) return { continued: false };
+        if (!session?.phone || isHumanHandoffActive(session) || session.archivedAt) return { continued: false };
         const history = Array.isArray(session.history) ? session.history : [];
         const lastUser = [...history].reverse().find(m => m?.role === 'user' && String(m.content || '').trim());
         if (!lastUser) return { continued: false };
@@ -774,7 +779,7 @@ if (isDirectRun) {
         const text = String(lastUser.content || '').trim();
         const run = async () => {
           const live = store.get?.(session.phone) || session;
-          if (!live || live.human || live.archivedAt) return { continued: false };
+          if (!live || isHumanHandoffActive(live) || live.archivedAt) return { continued: false };
           const reply = await app.flow.process({
             phone: live.phone,
             text,

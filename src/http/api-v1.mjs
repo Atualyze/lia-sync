@@ -5,6 +5,7 @@ import { validPhone } from '../dashboard.mjs';
 import { sendText } from '../whatsapp.mjs';
 import { filterReply } from '../safety.mjs';
 import { getAllowedPrices } from '../faq.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 
 const VALID_DEAL_STAGES = new Set(['lead', 'qualificado', 'agendado', 'proposta', 'ganho', 'perdido']);
 
@@ -111,7 +112,7 @@ function sanitizeContact(phone, session) {
     dealStage: session.dealStage || null,
     productInterest: session.productInterest || null,
     notes: session.contactNotes || null,
-    humanMode: Boolean(session.human),
+    humanMode: isHumanHandoffActive(session),
     updatedAt: session.updatedAt || null,
     lastMessages: Array.isArray(session.history)
       ? session.history.slice(-20).map(m => ({
@@ -211,7 +212,17 @@ export function createApiV1Handler({
         if (typeof body.productInterest === 'string') session.productInterest = body.productInterest.trim().slice(0, 200);
         if (typeof body.notes === 'string') session.contactNotes = body.notes.trim().slice(0, 1000);
         if (typeof body.contactNotes === 'string') session.contactNotes = body.contactNotes.trim().slice(0, 1000);
-        if (typeof body.humanMode === 'boolean') session.human = body.humanMode;
+        if (typeof body.humanMode === 'boolean') {
+          if (body.humanMode) {
+            enterHumanHandoff(session, {
+              source: 'api',
+              at: nowIso(),
+              reason: 'modo humano atualizado pela API'
+            });
+          } else {
+            resumeHumanHandoff(session, { source: null });
+          }
+        }
         session.updatedAt = nowIso();
         store.markDirty?.();
         await store.flush?.();

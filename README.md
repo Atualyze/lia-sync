@@ -240,7 +240,7 @@ A intenção é: **diagnosticar → corrigir → abrir PR → CI validar → hum
 
 ## Segurança e dados
 
-Toda resposta passa por `filterReply`. Preços só são aceitos quando vieram literalmente dos planos ativos do CRM. Sessões reais usam `<telefone>` e simulações `sim:<telefone>`. Para um JID `@lid`, o bot usa um número alternativo apenas quando a Evolution o fornece; caso contrário, preserva o JID completo para envio, sem inventar número. Conversas e mensagens vão para `contacts`, `conversations` e `conversation_messages`; `ai_calls` recebe telemetria sem prompts, respostas ou telefones. O backend mantém dual-write local por segurança e cai automaticamente para os JSON se o Supabase ficar indisponível. Para ativar, configure `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, mantendo a última chave somente no ambiente do servidor. `SUPABASE_RUNTIME_ENABLED=false` desliga a migração sem remover o fallback. O arquivo de sessões é retido por 30 dias por padrão e grava atomicamente. Para o volume Docker, use `chown 1000:1000 data`.
+Toda resposta passa por `filterReply`. Preços só são aceitos quando vieram literalmente dos planos ativos do CRM. Sessões reais usam `<telefone>` e simulações `sim:<telefone>`. Para um JID `@lid`, o bot usa um número alternativo apenas quando o próprio evento do WhatsApp fornece um identificador alternativo confiável (como `remoteJidAlt` ou `senderPn`); caso contrário, preserva o JID completo para envio, sem inventar número. Conversas e mensagens vão para `contacts`, `conversations` e `conversation_messages`; `ai_calls` recebe telemetria sem prompts, respostas ou telefones. O backend mantém dual-write local por segurança e cai automaticamente para os JSON se o Supabase ficar indisponível. Para ativar, configure `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, mantendo a última chave somente no ambiente do servidor. `SUPABASE_RUNTIME_ENABLED=false` desliga a migração sem remover o fallback. O arquivo de sessões é retido por 30 dias por padrão e grava atomicamente. Para o volume Docker, use `chown 1000:1000 data`.
 
 As proteções de segurança configuradas para a operação permanecem no código: o painel pode controlar contexto e comportamento operacional, mas não remove os limites de resposta e encaminhamento definidos pelo produto.
 
@@ -254,14 +254,15 @@ npm run build
 npm start
 ```
 
-`EVOLUTION_INSTANCE` não tem default implícito e deve ser o nome da instância no Evolution API (ex.: `lia-sync`). Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento.
+O transporte padrão é o WhatsApp nativo via **Baileys** (`WHATSAPP_PROVIDER=baileys`), que faz o pareamento pelo painel e não exige Evolution API. A pasta de sessão pode ser definida em `BAILEYS_AUTH_DIR` (padrão: `./data/baileys-auth`). A integração Evolution permanece apenas como legado opcional: para usá-la, configure explicitamente `WHATSAPP_PROVIDER=evolution`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCE`. Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento e host local.
 
 Para iniciar o servidor localmente sem `WEBHOOK_TOKEN`, use somente em desenvolvimento e vincule-o ao loopback. O painel continua exigindo autenticação do Supabase; `ALLOW_UNAUTHENTICATED_DASHBOARD` não habilita acesso anônimo:
 
 ```bash
 PORT=3000 \
 HOST=127.0.0.1 \
-EVOLUTION_INSTANCE=lia-sync \
+WHATSAPP_PROVIDER=baileys \
+BAILEYS_AUTH_DIR=./data/baileys-auth \
 ALLOW_INSECURE_WEBHOOK=true \
 npm start
 ```
@@ -330,7 +331,7 @@ curl -X POST 'http://127.0.0.1:3000/api/dashboard/simulate?x=1' \
 
 ## Deploy e rollback do webhook
 
-Antes do deploy, execute `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run test:contract` e `git diff --check`. Salve a configuração atual da instância Evolution e a referência da imagem anterior. Atualize com `docker compose up -d --build bot`, confirme o container com `docker compose ps bot` e valide `curl --fail http://127.0.0.1:3000/health` e `/ready`. Só então valide um payload de teste sem envio a clientes e configure o webhook para `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a imagem/configuração anterior, valide health/readiness e mantenha os volumes de dados.
+Antes do deploy, execute `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run test:contract` e `git diff --check`. Salve a configuração da Lia e a referência da imagem anterior. Atualize com `docker compose up -d --build bot`, confirme o container com `docker compose ps bot` e valide `curl --fail http://127.0.0.1:3000/health` e `/ready`. No transporte padrão Baileys, confirme o status da conexão e faça o pareamento pelo painel; não configure webhook da Evolution. Somente em instalações legadas que selecionem explicitamente `WHATSAPP_PROVIDER=evolution`, configure `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a imagem/configuração anterior, valide health/readiness e mantenha os volumes de dados.
 
 ## Limites operacionais
 
