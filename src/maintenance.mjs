@@ -3,6 +3,7 @@ import { isOwnerKey, resolveIdentity } from './core/identity.mjs';
 import { checkInfinitePayPayment } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { filterReply } from './safety.mjs';
 import { getAllowedPrices } from './faq.mjs';
+import { isHumanHandoffActive } from './flow/human-handoff-state.mjs';
 
 const followUpLocks = new WeakMap();
 
@@ -21,7 +22,6 @@ export async function processMaintenance({
   timeZone = 'America/Sao_Paulo',
   staleHours = 12,
   humanReminderMinutes = 15,
-  humanAutoResumeHours = 0,
   humanPhone = '',
   activeInstancePhone = '',
   disableInactivityPings = false,
@@ -79,7 +79,7 @@ export async function processMaintenance({
     if (normActiveInstance && normSessionInstance && normSessionInstance !== normActiveInstance) {
       continue;
     }
-    if (session.pendingTurnPostponedUntil && !session.human) {
+    if (session.pendingTurnPostponedUntil && !isHumanHandoffActive(session)) {
       const resumeTime = new Date(session.pendingTurnPostponedUntil).getTime();
       if (current >= resumeTime) {
         session.pendingTurnPostponedUntil = null;
@@ -109,18 +109,9 @@ export async function processMaintenance({
       }
     }
 
-    // 2.1 Auto-retomada se configurado
-    if (session.human && humanAutoResumeHours > 0 && session.handoffAt && current - new Date(session.handoffAt).getTime() >= humanAutoResumeHours * 3600000) {
-      session.human = false;
-      session.humanSource = 'auto-resume';
-      session.handoffReminderAt = null;
-      store.markDirty();
-      continue;
-    }
-
     // 2.2 Lembrete único para o responsável de cliente aguardando atendimento
     const isTakeover = session.humanSource === 'takeover' || Boolean(session.takeoverAt);
-    if (session.human && session.handoffAt && !session.handoffReminder1Sent && !isTakeover) {
+    if (isHumanHandoffActive(session) && session.handoffAt && !session.handoffReminder1Sent && !isTakeover) {
       const elapsedMin = (current - new Date(session.handoffAt).getTime()) / 60000;
       if (elapsedMin >= humanReminderMinutes) {
         session.handoffReminder1Sent = true;
@@ -139,7 +130,7 @@ export async function processMaintenance({
     }
 
     // 2.3 Tratamento de inatividade do cliente
-    if (session.human || !session.lastBotAt) continue;
+    if (isHumanHandoffActive(session) || !session.lastBotAt) continue;
 
     const elapsed = current - new Date(session.lastBotAt).getTime();
 
@@ -160,7 +151,7 @@ export async function processMaintenance({
       const hasMeaningfulHistory = Array.isArray(session.history) && session.history.length >= 2;
 
       // Não enviar se o cliente estiver em atendimento humano ou se já tiver recebido follow-up
-      if (!session.human && noNewUserMessage && hasNotFollowedUp && isWithinWindow && hasMeaningfulHistory && hasRealUserMessage) {
+      if (!isHumanHandoffActive(session) && noNewUserMessage && hasNotFollowedUp && isWithinWindow && hasMeaningfulHistory && hasRealUserMessage) {
         let locks = followUpLocks.get(store);
         if (!locks) { locks = new Set(); followUpLocks.set(store, locks); }
         if (locks.has(key)) continue;
@@ -205,7 +196,7 @@ export async function processMaintenance({
 
     // 2.3b Recuperação automática de Checkout / Pix pendente (após 45 min, dentro de 24h, em horário diurno)
     if (
-      !session.human &&
+      !isHumanHandoffActive(session) &&
       daytime &&
       session.pendingCheckout &&
       !session.pendingCheckout.paidAt &&
