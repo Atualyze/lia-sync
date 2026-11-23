@@ -12,6 +12,7 @@ import { notifyReactivationToInternalChat, triggerSmartReactivationContinuation 
 import { dedupeMessages } from '../supabase-runtime.mjs';
 import { normalizePhone } from '../sessions.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 
 function sameInstancePhone(a, b) {
   const na = normalizePhone(String(a || '').replace(/@.*$/, '').replace(/\D/g, ''));
@@ -89,7 +90,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
       }
       if (isSim) simCount++;
       else realCount++;
-      if (s?.human) handoffCount++;
+      if (isHumanHandoffActive(s)) handoffCount++;
     }
 
     const sessions = allEntries
@@ -153,7 +154,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           displayName,
           clientName,
           origin: s.origin || (key.startsWith('sim:') ? 'simulation' : 'real'),
-          human: Boolean(s.human),
+          human: isHumanHandoffActive(s),
           updatedAt: s.updatedAt,
           lastActivityIso,
           lastActivityTime,
@@ -266,10 +267,11 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
       return json(res, 502, { ok: false, sent: false, error: sendError, selectedPhone: phone });
     }
     const session = store.ensure(phone);
-    session.human = true;
-    session.humanSource = 'dashboard';
-    session.handoffAt = new Date().toISOString();
-    session.handoffReason = 'resposta enviada pelo painel';
+    enterHumanHandoff(session, {
+      source: 'dashboard',
+      at: new Date().toISOString(),
+      reason: 'resposta enviada pelo painel'
+    });
     session.handoffReminderAt = null;
     if (!Array.isArray(session.history)) session.history = [];
     session.history.push({
@@ -300,18 +302,21 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!validPhone(body.phone) || !['human', 'bot'].includes(body.mode)) return json(res, 400, { error: 'invalid_mode_or_phone' });
     const session = store.get(body.phone);
-    const wasHuman = Boolean(session.human);
+    const wasHuman = isHumanHandoffActive(session);
     const isHuman = body.mode === 'human';
-    session.human = isHuman;
-    session.humanSource = isHuman ? 'dashboard' : null;
     if (isHuman) {
-      session.handoffAt = new Date().toISOString();
-      session.handoffReason = 'modo humano ativado manualmente pelo painel';
+      enterHumanHandoff(session, {
+        source: 'dashboard',
+        at: new Date().toISOString(),
+        reason: 'modo humano ativado manualmente pelo painel'
+      });
     } else {
-      session.handoffAt = null;
-      session.handoffNotified = false;
-      session.handoffReminder1Sent = false;
-      session.handoffReminder60Sent = false;
+      resumeHumanHandoff(session, {
+        source: null,
+        clearHandoffAt: true,
+        clearNotifications: true,
+        clearReminderFlags: true
+      });
       session.inactivityClosed = false;
       if (wasHuman) {
         if (body.autoContinue !== false && deliverReactivationReply && f) {
@@ -331,28 +336,28 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, human: session.human });
+    return json(res, 200, { ok: true, human: isHumanHandoffActive(session) });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/finish') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
     const session = store.get(body.phone);
-    if (!session || !session.human) {
+    if (!session || !isHumanHandoffActive(session)) {
       // Jǭ em modo bot (ou sessǜo inexistente): nada a concluir, aǜo duplicada Ǹ no-op.
       return json(res, 200, { ok: true, alreadyBot: true });
     }
     // Devolve para o bot usando a mesma limpeza da rota /mode (handoffAt, notificações e lembretes),
     // sem notificar reativação: aqui o atendimento está sendo concluído, não retomado.
-    session.human = false;
-    session.humanSource = null;
-    session.handoffAt = null;
-    session.handoffNotified = false;
-    session.handoffReminder1Sent = false;
-    session.handoffReminder60Sent = false;
+    resumeHumanHandoff(session, {
+      source: null,
+      clearHandoffAt: true,
+      clearHandoffReason: true,
+      clearReminderAt: true,
+      clearNotifications: true,
+      clearReminderFlags: true
+    });
     session.inactivityClosed = false;
-    session.handoffReminderAt = null;
-    session.handoffReason = null;
     const finishedAt = new Date().toISOString();
     session.finishedAt = finishedAt;
     session.finishReason = 'atendimento finalizado pelo painel';
@@ -532,7 +537,7 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
         totalSessions: sessions.length,
         realSessions: sessions.filter(s => !s.phone?.startsWith('sim:') && s.origin !== 'simulation').length,
         simSessions: sessions.filter(s => s.phone?.startsWith('sim:') || s.origin === 'simulation').length,
-        handoffWaiting: sessions.filter(s => Boolean(s.human)).length
+        handoffWaiting: sessions.filter(s => isHumanHandoffActive(s)).length
       }
     });
   }
