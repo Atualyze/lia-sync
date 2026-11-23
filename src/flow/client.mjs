@@ -231,17 +231,17 @@ export async function handleClientMessage({
       // do atendente; texto continua passando pela lógica explícita de retomada.
       if (s.human && (mediaType || nonText)) {
         const mediaLabels = {
-          audio: 'Áudio',
-          image: 'Imagem',
-          video: 'Vídeo',
-          document: 'Documento',
-          sticker: 'Figurinha'
+          audio: 'Áudio recebido',
+          image: 'Imagem recebida',
+          video: 'Vídeo recebido',
+          document: 'Documento recebido',
+          sticker: 'Figurinha recebida'
         };
-        const label = mediaLabels[mediaType] || 'Arquivo';
+        const label = mediaLabels[mediaType] || 'Arquivo recebido';
         const caption = String(clean || '').trim();
         s.history.push({
           role: 'user',
-          content: `[${label} recebida durante atendimento humano]${caption ? `: ${caption}` : ''}`,
+          content: `[${label} durante atendimento humano]${caption ? `: ${caption}` : ''}`,
           createdAt: new Date(now()).toISOString(),
           ...(messageId ? { id: messageId } : {})
         });
