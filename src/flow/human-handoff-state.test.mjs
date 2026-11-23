@@ -7,7 +7,8 @@ import {
   enterHumanHandoff,
   resumeHumanHandoff,
   captureHumanHandoffSnapshot,
-  restoreHumanHandoffSnapshot
+  restoreHumanHandoffSnapshot,
+  canSendAutomatedClientMessage
 } from './human-handoff-state.mjs';
 
 test('human handoff state: interpreta sessões legadas sem exigir migração', () => {
@@ -138,4 +139,25 @@ test('human handoff state: snapshots restauram os campos originais após falha d
   assert.equal(session.handoffReason, 'motivo anterior');
   assert.equal(session.updatedAt, '2026-11-22T10:00:00.000Z');
   assert.equal(session.unrelated, 'keep');
+});
+
+
+test('human handoff state: bloqueia mensagens automáticas e só permite consulta administrativa correspondente', () => {
+  assert.equal(canSendAutomatedClientMessage({ human: false }), true);
+  assert.equal(canSendAutomatedClientMessage({ human: true, humanSource: 'admin' }), false);
+  assert.equal(canSendAutomatedClientMessage({ human: true }, {
+    allowMatchingAdminConsult: true,
+    hasMatchingAdminConsult: false
+  }), false);
+  assert.equal(canSendAutomatedClientMessage({ human: true }, {
+    allowMatchingAdminConsult: true,
+    hasMatchingAdminConsult: true
+  }), true);
+  assert.equal(canSendAutomatedClientMessage({ human: true }, {
+    allowMatchingAdminConsult: false,
+    hasMatchingAdminConsult: true
+  }), false);
+  assert.equal(canSendAutomatedClientMessage({ human: false, archivedAt: '2026-11-23T10:00:00.000Z' }), false);
+  assert.equal(canSendAutomatedClientMessage({ human: false, inactivityClosed: true }), false);
+  assert.equal(canSendAutomatedClientMessage(null), false);
 });
