@@ -3,6 +3,7 @@ import { filterReply } from '../safety.mjs';
 import { formatOutgoingMessage } from '../core/format.mjs';
 import { resolveIdentity } from '../core/identity.mjs';
 import { getAllowedPrices } from '../faq.mjs';
+import { enterHumanHandoff, resumeHumanHandoff } from './human-handoff-state.mjs';
 
 const PENDING_TTL_MS = 30 * 60 * 1000;
 const LOW_CONFIDENCE = 0.6;
@@ -220,10 +221,11 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   const nowIso = new Date(now()).toISOString();
 
   if (intent === 'HUMAN') {
-    sTarget.human = true;
-    sTarget.humanSource = 'admin';
-    sTarget.handoffAt = nowIso;
-    sTarget.handoffReason = `mantido no modo humano por ${owner || 'admin'} após reativação`;
+    enterHumanHandoff(sTarget, {
+      source: 'admin',
+      at: nowIso,
+      reason: `mantido no modo humano por ${owner || 'admin'} após reativação`
+    });
     sTarget.inactivityClosed = false;
     sTarget.updatedAt = nowIso;
     store.markDirty?.();
@@ -232,9 +234,10 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   }
 
   if (intent === 'CLOSE') {
-    sTarget.human = false;
-    sTarget.humanSource = null;
-    sTarget.handoffAt = null;
+    resumeHumanHandoff(sTarget, {
+      source: null,
+      clearHandoffAt: true
+    });
     sTarget.inactivityClosed = true;
     sTarget.updatedAt = nowIso;
     store.markDirty?.();
