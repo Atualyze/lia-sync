@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import test from 'node:test';
 import { createApp } from './server.mjs';
 import { handleRuntimeDashboardRoutes } from './http/runtime-routes.mjs';
@@ -9,6 +9,7 @@ import { requiredRole } from './http/router.mjs';
 import { SessionStore } from './sessions.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
 import { ApiSettingsStore } from './api-settings.mjs';
+import { isEncryptedSecret } from './security/secrets.mjs';
 import { LiaAutonomyStore, createAutonomyEngine } from './autonomy/index.mjs';
 import { SupabaseRestClient } from './supabase-runtime.mjs';
 import { createLiaBaileysAuthState, BoundedLruCache } from './whatsapp/baileys-auth.mjs';
@@ -99,9 +100,10 @@ test('LiaAutonomyStore persiste políticas, decisões (authorization_decision) e
   }
 });
 
-test('ApiSettingsStore aplica hot-reload, mascara segredos (write-only) e restaura .env com __CLEAR__', async () => {
+test('ApiSettingsStore criptografa segredos, faz hot-reload e limpa sem restaurar .env', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-api-settings-'));
   const filePath = path.join(dir, 'api-settings.json');
+  const encryptionKey = Buffer.alloc(32, 7).toString('base64');
   try {
     const targetConfig = {
       geminiKey: 'AIzaEnvKeyOriginal12345',
@@ -109,8 +111,18 @@ test('ApiSettingsStore aplica hot-reload, mascara segredos (write-only) e restau
       evolutionUrl: 'https://evo-env.example.com',
       apiV1RateLimitPerMin: 60
     };
-    const store = new ApiSettingsStore({ filePath, targetConfig, logger: { warn() {}, error() {} } });
+    const store = new ApiSettingsStore({
+      filePath,
+      targetConfig,
+      secretEncryptionKey: encryptionKey,
+      logger: { info() {}, warn() {}, error() {} }
+    });
     await store.load();
+    assert.equal(targetConfig.geminiKey, 'AIzaEnvKeyOriginal12345');
+    assert.equal(store.getSafeView().items.find(i => i.key === 'geminiKey').source, 'panel');
+    const stored = await readFile(filePath, 'utf8');
+    assert.equal(stored.includes('AIzaEnvKeyOriginal12345'), false);
+    assert.match(stored, /lia-secret:v1:/);
 
     const updated = await store.update({
       geminiKey: 'AIzaPanelSecretKey99999',
@@ -118,20 +130,55 @@ test('ApiSettingsStore aplica hot-reload, mascara segredos (write-only) e restau
     });
     assert.equal(targetConfig.geminiKey, 'AIzaPanelSecretKey99999');
     assert.equal(targetConfig.evolutionUrl, 'https://evo-panel.example.com');
-
-    // Segredo nunca é devolvido em texto claro
     const geminiItem = updated.view.items.find(i => i.key === 'geminiKey');
     assert.equal(geminiItem.value, '');
     assert.equal(geminiItem.source, 'panel');
     assert.equal(geminiItem.configured, true);
     assert.match(geminiItem.masked, /^AIza\*\*\*999$/);
 
-    // Restaurar para .env
     await store.update({ geminiKey: '__CLEAR__' });
-    assert.equal(targetConfig.geminiKey, 'AIzaEnvKeyOriginal12345');
+    assert.equal(targetConfig.geminiKey, '');
+    const restartedConfig = { geminiKey: 'AIzaEnvKeyOriginal12345' };
+    const restarted = new ApiSettingsStore({
+      filePath,
+      targetConfig: restartedConfig,
+      secretEncryptionKey: encryptionKey,
+      logger: { info() {}, warn() {}, error() {} }
+    });
+    await restarted.load();
+    assert.equal(restartedConfig.geminiKey, '');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('ApiSettingsStore migra credenciais legadas para a projeção Supabase criptografadas', async () => {
+  const writes = [];
+  const client = {
+    enabled: true,
+    async select() {
+      return [{ key: 'api_runtime_settings', payload: { overrides: {} }, updated_at: null }];
+    },
+    async upsert(table, rows, conflict) {
+      writes.push({ table, rows, conflict });
+      return rows;
+    }
+  };
+  const targetConfig = { groqKey: 'gskEnvLegacySupabaseMigration' };
+  const encryptionKey = Buffer.alloc(32, 7).toString('base64');
+  const store = new ApiSettingsStore({
+    client,
+    targetConfig,
+    secretEncryptionKey: encryptionKey,
+    logger: { info() {}, warn() {}, error() {} }
+  });
+  await store.load();
+  assert.equal(targetConfig.groqKey, 'gskEnvLegacySupabaseMigration');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].table, 'runtime_projections');
+  const stored = writes[0].rows[0].payload.overrides.groqKey;
+  assert.ok(isEncryptedSecret(stored));
+  assert.equal(stored.includes('gskEnvLegacySupabaseMigration'), false);
 });
 
 test('Rotas /api/dashboard/runtime/* e /api/dashboard/api-settings respeitam RBAC e persistem estado', async () => {
