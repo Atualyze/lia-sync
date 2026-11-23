@@ -315,8 +315,7 @@ function parseAmountCents(value, { allowFree = false } = {}) {
 function settingsFor(context = {}) {
   const unified = context?.botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {};
   const legacyPix = context?.botConfig?.tools?.settings?.gerar_cobranca_pix || {};
-  const legacyCheckout = context?.botConfig?.tools?.settings?.checkout_infinitepay || {};
-  const settings = { ...legacyPix, ...legacyCheckout, ...unified };
+  const settings = { ...legacyPix, ...unified };
   return {
     ...settings,
     pixKey: settings.pixKey || settings.key || context?.botConfig?.integrations?.pix?.key || process.env.PIX_KEY || '',

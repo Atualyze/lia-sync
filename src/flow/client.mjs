@@ -93,7 +93,6 @@ function isUsablePaymentCredential(value = '') {
 function isCheckoutConfigured(botConfig = {}) {
   if (!isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) return false;
   const settings = {
-    ...(botConfig?.tools?.settings?.checkout_infinitepay || {}),
     ...(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {})
   };
   return isUsablePaymentCredential(settings.handle)

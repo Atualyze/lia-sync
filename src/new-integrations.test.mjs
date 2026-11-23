@@ -751,6 +751,23 @@ test('Cliente Pix: handle InfinitePay placeholder não oferece checkout como mé
   assert.doesNotMatch(reply, /posso criar um link|checkout com valor fixo/i);
 });
 
+test('Cliente Pix: handle legado do checkout não habilita cobrança unificada', async () => {
+  const flow = createFlow({
+    store: new SessionStore(),
+    getBotConfig: () => ({
+      ...createPixBotConfig(''),
+      tools: {
+        enabled: { gerenciar_cobranca_pagamento: true, checkout_infinitepay: false },
+        settings: { checkout_infinitepay: { handle: 'tauanpires' } }
+      }
+    }),
+    ai: { askAI: async () => null }
+  });
+  const reply = await flow.process({ phone: '5511976543210', text: 'Preciso do Pix', origin: 'client' });
+  assert.match(reply, /não estão configurados|não temos uma opção de pagamento automático/i);
+  assert.doesNotMatch(reply, /posso criar um link|checkout com valor fixo/i);
+});
+
 test('Cliente Pix: falha de geração não repete pedido de valor/descrição se a IA estiver indisponível', async () => {
   const originalPixKey = process.env.PIX_KEY;
   delete process.env.PIX_KEY;
