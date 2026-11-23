@@ -79,6 +79,7 @@ export function resumeHumanHandoff(session, {
   clearHandoffUrgency = false,
   clearReminderAt = false,
   clearNotifications = false,
+  clearNotifyFailed = false,
   clearReminderFlags = false
 } = {}) {
   assertSession(session);
@@ -88,10 +89,8 @@ export function resumeHumanHandoff(session, {
   if (clearHandoffReason) session.handoffReason = null;
   if (clearHandoffUrgency) session.handoffUrgency = null;
   if (clearReminderAt) session.handoffReminderAt = null;
-  if (clearNotifications) {
-    session.handoffNotified = false;
-    session.handoffNotifyFailed = false;
-  }
+  if (clearNotifications) session.handoffNotified = false;
+  if (clearNotifyFailed) session.handoffNotifyFailed = false;
   if (clearReminderFlags) {
     session.handoffReminder1Sent = false;
     session.handoffReminder60Sent = false;
