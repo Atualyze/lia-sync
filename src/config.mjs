@@ -17,6 +17,7 @@ export const config = {
   allowInsecureWebhook: bool('ALLOW_INSECURE_WEBHOOK') && process.env.NODE_ENV !== 'production' && loopbackHost,
   aiMaxOutputTokens: Math.max(1024, num('AI_MAX_OUTPUT_TOKENS', 1024)),
   aiTimeoutMs: num('AI_TIMEOUT_MS', 30000),
+  // Variáveis legadas são mantidas apenas como fonte de migração inicial pelo ApiSettingsStore.
   geminiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
   geminiFreeKey: process.env.GEMINI_FREE_API_KEY || '',
   geminiThinkingBudget: num('GEMINI_THINKING_BUDGET', 0),
