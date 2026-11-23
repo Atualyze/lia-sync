@@ -3,6 +3,7 @@ import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from './human-handoff-state.mjs';
 
 /**
  * Executa comandos determinísticos rápidos do Copiloto (1.0.5 a 1.7).
@@ -261,7 +262,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
     const sessionsArr = Object.values(store.sessions);
     const totalConvs = sessionsArr.filter(s => s.phone && s.phone !== OWNER_SELF_KEY && !s.isInternalChat).length;
     const activeConvs = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0 && s.phone !== OWNER_SELF_KEY).length;
-    const humanConvs = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone !== OWNER_SELF_KEY).length;
+    const humanConvs = sessionsArr.filter(s => isHumanHandoffActive(s) && !s.inactivityClosed && s.phone !== OWNER_SELF_KEY).length;
     const rep = `📋 *Relatório Executivo de Atendimentos:*
 
 👥 *Volume de Contatos:*
@@ -301,7 +302,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
   if (norm.split(/\s+/).length <= 5 && /^(?:status|resumo|painel|diagnostico|como estamos\??|como estao as coisas\??)\b/i.test(norm)) {
     const sessionsArr = Object.values(store.sessions);
     const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
-    const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
+    const humanWaiting = sessionsArr.filter(s => isHumanHandoffActive(s) && !s.inactivityClosed && s.phone);
     const remList = reminderStore ? reminderStore.listActive() : [];
 
     const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
@@ -370,14 +371,14 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     if (!sTarget) {
       return recordSelfTurn(filterReply(`⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*. Digite *fila* para ver quem está aguardando ou confira o número informado.`, { isCopilot: true }).text);
     }
-    const wasHuman = Boolean(sTarget.human);
-    sTarget.human = false;
-    sTarget.humanSource = null;
-    sTarget.handoffAt = null;
-    sTarget.handoffReminderAt = null;
-    sTarget.handoffReminder1Sent = false;
-    sTarget.handoffReminder60Sent = false;
-    sTarget.handoffNotified = false;
+    const wasHuman = isHumanHandoffActive(sTarget);
+    resumeHumanHandoff(sTarget, {
+      source: null,
+      clearHandoffAt: true,
+      clearReminderAt: true,
+      clearNotifications: true,
+      clearReminderFlags: true
+    });
     sTarget.inactivityClosed = false;
     sTarget.updatedAt = new Date(now()).toISOString();
     store.markDirty();
@@ -410,11 +411,13 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     if (!sTarget) {
       return recordSelfTurn(filterReply(`⚠️ *Contato não localizado!*\n\nNão encontrei nenhuma conversa correspondente a *"${targetArg}"*.`, { isCopilot: true }).text);
     }
-    sTarget.human = true;
-    sTarget.humanSource = 'admin';
-    sTarget.handoffAt = new Date(now()).toISOString();
-    sTarget.takeoverAt = new Date(now()).toISOString();
-    sTarget.handoffReason = `pausado via comando de ${owner}`;
+    const takeoverAt = new Date(now()).toISOString();
+    enterHumanHandoff(sTarget, {
+      source: 'admin',
+      at: takeoverAt,
+      reason: `pausado via comando de ${owner}`
+    });
+    sTarget.takeoverAt = takeoverAt;
     sTarget.handoffReminderAt = null;
     sTarget.inactivityClosed = false;
     sTarget.updatedAt = new Date(now()).toISOString();
