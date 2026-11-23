@@ -46,6 +46,7 @@ import { createAlertThrottle } from './ops/alert-throttle.mjs';
 import { createRuntimeAlertNotifier, notifyBeforeShutdown } from './ops/runtime-alerts.mjs';
 import { createTelegramCopilot } from './channels/telegram.mjs';
 import { avaliarJanelaDeAtendimento } from './business-hours.mjs';
+import { SupabaseInfinitePayOrderStore } from './tools/gerenciar_cobranca_pagamento.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
 export { withoutHopByHopHeaders, authorized, readBody, formatPhoneNumber, formatActivityTime, deliveryTarget } from './http/utils.mjs';
