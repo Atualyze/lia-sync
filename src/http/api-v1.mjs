@@ -5,7 +5,7 @@ import { validPhone } from '../dashboard.mjs';
 import { sendText } from '../whatsapp.mjs';
 import { filterReply } from '../safety.mjs';
 import { getAllowedPrices } from '../faq.mjs';
-import { enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 
 const VALID_DEAL_STAGES = new Set(['lead', 'qualificado', 'agendado', 'proposta', 'ganho', 'perdido']);
 
@@ -112,7 +112,7 @@ function sanitizeContact(phone, session) {
     dealStage: session.dealStage || null,
     productInterest: session.productInterest || null,
     notes: session.contactNotes || null,
-    humanMode: Boolean(session.human),
+    humanMode: isHumanHandoffActive(session),
     updatedAt: session.updatedAt || null,
     lastMessages: Array.isArray(session.history)
       ? session.history.slice(-20).map(m => ({
