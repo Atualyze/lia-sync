@@ -1,4 +1,5 @@
 import { normalizePhone } from '../sessions.mjs';
+import { isHumanHandoffActive } from '../flow/human-handoff-state.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 
 function findMatchingSession(sessionsObj = {}, cleanPhone = '', name = '') {
@@ -45,8 +46,8 @@ function buildAttendanceSummary(session) {
     createdAt: msg.createdAt || null
   }));
   return {
-    mode: session.human ? 'humano' : 'bot',
-    statusLabel: session.human ? 'Aguardando atendimento humano' : 'Atendimento ativo pela Lia (bot)',
+    mode: isHumanHandoffActive(session) ? 'humano' : 'bot',
+    statusLabel: isHumanHandoffActive(session) ? 'Aguardando atendimento humano' : 'Atendimento ativo pela Lia (bot)',
     messageCount: history.length,
     lastUserAt: session.lastUserAt || null,
     lastBotAt: session.lastBotAt || null,
