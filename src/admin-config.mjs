@@ -169,6 +169,8 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!value || typeof value !== 'object') return ['Configuração inválida.'];
   if (!value.identity?.botName?.trim()) errors.push('O nome do bot é obrigatório.');
   if (!value.identity?.companyName?.trim()) errors.push('O nome da empresa é obrigatório.');
+  if (typeof value.identity?.tone !== 'string' || value.identity.tone.length > 1000) errors.push('O tom da identidade deve ser um texto de até 1000 caracteres.');
+  if (typeof value.ai?.systemInstruction !== 'string' || value.ai.systemInstruction.length > 8000) errors.push('A diretriz mestre deve ser um texto de até 8000 caracteres.');
   if (!value.messages?.greeting?.trim()) errors.push('A mensagem de saudação é obrigatória.');
   if (!Array.isArray(value.knowledge?.faq)) errors.push('A base de conhecimento precisa ser uma lista.');
   if (value.behavior?.leadFollowUpEnabled !== undefined && typeof value.behavior.leadFollowUpEnabled !== 'boolean') errors.push('A ativação do follow-up deve ser verdadeiro/falso.');
