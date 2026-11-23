@@ -1,7 +1,7 @@
 {
   "name": "Lia Sync",
-  "version": "3.0.0",
-  "description": "Runtime persistente de agente operacional via WhatsApp com identidade/objetivos/eventos/compromissos, aprendizado contínuo com fronteira de segurança, autonomia auditável em 4 categorias de permissão, fila persistente do Copiloto, portal Atualyze Pay e dashboard administrativo.",
+  "version": "3.3.0",
+  "description": "Runtime operacional persistente via WhatsApp com scheduler, revisão humana proativa e notificações idempotentes, aprendizado contínuo com fronteira de segurança, autonomia auditável em 4 categorias, fila persistente do Copiloto, portal Atualyze Pay e dashboard administrativo.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

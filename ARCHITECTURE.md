@@ -1,6 +1,6 @@
 # Arquitetura do Lia Sync
 
-Versão: **3.2.0**
+Versão: **3.3.0**
 
 ## Objetivo
 
@@ -148,7 +148,11 @@ A camada **`src/autonomy/*`** integra Runtime e Learning em autonomia operaciona
 - **`src/autonomy/presence.mjs`**: `PresenceEngine`, `CommunicationGuard` (motivo real, deduplicação, cooldown e teto diário) e `resolveContextualConflict` (bloqueio de afirmação curta sob estado `uncertain` ou ambiguidade).
 - **`src/autonomy/verification.mjs`**: `VerificationEngine` (diferencia tentativa de resultado confirmado), `planRecovery` (proíbe retry de efeitos externos/incertos e pausa LLM em `AI_PROVIDER_CREDITS_EXHAUSTED`), `evaluateSystemHealth` e `AutonomyAuditStore` com métricas de Runtime e Sales.
 - **`src/autonomy/domains.mjs`**: CRM Ports desacoplados (`LeadProvider`, `ContactProvider`, `CompanyProvider`, `OpportunityProvider`, `ActivityProvider`, `PipelineProvider`), `RelationshipEngine`, `SalesAutonomy` (estados comerciais, scoring por fatores, cadência adaptativa e personalização factual) e `SupportAutonomy`.
-- **`src/autonomy/engine.mjs`**: `AutonomyEngine` com contrato de decisão auditável, priorização multi-objetivo anti-starvation, revisão diária proativa (`runDailyReview`) e integração ao `/ready` (`lia_autonomy`). Migration dedicada: `supabase/migrations/20261121150000_lia_autonomy.sql`.
+- **`src/autonomy/engine.mjs`**: `AutonomyEngine` com contrato de decisão auditável, priorização multi-objetivo anti-starvation, revisão diária proativa (`runDailyReview`) e integração ao `/ready` (`lia_autonomy`). A revisão, iniciada pelo scheduler de 15s, respeita horário/fuso configurados, considera objetivos, compromissos e saúde operacional e permanece silenciosa sem necessidade real.
+- **`src/autonomy/store.mjs`**: `lia_proactive_notifications` registra uma reserva antes do envio e usa `deduplication_key` única para impedir repetição após restart ou em réplicas Supabase; o fallback JSON é adequado a uma única instância. A tabela faz parte da migration `supabase/migrations/20261121150000_lia_autonomy.sql` (não há migration nova nesta versão).
+- **`src/runtime/index.mjs`**: eventos que exigem decisão humana notificam o administrador com tipo e motivo, sem payload; compromissos preservam o aviso específico. `owner:*` é resolvido pelo servidor para o telefone do responsável.
+
+Na fase operacional documentada em **3.3.0**, CRM permanece fora do escopo de autonomia. A presença de CRM Ports e capacidades legadas no produto não as autoriza neste ciclo.
 
 
 ## Administrative reconciliation of uncertain Copilot effects

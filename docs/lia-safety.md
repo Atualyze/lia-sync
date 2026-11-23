@@ -11,6 +11,12 @@ Esta documentação define explicitamente os limites operacionais do **Lia Runti
 ### Categoria B — O que exige autorização prévia persistente (por Organização)
 - `follow_up`, `commercial_message`, `crm_update`, `create_calendar_event`, `preapproved_operation`, `support_action`.
 - Mesmo com pré-autorização na política da organização (`lia_org_autonomy_policies`), continuam obrigatórios: `suppression`, `opt-out`, `business_hours`, `daily_limits` e `AutonomyBudget`.
+- A categoria descreve a taxonomia geral do motor; `crm_update` não está autorizado no escopo operacional específico da versão 3.3.0.
+
+### Escopo da fase operacional 3.3.0
+- CRM está **fora do escopo** desta ativação: a existência de `crm_update`, CRM Ports ou políticas em outros contextos não autoriza leitura/escrita de CRM pelo ciclo de autonomia descrito nesta versão.
+- A revisão diária é interna e dirigida ao administrador. Follow-ups a clientes permanecem limitados aos fluxos já existentes e só ocorrem quando a política da organização e todos os guardas aplicáveis permitem.
+- Ações sensíveis, efeitos externos incertos, pagamentos, operações irreversíveis, mudanças de segurança/permissões e deploy não ganham autorização automática; mantêm confirmação humana ou bloqueio.
 
 ### Categoria C — O que SEMPRE exige confirmação humana explícita
 - `pix_charge`, `financial_transfer`, `irreversible_action`, `critical_deletion`, `high_impact_operation`, `permission_change`, `sensitive_data_access`.
