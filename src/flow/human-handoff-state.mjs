@@ -37,6 +37,22 @@ export function getHumanHandoffState(session) {
 }
 
 /**
+ * Guard para comunicações automáticas destinadas a clientes.
+ * Uma sessão humana só admite uma mensagem de compromisso quando há
+ * correspondência explícita com a consulta administrativa pendente.
+ */
+export function canSendAutomatedClientMessage(session, {
+  allowMatchingAdminConsult = false,
+  hasMatchingAdminConsult = false
+} = {}) {
+  if (!session || session.archivedAt || session.inactivityClosed) return false;
+  if (isHumanHandoffActive(session) && !(allowMatchingAdminConsult && hasMatchingAdminConsult)) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Ativa o atendimento humano e atualiza apenas os metadados fornecidos.
  * `preserveSource` mantém a origem existente; `onlyIfInactive` evita
  * sobrescrever o primeiro handoff quando a sessão já está sob atendimento.
