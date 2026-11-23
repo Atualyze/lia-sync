@@ -502,6 +502,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         store.markDirty?.();
       }
       const failure = new Error(error?.message || String(error || 'delivery_failed'), { cause: error });
+      if (error?.code) failure.code = error.code;
       failure.deliveryOutcomeUncertain = outboundStarted;
       console.error('[webhook]', failure.message);
       throw failure;
