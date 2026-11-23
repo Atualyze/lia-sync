@@ -1,5 +1,5 @@
 import { resolveIdentity } from './core/identity.mjs';
-import { enterHumanHandoff, isHumanHandoffActive } from './flow/human-handoff-state.mjs';
+import { enterHumanHandoff } from './flow/human-handoff-state.mjs';
 
 export function summary(session, reason = 'solicitação de atendimento', urgency = 'normal', identityInput = {}) {
   const identity = resolveIdentity(identityInput);
