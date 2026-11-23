@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInboundMessageScheduler } from './message-scheduler.mjs';
 
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-
 test('agrupa textos do mesmo contato e resolve todas as chamadas do lote', async () => {
   const delivered = [];
   const scheduler = createInboundMessageScheduler({
