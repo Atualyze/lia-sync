@@ -302,6 +302,23 @@ export function createLiaRuntime({
           }
           if (attention.requires_human) {
             summary.needsHumanCount += 1;
+            // Compromissos já têm notificação dedicada com contexto e resultado de entrega.
+            // Outros eventos precisam chegar ao responsável: mudar o estado do Runtime
+            // para needs_human, por si só, não pede uma decisão de fato.
+            if (evt.type !== 'commitment.due' && typeof notifyOwner === 'function') {
+              const eventType = String(evt.type || 'evento').replace(/[^a-z0-9_.-]/gi, '').slice(0, 80);
+              const eventId = String(evt.id || '').slice(0, 8).toUpperCase();
+              const reason = String(attention.attention_reason || 'Revisão humana necessária.')
+                .replace(/\s+/g, ' ')
+                .slice(0, 280);
+              await notifyOwner(
+                '⚠️ *A Lia precisa de revisão humana*\n\n'
+                + `• *Evento:* ${eventType}${eventId ? ` (#${eventId})` : ''}\n`
+                + `• *Motivo:* ${reason}\n\n`
+                + 'A Lia não executará ações externas sem autorização e não repetirá automaticamente um efeito incerto. '
+                + 'Revise o caso no Copiloto e indique o próximo passo.'
+              );
+            }
           }
           if (attention.recommended_action === 'enqueue_read_task' && Array.isArray(attention.suggested_plan)) {
             await setState('planning');

@@ -30,6 +30,17 @@ export const AUTONOMY_DECISIONS = Object.freeze([
 
 const PRIORITY_RANK = Object.freeze({ critical: 100, high: 75, medium: 45, low: 20 });
 
+function localDateKey(timestamp, timeZone = 'America/Sao_Paulo') {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 /**
  * Priorização multi-objetivo com proteção anti-starvation:
  * objetivos de menor prioridade ganham boost progressivo conforme o tempo sem atendimento.
@@ -339,26 +350,58 @@ export function createAutonomyEngine({
     rightTiming = true,
     permitted = true
   } = {}) => {
-    const guard = getCommGuard(tenantId);
-    const check = guard.evaluate({ reason, deduplicationKey, subject, relevant, userNeedsToKnow, rightTiming, permitted });
-    if (!check.shouldSend) return { sent: false, reason: check.reason };
-    if (!String(message || '').trim()) return { sent: false, reason: 'empty_message' };
-    if (typeof notifyProactive === 'function') {
-      await notifyProactive({ tenantId, subject, reason, message });
-    }
-    guard.markSent({ deduplicationKey, subject });
-    audit.increment('proactive_messages');
-    if (autonomyStore?.available) {
-      await autonomyStore.recordProactiveNotification({ tenantId, deduplicationKey, subject, reason, status: 'sent' }).catch(() => {});
-    }
-    return { sent: true, reason: 'sent' };
+      const guard = getCommGuard(tenantId);
+      const check = guard.evaluate({ reason, deduplicationKey, subject, relevant, userNeedsToKnow, rightTiming, permitted });
+      if (!check.shouldSend) return { sent: false, reason: check.reason };
+      if (!String(message || '').trim()) return { sent: false, reason: 'empty_message' };
+      if (typeof notifyProactive !== 'function') return { sent: false, reason: 'proactive_notifier_unavailable' };
+      let notificationClaimed = false;
+      if (autonomyStore) {
+        if (!autonomyStore.available) return { sent: false, reason: 'autonomy_store_unavailable' };
+        try {
+          notificationClaimed = await autonomyStore.claimProactiveNotification({
+            tenantId,
+            deduplicationKey,
+            subject,
+            reason
+          });
+        } catch {
+          return { sent: false, reason: 'notification_dedup_unavailable' };
+        }
+        if (!notificationClaimed) return { sent: false, reason: 'duplicate_proactive_message' };
+      }
+      try {
+        await notifyProactive({ tenantId, subject, reason, message });
+        if (notificationClaimed) {
+          await autonomyStore.finalizeProactiveNotification({ deduplicationKey, status: 'sent' });
+        }
+      } catch (error) {
+        if (notificationClaimed) {
+          await autonomyStore.finalizeProactiveNotification({ deduplicationKey, status: 'failed' }).catch(() => {});
+        }
+        throw error;
+      }
+      guard.markSent({ deduplicationKey, subject });
+      audit.increment('proactive_messages');
+      return { sent: true, reason: 'sent' };
   };
 
   /**
    * Revisão periódica proativa (ex.: 09:00): verifica objetivos, compromissos,
    * tarefas e saúde; dorme silenciosamente se não houver motivo real.
-   */
-  const runDailyReview = async ({ tenantId = 'default', rightTiming = true } = {}) => {
+  */
+  const runDailyReview = async ({ tenantId = 'default', rightTiming = true, timeZone = 'America/Sao_Paulo' } = {}) => {
+    const dateKey = localDateKey(now(), timeZone);
+    const deduplicationKey = `daily_review:${tenantId}:${dateKey}`;
+    if (autonomyStore?.available && typeof autonomyStore.hasProactiveNotification === 'function') {
+      try {
+        if (await autonomyStore.hasProactiveNotification({ deduplicationKey })) {
+          return { woke: true, notified: false, alreadyReviewed: true };
+        }
+      } catch {
+        return { woke: false, notified: false, reason: 'daily_review_dedup_unavailable' };
+      }
+    }
     const activeGoals = runtime?.available ? await runtime.goals.list({ status: 'active' }) : [];
     const pendingCommitments = runtime?.available ? await runtime.commitments.list({ status: ['pending', 'in_progress', 'overdue', 'uncertain', 'failed', 'missed'] }) : [];
     const prioritized = prioritizeGoalsAntiStarvation(activeGoals, now());
@@ -369,6 +412,17 @@ export function createAutonomyEngine({
 
     const hasRelevantWork = prioritized.length > 0 || pendingCommitments.length > 0 || !health.healthy;
     if (!hasRelevantWork) {
+      if (autonomyStore?.available) {
+        const claimed = await autonomyStore.claimProactiveNotification({
+          tenantId,
+          deduplicationKey,
+          subject: `owner:${tenantId}`,
+          reason: 'daily_review'
+        }).catch(() => false);
+        if (claimed) {
+          await autonomyStore.finalizeProactiveNotification({ deduplicationKey, status: 'suppressed' }).catch(() => {});
+        }
+      }
       presence.transition('available', { activity: 'Revisão diária sem pendências relevantes; dormindo.' });
       return { woke: true, notified: false, prioritizedGoals: [], pendingCommitments: 0, health };
     }
@@ -379,11 +433,10 @@ export function createAutonomyEngine({
       !health.healthy ? `• Alertas operacionais: ${health.alerts.map(a => a.code).join(', ')}` : ''
     ].filter(Boolean).join('\n');
 
-    const dateKey = new Date(now()).toISOString().slice(0, 10);
     const comm = await communicateProactively({
       tenantId,
       reason: 'daily_review',
-      deduplicationKey: `daily_review:${tenantId}:${dateKey}`,
+      deduplicationKey,
       subject: `owner:${tenantId}`,
       message: `Resumo operacional real:\n${lines}`,
       rightTiming
