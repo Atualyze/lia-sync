@@ -1,6 +1,8 @@
 # Supabase independente do bot
 
-Esta documentação acompanha o Lia Sync **3.0.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Esta documentação acompanha o Lia Sync **3.3.0**. O desenho do runtime e das fachadas de integração está em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+
+A versão 3.3.0 não adiciona migration: a revisão diária usa `lia_proactive_notifications`, criada por `migrations/20261121150000_lia_autonomy.sql`. Com Supabase configurado, aplique essa migration antes de ativar a persistência de autonomia; a indisponibilidade do store bloqueia o envio proativo.
 
 Este diretório contém o schema do banco do Lia Sync, independente do Supabase do CRM original. O runtime usa o Supabase como fonte primária quando configurado e mantém armazenamento local como fallback compatível.
 

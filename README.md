@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.2.0** (pacote, painel, metadata, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.3.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.3.0 — Ciclo Operacional Autônomo, Revisão Humana & Idempotência
+
+- **Revisão operacional diária (`src/autonomy/engine.mjs`, `src/server.mjs`):** cada instância do scheduler do Lia Runtime executa uma revisão por dia local depois do horário configurado em `owner_preferences.digestHour` (padrão: 9h), usando o fuso de atendimento. A revisão considera objetivos ativos, compromissos pendentes e saúde operacional; sem motivo real, não envia uma mensagem artificial.
+- **Escalação ao administrador (`src/runtime/index.mjs`):** eventos que exigem intervenção humana geram um pedido de revisão com tipo e motivo, sem encaminhar o payload do evento. Compromissos mantêm a notificação específica existente; destinatários `owner:*` são roteados ao telefone do responsável.
+- **Notificações idempotentes (`src/autonomy/store.mjs`):** a reserva persistente ocorre antes do envio. A chave única de `lia_proactive_notifications` evita duplicidade entre réplicas Supabase e sobrevive a reinicializações; o fallback local destina-se a instância única.
+- **Limites preservados:** o ciclo desta versão não inclui CRM. Follow-ups externos continuam sujeitos às políticas e guardas já existentes; pagamentos, efeitos incertos, ações irreversíveis, mudanças de segurança e deploy continuam exigindo confirmação humana ou bloqueados.
+
+Detalhes técnicos: [`docs/release-3.3.0.md`](docs/release-3.3.0.md), [`docs/lia-runtime.md`](docs/lia-runtime.md), [`docs/lia-autonomy.md`](docs/lia-autonomy.md) e [`docs/lia-safety.md`](docs/lia-safety.md).
 
 ## Novidades da Versão 3.2.0 — Google Workspace REST, Autonomia Recorrente, Memória PARA & Resiliência
 

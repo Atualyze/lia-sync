@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.3.0 - Ciclo Operacional Autônomo, Revisão Humana & Idempotência
+- **Revisão diária do Runtime (`src/server.mjs`, `src/autonomy/engine.mjs`):** integração do `runDailyReview` ao scheduler de 15s, uma vez por dia local em cada instância depois do horário configurado em `owner_preferences.digestHour` (padrão 9h), respeitando o fuso ativo. A análise cobre objetivos, compromissos e saúde operacional e dorme sem mensagem quando não há motivo real.
+- **Escalação segura (`src/runtime/index.mjs`):** pedidos de intervenção humana chegam ao administrador com tipo e motivo, sem o payload do evento; compromissos seguem com notificação específica e o destino `owner:*` resolve para o telefone cadastrado.
+- **Deduplicação persistente (`src/autonomy/store.mjs`):** claim atômico antes do envio em `lia_proactive_notifications`, com chave única no Supabase para evitar duplicatas entre réplicas e registro local durável para reinicializações em instância única.
+- **Limites operacionais:** CRM permanece fora do escopo desta fase. Não há ampliação implícita de autorização para mensagens externas; políticas, opt-out, expediente, orçamento e confirmação humana para efeitos sensíveis continuam válidos.
+- **Documentação e versão:** release 3.3.0 sincroniza README, CHANGELOG, arquitetura, Runtime, Autonomy Engine, painel, metadados do pacote e base de autoconhecimento exclusiva do Copiloto. Não há migration nova: o fluxo usa a tabela já criada por `20261121150000_lia_autonomy.sql`.
+- **Validação local:** suíte completa, lint, build e contratos executados nesta branch. CI do GitHub Actions e publicação da imagem no GHCR não foram executados nesta branch; dependem de eventual merge em `main` e a publicação da imagem não representa deploy da aplicação.
+
 ## 3.2.0 - Google Workspace REST, Autonomia Recorrente, Memória PARA & Resiliência
 - **Pacote 1 — Google Workspace REST Puro (`src/tools/google_http.mjs`, `src/tools/gerenciar_gmail_google.mjs`, `src/tools/gerenciar_agenda_google.mjs`, `src/tools/gerenciar_drive_google.mjs`):** allowlist estrita de hosts/prefixos do Google, bloqueio de path traversal e redirects, retry automático somente em `GET`, nova ferramenta Gmail exclusiva do dono (busca, leitura MIME e rascunhos sem envio), `sugerir_horarios` multi-dia no Calendar e `atualizar_documento` no Google Docs.
 - **Pacote 2 — Resiliência de VPS & Segurança (`src/ops/log-redaction.mjs`, `src/ops/event-loop-monitor.mjs`, `src/safety.mjs`, `src/copilot-tasks.mjs`):** redação automática de chaves/JWTs/PEM em logs, monitor de stalls do Event Loop exposto em `/ready` e `consultar_saude_infra`, guarda `sanitizeInventedLinks` contra URLs fictícias/locais e `recoverInterruptedOnStartup()` para tarefas interrompidas no restart.
