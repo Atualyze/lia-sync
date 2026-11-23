@@ -147,3 +147,32 @@ test('parsePayload reconhece mensagens encaminhadas no WhatsApp sem misturar os 
   assert.match(item.contextText, /encaminhada pelo contato/i);
   assert.doesNotMatch(item.text, /encaminhada pelo contato/i);
 });
+
+
+test('parsePayload descompacta mensagem temporária com imagem e mantém a legenda', () => {
+  const item = parsePayload({
+    event: 'MESSAGES_UPSERT',
+    data: {
+      key: { id: 'ephemeral-image-1', remoteJid: '5511999999999@s.whatsapp.net' },
+      message: {
+        ephemeralMessage: {
+          message: {
+            imageMessage: {
+              caption: 'Analise esta foto',
+              contextInfo: {
+                isForwarded: true,
+                quotedMessage: { conversation: 'Veja o exemplo abaixo' }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(item.text, 'Analise esta foto');
+  assert.equal(item.mediaType, 'image');
+  assert.equal(item.message.imageMessage.caption, 'Analise esta foto');
+  assert.match(item.contextText, /encaminhada pelo contato/i);
+  assert.match(item.contextText, /Veja o exemplo abaixo/);
+});
