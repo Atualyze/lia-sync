@@ -290,7 +290,17 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
     });
     await finish('processed');
   } catch (error) {
-    await finish('failed', error?.code || error?.name || 'processing_failed');
+    const deliveryUncertain = error?.deliveryOutcomeUncertain === true;
+    if (deliveryUncertain) {
+      // Não reprocessar automaticamente quando um envio pode ter chegado ao
+      // WhatsApp: isso poderia duplicar uma resposta parcialmente entregue.
+      await finish('ignored', 'delivery_outcome_uncertain');
+    } else {
+      await finish('failed', error?.code || error?.name || 'processing_failed');
+      // Se a falha ocorreu antes de qualquer envio, libera a chave em memória
+      // para que a próxima tentativa do mesmo evento possa ser processada.
+      f?.releaseDuplicate?.(id);
+    }
     console.error('[webhook] processamento falhou', error?.code || error?.name || 'processing_failed');
   }
 }
