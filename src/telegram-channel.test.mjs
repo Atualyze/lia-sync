@@ -162,6 +162,61 @@ test('Telegram Copiloto roteia comandos, áudio e botões inline de aprovação 
   assert.ok(apiCalls.some(c => c.method === 'sendMessage' && c.body.text.includes('Disparo enviado')));
 });
 
+test('Telegram Copiloto baixa imagem e entrega attachment ao fluxo multimodal', async () => {
+  const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
+  const apiCalls = [];
+  const processed = [];
+  const fetchImpl = async (url, init) => {
+    if (url.includes('/file/bot')) {
+      return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('fake-image-bytes') };
+    }
+    const method = url.split('/').pop();
+    const body = init?.body ? JSON.parse(init.body) : {};
+    apiCalls.push({ method, body });
+    if (method === 'getFile') {
+      return { ok: true, status: 200, json: async () => ({
+        ok: true,
+        result: { file_path: 'photos/file_1.jpg', file_size: 17 }
+      }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 42 } }) };
+  };
+  const bot = createTelegramCopilot({
+    getConfig: () => cfg,
+    fetchImpl,
+    flow: {
+      process: async (payload) => {
+        processed.push(payload);
+        return 'Imagem analisada.';
+      }
+    },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  await bot.handleUpdate({
+    message: {
+      message_id: 77,
+      chat: { id: 999888 },
+      from: { first_name: 'Tauan' },
+      caption: 'O que aparece nessa imagem?',
+      photo: [
+        { file_id: 'small_1', width: 320, height: 240, file_size: 5000 },
+        { file_id: 'large_1', width: 1280, height: 960, file_size: 10000 }
+      ]
+    }
+  });
+
+  assert.equal(processed.length, 1);
+  assert.equal(processed[0].origin, 'telegram');
+  assert.equal(processed[0].mediaType, 'image');
+  assert.equal(processed[0].text, 'O que aparece nessa imagem?');
+  assert.equal(processed[0].attachments.length, 1);
+  assert.equal(processed[0].attachments[0].mimeType, 'image/jpeg');
+  assert.equal(processed[0].attachments[0].base64, Buffer.from('fake-image-bytes').toString('base64'));
+  assert.equal(processed[0].rawItem.photo.at(-1).file_id, 'large_1');
+  assert.ok(apiCalls.some(call => call.method === 'getFile'));
+});
+
 test('notifyAdmin espelha alertas e faz fallback para texto puro se HTML retornar 400', async () => {
   const apiCalls = [];
   const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
