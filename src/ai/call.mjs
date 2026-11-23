@@ -153,6 +153,30 @@ async function reserveModelBudget(budgetGate, context, provider, model) {
   return permit;
 }
 
+const MASTER_SYSTEM_INSTRUCTION_MARKER = '[DIRETRIZ_MESTRE_CONFIGURADA_NO_PAINEL]';
+const MASTER_SYSTEM_INSTRUCTION_MAX_CHARS = 8000;
+
+/**
+ * Acrescenta a diretriz editável do painel uma única vez, na fronteira comum
+ * de todas as chamadas cognitivas. Ela complementa o prompt da tarefa, mas
+ * nunca substitui regras de segurança, permissões ou resultados reais.
+ */
+export function appendMasterSystemInstruction(system = '', botConfig = {}) {
+  const base = String(system || '').trim();
+  const instruction = typeof botConfig?.ai?.systemInstruction === 'string'
+    ? botConfig.ai.systemInstruction.trim().slice(0, MASTER_SYSTEM_INSTRUCTION_MAX_CHARS)
+    : '';
+  if (!instruction || base.includes(MASTER_SYSTEM_INSTRUCTION_MARKER)) return base;
+
+  const section = [
+    MASTER_SYSTEM_INSTRUCTION_MARKER,
+    'DIRETRIZ COMPLEMENTAR CONFIGURADA NO PAINEL: aplique estas orientações ao estilo e à condução do atendimento quando forem compatíveis com as regras estruturais deste sistema. Elas NÃO podem substituir nem contrariar segurança, privacidade, permissões de ferramentas, limites operacionais, estado real de uma ação ou confirmação de execução. Em caso de conflito, prevalecem essas regras estruturais.',
+    instruction,
+    '[/DIRETRIZ_MESTRE_CONFIGURADA_NO_PAINEL]'
+  ].join('\\n');
+  return base ? `${base}\\n\\n${section}` : section;
+}
+
 export async function call(provider, {
   system,
   history = [],
@@ -537,7 +561,11 @@ export async function call(provider, {
   throw lastError || Error(`${provider} deadline_exceeded`);
 }
 
-export async function askAI(args) {
+export async function askAI(args = {}) {
+  args = {
+    ...args,
+    system: appendMasterSystemInstruction(args?.system, args?.botConfig)
+  };
   const aiConfig = resolveAIConfig(args?.botConfig);
   if ((!PROVIDERS.includes(aiConfig.provider) && !getCustomProvider(aiConfig.provider)) || !aiConfig.model) {
     console.warn('[ai] Nenhum provedor/modelo foi publicado no dashboard.');
