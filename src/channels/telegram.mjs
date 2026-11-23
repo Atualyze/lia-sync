@@ -534,6 +534,7 @@ export function createTelegramCopilot({
     }
     const data = String(query.data || '');
     const pushName = [query.from?.first_name, query.from?.last_name].filter(Boolean).join(' ').trim() || query.from?.username || '';
+    const callbackContext = extractTelegramCallbackContext(query);
 
     const CALLBACK_ACTIONS = {
       'outbound:approve': { toast: 'Aprovando disparo...', command: 'sim' },
@@ -555,14 +556,13 @@ export function createTelegramCopilot({
         }).catch(() => {});
       }
       try {
-        await runOwnerTurn({ chatId, text: action.command, pushName, messageId: `cb:${callbackId}` });
+        await runOwnerTurn({ chatId, text: action.command, pushName, messageId: `cb:${callbackId}`, contextText: callbackContext.contextText });
       } catch (err) {
         safeLogError('[telegram] Erro ao processar callback:', err);
       }
       return;
     }
 
-    const callbackContext = extractTelegramCallbackContext(query);
     await apiCall('answerCallbackQuery', { callback_query_id: callbackId }).catch(() => {});
     try {
       await runOwnerTurn({
