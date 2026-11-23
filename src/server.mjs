@@ -14,6 +14,7 @@ import { sendText, sendPresence, sendReaction, getInstanceOwnerPhone, sendWhatsA
 import { BaileysProvider } from './whatsapp/baileys-provider.mjs';
 import { processWhatsAppWebhookPayload } from './http/webhook.mjs';
 import { createInboundMessageScheduler } from './message-scheduler.mjs';
+import { isHumanHandoffActive } from './flow/human-handoff-state.mjs';
 import { authCache } from './dashboard.mjs';
 import { processMaintenance } from './maintenance.mjs';
 import { AdminConfigStore } from './admin-config.mjs';
@@ -131,7 +132,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       if (commitment?.recipient_type !== 'client' || !phone) return { sent: false, reason: 'client_recipient_missing' };
       const session = store.get(phone);
       const matchingConsult = session?.pendingAdminConsult?.commitmentId === commitment?.id;
-      if (!session || (session.human && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
+      if (!session || (isHumanHandoffActive(session) && !matchingConsult) || session.archivedAt || session.inactivityClosed) return { sent: false, reason: 'client_session_not_eligible' };
       const optOut = await campaignStore.isSuppressed(phone).catch(() => true);
       if (optOut) return { sent: false, reason: 'client_opted_out' };
       const businessWindow = avaliarJanelaDeAtendimento(adminConfig.active?.business?.hoursConfig, new Date());
@@ -175,6 +176,16 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
         optOut: false,
         withinBusinessHours: true,
         execute: async () => {
+          const liveSession = store.get(phone);
+          const liveMatchingConsult = liveSession?.pendingAdminConsult?.commitmentId === commitment?.id;
+          if (
+            !liveSession ||
+            (isHumanHandoffActive(liveSession) && !liveMatchingConsult) ||
+            liveSession.archivedAt ||
+            liveSession.inactivityClosed
+          ) {
+            throw new Error('client_session_not_eligible');
+          }
           const result = await liaAutonomy.communicateProactively({
             tenantId: 'default',
             reason: 'tracked_commitment_overdue',
@@ -372,7 +383,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     }
 
     const activeSessions = Object.values(store.sessions).filter(s => !s.inactivityClosed);
-    const waitingContacts = activeSessions.filter(s => s.human).map(s => ({
+    const waitingContacts = activeSessions.filter(s => isHumanHandoffActive(s)).map(s => ({
       name: s.clientName || 'Contato',
       phone: s.phone,
       lastMsg: s.history?.at(-1)?.content || ''
@@ -452,13 +463,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
           store.markDirty?.();
         }
       }
-      const wasHuman = Boolean(incomingSession?.human);
+      const wasHuman = isHumanHandoffActive(incomingSession);
       void integrationsStore.dispatchEvent('message.received', { phone: job.phone, text: job.text || '', mediaType: job.mediaType || 'text' }).catch(() => {});
       if (!wasHuman) {
         void sendPresence(deliveryTarget(job, getHumanPhone()), job.mediaType === 'audio' ? 'recording' : 'composing', 4000);
       }
       const answer = await f.process({ ...job, messageId: job.keyId || '' });
-      if (!wasHuman && store.get(job.phone)?.human) {
+      if (!wasHuman && isHumanHandoffActive(store.get(job.phone))) {
         void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
       }
       if (!answer) return null;
@@ -753,7 +764,6 @@ if (isDirectRun) {
       timeZone: config.businessTimeZone,
       staleHours: config.inactivityStaleHours,
       humanReminderMinutes: config.humanReminderMinutes,
-      humanAutoResumeHours: config.humanAutoResumeHours,
       humanPhone: app.getHumanPhone(),
       activeInstancePhone: app.getActiveInstancePhone?.() || '',
       disableInactivityPings: true,
@@ -762,7 +772,7 @@ if (isDirectRun) {
       followUpMaxHours: app.adminConfig.active.behavior?.leadFollowUpMaxHours ?? 72,
       autoResumeOnOpen: app.adminConfig.active.business?.hoursConfig?.autoResumeOnOpen !== false,
       onPostponedResume: async (session) => {
-        if (!session?.phone || session.human || session.archivedAt) return { continued: false };
+        if (!session?.phone || isHumanHandoffActive(session) || session.archivedAt) return { continued: false };
         const history = Array.isArray(session.history) ? session.history : [];
         const lastUser = [...history].reverse().find(m => m?.role === 'user' && String(m.content || '').trim());
         if (!lastUser) return { continued: false };
@@ -771,7 +781,7 @@ if (isDirectRun) {
         const text = String(lastUser.content || '').trim();
         const run = async () => {
           const live = store.get?.(session.phone) || session;
-          if (!live || live.human || live.archivedAt) return { continued: false };
+          if (!live || isHumanHandoffActive(live) || live.archivedAt) return { continued: false };
           const reply = await app.flow.process({
             phone: live.phone,
             text,
