@@ -138,6 +138,17 @@ function describeWhatsAppMedia(message = {}) {
   return 'mensagem';
 }
 
+
+function whatsappMediaType(message = {}) {
+  const current = unwrapWhatsAppMessage(message);
+  if (current.audioMessage) return 'audio';
+  if (current.imageMessage) return 'image';
+  if (current.videoMessage) return 'video';
+  if (current.documentMessage) return 'document';
+  if (current.stickerMessage) return 'sticker';
+  return null;
+}
+
 export function extractWhatsAppMessageContext(message = {}) {
   const current = unwrapWhatsAppMessage(message);
   const contextInfo = findWhatsAppContextInfo(current);
@@ -171,6 +182,9 @@ export function extractWhatsAppMessageContext(message = {}) {
     : '';
 
   return {
+    normalizedMessage: current,
+    messageText: extractWhatsAppBodyText(current),
+    mediaType: whatsappMediaType(current),
     interactiveText: selection.label,
     interactiveType: selection.type,
     contextText
