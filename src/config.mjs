@@ -8,7 +8,7 @@ const loopbackHost = bindHost === 'localhost' || bindHost === '::1' || /^127\./.
 export const config = {
   port: num('PORT', 3000),
   host: bindHost,
-  whatsappProvider: (process.env.WHATSAPP_PROVIDER || 'evolution').toLowerCase(),
+  whatsappProvider: (process.env.WHATSAPP_PROVIDER || 'baileys').toLowerCase(),
   baileysAuthDir: path.resolve(process.env.BAILEYS_AUTH_DIR || './data/baileys-auth'),
   evolutionUrl: (process.env.EVOLUTION_API_URL || '').replace(/\/$/, ''),
   evolutionKey: process.env.EVOLUTION_API_KEY || '',
@@ -75,10 +75,19 @@ export const config = {
 
 export function validateConfig({ strict = false } = {}) {
   const errors = [];
-  const isBaileys = config.whatsappProvider === 'baileys';
-  if (!isBaileys && !config.evolutionInstance) errors.push('EVOLUTION_INSTANCE não configurada');
-  if (!config.webhookToken && !config.allowInsecureWebhook) errors.push('WEBHOOK_TOKEN não configurado (use ALLOW_INSECURE_WEBHOOK=true apenas em desenvolvimento)');
-  if (strict && !isBaileys && !config.evolutionUrl) errors.push('EVOLUTION_API_URL não configurada');
+  const supportedProviders = new Set(['baileys', 'evolution']);
+  if (!supportedProviders.has(config.whatsappProvider)) {
+    errors.push(`WHATSAPP_PROVIDER inválido: use "baileys" (padrão) ou "evolution" (legado)`);
+  }
+  if (config.whatsappProvider === 'evolution' && !config.evolutionInstance) {
+    errors.push('EVOLUTION_INSTANCE não configurada para o provedor legado Evolution');
+  }
+  if (!config.webhookToken && !config.allowInsecureWebhook) {
+    errors.push('WEBHOOK_TOKEN não configurado (use ALLOW_INSECURE_WEBHOOK=true apenas em desenvolvimento)');
+  }
+  if (strict && config.whatsappProvider === 'evolution' && !config.evolutionUrl) {
+    errors.push('EVOLUTION_API_URL não configurada para o provedor legado Evolution');
+  }
   return errors;
 }
 
