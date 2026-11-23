@@ -214,7 +214,8 @@ export function createFlow({
       pushName = '',
       authorizedResume = false,
       messageId = '',
-      attachments = []
+      attachments = [],
+      contextText = ''
     }) {
       const botConfig = getBotConfig() || {};
       const identity = resolveIdentity(botConfig);
@@ -233,7 +234,7 @@ export function createFlow({
           store, ai, whatsapp, reminderStore, operationsStore, copilotTaskStore, liaRuntime, logger, now, getHumanPhone, getTelemetry,
           botConfig, adminConfig, identity, owner, assistant, ownerLabel,
           isOwnerSender, getWaitingList, findSessionByTarget,
-          phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments
+          phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments, contextText
         });
       }
 
@@ -241,7 +242,7 @@ export function createFlow({
         store, ai, whatsapp, faq, reminderStore, operationsStore, logger, now,
         allowClientResume, maxInputChars, notify, isOwnerSender,
         botConfig, identity, messages, owner, assistant, sectors, liaRuntime,
-        phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
+        phone, text, origin, nonText, mediaType, rawItem, pushName, messageId, contextText
       });
     },
     async processPendingAIRetries({ immediate = false, sendReply = null } = {}) {
