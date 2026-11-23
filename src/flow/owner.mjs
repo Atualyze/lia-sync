@@ -1,5 +1,5 @@
 import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction } from '../safety.mjs';
-import { enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { getAllowedPrices } from '../faq.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
@@ -1081,7 +1081,8 @@ export async function handleOwnerSession({
               clearHandoffReason: true,
               clearHandoffUrgency: true,
               clearReminderAt: true,
-              clearNotifications: true
+              clearNotifications: true,
+              clearNotifyFailed: true
             });
             targetSession.awaitingReply = true;
             targetSession.lastBotAt = decision.completedAt;
@@ -1321,7 +1322,7 @@ export async function handleOwnerSession({
             // Relatório operacional com dados reais em tempo real
             const sessionsArr = Object.values(store.sessions);
             const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
-            const humanWaiting = sessionsArr.filter(s => s.human && !s.inactivityClosed && s.phone);
+            const humanWaiting = sessionsArr.filter(s => isHumanHandoffActive(s) && !s.inactivityClosed && s.phone);
             const remList = reminderStore ? reminderStore.listActive() : [];
             const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
             const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini';
