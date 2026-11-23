@@ -168,6 +168,13 @@ export function createFlow({
       if (dedupe.size > 1000) dedupe.delete(dedupe.keys().next().value);
       return false;
     },
+    // Chamado pelo webhook somente quando o processamento falhou antes de
+    // iniciar uma entrega ao WhatsApp. Falhas de entrega permanecem deduplicadas
+    // porque o resultado remoto pode ser incerto.
+    releaseDuplicate(id) {
+      if (!id) return false;
+      return dedupe.delete(id);
+    },
     allowRate(phone) {
       if (isOwnerSender(phone) || phone === OWNER_SELF_KEY) return true;
       const t = now();
