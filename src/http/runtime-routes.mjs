@@ -376,7 +376,7 @@ export async function handleRuntimeDashboardRoutes({
     if (!['confirmed_succeeded', 'confirmed_failed', 'notification_confirmed_sent', 'notification_confirmed_not_sent', 'still_uncertain'].includes(decision)) {
       return json(res, 400, { error: 'invalid_reconciliation_decision' });
     }
-    const actor = String(authContext?.userId || authContext?.email || 'admin').slice(0, 120);
+    const actor = String(authContext?.email || authContext?.userId || 'admin').slice(0, 120);
     try {
       // A trilha é pré-condição para qualquer mutação administrativa.
       await operationsStore.audit({

@@ -344,6 +344,8 @@ test('reconciliação de tarefas incertas é admin-only, auditada e nunca chama 
   assert.equal(audit[0].action, 'copilot_task_reconciliation_requested');
   assert.equal(audit[1].action, 'copilot_task_reconciled');
   assert.equal(calls[0].args.actor, 'admin@test.local');
+  assert.equal(audit[0].actorId, '123e4567-e89b-42d3-a456-426614174001');
+  assert.equal(audit[0].metadata.actorLabel, 'admin@test.local');
   assert.equal('claimNext' in copilotTaskStore, false);
   assert.equal('enqueue' in copilotTaskStore, false);
 });
