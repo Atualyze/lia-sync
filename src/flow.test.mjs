@@ -15,3 +15,13 @@ test('createFlow deduplica ids de mensagens dentro da janela', () => {
   assert.equal(flow.isDuplicate('msg-1'), false);
   assert.equal(flow.isDuplicate('msg-1'), true);
 });
+
+test('createFlow libera ID deduplicado quando a tentativa falhou antes do envio', () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `flow-release-${Date.now()}.json`));
+  const flow = createFlow({ store });
+  assert.equal(flow.isDuplicate('retry-me'), false);
+  assert.equal(flow.isDuplicate('retry-me'), true);
+  assert.equal(flow.releaseDuplicate('retry-me'), true);
+  assert.equal(flow.isDuplicate('retry-me'), false);
+  assert.equal(flow.releaseDuplicate('missing'), false);
+});
