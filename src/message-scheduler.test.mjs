@@ -127,3 +127,24 @@ test('falha do lote rejeita todos os chamadores e libera a entrada pendente', as
   await assert.rejects(flushed, /falha de processamento/);
   assert.equal(scheduler.pendingCount, 0);
 });
+
+test('mídias imediatas consecutivas mantêm a ordem de chegada', async () => {
+  const order = [];
+  const clock = fakeTimers();
+  const scheduler = createInboundMessageScheduler({
+    delayMs: 1000,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    isImmediate: job => Boolean(job.mediaType),
+    deliver: async job => {
+      order.push(job.text);
+      return job.text;
+    }
+  });
+
+  const first = scheduler.schedule({ phone: '5511999990008', text: 'áudio-1', mediaType: 'audio' });
+  const second = scheduler.schedule({ phone: '5511999990008', text: 'imagem-2', mediaType: 'image' });
+
+  assert.deepEqual(order, ['áudio-1', 'imagem-2']);
+  await Promise.all([first, second]);
+});
