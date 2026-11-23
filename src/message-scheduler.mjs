@@ -57,11 +57,16 @@ export function createInboundMessageScheduler({
     }
 
     if (isImmediate(job)) {
-      // O lote anterior é inserido na fila por contato antes da mídia.
-      // Mesmo quando falha, a mensagem seguinte não deve ser descartada.
-      return flush(key)
-        .catch(error => reportError(error, { phase: 'flush_before_immediate', job }))
-        .then(() => deliver(job));
+      // flush inicia deliver do lote anterior de forma síncrona até enfileirá-lo.
+      // Enfileiramos a mídia logo em seguida, sem esperar a IA terminar; assim
+      // mensagens imediatas consecutivas também preservam a ordem de chegada.
+      const previous = flush(key);
+      void previous.catch(error => reportError(error, { phase: 'flush_before_immediate', job }));
+      try {
+        return Promise.resolve(deliver(job));
+      } catch (error) {
+        return Promise.reject(error);
+      }
     }
 
     return new Promise((resolve, reject) => {
