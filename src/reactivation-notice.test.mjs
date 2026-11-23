@@ -170,3 +170,76 @@ test('triggerSmartReactivationContinuation: responde automaticamente cliente sem
   assert.equal(r3.reason, 'stale_message');
   assert.equal(sent.length, 1);
 });
+
+
+test('triggerSmartReactivationContinuation: não responde se a sessão entra em modo humano enquanto aguarda a fila', async () => {
+  const nowMs = Date.now();
+  const phone = '5588999994444';
+  const session = {
+    phone,
+    clientName: 'João',
+    human: false,
+    history: [{
+      role: 'user',
+      content: 'Ainda preciso de ajuda',
+      createdAt: new Date(nowMs - 60_000).toISOString()
+    }]
+  };
+  const store = makeStore({ [phone]: session });
+  let flowCalls = 0;
+  let sends = 0;
+  store.enqueue = async (_phone, fn) => {
+    session.human = true;
+    session.humanSource = 'admin';
+    return fn();
+  };
+
+  const result = await triggerSmartReactivationContinuation({
+    store,
+    session,
+    phone,
+    now: () => nowMs,
+    flow: {
+      async process() {
+        flowCalls += 1;
+        return 'Resposta indevida';
+      }
+    },
+    sendReply: async () => { sends += 1; }
+  });
+
+  assert.deepEqual(result, { continued: false, reason: 'reverted_to_human' });
+  assert.equal(flowCalls, 0);
+  assert.equal(sends, 0);
+});
+
+test('triggerSmartReactivationContinuation: não inicia reativação quando a sessão já está em modo humano', async () => {
+  const nowMs = Date.now();
+  const phone = '5588999995555';
+  const session = {
+    phone,
+    human: true,
+    humanSource: 'takeover',
+    history: [{
+      role: 'user',
+      content: 'Preciso de retorno',
+      createdAt: new Date(nowMs - 60_000).toISOString()
+    }]
+  };
+  const store = makeStore({ [phone]: session });
+  let flowCalls = 0;
+  let sends = 0;
+
+  const result = await triggerSmartReactivationContinuation({
+    store,
+    session,
+    phone,
+    now: () => nowMs,
+    flow: { async process() { flowCalls += 1; return 'Resposta indevida'; } },
+    sendReply: async () => { sends += 1; }
+  });
+
+  assert.deepEqual(result, { continued: false, reason: 'session_not_eligible' });
+  assert.equal(flowCalls, 0);
+  assert.equal(sends, 0);
+});
