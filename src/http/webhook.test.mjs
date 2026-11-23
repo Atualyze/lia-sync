@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stableIdlessEventKey, handleWebhookRoutes } from './webhook.mjs';
 import { NOT_HANDLED } from './utils.mjs';
+import { parsePayload } from '../whatsapp.mjs';
 
 test('stableIdlessEventKey gera chave deterministica para eventos sem id', () => {
   const item = { jid: '5511999998888@s.whatsapp.net', eventTimestamp: 1700000000, text: 'oi' };
@@ -100,4 +101,49 @@ test('comando bot no self-chat segue para o Copiloto em vez do atalho de cliente
   assert.equal(scheduled.length, 1);
   assert.equal(scheduled[0].phone, 'owner_self');
   assert.equal(scheduled[0].text, 'bot +55 88 99360-2644');
+});
+
+
+test('parsePayload transforma resposta de botão do WhatsApp em mensagem processável e preserva o reply', () => {
+  const item = parsePayload({
+    event: 'MESSAGES_UPSERT',
+    instance: 'baileys',
+    data: {
+      key: { id: 'reply-button-1', remoteJid: '5511999999999@s.whatsapp.net' },
+      message: {
+        buttonsResponseMessage: {
+          selectedDisplayText: 'Sim, pode confirmar',
+          selectedButtonId: 'confirm_booking',
+          contextInfo: {
+            quotedMessage: { conversation: 'Você confirma o agendamento para amanhã?' }
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(item.text, 'Sim, pode confirmar');
+  assert.equal(item.nonText, false);
+  assert.match(item.contextText, /respondendo\/citando/i);
+  assert.match(item.contextText, /Você confirma o agendamento para amanhã\?/);
+  assert.match(item.contextText, /confirm_booking/);
+});
+
+test('parsePayload reconhece mensagens encaminhadas no WhatsApp sem misturar os metadados ao texto do usuário', () => {
+  const item = parsePayload({
+    event: 'MESSAGES_UPSERT',
+    data: {
+      key: { id: 'forward-1', remoteJid: '5511999999999@s.whatsapp.net' },
+      message: {
+        extendedTextMessage: {
+          text: 'Pode verificar essa informação?',
+          contextInfo: { isForwarded: true, forwardingScore: 1 }
+        }
+      }
+    }
+  });
+
+  assert.equal(item.text, 'Pode verificar essa informação?');
+  assert.match(item.contextText, /encaminhada pelo contato/i);
+  assert.doesNotMatch(item.text, /encaminhada pelo contato/i);
 });
