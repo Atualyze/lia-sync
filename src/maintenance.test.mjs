@@ -124,3 +124,63 @@ test('Maintenance: pings de inatividade estão desativados por padrão para não
 
   assert.equal(sent.length, 0, 'Não deve enviar mensagens automáticas de inatividade para o cliente');
 });
+
+
+test('Maintenance: não retoma automaticamente uma sessão humana mesmo com configuração legada de timeout', async () => {
+  const store = createMockStore();
+  const phone = '5511999991234';
+  const handoffAt = new Date(Date.now() - 3 * 3600000).toISOString();
+  store.sessions[phone] = {
+    phone,
+    clientName: 'Cliente em atendimento',
+    human: true,
+    humanSource: 'admin',
+    handoffAt,
+    handoffReminder1Sent: true,
+    pendingTurnPostponedUntil: new Date(Date.now() - 60000).toISOString(),
+    lastBotAt: new Date(Date.now() - 30 * 3600000).toISOString(),
+    lastUserAt: new Date(Date.now() - 31 * 3600000).toISOString(),
+    followUpCount: 0,
+    pendingCheckout: {
+      checkoutUrl: 'https://pay.example.test/checkout',
+      createdAt: new Date(Date.now() - 60 * 60000).toISOString()
+    },
+    history: [
+      { role: 'user', content: 'Quero contratar o serviço' },
+      { role: 'assistant', content: 'Vou confirmar os detalhes com a equipe.' }
+    ]
+  };
+
+  let postponedResumeCalls = 0;
+  let stagedCustomerMessages = 0;
+  let paymentChecks = 0;
+
+  await processMaintenance({
+    store,
+    humanAutoResumeHours: 1,
+    humanReminderMinutes: Number.MAX_SAFE_INTEGER,
+    autoResumeOnOpen: true,
+    onPostponedResume: async () => {
+      postponedResumeCalls += 1;
+      return { continued: true };
+    },
+    enableLeadFollowUp: true,
+    followUpMinHours: 24,
+    followUpMaxHours: 72,
+    stageOutboundDispatch: async () => {
+      stagedCustomerMessages += 1;
+      return { id: 'unexpected-preview' };
+    },
+    checkPayment: async () => {
+      paymentChecks += 1;
+      return { paid: false };
+    }
+  });
+
+  assert.equal(store.sessions[phone].human, true);
+  assert.equal(store.sessions[phone].humanSource, 'admin');
+  assert.equal(store.sessions[phone].handoffAt, handoffAt);
+  assert.equal(postponedResumeCalls, 0, 'não deve executar retomada de turno adiado');
+  assert.equal(stagedCustomerMessages, 0, 'não deve preparar follow-up nem recuperação de checkout');
+  assert.equal(paymentChecks, 0, 'não deve consultar checkout de sessão em atendimento humano');
+});
