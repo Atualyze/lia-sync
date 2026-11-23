@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
 import { createFlow } from '../flow.mjs';
+import { ADMIN_CONSULT_TTL_MS, listPendingAdminConsults } from './admin-consult.mjs';
 import { SessionStore } from '../sessions.mjs';
 import { getEnabledTools } from '../tools/index.mjs';
 import { toolGerenciarDriveGoogle } from '../tools/gerenciar_drive_google.mjs';
@@ -53,6 +54,17 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
   await store.load();
   const sentToClient = [];
   const sentToOwner = [];
+  const commitments = new Map();
+  const liaRuntime = { commitments: {
+    create: async input => {
+      const row = { id: 'commit-admin-1', status: 'pending', due_at: input.dueAt, ...input };
+      commitments.set(row.id, row);
+      return row;
+    },
+    fulfill: async id => { const row = commitments.get(id); if (row) row.status = 'fulfilled'; return row; },
+    cancel: async id => { const row = commitments.get(id); if (row) row.status = 'cancelled'; return row; },
+    markUncertain: async id => { const row = commitments.get(id); if (row) row.status = 'uncertain'; return row; }
+  } };
   const ownerPhone = '5588921694598';
   const clientPhone = '5588998340085';
 
@@ -62,6 +74,7 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     faq: async () => [],
     humanPhone: ownerPhone,
     getHumanPhone: () => ownerPhone,
+    liaRuntime,
     isOwnerSender: p => p === OWNER_SELF_KEY || p === ownerPhone,
     getBotConfig: () => ({
       identity: { assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
@@ -107,7 +120,7 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     });
 
     assert.doesNotMatch(replyToClient, /drive|só um instante/i, 'não deve mentir que vai buscar no Drive');
-    assert.match(replyToClient, /consultei \*Tauan\*|canal interno/i);
+    assert.match(replyToClient, /registrei a verificação com a equipe/i);
     assert.equal(sentToOwner.length, 1, 'deve chamar o admin no chat interno');
     assert.match(sentToOwner[0], /Consulta da Lia/i);
     assert.match(sentToOwner[0], /modelo de contrato/i);
@@ -115,6 +128,8 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     const clientSession = store.get(clientPhone);
     assert.equal(clientSession.human, false, 'não deve pausar a Lia em modo humano permanente');
     assert.equal(clientSession.pendingAdminConsult?.status, 'pending');
+    assert.equal(clientSession.pendingAdminConsult?.commitmentId, 'commit-admin-1');
+    assert.equal(commitments.get('commit-admin-1')?.status, 'pending');
 
     // 2. Admin responde no chat interno com a orientação
     const ownerConfirmation = await flow.process({
@@ -129,6 +144,7 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     assert.match(sentToClient[0].msg, /minuta do contrato na reunião de alinhamento/i);
     assert.equal(clientSession.pendingAdminConsult, null);
     assert.equal(clientSession.human, false);
+    assert.equal(commitments.get('commit-admin-1')?.status, 'fulfilled');
     assert.match(clientSession.history.at(-1).content, /minuta do contrato/i);
 
     // 3. Próximo cliente que perguntar sobre modelo de contrato já recebe o aprendizado no prompt
@@ -191,5 +207,117 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
     if (prevToken === undefined) delete process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
     else process.env.GOOGLE_DRIVE_ACCESS_TOKEN = prevToken;
     globalThis.fetch = prevFetch;
+  }
+});
+
+
+test('consulta administrativa vencida continua rastreada e visível ao responsável até resolução/cancelamento', () => {
+  const requestedAt = new Date(Date.now() - ADMIN_CONSULT_TTL_MS - 1000).toISOString();
+  const sessions = {
+    '5588999991111': {
+      phone: '5588999991111',
+      pendingAdminConsult: { id: 'consult-old', status: 'pending', requestedAt, commitmentId: 'commitment-1' }
+    }
+  };
+  const pending = listPendingAdminConsults(sessions, { nowMs: Date.now() });
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].consult.commitmentId, 'commitment-1');
+  assert.equal(pending[0].overdue, true);
+  assert.ok(pending[0].ageMs > ADMIN_CONSULT_TTL_MS);
+});
+
+
+test('promessa estruturada do modelo é persistida antes de ser enviada ao cliente', async () => {
+  const file = path.join(os.tmpdir(), 'client-promise-' + Date.now() + '.json');
+  const store = new SessionStore(file);
+  await store.load();
+  const created = [];
+  const dueAt = new Date(Date.now() + 60 * 60_000).toISOString();
+  const liaRuntime = { commitments: {
+    create: async input => {
+      const row = { id: 'commit-promise-1', status: 'pending', due_at: input.dueAt, ...input };
+      created.push(row);
+      return row;
+    }
+  } };
+  const flow = createFlow({
+    store,
+    liaRuntime,
+    faq: async () => [],
+    isOwnerSender: () => false,
+    getBotConfig: () => ({ identity: { assistantName: 'Lia', ownerName: 'Tauan' }, ai: { enableToolCalling: false } }),
+    whatsapp: { sendText: async () => {} },
+    ai: {
+      askAI: async () => ({
+        reply: 'Vou verificar essa informação e te retorno amanhã.',
+        intent: 'atendimento',
+        commitment_required: true,
+        commitment: {
+          title: 'Retornar sobre a solicitação',
+          description: 'Confirmar informação solicitada pelo cliente',
+          due_at: dueAt,
+          recipient_type: 'client',
+          owner_type: 'owner',
+          category: 'outro'
+        },
+        handoff: false,
+        tool_calls: []
+      })
+    }
+  });
+  try {
+    const reply = await flow.process({ phone: '5588999990001', text: 'Você pode verificar essa informação?', origin: 'real' });
+    assert.match(reply, /verificar essa informação/i);
+    assert.equal(created.length, 1);
+    assert.equal(created[0].recipientType, 'client');
+    assert.equal(created[0].recipientPhone, '5588999990001');
+    assert.equal(created[0].ownerType, 'owner');
+    assert.equal(store.get('5588999990001').activeCommitments[0].id, 'commit-promise-1');
+    assert.equal(store.get('5588999990001').pendingAdminConsult, undefined);
+  } finally {
+    await rm(file, { force: true }).catch(() => {});
+  }
+});
+
+test('falha ao persistir compromisso elimina a promessa antes de responder', async () => {
+  const file = path.join(os.tmpdir(), 'client-promise-fail-' + Date.now() + '.json');
+  const store = new SessionStore(file);
+  await store.load();
+  let calls = 0;
+  const flow = createFlow({
+    store,
+    liaRuntime: { commitments: { create: async () => { throw new Error('runtime unavailable'); } } },
+    faq: async () => [],
+    isOwnerSender: () => false,
+    getBotConfig: () => ({ identity: { assistantName: 'Lia', ownerName: 'Tauan' }, ai: { enableToolCalling: false } }),
+    whatsapp: { sendText: async () => {} },
+    ai: {
+      askAI: async () => {
+        calls += 1;
+        return {
+          reply: 'Vou verificar essa informação e te retorno amanhã.',
+          intent: 'atendimento',
+          commitment_required: true,
+          commitment: {
+            title: 'Retornar sobre a solicitação',
+            description: 'Confirmar informação solicitada',
+            due_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+            recipient_type: 'client',
+            owner_type: 'owner',
+            category: 'outro'
+          },
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+  try {
+    const reply = await flow.process({ phone: '5588999990002', text: 'Pode verificar isso?', origin: 'real' });
+    assert.doesNotMatch(reply, /vou verificar|te retorno amanhã/i);
+    assert.equal(store.get('5588999990002').activeCommitments?.length || 0, 0);
+    assert.ok(calls >= 2, 'deve tentar reescrever a resposta sem promessa');
+  } finally {
+    await rm(file, { force: true }).catch(() => {});
   }
 });

@@ -1,4 +1,5 @@
 import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction } from '../safety.mjs';
+import { getAllowedPrices } from '../faq.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
@@ -729,6 +730,7 @@ export async function handleOwnerSession({
               const timestamp = new Date(now()).toISOString();
 
               if (consultAction.action === 'takeover') {
+                if (consult.commitmentId) await liaRuntime?.commitments?.cancel?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 targetSession.human = true;
                 targetSession.humanSource = 'admin';
@@ -738,6 +740,7 @@ export async function handleOwnerSession({
                 return recordSelfTurn(`✅ Entendido! Pausei meu atendimento com *${targetName}* e deixei a conversa em *Modo Humano* para você responder diretamente.`);
               }
               if (consultAction.action === 'cancel') {
+                if (consult.commitmentId) await liaRuntime?.commitments?.cancel?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 store.markDirty();
                 return recordSelfTurn(`👍 Consulta pendente de *${targetName}* cancelada. Nenhuma mensagem foi enviada ao cliente.`);
@@ -788,6 +791,7 @@ export async function handleOwnerSession({
                     targetSession.human = false;
                     targetSession.lastBotAt = timestamp;
                     targetSession.awaitingReply = true;
+                    if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
                     targetSession.pendingAdminConsult = null;
                     targetSession.pendingClientPayment = null;
                     targetSession.updatedAt = timestamp;
@@ -814,20 +818,35 @@ export async function handleOwnerSession({
                 if (!clientReply) {
                   clientReply = `Oi! Acabei de confirmar aqui: ${consultAction.text}\n\nQualquer dúvida, sigo por aqui para te ajudar! 😊`;
                 }
-                const filteredClientReply = filterReply(clientReply, {
+                const filteredResult = filterReply(clientReply, {
+                  allowedPrices: getAllowedPrices(),
+                  strictPrices: true,
                   isCopilot: false,
                   alreadyIntroduced: true,
                   botName: assistant
-                }).text || clientReply;
+                });
+                if (filteredResult.blocked || !filteredResult.text) {
+                  return recordSelfTurn('⚠️ A resposta sugerida contém uma informação de preço/condição que não está autorizada na tabela publicada. Não enviei nada ao cliente e mantive a consulta pendente; atualize a informação aprovada antes de responder.');
+                }
+                const filteredClientReply = filteredResult.text;
                 const targetDest = consult.rawJid || targetSession.jid || targetSession.phone;
-                if (typeof whatsapp?.sendText === 'function') {
+                if (typeof whatsapp?.sendText !== 'function') {
+                  return recordSelfTurn('⚠️ O canal de WhatsApp não está disponível para confirmar o envio. A consulta permanece pendente e nada foi marcado como concluído.');
+                }
+                try {
                   await whatsapp.sendText(targetDest, formatOutgoingMessage(filteredClientReply));
+                } catch (error) {
+                  if (consult.commitmentId) await liaRuntime?.commitments?.markUncertain?.(consult.commitmentId, error?.code || error?.name || 'client_reply_delivery_uncertain').catch(() => {});
+                  consult.deliveryUncertainAt = timestamp;
+                  store.markDirty();
+                  return recordSelfTurn('⚠️ O WhatsApp não confirmou a entrega da resposta. Marquei o retorno como incerto e não vou reenviar automaticamente para evitar duplicidade. Confira a conversa antes de tentar novamente.');
                 }
                 targetSession.history ??= [];
                 targetSession.history.push({ role: 'assistant', content: filteredClientReply, createdAt: timestamp });
                 targetSession.human = false;
                 targetSession.lastBotAt = timestamp;
                 targetSession.awaitingReply = true;
+                if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
                 targetSession.pendingAdminConsult = null;
                 targetSession.updatedAt = timestamp;
                 store.markDirty();
