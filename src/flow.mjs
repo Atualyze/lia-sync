@@ -232,7 +232,7 @@ export function createFlow({
       return handleClientMessage({
         store, ai, whatsapp, faq, reminderStore, operationsStore, logger, now,
         allowClientResume, maxInputChars, notify, isOwnerSender,
-        botConfig, identity, messages, owner, assistant, sectors,
+        botConfig, identity, messages, owner, assistant, sectors, liaRuntime,
         phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
       });
     },

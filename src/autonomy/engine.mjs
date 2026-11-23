@@ -360,7 +360,7 @@ export function createAutonomyEngine({
    */
   const runDailyReview = async ({ tenantId = 'default', rightTiming = true } = {}) => {
     const activeGoals = runtime?.available ? await runtime.goals.list({ status: 'active' }) : [];
-    const pendingCommitments = runtime?.available ? await runtime.commitments.list({ status: 'pending' }) : [];
+    const pendingCommitments = runtime?.available ? await runtime.commitments.list({ status: ['pending', 'in_progress', 'overdue', 'uncertain', 'failed', 'missed'] }) : [];
     const prioritized = prioritizeGoalsAntiStarvation(activeGoals, now());
     const health = evaluateSystemHealth({
       aiCreditsPaused: Boolean(learning?.aiCreditsPaused),

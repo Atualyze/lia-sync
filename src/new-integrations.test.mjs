@@ -1125,7 +1125,7 @@ test('IA-first multimodal + triagem híbrida + transferência contextualizada (w
   assert.equal(sess1.sectorName, 'Financeiro');
   assert.equal(sess1.contextSummary, 'Cliente enviou print de erro ao pagar boleto de R$ 150,00.');
 
-  // 2) Handoff financeiro exige categoria explícita; sentimento frustrado sozinho não transfere
+  // 2) Handoff financeiro exige categoria explícita; frustração isolada não transfere.
   const rFrustrated = await flow.process({
     phone: '5585988887777',
     text: 'Já estou há 2 dias esperando isso e ninguém resolve!',

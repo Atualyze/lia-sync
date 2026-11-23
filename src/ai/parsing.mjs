@@ -9,6 +9,20 @@ export const responseSchema = {
     handoff: { type: 'BOOLEAN' },
     handoff_category: { type: 'STRING', nullable: true, enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia'] },
     handoff_reason: { type: 'STRING', nullable: true },
+    commitment_required: { type: 'BOOLEAN' },
+    commitment: {
+      type: 'OBJECT',
+      nullable: true,
+      properties: {
+        title: { type: 'STRING' },
+        description: { type: 'STRING' },
+        due_at: { type: 'STRING' },
+        recipient_type: { type: 'STRING', enum: ['client', 'owner'] },
+        owner_type: { type: 'STRING', enum: ['bot', 'owner'] },
+        category: { type: 'STRING', enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'] }
+      },
+      required: ['title', 'description', 'due_at', 'recipient_type', 'owner_type', 'category']
+    },
     needs_tool: { type: 'BOOLEAN' },
     sector: { type: 'STRING', nullable: true, enum: ['vendas', 'comercial', 'suporte', 'financeiro', 'reclamacao', 'responsavel'] },
     sentiment: { type: 'STRING', nullable: true },
@@ -78,7 +92,7 @@ export const responseSchema = {
       }
     }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'needs_tool', 'conversation_state']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'commitment_required', 'commitment', 'needs_tool', 'conversation_state']
 };
 
 const openRouterSchema = {
@@ -91,6 +105,20 @@ const openRouterSchema = {
     handoff: { type: 'boolean' },
     handoff_category: { type: ['string', 'null'], enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', null] },
     handoff_reason: { type: ['string', 'null'] },
+    commitment_required: { type: 'boolean' },
+    commitment: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        due_at: { type: 'string' },
+        recipient_type: { type: 'string', enum: ['client', 'owner'] },
+        owner_type: { type: 'string', enum: ['bot', 'owner'] },
+        category: { type: 'string', enum: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'] }
+      },
+      required: ['title', 'description', 'due_at', 'recipient_type', 'owner_type', 'category']
+    },
     needs_tool: { type: 'boolean' },
     sector: { type: ['string', 'null'], enum: ['vendas', 'comercial', 'suporte', 'financeiro', 'reclamacao', 'responsavel', null] },
     sentiment: { type: ['string', 'null'] },
@@ -119,7 +147,7 @@ const openRouterSchema = {
     },
     collected: { type: 'object', additionalProperties: true }
   },
-  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'handoff_reason', 'needs_tool', 'conversation_state', 'collected']
+  required: ['reply', 'intent', 'red_flags', 'handoff', 'handoff_category', 'handoff_reason', 'commitment_required', 'commitment', 'needs_tool', 'conversation_state', 'collected']
 };
 
 export function safeErrorDetail(body = '') {
@@ -225,9 +253,9 @@ export function parseAIResponse(raw) {
     const source = String(raw || '').replace(/```json|```/gi, '').trim();
     if (/^\s*\{|"reply"\s*:/.test(source)) {
       const recovered = extractTruncatedReply(source);
-      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, needs_tool: false, collected: {} };
+      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
     }
-    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, needs_tool: false, collected: {} };
+    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
   }
   const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
@@ -240,6 +268,25 @@ export function parseAIResponse(raw) {
   const rawSector = typeof o.sector === 'string' ? o.sector.trim().toLowerCase() : '';
   const validSentiments = new Set(['positivo', 'neutro', 'confuso', 'frustrado', 'urgente']);
   const rawSentiment = typeof o.sentiment === 'string' ? o.sentiment.trim().toLowerCase() : '';
+  const commitmentRequired = o.commitment_required === true;
+  const candidateCommitment = o.commitment && typeof o.commitment === 'object' && !Array.isArray(o.commitment) ? o.commitment : null;
+  const dueAt = Date.parse(candidateCommitment?.due_at || '');
+  const validCommitmentCategories = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro']);
+  const validCommitment = commitmentRequired && candidateCommitment
+    && typeof candidateCommitment.title === 'string' && candidateCommitment.title.trim()
+    && typeof candidateCommitment.description === 'string'
+    && Number.isFinite(dueAt)
+    && ['client', 'owner'].includes(candidateCommitment.recipient_type)
+    && ['bot', 'owner'].includes(candidateCommitment.owner_type)
+    && validCommitmentCategories.has(candidateCommitment.category);
+  const commitment = validCommitment ? {
+    title: candidateCommitment.title.trim().slice(0, 200),
+    description: candidateCommitment.description.trim().slice(0, 1000),
+    due_at: new Date(dueAt).toISOString(),
+    recipient_type: candidateCommitment.recipient_type,
+    owner_type: candidateCommitment.owner_type,
+    category: candidateCommitment.category
+  } : null;
   const candidateToolCalls = o.needs_tool === false ? [] : (Array.isArray(o.tool_calls) ? o.tool_calls : []);
   const cleanToolCalls = candidateToolCalls
     .filter(t => t && typeof t.name === 'string' && t.name.trim())
@@ -265,6 +312,8 @@ export function parseAIResponse(raw) {
     handoff: Boolean(handoffCategory),
     handoff_category: handoffCategory,
     handoff_reason: handoffCategory && typeof o.handoff_reason === 'string' ? o.handoff_reason.trim().slice(0, 300) : null,
+    commitment_required: commitmentRequired,
+    commitment,
     needs_tool: cleanToolCalls.length > 0,
     sector: validSectors.has(rawSector) ? (rawSector === 'comercial' ? 'vendas' : rawSector) : null,
     sentiment: validSentiments.has(rawSentiment) ? rawSentiment : null,

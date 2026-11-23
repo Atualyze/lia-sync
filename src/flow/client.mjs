@@ -16,7 +16,7 @@ import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixAct
 import { cleanForSpeech, escapeText } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
-import { buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
+import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
@@ -113,6 +113,7 @@ export async function handleClientMessage({
   allowClientResume, maxInputChars, notify, isOwnerSender,
   botConfig, identity, messages, owner, assistant, sectors = [],
   operationsStore = null,
+  liaRuntime = null,
   phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
 }) {
       const auditPhoneDigits = String(phone || '').replace(/\D/g, '');
@@ -169,6 +170,135 @@ export async function handleClientMessage({
         store.touch(s);
       }
       s.history ??= [];
+      let adminConsultPending = false;
+      let trackedCommitment = null;
+
+      const createTrackedClientCommitment = async ({
+        title,
+        description = '',
+        dueAt,
+        recipientType = 'client',
+        recipientPhone: requestedRecipientPhone = '',
+        ownerType = 'owner',
+        category = 'outro',
+        metadata = {},
+        deduplicationKey = ''
+      } = {}) => {
+        if (typeof liaRuntime?.commitments?.create !== 'function') return null;
+        const dueTs = Date.parse(dueAt || '');
+        const currentTs = now();
+        if (!Number.isFinite(dueTs) || dueTs <= currentTs || dueTs > currentTs + 90 * 24 * 60 * 60_000) return null;
+        const recipient = recipientType === 'owner' ? 'owner' : 'client';
+        const recipientPhone = recipient === 'client'
+          ? String(requestedRecipientPhone || s.phone || phone || '').replace(/\D/g, '')
+          : '';
+        if (recipient === 'client' && (!recipientPhone || recipientPhone.length < 8)) return null;
+        try {
+          const created = await liaRuntime.commitments.create({
+            title: String(title || 'Retorno ao cliente').slice(0, 200),
+            description: String(description || '').slice(0, 1000),
+            subject: s.clientName || pushName || recipientPhone || s.phone,
+            dueAt: new Date(dueTs).toISOString(),
+            conversationId: String(s.phone || phone),
+            recipientType: recipient,
+            recipientPhone,
+            ownerType: ownerType === 'bot' ? 'bot' : 'owner',
+            category: ['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia', 'outro'].includes(category) ? category : 'outro',
+            metadata: { ...metadata, source: metadata.source || 'client_conversation' },
+            deduplicationKey
+          });
+          if (created?.id) {
+            if (recipient === 'client') {
+              s.activeCommitments ??= [];
+              s.activeCommitments.push({ id: created.id, due_at: created.due_at, status: created.status || 'pending' });
+              s.activeCommitments = s.activeCommitments.slice(-20);
+            }
+            store.markDirty();
+            return created;
+          }
+        } catch (error) {
+          logger.warn?.('[commitments] falha ao persistir compromisso:', error?.code || error?.name || 'commitment_create_failed');
+        }
+        return null;
+      };
+
+      const buildPromiseFreeReply = async (topic = clean) => {
+        const recent = (Array.isArray(s.history) ? s.history : []).slice(-10).map(item => ({
+          role: item?.role === 'assistant' ? 'assistant' : 'user',
+          content: String(item?.content || '').slice(0, 1000)
+        })).filter(item => item.content.trim());
+        try {
+          const rewritten = await ai?.askAI?.({
+            system: [
+              'Reescreva a resposta em português brasileiro para este cliente.',
+              'Explique apenas o que pode ser confirmado agora.',
+              'Não prometa retorno, prazo, consulta, aviso, envio, contato humano ou qualquer ação futura.',
+              'Não afirme que uma equipe foi avisada se isso não estiver confirmado.',
+              'Não invente fatos, disponibilidade, preço, desconto, reembolso ou cobrança.',
+              'Use até duas frases curtas e não use ferramentas.'
+            ].join('\n'),
+            history: recent,
+            userText: 'Pedido atual: ' + String(topic || '').slice(0, 500) + '\nReescreva sem nenhuma promessa futura.',
+            botConfig,
+            disableToolCalling: true,
+            deadline: now() + 4000
+          });
+          const reply = String(rewritten?.reply || '').trim();
+          if (reply && !/\b(?:vou\s+(?:verificar|consultar|retornar|avisar|confirmar|enviar|resolver)|te\s+retorno|te\s+aviso|em\s+instantes|assim\s+que\s+(?:eu\s+)?(?:souber|confirmar|verificar)|já\s+(?:te\s+)?(?:aviso|retorno|envio))\b/i.test(reply)) return reply;
+        } catch {}
+        const subject = String(topic || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 130);
+        return subject
+          ? 'Sobre "' + subject + '", ainda não tenho uma confirmação segura para te passar. Prefiro não afirmar que algo foi verificado ou enviado sem ter essa confirmação.'
+          : 'Ainda não tenho uma confirmação segura para te passar. Prefiro não afirmar que algo foi verificado ou enviado sem ter essa confirmação.';
+      };
+
+      const createAdminConsultCommitment = async ({ reason, category = 'outro', title = 'Verificação solicitada pelo cliente' } = {}) => {
+        const consultId = 'consult-' + Date.now().toString(36);
+        const requestedAt = new Date(now()).toISOString();
+        const dueAt = new Date(now() + ADMIN_CONSULT_TTL_MS).toISOString();
+        const commitment = await createTrackedClientCommitment({
+          title,
+          description: String(reason || clean).slice(0, 500),
+          dueAt,
+          recipientType: 'client',
+          ownerType: 'owner',
+          category,
+          metadata: { kind: 'admin_consult', consultId, description: String(reason || clean).slice(0, 500) },
+          deduplicationKey: 'admin-consult:' + String(s.phone || phone) + ':' + String(messageId || s.lastUserAt || requestedAt) + ':' + String(category)
+        });
+        const record = {
+          id: consultId,
+          commitmentId: commitment?.id || null,
+          trackingFailed: !commitment,
+          phone: s.phone,
+          rawJid: rawItem?.jid || s.phone,
+          clientName: s.clientName || pushName || 'Cliente',
+          question: clean.slice(0, 400),
+          reason: String(reason || '').slice(0, 500),
+          requestedAt,
+          dueAt,
+          status: 'pending'
+        };
+        s.pendingAdminConsult = record;
+        adminConsultPending = true;
+        store.markDirty();
+        let ownerNotified = false;
+        try {
+          await notify(buildAdminConsultNotice({
+            clientName: record.clientName,
+            phone: s.phone,
+            question: clean,
+            reason: record.reason,
+            assistant
+          }));
+          ownerNotified = true;
+        } catch (error) {
+          logger.warn?.('[admin-consult] não foi possível notificar o responsável:', error?.code || error?.name || 'admin_notify_failed');
+        }
+        record.ownerNotified = ownerNotified;
+        store.markDirty();
+        return record;
+      };
 
       // 2.1 TRATAMENTO DE ÁUDIO
       if (mediaType === 'audio') {
@@ -586,6 +716,51 @@ export async function handleClientMessage({
         deadline: aiDeadline
       });
 
+      if (result?.commitment_required === true) {
+        const proposed = result.commitment;
+        if (proposed?.recipient_type === 'client' && proposed?.due_at) {
+          trackedCommitment = await createTrackedClientCommitment({
+            title: proposed.title,
+            description: proposed.description,
+            dueAt: proposed.due_at,
+            recipientType: 'client',
+            ownerType: proposed.owner_type,
+            category: proposed.category,
+            metadata: { kind: 'model_commitment', intent: result.intent || 'atendimento' },
+            deduplicationKey: 'client-promise:' + String(s.phone || phone) + ':' + String(messageId || s.lastUserAt || '') + ':' + String(proposed.title || 'retorno').slice(0, 80)
+          });
+        } else if (proposed?.recipient_type === 'owner' && proposed?.due_at && liaRuntime?.commitments?.create) {
+          try {
+            trackedCommitment = await liaRuntime.commitments.create({
+              title: proposed.title,
+              description: proposed.description,
+              subject: s.clientName || pushName || s.phone,
+              dueAt: proposed.due_at,
+              conversationId: String(s.phone || phone),
+              recipientType: 'owner',
+              ownerType: proposed.owner_type,
+              category: proposed.category,
+              metadata: { kind: 'internal_commitment', source: 'client_conversation', clientPhone: s.phone },
+              deduplicationKey: 'owner-task:' + String(s.phone || phone) + ':' + String(messageId || s.lastUserAt || '') + ':' + String(proposed.title || 'verificacao').slice(0, 80)
+            });
+            if (trackedCommitment?.id) {
+              await notify('📌 *Nova tarefa interna da Lia*\n\n• *Tarefa:* ' + String(trackedCommitment.title || proposed.title).slice(0, 180) + '\n• *Prazo:* ' + new Date(trackedCommitment.due_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '\n• *Cliente:* ' + String(s.clientName || pushName || s.phone));
+              // Este compromisso é interno do responsável; não o exponha como prazo prometido ao cliente.
+              result.reply = await buildPromiseFreeReply(result.reply || clean);
+            }
+          } catch (error) {
+            logger.warn?.('[commitments] falha ao persistir tarefa interna:', error?.code || error?.name || 'commitment_create_failed');
+            trackedCommitment = null;
+          }
+        }
+
+        if (!trackedCommitment?.id) {
+          result.reply = await buildPromiseFreeReply(result.reply || clean);
+          result.commitment_required = false;
+          result.commitment = null;
+        }
+      }
+
       const addSessionTags = (tagsToAdd) => {
         const existing = Array.isArray(s.tags) ? s.tags : [];
         const normalized = tagsToAdd
@@ -621,7 +796,7 @@ export async function handleClientMessage({
             : []
         };
       }
-      // Frustração ou repetição isoladas não são critérios suficientes para handoff.
+      // Sentimento ou repetição, isoladamente, não criam um compromisso nem um transbordo.
 
       let raw = (result?.reply || '').trim();
       if (/^\s*\{|"reply"\s*:/.test(raw)) {
@@ -860,25 +1035,14 @@ export async function handleClientMessage({
             s.human = true;
             s.handoffAt = new Date(now()).toISOString();
             s.handoffReason = 'Confirmação de valor/preço pendente com a equipe';
-            s.pendingAdminConsult = {
-              id: `consult-${Date.now().toString(36)}`,
-              phone: s.phone,
-              rawJid: rawItem?.jid || s.phone,
-              clientName: s.clientName || pushName || 'Cliente',
-              question: clean.slice(0, 400),
+            const consult = await createAdminConsultCommitment({
               reason: 'Confirmação de valor/preço antes de informar ao cliente',
-              requestedAt: new Date(now()).toISOString(),
-              status: 'pending'
-            };
-            store.markDirty();
-            await notify(buildAdminConsultNotice({
-              clientName: s.clientName || pushName || 'Cliente',
-              phone: s.phone,
-              question: clean,
-              reason: 'Confirmação de valor/preço antes de informar ao cliente',
-              assistant
-            }));
-            safeReplyText = faqPriceReply || 'Para informar o valor corretamente, vou confirmar essa informação com a equipe e te retorno aqui mesmo em instantes! Ainda não gerei nenhuma cobrança.';
+              title: 'Confirmar informação de preço com responsável',
+              category: 'financeiro'
+            });
+            safeReplyText = consult.commitmentId && consult.ownerNotified
+              ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
+              : 'Preciso confirmar essa informação com a equipe antes de informar o preço; ainda não registrei a consulta e nenhuma cobrança foi gerada.';
           } else {
             safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
@@ -1388,24 +1552,12 @@ export async function handleClientMessage({
         if (toolBlockNotified || origin === 'simulation' || origin === 'preview') return;
         toolBlockNotified = true;
         const reason = `Resposta de ferramenta bloqueada pelo filtro (${violations.join(', ') || 'segurança'})`;
-        s.pendingAdminConsult = {
-          id: `consult-${Date.now().toString(36)}`,
-          phone: s.phone,
-          rawJid: rawItem?.jid || s.phone,
-          clientName: s.clientName || pushName || 'Cliente',
-          question: clean.slice(0, 400),
+        const financial = violations.some(value => /pre[cç]o|valor|price|pix|financeir/i.test(String(value)));
+        await createAdminConsultCommitment({
           reason,
-          requestedAt: new Date(now()).toISOString(),
-          status: 'pending'
-        };
-        store.markDirty();
-        await notify(buildAdminConsultNotice({
-          clientName: s.clientName || pushName || 'Cliente',
-          phone: s.phone,
-          question: clean,
-          reason,
-          assistant
-        }));
+          title: financial ? 'Validar solicitação financeira bloqueada' : 'Revisar solicitação bloqueada pelo filtro',
+          category: financial ? 'financeiro' : 'outro'
+        });
       };
 
       if (toolReplyOverride) {
@@ -1414,7 +1566,9 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação de que ela foi realizada. Você pode me pedir para tentar novamente.'
+          ? (s.pendingAdminConsult?.commitmentId && s.pendingAdminConsult?.ownerNotified
+            ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
+            : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
@@ -1447,7 +1601,9 @@ export async function handleClientMessage({
           await notifyToolBlockToAdmin(toolFiltered.violations);
         }
         finalReply = toolFiltered.blocked
-          ? 'Não consegui concluir essa ação com segurança. Vou pedir à equipe para verificar e te retorno por aqui.'
+          ? (s.pendingAdminConsult?.commitmentId && s.pendingAdminConsult?.ownerNotified
+            ? 'A equipe foi notificada para revisar esta solicitação. A previsão de atualização é até ' + new Date(s.pendingAdminConsult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
+            : 'Não consegui concluir essa ação com segurança. Ainda não tenho confirmação para te passar.')
           : toolFiltered.text;
         safeReplyText = finalReply;
       }
@@ -1486,33 +1642,22 @@ export async function handleClientMessage({
 
       // Guarda anti-mentira: nunca permite que a Lia prometa "vou buscar no Drive / só um instante"
       // ou finja ter enviado um arquivo/contrato quando nenhuma ferramenta real executou a entrega.
-      let adminConsultPending = false;
       const executedDeliveryTool = Boolean(toolReplyOverride || pixHandledByTool);
-      if (!executedDeliveryTool && detectUnexecutedClientPromiseOrFakeAttachment(finalReply)) {
+      if (!trackedCommitment && !executedDeliveryTool && detectUnexecutedClientPromiseOrFakeAttachment(finalReply)) {
         const consultReason = 'A resposta tentou prometer busca/envio de arquivo ou serviço externo sem ferramenta conectada.';
         if (origin !== 'simulation' && origin !== 'preview') {
-          adminConsultPending = true;
-          s.pendingAdminConsult = {
-            id: `consult-${Date.now().toString(36)}`,
-            phone: s.phone,
-            rawJid: rawItem?.jid || s.phone,
-            clientName: s.clientName || pushName || 'Cliente',
-            question: clean.slice(0, 400),
+          const consult = await createAdminConsultCommitment({
             reason: consultReason,
-            requestedAt: new Date(now()).toISOString(),
-            status: 'pending'
-          };
-          await notify(buildAdminConsultNotice({
-            clientName: s.clientName || pushName || 'Cliente',
-            phone: s.phone,
-            question: clean,
-            reason: consultReason,
-            assistant
-          }));
+            title: 'Verificar solicitação externa do cliente',
+            category: 'outro'
+          });
+          finalReply = consult.commitmentId && consult.ownerNotified
+            ? 'Ainda não tenho acesso direto a esse arquivo ou consulta automática. Registrei a verificação com a equipe, com previsão de atualização até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.'
+            : 'Ainda não tenho acesso direto a esse arquivo ou consulta automática e não consegui confirmar a verificação com a equipe. Prefiro não prometer um envio ou retorno sem confirmação.';
+        } else {
+          finalReply = await buildPromiseFreeReply(finalReply);
         }
-        finalReply = `Ainda não tenho acesso direto a esse arquivo ou consulta automática por aqui, mas já consultei *${owner}* no nosso canal interno e assim que ele me responder eu já te retorno por aqui! 😊`;
         safeReplyText = finalReply;
-        // Mantém a Lia no controle para retornar automaticamente assim que o admin responder no chat interno
         result.handoff = false;
         result.handoff_category = null;
         result.handoff_reason = null;

@@ -38,6 +38,11 @@ const liaLearningReflection = await readNormalized('src/learning/reflection.mjs'
 const liaAutonomyMigration = await readNormalized('supabase/migrations/20261121150000_lia_autonomy.sql');
 const liaAutonomyPermissions = await readNormalized('src/autonomy/permissions.mjs');
 const liaAutonomyVerification = await readNormalized('src/autonomy/verification.mjs');
+const trackedCommitmentsMigration = await readNormalized('supabase/migrations/20261122100000_tracked_lia_commitments.sql');
+const trackedCommitments = await readNormalized('src/runtime/commitments.mjs');
+const adminConsultFlow = await readNormalized('src/flow/admin-consult.mjs');
+const clientPromiseFlow = await readNormalized('src/flow/client.mjs');
+const adminConsultServer = await readNormalized('src/server.mjs');
 const checks = [
   ['canonical suppression table with RLS and no browser policy', legacyMigration.includes('create table if not exists public.phone_suppressions') && legacyMigration.includes('phone text primary key') && legacyMigration.includes('enable row level security') && !legacyMigration.includes('create policy')],
   ['campaign claims and retry state are persisted', observabilityMigration.includes("'sending'") && observabilityMigration.includes('attempt_count') && campaigns.includes('status=in.(pending,paused)') && campaigns.includes("status: 'sending'")],
@@ -82,6 +87,11 @@ const checks = [
   ['Lia Autonomy migration is backend-only with RLS, rollback docs, and no browser policy', liaAutonomyMigration.includes('create table if not exists public.lia_org_autonomy_policies') && liaAutonomyMigration.includes('create table if not exists public.lia_autonomy_decisions') && liaAutonomyMigration.includes('create table if not exists public.lia_sales_states') && liaAutonomyMigration.includes('enable row level security') && !liaAutonomyMigration.includes('create policy')],
   ['complete Supabase schema includes the Lia Autonomy migration', copilotTaskSchema.includes('-- ======== 20261121150000_lia_autonomy.sql ========') && copilotTaskSchema.includes('create table if not exists public.lia_proactive_notifications')],
   ['Lia Autonomy enforces 4-tier permissions, verification, non-retryable external effects, and /ready integration', liaAutonomyPermissions.includes('D_FORBIDDEN') && liaAutonomyPermissions.includes('requireHumanForPix: true') && liaAutonomyVerification.includes('NON_RETRYABLE_EFFECTS') && copilotServer.includes('liaAutonomy.readiness()')],
+  ['tracked commitments extend existing lia_commitments with UUID-safe idempotency, recipients, lifecycle states and backend-only RLS', trackedCommitmentsMigration.includes('alter table public.lia_commitments') && trackedCommitmentsMigration.includes('deduplication_key') && trackedCommitmentsMigration.includes('recipient_type') && trackedCommitmentsMigration.includes("'uncertain'") && trackedCommitmentsMigration.includes('enable row level security') && !trackedCommitmentsMigration.includes('create policy') && trackedCommitments.includes('deterministicCommitmentId') && trackedCommitments.includes('invalid_commitment_transition')],
+  ['complete Supabase schema includes the tracked commitments migration', copilotTaskSchema.includes('-- ======== 20261122100000_tracked_lia_commitments.sql ========') && copilotTaskSchema.includes('add column if not exists deduplication_key')],
+  ['customer promises are persisted before reply and are rewritten if persistence fails', clientPromiseFlow.includes('result?.commitment_required === true') && clientPromiseFlow.includes('buildPromiseFreeReply') && clientPromiseFlow.includes('createAdminConsultCommitment')],
+  ['admin consultations remain visible after TTL and report overdue state', adminConsultFlow.includes('overdue: Number.isFinite(requestedMs)') && adminConsultFlow.includes('consultation remains') === false && adminConsultFlow.includes('TTL agora indica atraso, não descarte')],
+  ['overdue client updates use suppression, business-hour and autonomy follow-up gates', adminConsultServer.includes('notifyCommitmentRecipient: async') && adminConsultServer.includes('campaignStore.isSuppressed(phone)') && adminConsultServer.includes('avaliarJanelaDeAtendimento') && adminConsultServer.includes("proposedAction: 'follow_up'")],
 ];
 for (const [name, passed] of checks) console.log(`${passed ? 'PASS' : 'FAIL'} ${name}`);
 if (checks.some(([, passed]) => !passed)) process.exit(1);
