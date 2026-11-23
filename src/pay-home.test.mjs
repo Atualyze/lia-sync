@@ -17,7 +17,7 @@ test('raiz do Atualyze Pay é pública sem abrir os outros dashboards', async ()
   const adminConfig = {
     active: {
       identity: { botName: 'Lia', companyName: 'Atualyze' },
-      tools: { settings: { gerar_cobranca_pix: {
+      tools: { settings: { gerenciar_cobranca_pagamento: {
         key: 'pix-root@atualyze.com.br',
         keyType: 'email',
         merchantName: 'Atualyze',
@@ -34,12 +34,10 @@ test('raiz do Atualyze Pay é pública sem abrir os outros dashboards', async ()
   await router({ method: 'GET', url: '/', headers: { host: 'pay.atualyze.com.br' } }, payResponse);
   assert.equal(payResponse.status, 200);
   assert.match(payResponse.headers['content-type'], /text\/html/);
-  assert.match(payResponse.body, /QR Code Pix para pagamento/);
-  assert.match(payResponse.body, /Copiar c\u00f3digo Pix/);
-  assert.match(payResponse.body, /Copiar chave Pix/);
-  assert.match(payResponse.body, /pix-root@atualyze\.com\.br/);
-  assert.match(payResponse.body, /Valor livre/);
-  assert.doesNotMatch(payResponse.body, /Pagar com InfinitePay/);
+  assert.match(payResponse.body, /Portal de pagamentos/);
+  assert.match(payResponse.body, /Pagamentos simples, em um s\u00f3 lugar/);
+  assert.doesNotMatch(payResponse.body, /pix-root@atualyze\.com\.br/);
+  assert.doesNotMatch(payResponse.body, /QR Code Pix para pagamento/);
   assert.equal(authCalls, 0);
 
   const otherResponse = responseCapture();

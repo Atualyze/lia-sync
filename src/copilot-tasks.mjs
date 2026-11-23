@@ -9,7 +9,7 @@ const READ_ONLY_TASK_TOOLS = new Set([
   'consultar_saude_infra', 'consultar_dados_brasil'
 ]);
 const isReadOnlyTaskStep = step => READ_ONLY_TASK_TOOLS.has(step.name)
-  || (step.name === 'checkout_infinitepay' && String(step.args?.acao || '') === 'verificar_pagamento')
+  || (step.name === 'gerenciar_cobranca_pagamento' && String(step.args?.acao || '') === 'verificar_pagamento')
   || (step.name === 'consultar_planilha_google' && ['ler_intervalo', 'buscar_linhas'].includes(String(step.args?.acao || '')))
   || (step.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(String(step.args?.acao || '')))
   || (step.name === 'gerenciar_agenda_google' && ['consultar_livres', 'sugerir_horarios', 'listar_eventos'].includes(String(step.args?.action || '')))

@@ -7,7 +7,7 @@ import { handleRuntimeDashboardRoutes } from './runtime-routes.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
 import { renderPaymentLandingPage, renderPixPaymentPage } from './pix-page.mjs';
-import { handleInfinitePayWebhookRoute } from './infinitepay-webhook.mjs';
+import { handleInfinitePayWebhookRoute, resolveInfinitePayWebhookSecret } from './infinitepay-webhook.mjs';
 import { consumeGoogleOAuthState, exchangeGoogleOAuthCode } from '../tools/google_oauth.mjs';
 import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
 import { handleOperationsRoutes } from './operations.mjs';
@@ -16,7 +16,7 @@ import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { createApiV1Handler } from './api-v1.mjs';
 import { renderPayHomePage } from './pay-home.mjs';
-import { toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
+import { toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -102,7 +102,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       return json(res, readiness.ok ? 200 : 503, readiness);
     }
     const requestHost = String(req.headers.host || '').replace(/:\d+$/, '').replace(/\.$/, '').toLowerCase();
-    const pixToolSettings = adminConfig?.active?.tools?.settings?.gerar_cobranca_pix || {};
+    const pixToolSettings = adminConfig?.active?.tools?.settings?.gerenciar_cobranca_pagamento || {};
     const paymentPageEnabled = pixToolSettings.enablePaymentPage !== false;
     const payHomeEnabled = pixToolSettings.enablePayHome !== false && paymentPageEnabled;
     const renderPaymentPageDisabled = () => {
@@ -112,7 +112,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
       if (!payHomeEnabled) return renderPaymentPageDisabled();
       try {
-        const generated = await toolGerarCobrancaPix.execute(
+        const generated = await toolGerenciarCobrancaPagamento.execute(
           { valor: 0, enviarWhatsApp: false },
           { botConfig: adminConfig?.active || {}, actor: 'client' }
         );
@@ -134,7 +134,15 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
       return renderPaymentLandingPage(res);
     }
-    const infinitePayResult = await handleInfinitePayWebhookRoute({ req, res, u, store, getHumanPhone });
+    const paymentSettings = adminConfig?.active?.tools?.settings?.gerenciar_cobranca_pagamento || {};
+    const infinitePayResult = await handleInfinitePayWebhookRoute({
+      req,
+      res,
+      u,
+      store,
+      getHumanPhone,
+      webhookSecret: resolveInfinitePayWebhookSecret(paymentSettings)
+    });
     if (infinitePayResult !== NOT_HANDLED) return infinitePayResult;
     if (req.method === 'GET' && u.pathname === '/api/oauth/google/callback') {
       const renderOAuthHtml = (ok, title, subtitle, payload = {}) => {

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPixPayload, normalizePixKey, toolGerarCobrancaPix } from './tools/gerar_cobranca_pix.mjs';
+import { buildPixPayload, normalizePixKey, toolGerarCobrancaPix } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { toolConsultarDadosBrasil } from './tools/consultar_dados_brasil.mjs';
 import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
-import { InfinitePayOrderStore, toolCheckoutInfinitePay } from './tools/checkout_infinitepay.mjs';
+import { InfinitePayOrderStore, toolCheckoutInfinitePay } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
 import { classificarSetorPorTexto } from './triage-router.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
@@ -28,7 +28,7 @@ test('ALL_TOOLS registra todas as novas integrações e permissões de cliente',
     'consultar_planilha_google',
     'gerenciar_drive_google',
     'consultar_dados_brasil',
-    'gerar_cobranca_pix'
+    'gerenciar_cobranca_pagamento'
   ]) {
     assert.equal(ALL_TOOLS.some(t => t.name === name), true, `${name} deve estar em ALL_TOOLS`);
     assert.equal(isClientToolAllowed(name), true, `${name} deve ser permitida no fluxo de cliente quando habilitada`);
@@ -228,13 +228,13 @@ function createPixBotConfig(key = '88998340085') {
     identity: { assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
     ai: { agentMode: 'super_agente', enableToolCalling: true },
     tools: {
-      enabled: { gerar_cobranca_pix: true },
-      settings: key ? { gerar_cobranca_pix: { key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', publicBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
+      enabled: { gerenciar_cobranca_pagamento: true },
+      settings: key ? { gerenciar_cobranca_pagamento: { key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', publicBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
     }
   };
 }
 
-test('Copiloto Pix: executa gerar_cobranca_pix no turno seguinte ("Pix" -> "10, sobre pagamento de almoço") mesmo se a IA omitir tool_calls e sem enviar __owner_self__', async () => {
+test('Copiloto Pix: executa gerenciar_cobranca_pagamento no turno seguinte ("Pix" -> "10, sobre pagamento de almoço") mesmo se a IA omitir tool_calls e sem enviar __owner_self__', async () => {
   const store = new SessionStore();
   const sentImages = [];
   const botConfig = createPixBotConfig('88998340085');
@@ -328,7 +328,7 @@ test('Copiloto Pix: normaliza valor textual do schema compartilhado após pergun
     ai: {
       askAI: async ({ userText }) => /^pix$/i.test(userText.trim())
         ? { reply: 'Qual o *valor* e a *descrição* do Pix?', tool_calls: [] }
-        : { reply: 'Vou gerar a cobrança.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'pagamento de reação' } }] }
+        : { reply: 'Vou gerar a cobrança.', tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: '20', descricao: 'pagamento de reação' } }] }
     }
   });
 
@@ -359,7 +359,7 @@ test('Copiloto Pix: cobrança solicitada naturalmente sem a palavra “Pix” us
     whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
     ai: { askAI: async () => ({
       reply: 'Vou preparar a cobrança.',
-      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'compra de ração' } }]
+      tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: '20', descricao: 'compra de ração' } }]
     }) }
   });
 
@@ -434,7 +434,7 @@ test('Copiloto Pix: resposta sobrevive à reidratação Supabase entre pergunta 
     whatsapp: { sendImage: async (phone, payload) => sentImages.push({ phone, payload }) },
     ai: { askAI: async () => ({
       reply: 'Vou gerar a cobrança.',
-      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: '20', descricao: 'pagamento de reação' } }]
+      tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: '20', descricao: 'pagamento de reação' } }]
     }) }
   });
   const generated = await secondFlow.process({
@@ -462,7 +462,7 @@ test('Copiloto Pix: falha de validação da ferramenta não mascara o erro como 
     isOwnerSender: p => p === OWNER_SELF_KEY,
     ai: { askAI: async () => ({
       reply: '',
-      tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste', argumento_invalido: true } }]
+      tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 20, descricao: 'teste', argumento_invalido: true } }]
     }) }
   });
 
@@ -491,7 +491,7 @@ test('Copiloto Pix: ignora `when` vazado do schema de agendamento ao responder �
     ai: { askAI: async () => ({
       reply: 'Vou gerar o Pix com valor livre.',
       tool_calls: [{
-        name: 'gerar_cobranca_pix',
+        name: 'gerenciar_cobranca_pagamento',
         args: { valor: 0, descricao: 'Cobrança Pix', when: '2026-11-19T10:00:00-03:00' }
       }]
     }) }
@@ -511,7 +511,7 @@ test('Copiloto Pix: ignora `when` vazado do schema de agendamento ao responder �
   assert.equal(store.get(OWNER_SELF_KEY).pendingPixRequest, null);
 });
 
-test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
+test('Copiloto Pix: quando IA emite tool_call gerenciar_cobranca_pagamento e sendImage falha, ainda retorna payload e link sem quebrar', async () => {
   const store = new SessionStore();
   const botConfig = createPixBotConfig('88998340085');
   const flow = createFlow({
@@ -527,7 +527,7 @@ test('Copiloto Pix: quando IA emite tool_call gerar_cobranca_pix e sendImage fal
     ai: {
       askAI: async () => ({
         reply: '',
-        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 25, descricao: 'almoco' } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 25, descricao: 'almoco' } }]
       })
     }
   });
@@ -556,7 +556,7 @@ test('Copiloto Pix: sem chave Pix configurada pergunta naturalmente qual chave u
       ai: {
         askAI: async () => ({
           reply: '',
-          tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 30, descricao: 'teste' } }]
+          tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 30, descricao: 'teste' } }]
         })
       }
     });
@@ -589,7 +589,7 @@ test('Cliente Pix: proposta da IA pede autorização do administrador e não env
     ai: {
       askAI: async () => ({
         reply: 'Claro, vou gerar o seu Pix.',
-        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 50, descricao: 'Consulta' } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 50, descricao: 'Consulta' } }]
       })
     }
   });
@@ -624,7 +624,7 @@ test('Cliente Pix: pergunta o formato antes de gerar e entende "copia e cola" no
       askAI: async () => {
         aiCalls += 1;
         return aiCalls === 1
-          ? { reply: 'Vou gerar seu Pix.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 50, descricao: 'Compra de ração' } }] }
+          ? { reply: 'Vou gerar seu Pix.', tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 50, descricao: 'Compra de ração' } }] }
           : { reply: '', tool_calls: [] };
       }
     }
@@ -784,7 +784,7 @@ test('Copiloto Pix: "Preciso gerar um Pix" sem valor pergunta o valor mesmo se a
     ai: {
       askAI: async () => ({
         reply: '',
-        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 0, descricao: 'Preciso gerar um Pix' } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 0, descricao: 'Preciso gerar um Pix' } }]
       })
     }
   });
@@ -826,13 +826,15 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
 
   const botConfig = {
     tools: {
-      enabled: { checkout_infinitepay: true },
+      enabled: { gerenciar_cobranca_pagamento: true },
       settings: {
-        checkout_infinitepay: {
+        gerenciar_cobranca_pagamento: {
           handle: '$tauanpires',
-          publicBaseUrl: 'https://liasync.atualyze.com.br'
-        },
-        gerar_cobranca_pix: { key: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Sobral' }
+          publicBaseUrl: 'https://liasync.atualyze.com.br',
+          pixKey: 'pix-test@atualyze.com.br',
+          merchantName: 'Atualyze',
+          merchantCity: 'Sobral'
+        }
       }
     }
   };
@@ -934,16 +936,15 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(sentMessages.length, 2);
 });
 
-test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que InfinitePay exige valor fixo se gerar_cobranca_pix estiver desativado', async () => {
+test('Copiloto Pix valor livre: usa gerenciar_cobranca_pagamento se ativo, ou explica que InfinitePay exige valor fixo se gerenciar_cobranca_pagamento estiver desativado', async () => {
   const store1 = new SessionStore();
   const cfgBoth = {
     identity: { assistantName: 'Lia', ownerName: 'Tauan' },
     ai: { agentMode: 'super_agente', enableToolCalling: true },
     tools: {
-      enabled: { gerar_cobranca_pix: true, checkout_infinitepay: true },
+      enabled: { gerenciar_cobranca_pagamento: true },
       settings: {
-        gerar_cobranca_pix: { key: '88998340085', merchantName: 'Tauan Pires', merchantCity: 'Sobral' },
-        checkout_infinitepay: { handle: 'tauanpires' }
+        gerenciar_cobranca_pagamento: { pixKey: '88998340085', handle: 'tauanpires', merchantName: 'Tauan Pires', merchantCity: 'Sobral' }
       }
     }
   };
@@ -954,7 +955,7 @@ test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que 
     ai: {
       askAI: async () => ({
         reply: '',
-        tool_calls: [{ name: 'checkout_infinitepay', args: { acao: 'criar_link', valor: 0 } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { acao: 'criar_checkout', valor: 0 } }]
       })
     }
   });
@@ -971,7 +972,7 @@ test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que 
     ...cfgBoth,
     tools: {
       ...cfgBoth.tools,
-      enabled: { gerar_cobranca_pix: false, checkout_infinitepay: true }
+      enabled: { gerenciar_cobranca_pagamento: false }
     }
   };
   const flowIpOnly = createFlow({
@@ -981,7 +982,7 @@ test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que 
     ai: {
       askAI: async () => ({
         reply: '',
-        tool_calls: [{ name: 'checkout_infinitepay', args: { acao: 'criar_link', valor: 0 } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { acao: 'criar_checkout', valor: 0 } }]
       })
     }
   });
@@ -990,7 +991,7 @@ test('Copiloto Pix valor livre: usa gerar_cobranca_pix se ativo, ou explica que 
     text: 'gera um pix valor livre',
     origin: 'owner'
   });
-  assert.match(resIpOnly, /InfinitePay.*exige um valor fixo/i);
+  assert.match(resIpOnly, /gerenciar_cobranca_pagamento.*tool_disabled/i);
 });
 
 test('Triagem e Atendimento: consultar_base_conhecimento sem correspondência não força handoff e "Me responda com áudio" ativa voz', async () => {
@@ -1300,7 +1301,10 @@ test('maintenance recupera checkout pendente apos 45 min apenas 1 vez e ignora s
     stageOutboundDispatch: async (prepared, options) => { previews.push({ prepared, options }); return { id: 'C1D2E3F4' }; },
     notify: async () => {},
     now: () => nowMs,
-    checkPayment: async ({ orderNsu }) => ({ paid: orderNsu === 'ord-2' })
+    checkPayment: async ({ orderNsu }) => ({
+      paid: orderNsu === 'ord-2',
+      paidAmount: orderNsu === 'ord-2' ? 20000 : 0
+    })
   });
 
   assert.equal(sent.length, 0, 'não envia recuperação de checkout antes de confirmação');
@@ -1491,7 +1495,7 @@ test('Copiloto Pix: “Pix” isolado não aceita valor/descrição antigos que 
     getBotConfig: () => createPixBotConfig('88998340085'),
     isOwnerSender: p => p === OWNER_SELF_KEY,
     whatsapp: { sendImage: async (...args) => sentImages.push(args) },
-    ai: { askAI: async () => ({ reply: 'Vou gerar o Pix.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'compra antiga' } }] }) }
+    ai: { askAI: async () => ({ reply: 'Vou gerar o Pix.', tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 20, descricao: 'compra antiga' } }] }) }
   });
   const reply = await flow.process({ phone: OWNER_SELF_KEY, text: 'Pix', origin: 'owner' });
   assert.match(reply, /valor/i);

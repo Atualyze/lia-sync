@@ -43,7 +43,7 @@ test('Learning Experience: registro, deduplicação, sucesso, falha, uncertain e
     assert.equal(fail.experience.outcome, 'failure');
 
     const unc = await engine.experiences.record({
-      action: 'gerar_cobranca_pix',
+      action: 'gerenciar_cobranca_pagamento',
       outcome: 'uncertain'
     });
     assert.equal(unc.experience.outcome, 'uncertain');
@@ -255,7 +255,7 @@ test('Learning Hypothesis & Experiments: limites, sucesso objetivo, rollback aut
 
     // Experimento envolvendo Pix ou bypass é rejeitado na criação
     await assert.rejects(
-      () => engine.experiments.create({ metric: 'pix_conversion', involvesPix: true, variant: { gerar_cobranca_pix: true } }),
+      () => engine.experiments.create({ metric: 'pix_conversion', involvesPix: true, variant: { gerenciar_cobranca_pagamento: true } }),
       /experiment_violates_safety_policy/
     );
   } finally {

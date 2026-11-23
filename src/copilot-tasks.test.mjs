@@ -81,7 +81,7 @@ test('lease expirado reprograma somente leitura e torna ação não repetível i
 
     const payment = await store.enqueue(input({
       taskKey: 'copilot:payment',
-      steps: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste' } }],
+      steps: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 20, descricao: 'teste' } }],
       retryPolicy: 'never'
     }));
     const claimedPayment = await store.claimNext('worker-a', 30);
@@ -107,7 +107,7 @@ test('plano com cobrança Pix nunca recebe política de repetição somente-leit
   await withStore(async store => {
     const task = await store.enqueue(input({
       taskKey: 'copilot:pix-never-retry',
-      steps: [{ name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste' } }],
+      steps: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 20, descricao: 'teste' } }],
       retryPolicy: 'read_only'
     }));
     assert.equal(task.retryPolicy, 'never');

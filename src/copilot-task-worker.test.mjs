@@ -68,9 +68,9 @@ test('somente consultas explicitamente permitidas entram no worker', () => {
   assert.equal(isBackgroundCopilotTool('gerenciar_agenda_google', { action: 'criar_evento' }), false);
   assert.equal(isBackgroundCopilotTool('enviar_mensagem_contato'), false);
   assert.equal(isBackgroundCopilotTool('atualizar_dados_crm'), false);
-  assert.equal(isBackgroundCopilotTool('gerar_cobranca_pix'), true);
-  assert.equal(isBackgroundCopilotTool('checkout_infinitepay', { acao: 'criar_link' }), false);
-  assert.equal(isBackgroundCopilotTool('checkout_infinitepay', { acao: 'verificar_pagamento' }), true);
+  assert.equal(isBackgroundCopilotTool('gerenciar_cobranca_pagamento'), false);
+  assert.equal(isBackgroundCopilotTool('gerenciar_cobranca_pagamento', { acao: 'criar_checkout' }), false);
+  assert.equal(isBackgroundCopilotTool('gerenciar_cobranca_pagamento', { acao: 'verificar_pagamento' }), true);
 });
 
 
@@ -175,7 +175,7 @@ test('worker bloqueia plano Pix com mais de uma etapa antes de qualquer chamada'
       targetPhone: '5588999999999',
       requestSummary: 'Gerar Pix e pesquisar',
       steps: [
-        { name: 'gerar_cobranca_pix', args: { valor: 20, descricao: 'teste', enviarWhatsApp: false } },
+        { name: 'gerenciar_cobranca_pagamento', args: { valor: 20, descricao: 'teste', enviarWhatsApp: false } },
         { name: 'consultar_web', args: { query: 'teste' } }
       ],
       retryPolicy: 'never'

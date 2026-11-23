@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderPaymentLandingPage, renderPixPaymentPage } from './http/pix-page.mjs';
-import { buildPixPayload } from './tools/gerar_cobranca_pix.mjs';
+import { buildPixPayload } from './tools/gerenciar_cobranca_pagamento.mjs';
 
 function responseCapture() {
   return {

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getSafeInfinitePayCheckoutUrl } from './payment-urls.mjs';
-import { createInfinitePayLink, toolCheckoutInfinitePay } from './tools/checkout_infinitepay.mjs';
-import { toolGerarCobrancaPix } from './tools/gerar_cobranca_pix.mjs';
+import { createInfinitePayLink, toolCheckoutInfinitePay } from './tools/gerenciar_cobranca_pagamento.mjs';
+import { toolGerarCobrancaPix } from './tools/gerenciar_cobranca_pagamento.mjs';
 
 test('valida checkout InfinitePay por HTTPS e hostname exato', () => {
   assert.equal(getSafeInfinitePayCheckoutUrl('https://checkout.infinitepay.io/atualyze/abc'), 'https://checkout.infinitepay.io/atualyze/abc');
@@ -36,6 +36,7 @@ test('Pix aceita somente URL InfinitePay permitida no paymentUrl unificado', asy
 test('Pix de valor livre não carrega checkout InfinitePay mesmo com URL permitida', async () => {
   const result = await toolGerarCobrancaPix.execute({
     valor: 0,
+    valorLivre: true,
     chavePix: 'pix-test@atualyze.com.br',
     checkoutUrl: 'https://checkout.infinitepay.io/atualyze/abc',
     enviarWhatsApp: false
@@ -47,7 +48,7 @@ test('Pix de valor livre não carrega checkout InfinitePay mesmo com URL permiti
 
 test('checkout InfinitePay mantém paymentUrl mesmo sem chave Pix configurada', async () => {
   const result = await toolCheckoutInfinitePay.execute({ valor: 25, descricao: 'Teste' }, {
-    botConfig: { tools: { settings: { checkout_infinitepay: { handle: 'atualyze' } } } },
+    botConfig: { tools: { settings: { gerenciar_cobranca_pagamento: { handle: 'atualyze' } } } },
     infinitePayOrders: { recordOrder() {} },
     fetchImpl: async () => ({
       ok: true,

@@ -103,7 +103,7 @@ export async function handleOwnerSession({
             createdAt: sSelf.pendingPixRequest.requestedAt,
             originCommand: 'Solicitação de cobrança Pix',
             lastQuestion: String(sSelf.pendingPixRequest.lastQuestion || ''),
-            allowedTools: ['gerar_cobranca_pix', 'checkout_infinitepay']
+            allowedTools: ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento']
           };
         }
 
@@ -202,7 +202,7 @@ export async function handleOwnerSession({
           ).trim();
           const targetDigits = rawTargetPhone.replace(/\D/g, '');
           const targetPhone = targetDigits.length >= 8 && targetDigits.length <= 15 ? targetDigits : '';
-          const retryPolicy = normalizedSteps.some(step => step.name === 'gerar_cobranca_pix') ? 'never' : 'read_only';
+          const retryPolicy = normalizedSteps.some(step => step.name === 'gerenciar_cobranca_pagamento') ? 'never' : 'read_only';
           const taskKey = createCopilotTaskKey({
             messageId,
             ownerKey: ownerTaskKey,
@@ -753,9 +753,9 @@ export async function handleOwnerSession({
                   ? Number(consultPixAmountMatch[1].replace(',', '.'))
                   : Number(targetSession.pendingClientPayment?.args?.valor || targetSession.pendingAdminDecision?.amount || 0);
 
-                if (adminAuthorizedPixInConsult && isToolEnabled('gerar_cobranca_pix', botConfig)) {
+                if (adminAuthorizedPixInConsult && isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
                   const targetDest = consult.rawJid || targetSession.jid || targetSession.phone;
-                  const pixRes = await executeToolCall('gerar_cobranca_pix', {
+                  const pixRes = await executeToolCall('gerenciar_cobranca_pagamento', {
                     valor: Number.isFinite(consultPixAmount) && consultPixAmount > 0 ? consultPixAmount : 0,
                     descricao: targetSession.pendingClientPayment?.args?.descricao || 'Pagamento via Pix',
                     enviarWhatsApp: true
@@ -773,7 +773,7 @@ export async function handleOwnerSession({
                   });
                   if (pixRes?.success) {
                     const valFmt = pixRes.valor ? `R$ ${Number(pixRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
-                    const showPage = botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false;
+                    const showPage = botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false;
                     const msgParts = [
                       '💳 *Aqui está seu Pix para pagamento:*',
                       `• *Valor:* ${valFmt}`,
@@ -943,9 +943,9 @@ export async function handleOwnerSession({
               ).text);
             }
 
-            if (!isToolEnabled('gerar_cobranca_pix', botConfig)) {
+            if (!isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
               return recordSelfTurn(filterReply(
-                `A ferramenta *gerar_cobranca_pix* está desativada. Não gerei a cobrança de ${targetLabel}. Ative e publique a ferramenta antes de autorizar novamente, ou assuma o atendimento.`,
+                `A ferramenta *gerenciar_cobranca_pagamento* está desativada. Não gerei a cobrança de ${targetLabel}. Ative e publique a ferramenta antes de autorizar novamente, ou assuma o atendimento.`,
                 { isCopilot: true }
               ).text);
             }
@@ -976,7 +976,7 @@ export async function handleOwnerSession({
               ).text);
             }
 
-            const pixResult = await executeToolCall('gerar_cobranca_pix', {
+            const pixResult = await executeToolCall('gerenciar_cobranca_pagamento', {
               valor: Number(decision.amount),
               descricao: String(decision.description || 'Pagamento via Pix').slice(0, 80)
             }, {
@@ -1009,7 +1009,7 @@ export async function handleOwnerSession({
               '💳 *Cobrança Pix autorizada e gerada pela equipe:*',
               `• *Valor:* R$ ${valueLabel}`,
               `• *Favorecido:* ${pixResult.favorecido || identity.companyName || owner}`,
-              (botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false && pixResult.paymentUrl) ? `• *Link de pagamento:* ${pixResult.paymentUrl}` : '',
+              (botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false && pixResult.paymentUrl) ? `• *Link de pagamento:* ${pixResult.paymentUrl}` : '',
               `• *Copia e Cola:*\n\`\`\`${pixResult.pixCopiaECola}\`\`\``,
               pixResult.qrCodeSent ? '_O QR Code também foi enviado._' : ''
             ].filter(Boolean).join('\n\n');
@@ -1585,7 +1585,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             createdAt: sSelf.pendingPixRequest.requestedAt,
             originCommand: 'Solicitação de cobrança Pix',
             lastQuestion: String(sSelf.pendingPixRequest.lastQuestion || ''),
-            allowedTools: ['gerar_cobranca_pix', 'checkout_infinitepay']
+            allowedTools: ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento']
           };
         }
         const taskHistory = activeTask && Array.isArray(sSelf.history)
@@ -1618,8 +1618,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           && hasPaymentAmount
           && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)
           && !isCopilotMetaQuestion
-          && !hasExplicitToolIntent(cleanCommand, 'gerar_cobranca_pix')
-          && !hasExplicitToolIntent(cleanCommand, 'checkout_infinitepay');
+          && !hasExplicitToolIntent(cleanCommand, 'gerenciar_cobranca_pagamento')
+          && !hasExplicitToolIntent(cleanCommand, 'gerenciar_cobranca_pagamento');
         const directPixChoice = activeTask?.type === 'payment'
           && isDirectPixChoice(cleanCommand, lastAssistantContext);
         const explicitTaskContinuation = Boolean(activeTask && !isCopilotMetaQuestion && (
@@ -1768,7 +1768,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         let toolCallsToRun = suppressToolExecution
           ? []
           : (Array.isArray(result?.tool_calls)
-            ? [...result.tool_calls].filter(tc => !(isPureGreeting && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)))
+            ? [...result.tool_calls].filter(tc => !(isPureGreeting && ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc?.name)))
             : []);
         if (isAudioForSelf) {
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
@@ -1820,7 +1820,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         // semântica trocar "Pix direto" por checkout nem apagar os dados já coletados.
         if (directPixChoice && !/\b(?:nao|nunca|jamais|cancela|cancelar)\b/i.test(normalizedTurn)) {
           const pending = sSelf.pendingPixRequest || {};
-          const proposedPix = toolCallsToRun.find(tc => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name))?.args || {};
+          const proposedPix = toolCallsToRun.find(tc => ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc?.name))?.args || {};
           const originalPix = extractCurrentPixArgs(activeTask?.originCommand || '', { allowBareNumber: true });
           const amount = normalizePixAmount(pending.amount)
             ?? (originalPix.hasAmountOrFree ? originalPix.valor : null)
@@ -1842,7 +1842,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             ).text, { preserveTask: true });
           }
           toolCallsToRun = [{
-            name: 'gerar_cobranca_pix',
+            name: 'gerenciar_cobranca_pagamento',
             args: { valor: amount, descricao: description, enviarWhatsApp: false }
           }];
           suppressToolExecution = false;
@@ -1868,7 +1868,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           // validar o plano. Valor livre/ausente continua sendo tratado pelo
           // fluxo de coleta Pix, sem executar a cobrança.
           toolCallsToRun = toolCallsToRun.map(tc => {
-            if (['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)
+            if (['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc?.name)
               && typeof tc.args?.valor === 'string') {
               const normalizedAmount = normalizePixAmount(tc.args.valor);
               const args = { ...(tc.args || {}) };
@@ -1881,16 +1881,16 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           // A troca Pix -> checkout é resolvida antes do plano para validar a
           // disponibilidade da ferramenta que realmente será executada.
           toolCallsToRun = toolCallsToRun.map(tc => (
-            tc?.name === 'gerar_cobranca_pix'
-              && !isToolEnabled('gerar_cobranca_pix', botConfig)
-              && isToolEnabled('checkout_infinitepay', botConfig)
-              ? { ...tc, name: 'checkout_infinitepay', args: { acao: 'criar_link', ...(tc.args || {}) } }
+            tc?.name === 'gerenciar_cobranca_pagamento'
+              && !isToolEnabled('gerenciar_cobranca_pagamento', botConfig)
+              && isToolEnabled('gerenciar_cobranca_pagamento', botConfig)
+              ? { ...tc, name: 'gerenciar_cobranca_pagamento', args: { acao: 'criar_checkout', ...(tc.args || {}) } }
               : tc
           ));
           toolPlan = buildCopilotToolPlan(toolCallsToRun, { botConfig, actor: 'owner' });
           if (!toolPlan.canExecute) {
             const rejectedPix = toolPlan.rejected.find(item =>
-              ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.name)
+              ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(item.name)
               && item.reason === 'invalid_arguments'
             );
             if (rejectedPix) {
@@ -1913,7 +1913,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             && toolCallsToRun.length > 0
             && toolCallsToRun.length <= 4
             && toolCallsToRun.every(tc => isBackgroundCopilotTool(tc.name, tc.args))
-            && (!toolCallsToRun.some(tc => tc.name === 'gerar_cobranca_pix') || toolCallsToRun.length === 1)
+            && (!toolCallsToRun.some(tc => tc.name === 'gerenciar_cobranca_pagamento') || toolCallsToRun.length === 1)
           );
           if (backgroundPlanAllowed) {
             // Antes de persistir, cada etapa precisa estar ligada ao pedido atual
@@ -1923,7 +1923,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               const liveTask = activeCopilotTask(sSelf, now());
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
               const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
-              const directPaymentContinuation = directPixChoice && tc.name === 'gerar_cobranca_pix';
+              const directPaymentContinuation = directPixChoice && tc.name === 'gerenciar_cobranca_pagamento';
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
@@ -1962,7 +1962,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
             // Reidrata parâmetros Pix do pedido salvo. Uma escolha de modalidade
             // nunca substitui "pagamento do pão" por "Direto".
-            if (toolCallsToRun[0]?.name === 'gerar_cobranca_pix') {
+            if (toolCallsToRun[0]?.name === 'gerenciar_cobranca_pagamento') {
               const pending = sSelf.pendingPixRequest || {};
               const currentPix = extractCurrentPixArgs(cleanCommand, {
                 allowBareNumber: Boolean(pending.requestedAt) || /\b(?:pix|cobranca|pagamento|valor)\b/i.test(normalizedTurn)
@@ -2010,11 +2010,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           for (const tc of toolCallsToRun) {
             planIndex += 1;
             if (tc?.name) {
-              if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
-                tc.name = 'checkout_infinitepay';
-                tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+              if (tc.name === 'gerenciar_cobranca_pagamento' && !isToolEnabled('gerenciar_cobranca_pagamento', botConfig) && isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
+                tc.name = 'gerenciar_cobranca_pagamento';
+                tc.args = { acao: 'criar_checkout', ...(tc.args || {}) };
               }
-              if (tc.name === 'gerar_cobranca_pix') {
+              if (tc.name === 'gerenciar_cobranca_pagamento') {
                 if (pixHandled) continue;
                 pixHandled = true;
               }
@@ -2210,12 +2210,12 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   return recordSelfTurn(filterReply(`O que você gostaria de enviar${recipientLabel}? Me informe o texto para eu preparar a prévia antes de qualquer envio.`, { isCopilot: true }).text);
                 }
 
-                if (tc.name === 'gerar_cobranca_pix' && !isToolEnabled('gerar_cobranca_pix', botConfig) && isToolEnabled('checkout_infinitepay', botConfig)) {
-                tc.name = 'checkout_infinitepay';
-                tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+                if (tc.name === 'gerenciar_cobranca_pagamento' && !isToolEnabled('gerenciar_cobranca_pagamento', botConfig) && isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
+                tc.name = 'gerenciar_cobranca_pagamento';
+                tc.args = { acao: 'criar_checkout', ...(tc.args || {}) };
               }
-              const isPixCreate = (tc.name === 'gerar_cobranca_pix'
-                || (tc.name === 'checkout_infinitepay' && String(tc.args?.acao || 'criar_link') !== 'verificar_pagamento'));
+              const isPixCreate = (tc.name === 'gerenciar_cobranca_pagamento'
+                || (tc.name === 'gerenciar_cobranca_pagamento' && String(tc.args?.acao || 'criar_checkout') !== 'verificar_pagamento'));
               if (isPixCreate) {
                 const barePixCommand = /^(?:(?:quero|preciso|gera(?:r)?|cria(?:r)?|faz(?:er)?)\s+)?(?:um(?:a)?\s+)?(?:pix|cobran[cç]a(?:\s+pix)?)[.!\s]*$/i.test(cleanCommand);
                 if (barePixCommand) sSelf.pendingPixRequest = null;
@@ -2285,7 +2285,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         if (planCompleted) {
           sSelf.pendingCopilotTask = null;
           if (toolOutputs.some(item =>
-            ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(item.tool)
+            ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(item.tool)
             && item.result?.success === true
           )) sSelf.pendingPixRequest = null;
           store.markDirty();
@@ -2402,19 +2402,39 @@ ${errMsg}`;
             `💳 *Cobrança Pix gerada!*`,
             `• *Valor:* ${valorFmt}`,
             `• *Favorecido:* ${r.favorecido || owner}`,
-            (botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false && r.paymentUrl) ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
+            (botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false && r.paymentUrl) ? `• *Link de pagamento:* ${r.paymentUrl}` : '',
             `• *Copia e Cola:*\n\`\`\`${r.pixCopiaECola}\`\`\``,
             r.qrCodeSent ? `_QR Code enviado no WhatsApp._` : ''
           ].filter(Boolean).join('\n\n');
         };
         const pendingPixRequest = sSelf.pendingPixRequest;
 
-        const pixResult = toolOutputs.find(t => t.tool === 'gerar_cobranca_pix');
+        const pixResult = toolOutputs.find(t => t.tool === 'gerenciar_cobranca_pagamento');
         if (pixResult?.result) {
           const r = pixResult.result;
           if (!r.success) {
+            const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
+            if (r.error === 'invalid_amount' && askedFree && isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
+              const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
+              const freePix = await executeToolCall('gerenciar_cobranca_pagamento', { acao: 'criar_pix', valor: 0, valorLivre: true }, {
+                phone: OWNER_SELF_KEY,
+                targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
+                clientName: `${owner} (Copiloto)`,
+                store,
+                reminderStore,
+                whatsapp,
+                ai,
+                botConfig,
+                session: sSelf
+              });
+              if (freePix?.success) {
+                sSelf.pendingPixRequest = null;
+                store.markDirty();
+                return recordSelfTurn(filterReply(formatPixCopilotReply(freePix), { isCopilot: true }).text);
+              }
+            }
             const askPixMsg = r.error === 'pix_key_not_configured'
-              ? `${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`
+              ? `${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerenciar_cobranca_pagamento*)_`
               : `⚠️ *Não consegui gerar a cobrança Pix.* ${String(r.message || r.error || 'Falha inesperada na ferramenta Pix.').replace(/[\r\n]+/g, ' ').slice(0, 220)} Os dados informados não serão tratados como ausentes; confira o erro e tente novamente.`;
             if (r.error !== 'pix_key_not_configured') {
               sSelf.pendingPixRequest = null;
@@ -2427,15 +2447,15 @@ ${errMsg}`;
           return recordSelfTurn(filterReply(formatPixCopilotReply(r), { isCopilot: true }).text);
         }
 
-        const ipResult = toolOutputs.find(t => t.tool === 'checkout_infinitepay');
+        const ipResult = toolOutputs.find(t => t.tool === 'gerenciar_cobranca_pagamento');
         if (ipResult?.result) {
           const r = ipResult.result;
           if (!r.success) {
             const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(cleanCommand);
             if (r.error === 'invalid_amount' && askedFree) {
-              if (isToolEnabled('gerar_cobranca_pix', botConfig)) {
+              if (isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) {
                 const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
-                const freePix = await executeToolCall('gerar_cobranca_pix', { valor: 0 }, {
+                const freePix = await executeToolCall('gerenciar_cobranca_pagamento', { valor: 0, valorLivre: true }, {
                   phone: OWNER_SELF_KEY,
                   targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
                   clientName: `${owner} (Copiloto)`,
@@ -2451,12 +2471,12 @@ ${errMsg}`;
                 }
               }
               return recordSelfTurn(filterReply(
-                `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerar_cobranca_pix* no painel para Pix com valor livre.`,
+                `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerenciar_cobranca_pagamento* no painel para Pix com valor livre.`,
                 { isCopilot: true }
               ).text);
             }
             const msg = r.error === 'infinitepay_not_configured'
-              ? `${owner}, configure sua *InfiniteTag (handle)* em *Ferramentas & Busca Web → checkout_infinitepay → Configurações da ferramenta* e publique para eu gerar links com confirmação automática.`
+              ? `${owner}, configure sua *InfiniteTag (handle)* em *Ferramentas & Busca Web → gerenciar_cobranca_pagamento → Configurações da ferramenta* e publique para eu gerar links com confirmação automática.`
               : r.error === 'invalid_amount'
                 ? `${owner}, qual o *valor* e a *descrição* para gerar o link InfinitePay?`
                 : `⚠️ *InfinitePay:* ${r.message || r.error}`;
@@ -2550,7 +2570,7 @@ ${errMsg}`;
           || /\b(?:pix|chave|cobranca|pagamento|infinitepay|checkout)\b.{0,45}\b(?:o que e|como funciona|qual a diferenca)\b/i.test(normalizedTurn)
           || /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|faz|fazer|cobre|cobrar|cobranca|pix)\b/i.test(normalizedTurn);
         if (pixRequestActive && !isClarifyingExistingRequest
-          && !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
+          && !toolOutputs.some(t => t.tool === 'gerenciar_cobranca_pagamento' || t.tool === 'gerenciar_cobranca_pagamento')
           && (pixParsed.valor === null || (requiresPixDescription && !pixParsed.desc))) {
           sSelf.pendingPixRequest = {
             requestedAt: pendingPixRequest?.requestedAt || new Date(now()).toISOString(),
@@ -2561,17 +2581,17 @@ ${errMsg}`;
           const missing = [pixParsed.valor === null ? '*valor* (ou *valor livre*)' : '', requiresPixDescription && !pixParsed.desc ? '*descrição*' : ''].filter(Boolean);
           rawReply = `${owner}, para gerar a cobrança Pix, me informe ${missing.join(' e ')}.`;
         }
-        const pixEnabled = isToolEnabled('gerar_cobranca_pix', botConfig);
-        const ipEnabled = isToolEnabled('checkout_infinitepay', botConfig)
-          && Boolean(botConfig?.tools?.settings?.checkout_infinitepay?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.checkout_infinitepay?.apiKey || process.env.INFINITEPAY_API_KEY);
-        const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerar_cobranca_pix' || t.tool === 'checkout_infinitepay')
+        const pixEnabled = isToolEnabled('gerenciar_cobranca_pagamento', botConfig);
+        const ipEnabled = isToolEnabled('gerenciar_cobranca_pagamento', botConfig)
+          && Boolean(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.apiKey || process.env.INFINITEPAY_API_KEY);
+        const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerenciar_cobranca_pagamento' || t.tool === 'gerenciar_cobranca_pagamento')
           && !isAudioForSelf
           && !isClarifyingExistingRequest
           && pixRequestActive && pixParsed.valor !== null && Boolean(pixParsed.desc);
         if (shouldAutoExecutePix && ipEnabled && (!pixEnabled || !/\b(?:qr\s*code|copia\s+e\s+cola|est[aá]tico)\b/i.test(cleanCommand)) && pixParsed.valor > 0) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
-          const autoIp = await executeToolCall('checkout_infinitepay', {
-            acao: 'criar_link',
+          const autoIp = await executeToolCall('gerenciar_cobranca_pagamento', {
+            acao: 'criar_checkout',
             valor: pixParsed.valor,
             descricao: pixParsed.desc.slice(0, 80)
           }, {
@@ -2602,15 +2622,16 @@ ${errMsg}`;
         }
         if (shouldAutoExecutePix && ipEnabled && pixParsed.isFreeAmount && !pixEnabled) {
           return recordSelfTurn(filterReply(
-            `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerar_cobranca_pix* no painel para Pix com valor livre.`,
+            `${owner}, o checkout da *InfinitePay* exige um valor fixo (não aceita valor livre). Me informe o *valor* para eu gerar o link InfinitePay, ou ative *gerenciar_cobranca_pagamento* no painel para Pix com valor livre.`,
             { isCopilot: true }
           ).text);
         }
         if (shouldAutoExecutePix && pixEnabled) {
           const selfPixPhone = String((rawItem?.jid || rawItem?.phone || (phone !== OWNER_SELF_KEY ? phone : '') || getHumanPhone() || '')).replace(/@.*$/, '').replace(/\D/g, '');
-          const autoPix = await executeToolCall('gerar_cobranca_pix', {
+          const autoPix = await executeToolCall('gerenciar_cobranca_pagamento', {
             valor: pixParsed.valor,
-            descricao: pixParsed.desc.slice(0, 80)
+            descricao: pixParsed.desc.slice(0, 80),
+            ...(pixParsed.isFreeAmount ? { valorLivre: true } : {})
           }, {
             phone: OWNER_SELF_KEY,
             targetPhone: selfPixPhone.length >= 8 ? selfPixPhone : undefined,
@@ -2628,11 +2649,11 @@ ${errMsg}`;
             return recordSelfTurn(filterReply(formatPixCopilotReply(autoPix), { isCopilot: true }).text);
           }
           if (autoPix?.error === 'pix_key_not_configured') {
-            return recordSelfTurn(filterReply(`${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerar_cobranca_pix*)_`, { isCopilot: true }).text);
+            return recordSelfTurn(filterReply(`${owner}, qual *Chave Pix* você quer que eu use para gerar essa cobrança? _(Se preferir, pode salvar uma chave padrão em *Ferramentas → gerenciar_cobranca_pagamento*)_`, { isCopilot: true }).text);
           }
           sSelf.pendingPixRequest = null;
           store.markDirty();
-          const failure = String(autoPix?.message || autoPix?.error || 'verifique as configurações da ferramenta gerar_cobranca_pix.').replace(/[\r\n]+/g, ' ').slice(0, 220);
+          const failure = String(autoPix?.message || autoPix?.error || 'verifique as configurações da ferramenta gerenciar_cobranca_pagamento.').replace(/[\r\n]+/g, ' ').slice(0, 220);
           return recordSelfTurn(filterReply(`⚠️ *Pix não gerado:* ${failure} Os campos informados não serão solicitados novamente como se estivessem ausentes.`, { isCopilot: true }).text);
         }
         if (!rawReply) {

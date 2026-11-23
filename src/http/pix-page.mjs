@@ -25,6 +25,39 @@ function extractPixKey(payload) {
   return '';
 }
 
+function extractTopLevelValue(payload, wantedId) {
+  let cursor = 0;
+  while (cursor + 4 <= payload.length) {
+    const item = readTlv(payload, cursor);
+    if (!item || item.next > payload.length) break;
+    if (item.id === wantedId) return item.value;
+    cursor = item.next;
+  }
+  return '';
+}
+
+function extractPixDescription(payload) {
+  const merchant = readTlv(payload, 6);
+  if (!merchant || merchant.id !== '26') return '';
+  let cursor = 0;
+  while (cursor < merchant.value.length) {
+    const item = readTlv(merchant.value, cursor);
+    if (!item) break;
+    if (item.id === '02') return item.value;
+    cursor = item.next;
+  }
+  return '';
+}
+
+function safeScriptJson(value) {
+  return JSON.stringify(String(value ?? ''))
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export async function renderPixPaymentPage(res, urlObj) {
   const encodedPayload = urlObj.searchParams.get('p') || '';
   let payload = '';
@@ -39,15 +72,16 @@ export async function renderPixPaymentPage(res, urlObj) {
     return res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pagamento indisponível</title></head><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#07131a;color:#f5fbff;font:500 16px system-ui,sans-serif"><main style="max-width:420px;padding:28px;text-align:center"><strong style="font-size:42px">×</strong><h1>Link Pix inválido</h1><p>Este link está incompleto ou expirou. Solicite uma nova cobrança.</p></main></body></html>`);
   }
 
-  const rawAmount = Number(urlObj.searchParams.get('v') || 0);
+  const payloadAmount = Number(extractTopLevelValue(payload, '54'));
+  const rawAmount = Number.isFinite(payloadAmount) && payloadAmount > 0 ? payloadAmount : 0;
   const hasAmount = Number.isFinite(rawAmount) && rawAmount > 0;
   const amountText = hasAmount
     ? `R$ ${rawAmount.toFixed(2).replace('.', ',')}`
     : 'Valor livre';
-  const merchantName = (urlObj.searchParams.get('n') || 'Atualyze').slice(0, 40);
-  const description = (urlObj.searchParams.get('d') || '').slice(0, 80);
+  const merchantName = (extractTopLevelValue(payload, '59') || 'Atualyze').slice(0, 40);
+  const description = extractPixDescription(payload).slice(0, 80);
   const txid = (urlObj.searchParams.get('tx') || '').slice(0, 25);
-  const pixKey = (urlObj.searchParams.get('k') || extractPixKey(payload)).slice(0, 120);
+  const pixKey = extractPixKey(payload).slice(0, 120);
   const checkoutUrl = urlObj.searchParams.get('c') || '';
   const safeCheckoutUrl = hasAmount ? getSafeInfinitePayCheckoutUrl(checkoutUrl) : '';
   const qrDataUrl = await QRCode.toDataURL(payload, { width: 420, margin: 1, color: { dark: '#09222c', light: '#ffffff' } });
@@ -125,8 +159,8 @@ export async function renderPixPaymentPage(res, urlObj) {
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script>
-    const payload = ${JSON.stringify(payload)};
-    const pixKey = ${JSON.stringify(pixKey)};
+    const payload = ${safeScriptJson(payload)};
+    const pixKey = ${safeScriptJson(pixKey)};
     const toast = document.getElementById('toast');
     let toastTimer;
     function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2400); }

@@ -25,7 +25,7 @@ test('review semântico reconhece continuação natural sem depender de palavra-
       lastQuestion: 'Qual valor devo colocar?',
       allowedTools: []
     },
-    toolCall: { name: 'gerar_cobranca_pix', args: { valor: 85, descricao: 'entrega' } },
+    toolCall: { name: 'gerenciar_cobranca_pagamento', args: { valor: 85, descricao: 'entrega' } },
     recentContext: [{ role: 'assistant', content: 'Qual valor devo colocar?' }],
     botConfig: { ai: { enableToolCalling: true } }
   });
@@ -109,10 +109,10 @@ test('classificação falha de forma segura quando o avaliador não responde', a
 
 
 test('intenção explícita de ferramenta não confunde menção com autorização', () => {
-  assert.equal(hasExplicitToolIntent('Gera uma cobrança Pix de 80 reais', 'gerar_cobranca_pix'), true);
-  assert.equal(hasExplicitToolIntent('Não gere a cobrança ainda', 'gerar_cobranca_pix'), false);
-  assert.equal(hasExplicitToolIntent('Não entendi a cobrança, pode explicar?', 'gerar_cobranca_pix'), false);
-  assert.equal(hasExplicitToolIntent('Quero entender como funciona o Pix', 'gerar_cobranca_pix'), false);
+  assert.equal(hasExplicitToolIntent('Gera uma cobrança Pix de 80 reais', 'gerenciar_cobranca_pagamento'), true);
+  assert.equal(hasExplicitToolIntent('Não gere a cobrança ainda', 'gerenciar_cobranca_pagamento'), false);
+  assert.equal(hasExplicitToolIntent('Não entendi a cobrança, pode explicar?', 'gerenciar_cobranca_pagamento'), false);
+  assert.equal(hasExplicitToolIntent('Quero entender como funciona o Pix', 'gerenciar_cobranca_pagamento'), false);
   assert.equal(hasExplicitToolIntent('Mande uma mensagem para João dizendo que chego às 15h', 'enviar_mensagem_contato'), true);
   assert.equal(hasExplicitToolIntent('Não mande mensagem para João', 'enviar_mensagem_contato'), false);
   assert.equal(hasExplicitToolIntent('Quais horários estão livres na agenda?', 'gerenciar_agenda_google'), true);
@@ -154,16 +154,16 @@ test('intenção de saúde reconhece atualização seguida de verificação do s
 });
 
 test('intenção explícita: reconhece comandos curtos, mas não transforma dúvidas em ações', () => {
-  assert.equal(hasExplicitToolIntent('Pix', 'gerar_cobranca_pix'), true);
-  assert.equal(hasExplicitToolIntent('Como funciona o Pix?', 'gerar_cobranca_pix'), false);
-  assert.equal(hasExplicitToolIntent('Vocês aceitam Pix?', 'gerar_cobranca_pix'), false);
-  assert.equal(hasExplicitToolIntent('Quero cobrar R$ 20 pela compra', 'gerar_cobranca_pix'), true);
+  assert.equal(hasExplicitToolIntent('Pix', 'gerenciar_cobranca_pagamento'), true);
+  assert.equal(hasExplicitToolIntent('Como funciona o Pix?', 'gerenciar_cobranca_pagamento'), false);
+  assert.equal(hasExplicitToolIntent('Vocês aceitam Pix?', 'gerenciar_cobranca_pagamento'), false);
+  assert.equal(hasExplicitToolIntent('Quero cobrar R$ 20 pela compra', 'gerenciar_cobranca_pagamento'), true);
   assert.equal(hasExplicitToolIntent('Me explica como funciona o envio de áudio', 'enviar_mensagem_contato'), false);
 });
 
 test('intenção explícita: distingue pedido de nova ação de continuação de envio', () => {
-  assert.equal(hasOtherExplicitToolIntent('Mande uma mensagem para o Lima', 'gerar_cobranca_pix'), true);
-  assert.equal(hasOtherExplicitToolIntent('Não mande mensagem para o Lima', 'gerar_cobranca_pix'), false);
+  assert.equal(hasOtherExplicitToolIntent('Mande uma mensagem para o Lima', 'gerenciar_cobranca_pagamento'), true);
+  assert.equal(hasOtherExplicitToolIntent('Não mande mensagem para o Lima', 'gerenciar_cobranca_pagamento'), false);
 });
 
 

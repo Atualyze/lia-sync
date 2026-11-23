@@ -199,7 +199,7 @@ test('Copiloto reporta o erro real das APIs de IA em vez de frase genérica e n�
       askAI: async () => ({
         reply: 'Bom dia, Tauan! Tudo ótimo por aqui. Como posso te ajudar hoje?',
         intent: 'saudacao',
-        tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: null, descricao: '' } }]
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: null, descricao: '' } }]
       })
     }
   });

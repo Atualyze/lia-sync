@@ -1,6 +1,6 @@
 import { normalizePhone, isValidRealMobilePhone, isOwnerContact } from './sessions.mjs';
 import { isOwnerKey, resolveIdentity } from './core/identity.mjs';
-import { checkInfinitePayPayment } from './tools/checkout_infinitepay.mjs';
+import { checkInfinitePayPayment } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { filterReply } from './safety.mjs';
 import { getAllowedPrices } from './faq.mjs';
 
@@ -223,11 +223,18 @@ export async function processMaintenance({
               handle: session.pendingCheckout.handle,
               orderNsu: session.pendingCheckout.orderNsu
             });
-            if (payStatus?.paid) {
+            const expectedCents = Number(session.pendingCheckout.amountCents) || 0;
+            const confirmedCents = Number(payStatus?.paidAmount || payStatus?.amount || 0);
+            const amountMatches = expectedCents > 0 && confirmedCents > 0
+              ? expectedCents === confirmedCents
+              : expectedCents === 0;
+            if (payStatus?.paid && amountMatches) {
               alreadyPaid = true;
               session.pendingCheckout.paidAt = new Date(current).toISOString();
               session.tags = Array.from(new Set([...(Array.isArray(session.tags) ? session.tags : []).filter((t) => t !== 'checkout-pendente'), 'pagamento-confirmado'])).slice(0, 20);
               store.markDirty();
+            } else if (payStatus?.paid && !amountMatches) {
+              logger.warn?.(`[maintenance] Pagamento divergente para ${session.pendingCheckout.orderNsu}: esperado=${expectedCents}, recebido=${confirmedCents}.`);
             }
           } catch (e) {
             logger.warn?.('[maintenance] Falha ao checar pagamento InfinitePay antes da recuperação:', e.message);

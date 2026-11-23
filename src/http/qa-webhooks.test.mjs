@@ -343,8 +343,8 @@ test('ADVERSARIAL InfinitePay: callback NÃO dita valor/método/comprovante — 
   }
 });
 
-test('ADVERSARIAL InfinitePay: segredo configurável autentica o callback; sem segredo segue aberto ao payment_check', async () => {
-  assert.equal(isInfinitePayCallbackAuthorized({ headers: {} }, ''), true);
+test('ADVERSARIAL InfinitePay: segredo configurável autentica o callback; sem segredo falha fechado', async () => {
+  assert.equal(isInfinitePayCallbackAuthorized({ headers: {} }, ''), false);
   assert.equal(isInfinitePayCallbackAuthorized({ headers: { authorization: 'Bearer secret-one' } }, 'secret-one'), true);
   assert.equal(isInfinitePayCallbackAuthorized({ headers: { authorization: 'Bearer wrong' } }, 'secret-one'), false);
   assert.equal(isInfinitePayCallbackAuthorized({ headers: {} }, 'secret-one'), false);

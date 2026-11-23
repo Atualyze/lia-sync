@@ -1,5 +1,5 @@
 import { readBody, json, NOT_HANDLED, authorized } from './utils.mjs';
-import { infinitePayOrders, checkInfinitePayPayment, normalizeHandle } from '../tools/checkout_infinitepay.mjs';
+import { infinitePayOrders, checkInfinitePayPayment, normalizeHandle } from '../tools/gerenciar_cobranca_pagamento.mjs';
 import { sendText as defaultSendText } from '../whatsapp.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 
@@ -10,7 +10,8 @@ function formatBrlFromCents(cents) {
 /**
  * Segredo opcional do callback InfinitePay.
  * Quando configurado (env ou settings), a rota exige Bearer/token compatível.
- * Sem segredo, a proteção continua sendo o payment_check + valor do pedido.
+ * Sem segredo, o callback é rejeitado: payment_check e comparação de valor são
+ * camadas adicionais, não substitutos da autenticação do endpoint.
  */
 export function resolveInfinitePayWebhookSecret(settings = {}) {
   return String(
@@ -24,7 +25,7 @@ export function resolveInfinitePayWebhookSecret(settings = {}) {
 
 export function isInfinitePayCallbackAuthorized(req, secret = '') {
   const expected = String(secret || '').trim();
-  if (!expected) return true;
+  if (!expected) return false;
   return authorized(req, expected);
 }
 

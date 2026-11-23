@@ -364,7 +364,7 @@ test('Runtime Security & Readiness: bloqueia Pix automático, outbound proibido,
       subject: '5511955554444',
       priority: 'high',
       deduplicationKey: 'sec:pix',
-      payload: { requires_pix: true, requested_tool: 'gerar_cobranca_pix' }
+      payload: { requires_pix: true, requested_tool: 'gerenciar_cobranca_pagamento' }
     });
     // 2. Tentativa de outbound direto
     await rt.emitEvent({

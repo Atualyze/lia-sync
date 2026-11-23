@@ -26,7 +26,7 @@ const COPILOT_TASK_PATTERNS = [
 ];
 
 const TOOL_TASK_TYPES = Object.freeze({
-  gerar_cobranca_pix: 'payment', checkout_infinitepay: 'payment',
+  gerenciar_cobranca_pagamento: 'payment', gerenciar_cobranca_pagamento: 'payment',
   enviar_mensagem_contato: 'dispatch', gerenciar_agenda_google: 'agenda',
   agendar_retorno_ou_followup: 'followup', gerar_documento_pdf: 'document',
   gerenciar_drive_google: 'drive', consultar_planilha_google: 'sheet',
@@ -67,7 +67,7 @@ export function inferCopilotTaskTypes(text = '') {
 
 export function copilotToolTaskType(toolName = '', args = {}) {
   const type = TOOL_TASK_TYPES[String(toolName || '').trim()];
-  if (toolName === 'checkout_infinitepay' && String(args?.acao || 'criar_link') === 'verificar_pagamento') return 'payment';
+  if (toolName === 'gerenciar_cobranca_pagamento' && String(args?.acao || 'criar_checkout') === 'verificar_pagamento') return 'payment';
   return type || null;
 }
 

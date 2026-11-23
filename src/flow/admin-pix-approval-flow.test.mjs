@@ -21,9 +21,9 @@ function createBotConfig() {
       enableToolCalling: true
     },
     tools: {
-      enabled: { gerar_cobranca_pix: true },
+      enabled: { gerenciar_cobranca_pagamento: true },
       settings: {
-        gerar_cobranca_pix: {
+        gerenciar_cobranca_pagamento: {
           key: 'pix-test@atualyze.com.br',
           merchantName: 'Atualyze',
           merchantCity: 'Sobral'
@@ -60,7 +60,7 @@ test('cliente: resposta normal da IA não libera Pix; valor informado exige deci
         aiCalls += 1;
         return aiCalls === 1
           ? { reply: 'Qual é o valor para eu gerar o código copia e cola?', tool_calls: [] }
-          : { reply: 'Certo, vou gerar o código para você.', tool_calls: [{ name: 'gerar_cobranca_pix', args: { valor: 5 } }] };
+          : { reply: 'Certo, vou gerar o código para você.', tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 5 } }] };
       }
     },
     logger: { log() {}, warn() {}, error() {} }

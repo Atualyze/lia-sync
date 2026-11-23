@@ -12,8 +12,7 @@ import { toolConsultarWeb } from './consultar_web.mjs';
 import { toolConsultarPlanilhaGoogle } from './consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
-import { toolGerarCobrancaPix } from './gerar_cobranca_pix.mjs';
-import { toolCheckoutInfinitePay } from './checkout_infinitepay.mjs';
+import { toolGerenciarCobrancaPagamento } from './gerenciar_cobranca_pagamento.mjs';
 import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
 import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
@@ -21,18 +20,17 @@ import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs
 import { toolGerenciarGmailGoogle } from './gerenciar_gmail_google.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
-  gerar_cobranca_pix: [
-    { key: 'key', label: 'Chave Pix', type: 'text', placeholder: 'CPF/CNPJ, e-mail, telefone ou chave aleatória' },
-    { key: 'keyType', label: 'Tipo da Chave Pix', type: 'text', placeholder: 'auto (ou telefone, cpf, cnpj, email, aleatoria)' },
+  gerenciar_cobranca_pagamento: [
+    { key: 'pixKey', label: 'Chave Pix', type: 'text', placeholder: 'CPF/CNPJ, e-mail, telefone ou chave aleatória' },
+    { key: 'pixKeyType', label: 'Tipo da Chave Pix', type: 'text', placeholder: 'auto (ou telefone, cpf, cnpj, email, aleatoria)' },
     { key: 'merchantName', label: 'Nome do Favorecido', type: 'text', placeholder: 'Ex.: Atualyze Clínica (até 25 chars)' },
     { key: 'merchantCity', label: 'Cidade', type: 'text', placeholder: 'Ex.: SAO PAULO (até 15 chars)' },
-    { key: 'publicBaseUrl', label: 'URL Pública (para link /pix)', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' }
-  ],
-  checkout_infinitepay: [
+    { key: 'paymentBaseUrl', label: 'URL Pública da página de pagamento', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' },
     { key: 'handle', label: 'InfiniteTag (Handle)', type: 'text', placeholder: 'Ex.: suaempresa (sem $)' },
     { key: 'apiKey', label: 'API Key (opcional)', type: 'password', placeholder: 'Chave para opções avançadas do Checkout' },
     { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://liasync.atualyze.com.br' },
-    { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' }
+    { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' },
+    { key: 'webhookSecret', label: 'Segredo do webhook', type: 'password', placeholder: 'Obrigatório para confirmação automática' }
   ]
 };
 
@@ -50,8 +48,7 @@ export const ALL_TOOLS = [
   toolConsultarPlanilhaGoogle,
   toolGerenciarDriveGoogle,
   toolConsultarDadosBrasil,
-  toolGerarCobrancaPix,
-  toolCheckoutInfinitePay,
+  toolGerenciarCobrancaPagamento,
   toolGerenciarMemoria,
   toolGerenciarCodigo,
   toolGerenciarConfiguracao,
@@ -71,7 +68,8 @@ const TOOL_NAME_ALIASES = {
   google_gmail: 'gerenciar_gmail_google',
   gmail: 'gerenciar_gmail_google',
   consultar_cep_cnpj: 'consultar_dados_brasil',
-  gerar_pix: 'gerar_cobranca_pix'
+  gerar_cobranca_pix: 'gerenciar_cobranca_pagamento',
+  checkout_infinitepay: 'gerenciar_cobranca_pagamento',
 };
 
 export function resolveToolName(toolName) {
@@ -86,8 +84,7 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'consultar_planilha_google',
   'gerenciar_drive_google',
   'consultar_dados_brasil',
-  'gerar_cobranca_pix',
-  'checkout_infinitepay',
+  'gerenciar_cobranca_pagamento',
   'gerenciar_memoria'
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
@@ -122,6 +119,9 @@ export function isToolConfigured(toolName, botConfig = {}) {
 export function isToolEnabled(toolName, botConfig = {}) {
   const canonical = resolveToolName(toolName);
   if (canonical === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
+  if (canonical === 'gerenciar_cobranca_pagamento'
+    && (botConfig?.tools?.enabled?.gerar_cobranca_pix === false
+      && botConfig?.tools?.enabled?.checkout_infinitepay === false)) return false;
   return botConfig?.tools?.enabled?.[canonical] !== false && botConfig?.tools?.enabled?.[toolName] !== false;
 }
 
@@ -149,8 +149,7 @@ export const TOOL_EXECUTION_POLICIES = Object.freeze({
   consultar_planilha_google: { mode: 'conditional', approval: 'action_dependent', retry: 'never', effects: 'sheets_read_or_write' },
   gerenciar_drive_google: { mode: 'conditional', approval: 'confirmation_before_delivery', retry: 'never', effects: 'drive_read_or_send' },
   consultar_dados_brasil: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'public_data_read' },
-  gerar_cobranca_pix: { mode: 'payment_artifact', approval: 'separate_payment_flow', retry: 'never', effects: 'pix_creation' },
-  checkout_infinitepay: { mode: 'payment_checkout', approval: 'separate_payment_flow', retry: 'never', effects: 'checkout_creation_or_status_read' },
+  gerenciar_cobranca_pagamento: { mode: 'payment', approval: 'separate_payment_flow', retry: 'never', effects: 'pix_checkout_and_status' },
   gerenciar_memoria: { mode: 'memory_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_memory' },
   gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
   gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' },
@@ -214,7 +213,7 @@ export {
   toolGerenciarDriveGoogle,
   toolGerenciarGmailGoogle,
   toolConsultarDadosBrasil,
-  toolGerarCobrancaPix
+  toolGerenciarCobrancaPagamento
 };
 
 /**
@@ -341,6 +340,10 @@ export async function executeToolCall(toolName, args = {}, context = {}) {
   // `when` from scheduling into a Pix call). Remove only those known foreign
   // parameters; genuinely unknown arguments remain validation errors.
   const safeArgs = stripForeignToolArguments(tool, args);
+  if (canonicalName === 'gerenciar_cobranca_pagamento' && typeof safeArgs?.valor === 'string') {
+    const normalized = safeArgs.valor.trim().replace(/\s/g, '').replace(',', '.');
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) safeArgs.valor = Number(normalized);
+  }
   const invalid = validateToolArguments(tool, safeArgs);
   if (invalid) return finish({ success: false, error: invalid, code: 'invalid_tool_arguments' });
   try {

@@ -6,7 +6,7 @@ import { toolGerenciarCodigo } from './tools/gerenciar_codigo.mjs';
 test('gerenciar_configuracao bloqueia credenciais e só opera no owner', async () => {
   const blocked = await toolGerenciarConfiguracao.execute({
     acao: 'alterar_rascunho',
-    patch: { tools: { settings: { checkout_infinitepay: { apiKey: 'secret' } } } }
+    patch: { tools: { settings: { gerenciar_cobranca_pagamento: { apiKey: 'secret' } } } }
   }, { actor: 'owner', adminConfig: {} });
   assert.equal(blocked.success, false);
   assert.equal(blocked.code, 'config_field_blocked');

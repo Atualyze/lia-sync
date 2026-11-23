@@ -287,7 +287,7 @@ test('Package 2 - copilot-tasks: recoverInterruptedOnStartup re-enfileira leitur
       ownerKey: 'owner:self',
       targetPhone: '5588999999999',
       requestSummary: 'gerar pix',
-      steps: [{ name: 'gerar_cobranca_pix', args: { valor: 50 } }],
+      steps: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 50 } }],
       retryPolicy: 'never',
       status: 'running',
       attemptCount: 1,

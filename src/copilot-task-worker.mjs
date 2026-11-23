@@ -20,8 +20,7 @@ export function isBackgroundCopilotTool(name, args = {}) {
   if (name === 'gerenciar_drive_google') return ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(String(args?.acao || ''));
   if (name === 'gerenciar_agenda_google') return ['consultar_livres', 'sugerir_horarios', 'listar_eventos'].includes(String(args?.action || ''));
   if (name === 'gerenciar_gmail_google') return ['buscar_mensagens', 'ler_mensagem', 'listar_rascunhos'].includes(String(args?.acao || ''));
-  if (name === 'gerar_cobranca_pix') return true;
-  if (name === 'checkout_infinitepay') return String(args?.acao || '') === 'verificar_pagamento';
+  if (name === 'gerenciar_cobranca_pagamento') return String(args?.acao || '') === 'verificar_pagamento';
   return false;
 }
 
@@ -32,7 +31,7 @@ function isToolResultSuccessful(name, result) {
 function formatPixResult(result = {}, botConfig = {}) {
   const amount = Number(result.valor || 0);
   const amountLabel = amount > 0 ? `R$ ${amount.toFixed(2).replace('.', ',')}` : 'Valor livre';
-  const showPaymentPage = botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false;
+  const showPaymentPage = botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false;
   return [
     '💳 *Cobrança Pix criada com sucesso!*',
     '• *Status:* cobrança criada; isso não confirma o pagamento do pagador.',
@@ -71,7 +70,7 @@ function fallbackSummary(steps = []) {
 }
 
 async function summarizeResults({ ai, botConfig, requestSummary, steps }) {
-  if (steps.length === 1 && steps[0].name === 'gerar_cobranca_pix') return formatPixResult(steps[0].result, botConfig);
+  if (steps.length === 1 && steps[0].name === 'gerenciar_cobranca_pagamento' && steps[0].result?.action === 'criar_pix') return formatPixResult(steps[0].result, botConfig);
   const payload = steps.map(item => ({
     tool: item.name,
     result: item.result
@@ -148,7 +147,7 @@ export function createCopilotTaskWorker({
         if (session.history.length > 100) session.history = session.history.slice(-100);
       }
       if (clearTask && session.pendingCopilotTask?.taskId === task.id) session.pendingCopilotTask = null;
-      if (task.steps?.some(step => ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(step.name))) {
+      if (task.steps?.some(step => step.name === 'gerenciar_cobranca_pagamento' && (!step.args?.acao || step.args.acao === 'criar_pix'))) {
         // A tarefa terminal, inclusive incerta, não pode reabrir a cobrança antiga
         // como autorização implícita para uma segunda emissão.
         session.pendingPixRequest = null;
@@ -177,7 +176,9 @@ export function createCopilotTaskWorker({
         await taskStore.fail(task, 'persisted_plan_revalidation_failed', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi interrompida porque a validação de segurança atual rejeitou uma ou mais etapas. Nenhuma etapa foi executada.`);
         return false;
       }
-      const hasPixCreation = validatedPlan.steps.some(step => step.name === 'gerar_cobranca_pix');
+      const hasPixCreation = validatedPlan.steps.some(step =>
+        step.name === 'gerenciar_cobranca_pagamento' && (!step.args?.acao || step.args.acao === 'criar_pix')
+      );
       if (hasPixCreation && validatedPlan.steps.length !== 1) {
         await taskStore.fail(task, 'pix_task_must_be_single_step', `⚠️ A tarefa #${String(task.id).slice(0, 8).toUpperCase()} foi bloqueada porque a criação de cobrança Pix precisa ser uma tarefa isolada. Nenhuma cobrança foi criada.`);
         return false;
@@ -197,7 +198,7 @@ export function createCopilotTaskWorker({
           return false;
         }
         const args = { ...(step.args || {}) };
-        if (step.name === 'gerar_cobranca_pix') args.enviarWhatsApp = false;
+        if (step.name === 'gerenciar_cobranca_pagamento' && (!args.acao || args.acao === 'criar_pix')) args.enviarWhatsApp = false;
         const result = await execute(step.name, args, {
           actor: 'owner',
           isOwner: true,

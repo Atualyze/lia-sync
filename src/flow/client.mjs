@@ -7,7 +7,7 @@ import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
-import { normalizePixKey, toolGerarCobrancaPix } from '../tools/gerar_cobranca_pix.mjs';
+import { normalizePixKey, toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
 import { syncLeadToGoogleSheet } from '../tools/sheets_lead_sync.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
@@ -84,13 +84,16 @@ function hasActivePriceContext(currentText = '', history = [], pendingPayment = 
 }
 
 function isCheckoutConfigured(botConfig = {}) {
-  if (!isToolEnabled('checkout_infinitepay', botConfig)) return false;
-  const settings = botConfig?.tools?.settings?.checkout_infinitepay || {};
+  if (!isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) return false;
+  const settings = {
+    ...(botConfig?.tools?.settings?.checkout_infinitepay || {}),
+    ...(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {})
+  };
   return Boolean(String(settings.handle || settings.apiKey || process.env.INFINITEPAY_HANDLE || process.env.INFINITEPAY_API_KEY || '').trim());
 }
 
 function isPixConfigured(botConfig = {}) {
-  if (!isToolEnabled('gerar_cobranca_pix', botConfig)) return false;
+  if (!isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) return false;
   return Boolean(resolveConfiguredPixKey(botConfig));
 }
 
@@ -121,13 +124,18 @@ function directPixKeyReply({ key, owner }) {
 }
 function resolveConfiguredPixKey(botConfig) {
   const configured = String(
+    botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.pixKey ||
+    botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.key ||
     botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
     botConfig?.integrations?.pix?.key ||
     process.env.PIX_KEY ||
     ''
   ).trim();
   if (!configured || /\b(?:inserir|placeholder|exemplo|sua chave)\b|chave\s+pix\s+aqui/i.test(configured)) return '';
-  const keyType = botConfig?.tools?.settings?.gerar_cobranca_pix?.keyType || 'auto';
+  const keyType = botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.pixKeyType
+    || botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.keyType
+    || botConfig?.tools?.settings?.gerar_cobranca_pix?.keyType
+    || 'auto';
   return normalizePixKey(configured, keyType);
 }
 
@@ -1168,8 +1176,8 @@ export async function handleClientMessage({
             const args = { ...(pendingPayment.args || {}), valor: amount };
             s.pendingClientPayment = null;
             syntheticToolCalls = [{
-              name: 'checkout_infinitepay',
-              args: { acao: 'criar_link', ...args }
+              name: 'gerenciar_cobranca_pagamento',
+              args: { acao: 'criar_checkout', ...args }
             }];
           }
         }
@@ -1178,7 +1186,7 @@ export async function handleClientMessage({
       let toolCalls = [...modelToolCalls];
       if (syntheticToolCalls.length > 0) {
         // Evita que uma tool_call repetida pela IA gere duas cobranças/agendamentos.
-        toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay', 'gerenciar_agenda_google'].includes(tc?.name));
+        toolCalls = toolCalls.filter(tc => !['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento', 'gerenciar_agenda_google'].includes(tc?.name));
         toolCalls.push(...syntheticToolCalls);
       }
 
@@ -1209,8 +1217,8 @@ export async function handleClientMessage({
             toolReplyOverride = await requestAdminPixApproval(amount, 'Pagamento via Pix');
           } else {
             syntheticToolCalls = [{
-              name: 'checkout_infinitepay',
-              args: { acao: 'criar_link', valor: amount, descricao: '' }
+              name: 'gerenciar_cobranca_pagamento',
+              args: { acao: 'criar_checkout', valor: amount, descricao: '' }
             }];
             toolCalls = syntheticToolCalls;
           }
@@ -1224,29 +1232,29 @@ export async function handleClientMessage({
       }
 
       if (adminPixApprovalPending) {
-        toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name));
+        toolCalls = toolCalls.filter(tc => !['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc?.name));
       }
 
       if (!filtered.blocked && isSuperAgent && toolCalls.length > 0) {
         for (const tc of toolCalls) {
-          if (adminPixApprovalPending && isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc?.name)) continue;
+          if (adminPixApprovalPending && isClient && ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc?.name)) continue;
           if (tc?.name && isClientToolAllowed(tc.name)) {
             const configuredPixKey = resolveConfiguredPixKey(botConfig);
             const askedPixKeyOrFree = /\b(?:chave|avulsa|livre|sem\s+valor|qualquer\s+valor)\b/i.test(actionText);
             const numericAmount = Number(String(tc.args?.valor ?? '').replace(',', '.'));
             const hasPositiveAmount = Number.isFinite(numericAmount) && numericAmount > 0;
             if (
-              tc.name === 'gerar_cobranca_pix' &&
-              !isToolEnabled('gerar_cobranca_pix', botConfig) &&
-              isToolEnabled('checkout_infinitepay', botConfig)
+              tc.name === 'gerenciar_cobranca_pagamento' &&
+              !isToolEnabled('gerenciar_cobranca_pagamento', botConfig) &&
+              isToolEnabled('gerenciar_cobranca_pagamento', botConfig)
             ) {
-              tc.name = 'checkout_infinitepay';
-              tc.args = { acao: 'criar_link', ...(tc.args || {}) };
+              tc.name = 'gerenciar_cobranca_pagamento';
+              tc.args = { acao: 'criar_checkout', ...(tc.args || {}) };
             }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
-            if (tc.name === 'gerar_cobranca_pix' && pixHandledByTool) continue;
+            if (tc.name === 'gerenciar_cobranca_pagamento' && pixHandledByTool) continue;
 
-            if (isClient && ['gerar_cobranca_pix', 'checkout_infinitepay'].includes(tc.name)) {
+            if (isClient && ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento'].includes(tc.name)) {
               const directChoice = resolvePaymentChoice(actionText);
               const pendingPixChoice = pendingPayment?.choice === 'pix';
               if (pendingPixChoice && !pendingPaymentAnswer && directChoice !== 'pix') {
@@ -1267,7 +1275,7 @@ export async function handleClientMessage({
 
             // Para clientes, Pix começa por uma escolha explícita. Chave simples não
             // cria cobrança; Pix/checkout só são gerados depois da preferência do cliente.
-            if (isClient && (tc.name === 'gerar_cobranca_pix' || tc.name === 'checkout_infinitepay') && !syntheticToolCalls.includes(tc)) {
+            if (isClient && (tc.name === 'gerenciar_cobranca_pagamento' || tc.name === 'gerenciar_cobranca_pagamento') && !syntheticToolCalls.includes(tc)) {
               const directChoice = resolvePaymentChoice(actionText);
               if (directChoice === 'key') {
                 s.pendingClientPayment = null;
@@ -1315,7 +1323,14 @@ export async function handleClientMessage({
                 userText,
                 searchWebWithGemini: ai?.searchWebWithGemini
               };
-              const toolRes = await executeToolCall(tc.name, tc.args || {}, toolContext);
+              const toolArgs = { ...(tc.args || {}) };
+              if (tc.name === 'gerenciar_cobranca_pagamento'
+                && askedPixKeyOrFree
+                && Number(toolArgs.valor || 0) === 0
+                && String(toolArgs.acao || 'criar_pix') === 'criar_pix') {
+                toolArgs.valorLivre = true;
+              }
+              const toolRes = await executeToolCall(tc.name, toolArgs, toolContext);
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && toolRes?.success === true) {
                 void syncLeadToGoogleSheet({
@@ -1327,7 +1342,7 @@ export async function handleClientMessage({
                   now
                 });
               }
-              if (tc.name === 'gerar_cobranca_pix') {
+              if (tc.name === 'gerenciar_cobranca_pagamento') {
                 pixHandledByTool = true;
                 if (toolRes?.success) {
                   const pixAmount = Number(toolRes.valor) || 0;
@@ -1339,7 +1354,7 @@ export async function handleClientMessage({
                     owner,
                     pixKey: configuredPixKey,
                     includeKey: !toolRes.valor || askedPixKeyOrFree,
-                    includePaymentUrl: botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false
+                    includePaymentUrl: botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false
                   });
                 } else {
                   s.pendingClientPayment = null;
@@ -1350,7 +1365,7 @@ export async function handleClientMessage({
                     : 'Não consegui concluir a geração do Pix agora. Já vou pedir para a equipe verificar e te retornar por aqui, sem solicitar novamente os dados que você já enviou.';
                 }
               }
-              if (tc.name === 'checkout_infinitepay') {
+              if (tc.name === 'gerenciar_cobranca_pagamento') {
                 if (toolRes?.success && toolRes.action === 'verificar_pagamento') {
                   const pending = s.pendingCheckout;
                   const orderMatches = Boolean(pending?.orderNsu && toolRes.orderNsu && pending.orderNsu === toolRes.orderNsu);
@@ -1396,7 +1411,7 @@ export async function handleClientMessage({
                 } else {
                   const askedFree = /\b(?:livre|sem\s+valor|qualquer\s+valor)\b/i.test(userText);
                   if (configuredPixKey && (askedPixKeyOrFree || toolRes?.error !== 'invalid_amount')) {
-                    const pixFallback = await toolGerarCobrancaPix.execute(
+                    const pixFallback = await toolGerenciarCobrancaPagamento.execute(
                       { valor: hasPositiveAmount ? numericAmount : 0, descricao: tc.args?.descricao || '' },
                       toolContext
                     ).catch(() => null);
@@ -1411,7 +1426,7 @@ export async function handleClientMessage({
                         owner,
                         pixKey: configuredPixKey,
                         includeKey: !pixFallback.valor || askedPixKeyOrFree,
-                        includePaymentUrl: botConfig?.tools?.settings?.gerar_cobranca_pix?.enablePaymentPage !== false
+                        includePaymentUrl: botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false
                       });
                     } else {
                       toolReplyOverride = `💳 *Aqui está nossa chave Pix para pagamento:*\n\n• *Chave Pix:* \`${formatPixKeyForDisplay(configuredPixKey)}\`\n• *Favorecido:* ${owner}`;
