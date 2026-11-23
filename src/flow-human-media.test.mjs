@@ -62,3 +62,26 @@ test('mídia recebida durante handoff humano não é baixada nem enviada à IA',
   );
   assert.equal(session.human, true);
 });
+
+test('mensagem de texto explícita ainda pode retomar o bot durante handoff', async () => {
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-human-resume-${Date.now()}.json`));
+  await store.load();
+  const phone = '5511999990011';
+  const session = store.get(phone);
+  session.human = true;
+  session.humanSource = 'handoff';
+
+  const flow = createFlow({
+    store,
+    allowClientResume: true,
+    getBotConfig: () => ({ identity: { botName: 'Lia', responsible: 'Equipe' } }),
+    faq: async () => [],
+    ai: { async askAI() { throw new Error('IA não deve ser chamada para comando de retomada'); } }
+  });
+
+  const reply = await flow.process({ phone, text: 'voltar bot' });
+
+  assert.match(reply, /atendimento automático retomado/i);
+  assert.equal(session.human, false);
+  assert.equal(session.humanSource, 'resume');
+});
