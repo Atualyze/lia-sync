@@ -314,17 +314,16 @@ function parseAmountCents(value, { allowFree = false } = {}) {
 
 function settingsFor(context = {}) {
   const unified = context?.botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {};
-  const legacyPix = context?.botConfig?.tools?.settings?.gerar_cobranca_pix || {};
-  const settings = { ...legacyPix, ...unified };
+  const settings = { ...unified };
   return {
     ...settings,
-    pixKey: settings.pixKey || settings.key || context?.botConfig?.integrations?.pix?.key || process.env.PIX_KEY || '',
+    pixKey: settings.pixKey || settings.key || '',
     pixKeyType: settings.pixKeyType || settings.keyType || 'auto',
     merchantName: settings.merchantName || context?.botConfig?.integrations?.pix?.merchantName || resolveIdentity(context?.botConfig || {}).companyName || 'Atualyze',
-    merchantCity: settings.merchantCity || process.env.PIX_MERCHANT_CITY || 'SAO PAULO',
-    handle: normalizeHandle(settings.handle || process.env.INFINITEPAY_HANDLE || ''),
-    apiKey: String(settings.apiKey || process.env.INFINITEPAY_API_KEY || '').trim(),
-    paymentBaseUrl: String(settings.paymentBaseUrl || settings.publicBaseUrl || process.env.PAYMENT_BASE_URL || process.env.PUBLIC_BASE_URL || 'https://pay.atualyze.com.br').replace(/\/$/, '')
+    merchantCity: settings.merchantCity || 'SAO PAULO',
+    handle: normalizeHandle(settings.handle || ''),
+    apiKey: String(settings.apiKey || '').trim(),
+    paymentBaseUrl: String(settings.paymentBaseUrl || settings.publicBaseUrl || 'https://pay.atualyze.com.br').replace(/\/$/, '')
   };
 }
 

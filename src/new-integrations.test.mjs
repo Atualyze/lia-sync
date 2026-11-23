@@ -50,30 +50,23 @@ test('Pix: gera payload EMV BR Code válido com CRC16 e envia QR Code via WhatsA
   assert.match(payload, /6304[0-9A-F]{4}$/);
 
   const sentImages = [];
-  const prevKey = process.env.PIX_KEY;
-  process.env.PIX_KEY = '11999998888';
-  try {
-    const res = await toolGerarCobrancaPix.execute(
-      { valor: 99.9, descricao: 'Consulta Inicial' },
-      {
-        phone: '5585999998888',
-        actor: 'client',
-        botConfig: { identity: { companyName: 'Clinica Teste' } },
-        whatsapp: {
-          sendImage: async (phone, img) => { sentImages.push({ phone, img }); }
-        }
+  const res = await toolGerarCobrancaPix.execute(
+    { valor: 99.9, descricao: 'Consulta Inicial' },
+    {
+      phone: '5585999998888',
+      actor: 'client',
+      botConfig: { identity: { companyName: 'Clinica Teste' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: '11999998888' } } } },
+      whatsapp: {
+        sendImage: async (phone, img) => { sentImages.push({ phone, img }); }
       }
-    );
-    assert.equal(res.success, true);
-    assert.equal(res.qrCodeSent, true);
-    assert.equal(res.valor, 99.9);
-    assert.ok(res.qrCodeDataUrl.startsWith('data:image/png;base64,'));
-    assert.equal(sentImages.length, 1);
-    assert.equal(sentImages[0].phone, '5585999998888');
-  } finally {
-    if (prevKey === undefined) delete process.env.PIX_KEY;
-    else process.env.PIX_KEY = prevKey;
-  }
+    }
+  );
+  assert.equal(res.success, true);
+  assert.equal(res.qrCodeSent, true);
+  assert.equal(res.valor, 99.9);
+  assert.ok(res.qrCodeDataUrl.startsWith('data:image/png;base64,'));
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].phone, '5585999998888');
 });
 
 test('ViaCEP + BrasilAPI: consulta CEP, CNPJ e feriados nacionais com mocks', async () => {
@@ -545,32 +538,26 @@ test('Copiloto Pix: quando IA emite tool_call gerenciar_cobranca_pagamento e sen
 
 test('Copiloto Pix: sem chave Pix configurada pergunta naturalmente qual chave usar', async () => {
   const store = new SessionStore();
-  const prevPix = process.env.PIX_KEY;
-  delete process.env.PIX_KEY;
-  try {
-    const botConfig = createPixBotConfig('');
-    const flow = createFlow({
-      store,
-      getBotConfig: () => botConfig,
-      isOwnerSender: p => p === OWNER_SELF_KEY,
-      ai: {
-        askAI: async () => ({
-          reply: '',
-          tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 30, descricao: 'teste' } }]
-        })
-      }
-    });
+  const botConfig = createPixBotConfig('');
+  const flow = createFlow({
+    store,
+    getBotConfig: () => botConfig,
+    isOwnerSender: p => p === OWNER_SELF_KEY,
+    ai: {
+      askAI: async () => ({
+        reply: '',
+        tool_calls: [{ name: 'gerenciar_cobranca_pagamento', args: { valor: 30, descricao: 'teste' } }]
+      })
+    }
+  });
 
-    const res = await flow.process({
-      phone: OWNER_SELF_KEY,
-      text: 'gera um pix de 30 reais',
-      origin: 'owner'
-    });
-    assert.match(res, /Chave Pix/i);
-    assert.doesNotMatch(res, /Cobrança Pix gerada!/i);
-  } finally {
-    if (prevPix !== undefined) process.env.PIX_KEY = prevPix;
-  }
+  const res = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'gera um pix de 30 reais',
+    origin: 'owner'
+  });
+  assert.match(res, /Chave Pix/i);
+  assert.doesNotMatch(res, /Cobrança Pix gerada!/i);
 });
 
 test('Cliente Pix: proposta da IA pede autorização do administrador e não envia cobrança automaticamente', async () => {
@@ -769,28 +756,21 @@ test('Cliente Pix: handle legado do checkout não habilita cobrança unificada',
 });
 
 test('Cliente Pix: falha de geração não repete pedido de valor/descrição se a IA estiver indisponível', async () => {
-  const originalPixKey = process.env.PIX_KEY;
-  delete process.env.PIX_KEY;
-  try {
-    const store = new SessionStore();
-    const flow = createFlow({
-      store,
-      getBotConfig: () => createPixBotConfig(''),
-      ai: { askAI: async () => null }
-    });
-    const reply = await flow.process({
-      phone: '5511976543210',
-      text: 'Gere o código copia e cola de 10 reais',
-      origin: 'client'
-    });
-    assert.match(reply, /ainda não gerei o Pix/i);
-    assert.doesNotMatch(reply, /qual.*valor.*descri[cç][aã]o/i);
-    assert.equal(store.get('5511976543210').pendingAdminDecision.status, 'pending');
-    assert.equal(store.get('5511976543210').pendingAdminDecision.amount, 10);
-  } finally {
-    if (originalPixKey === undefined) delete process.env.PIX_KEY;
-    else process.env.PIX_KEY = originalPixKey;
-  }
+  const store = new SessionStore();
+  const flow = createFlow({
+    store,
+    getBotConfig: () => createPixBotConfig(''),
+    ai: { askAI: async () => null }
+  });
+  const reply = await flow.process({
+    phone: '5511976543210',
+    text: 'Gere o código copia e cola de 10 reais',
+    origin: 'client'
+  });
+  assert.match(reply, /ainda não gerei o Pix/i);
+  assert.doesNotMatch(reply, /qual.*valor.*descri[cç][aã]o/i);
+  assert.equal(store.get('5511976543210').pendingAdminDecision.status, 'pending');
+  assert.equal(store.get('5511976543210').pendingAdminDecision.amount, 10);
 });
 
 test('Pix BR Code: normaliza celular de 11 dígitos com +55 sem confundir com CPF e remove frase de pedido da descrição', () => {

@@ -183,7 +183,7 @@ test('worker bloqueia plano Pix com mais de uma etapa antes de qualquer chamada'
     const worker = createCopilotTaskWorker({
       taskStore,
       store: { get: () => ({ history: [] }), markDirty() {}, flush: async () => {} },
-      getBotConfig: () => ({}),
+      getBotConfig: () => ({ tools: { enabled: { gerenciar_cobranca_pagamento: true } } }),
       sendText: async (target, message) => { sent.push(message); },
       getHumanPhone: () => '5588999999999',
       logger: { error() {} },

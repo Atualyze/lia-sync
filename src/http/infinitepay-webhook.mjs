@@ -17,8 +17,6 @@ export function resolveInfinitePayWebhookSecret(settings = {}) {
   return String(
     settings.webhookSecret
     || settings.webhookToken
-    || process.env.INFINITEPAY_WEBHOOK_SECRET
-    || process.env.INFINITEPAY_WEBHOOK_TOKEN
     || ''
   ).trim();
 }

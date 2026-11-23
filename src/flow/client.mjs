@@ -96,9 +96,7 @@ function isCheckoutConfigured(botConfig = {}) {
     ...(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {})
   };
   return isUsablePaymentCredential(settings.handle)
-    || isUsablePaymentCredential(settings.apiKey)
-    || isUsablePaymentCredential(process.env.INFINITEPAY_HANDLE)
-    || isUsablePaymentCredential(process.env.INFINITEPAY_API_KEY);
+    || isUsablePaymentCredential(settings.apiKey);
 }
 
 function isPixConfigured(botConfig = {}) {
@@ -143,15 +141,11 @@ function resolveConfiguredPixKey(botConfig) {
   const configured = String(
     botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.pixKey ||
     botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.key ||
-    botConfig?.tools?.settings?.gerar_cobranca_pix?.key ||
-    botConfig?.integrations?.pix?.key ||
-    process.env.PIX_KEY ||
     ''
   ).trim();
   if (!configured || /\b(?:inserir|placeholder|exemplo|sua chave)\b|chave\s+pix\s+aqui/i.test(configured)) return '';
   const keyType = botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.pixKeyType
     || botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.keyType
-    || botConfig?.tools?.settings?.gerar_cobranca_pix?.keyType
     || 'auto';
   return normalizePixKey(configured, keyType);
 }

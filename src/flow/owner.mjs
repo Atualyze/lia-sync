@@ -2626,7 +2626,7 @@ ${errMsg}`;
         }
         const pixEnabled = isToolEnabled('gerenciar_cobranca_pagamento', botConfig);
         const ipEnabled = isToolEnabled('gerenciar_cobranca_pagamento', botConfig)
-          && Boolean(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.handle || process.env.INFINITEPAY_HANDLE || botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.apiKey || process.env.INFINITEPAY_API_KEY);
+          && Boolean(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.handle || botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.apiKey);
         const shouldAutoExecutePix = !toolOutputs.some(t => t.tool === 'gerenciar_cobranca_pagamento' || t.tool === 'gerenciar_cobranca_pagamento')
           && !isAudioForSelf
           && !isClarifyingExistingRequest

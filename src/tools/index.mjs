@@ -119,9 +119,9 @@ export function isToolConfigured(toolName, botConfig = {}) {
 export function isToolEnabled(toolName, botConfig = {}) {
   const canonical = resolveToolName(toolName);
   if (canonical === 'consultar_web' && botConfig?.webSearch?.enabled === false) return false;
-  if (canonical === 'gerenciar_cobranca_pagamento'
-    && (botConfig?.tools?.enabled?.gerar_cobranca_pix === false
-      && botConfig?.tools?.enabled?.checkout_infinitepay === false)) return false;
+  if (canonical === 'gerenciar_cobranca_pagamento') {
+    return botConfig?.tools?.enabled?.gerenciar_cobranca_pagamento === true;
+  }
   return botConfig?.tools?.enabled?.[canonical] !== false && botConfig?.tools?.enabled?.[toolName] !== false;
 }
 
