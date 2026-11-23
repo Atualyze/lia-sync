@@ -48,7 +48,6 @@ export const config = {
   rateLimitWindowMs: num('RATE_LIMIT_WINDOW_MIN', 10) * 60000,
   sessionTtlMs: num('SESSION_TTL_DAYS', 30) * 86400000,
   humanReminderMinutes: num('HANDOFF_REMINDER_MINUTES', 15),
-  humanAutoResumeHours: num('HUMAN_AUTO_RESUME_HOURS', 0),
   humanAllowClientResume: bool('HUMAN_ALLOW_CLIENT_RESUME', true),
   businessTimeZone: process.env.BUSINESS_TIME_ZONE || 'America/Sao_Paulo',
   inactivityStaleHours: num('INACTIVITY_STALE_HOURS', 12),
