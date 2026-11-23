@@ -110,6 +110,14 @@ function paymentChoiceReply({ hasCheckout = false, hasPix = true } = {}) {
   return 'No momento não temos uma opção de pagamento automático ativa por aqui. Vou pedir para a equipe te enviar os dados de pagamento!';
 }
 
+function paymentUnavailableReply({ hasCheckout = false, hasPix = false } = {}) {
+  if (!hasPix && !hasCheckout) {
+    return 'No momento a chave Pix e o checkout ainda não estão configurados neste atendimento. Ainda não gerei o Pix nem outra cobrança; a equipe precisa configurar os dados de pagamento antes de prosseguir.';
+  }
+  if (!hasPix) return 'A chave Pix ainda não está configurada neste atendimento. Posso gerar um link de checkout com valor fixo, se você preferir.';
+  return 'No momento não consegui disponibilizar essa opção de pagamento. A equipe precisa verificar a configuração antes de prosseguir.';
+}
+
 function formatPixKeyForDisplay(key = '') {
   const s = String(key || '').trim();
   const brPhone = s.match(/^\+55(\d{10,11})$/);
@@ -619,6 +627,11 @@ export async function handleClientMessage({
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
         .test(normalize(actionText));
       const paymentChoice = resolvePaymentChoice(actionText);
+      const hasConfiguredPix = isPixConfigured(botConfig);
+      const hasConfiguredCheckout = isCheckoutConfigured(botConfig);
+      const asksForBarePixKey = /\b(?:me\s+)?(?:envia|enviar|manda|mandar|passa|passar)\s+(?:o\s+)?pix\b/i.test(normalizedClientText(actionText));
+      const paymentRequestedWithoutMethod = !hasConfiguredPix && !hasConfiguredCheckout
+        && (Boolean(s.pendingClientPayment) || Boolean(paymentChoice) || explicitPaymentAction || explicitPaymentAmount || barePaymentAmount || asksForBarePixKey);
       const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
       const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
       const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
@@ -629,6 +642,9 @@ export async function handleClientMessage({
         || (!pendingPaymentPaused && barePaymentAmount
           && lastAssistantAskedForPaymentAmount(s.history, pendingPaymentQuestion))
       ));
+      const forcedPaymentUnavailableReply = paymentRequestedWithoutMethod && (paymentChoice === 'key' || asksForBarePixKey)
+        ? paymentUnavailableReply({ hasPix: hasConfiguredPix, hasCheckout: hasConfiguredCheckout })
+        : '';
       const pendingAgendaPaused = Boolean(s.pendingClientAgenda?.pausedAt);
       const pendingAgendaAnswer = Boolean(s.pendingClientAgenda
         && (isNaturalAffirmation(actionText) || isNaturalNegative(actionText))
@@ -932,11 +948,42 @@ export async function handleClientMessage({
         botName: assistant
       });
       let safeReplyText = String(filtered.text || '');
+      const forcedPaymentAmount = amountFromText(actionText);
+      if (forcedPaymentUnavailableReply) {
+        s.pendingClientPayment = null;
+        s.pendingAdminDecision = null;
+        safeReplyText = forcedPaymentUnavailableReply;
+        if (result) result.tool_calls = [];
+      }
+      if (paymentRequestedWithoutMethod && forcedPaymentAmount > 0) {
+        if (!s.pendingAdminDecision) {
+          s.pendingAdminDecision = {
+            type: 'pix_generation',
+            status: 'pending',
+            amount: Number(forcedPaymentAmount.toFixed(2)),
+            description: 'Pagamento via Pix',
+            paymentMethod: 'pix_copy_paste',
+            requestedAt: new Date(now()).toISOString()
+          };
+          s.human = true;
+          s.humanSource = 'admin';
+          s.handoffAt = s.pendingAdminDecision.requestedAt;
+          s.handoffReason = 'configuração de pagamento ausente; aguardando decisão do responsável';
+          store.markDirty();
+          await Promise.resolve(notify(`⚠️ *Cobrança Pix pendente:* o cliente ${s.clientName || s.phone} informou R$ ${forcedPaymentAmount.toFixed(2).replace('.', ',')}, mas não há chave Pix nem checkout configurado. Configure os dados antes de autorizar.`)).catch(() => {});
+        }
+        safeReplyText = 'Ainda não gerei o Pix porque os dados de pagamento ainda não estão configurados. A equipe precisa configurar a chave Pix ou o checkout antes de concluir a cobrança.';
+        if (result) result.tool_calls = [];
+      }
       let adminPixApprovalPending = false;
       const requestAdminPixApproval = async (amount, description = '') => {
         const numericAmount = Number(amount);
         if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
           return 'Qual é o valor correto para a cobrança Pix?';
+        }
+        if (!isPixConfigured(botConfig)) {
+          await Promise.resolve(notify(`⚠️ *Cobrança Pix não gerada:* o cliente ${s.clientName || s.phone} informou R$ ${numericAmount.toFixed(2).replace('.', ',')}, mas a chave Pix ainda não está configurada.`)).catch(() => {});
+          return paymentUnavailableReply({ hasPix: false, hasCheckout: isCheckoutConfigured(botConfig) });
         }
         const existingDecision = s.pendingAdminDecision?.type === 'pix_generation'
           && s.pendingAdminDecision.status === 'pending'
@@ -1081,7 +1128,28 @@ export async function handleClientMessage({
             && hasPendingPixChoice
             && requestedPixAmount > 0
           );
-          if (needsAdminPixDecision) {
+          if (paymentRequestedWithoutMethod) {
+            s.pendingClientPayment = null;
+            if (requestedPixAmount > 0 && !s.pendingAdminDecision) {
+              s.pendingAdminDecision = {
+                type: 'pix_generation',
+                status: 'pending',
+                amount: Number(requestedPixAmount.toFixed(2)),
+                description: 'Pagamento via Pix',
+                paymentMethod: 'pix_copy_paste',
+                requestedAt: new Date(now()).toISOString()
+              };
+              s.human = true;
+              s.humanSource = 'admin';
+              s.handoffAt = s.pendingAdminDecision.requestedAt;
+              s.handoffReason = 'configuração de pagamento ausente; aguardando decisão do responsável';
+              store.markDirty();
+              await Promise.resolve(notify(`⚠️ *Cobrança Pix pendente:* o cliente ${s.clientName || s.phone} informou R$ ${requestedPixAmount.toFixed(2).replace('.', ',')}, mas não há chave Pix nem checkout configurado. Configure os dados antes de autorizar.`)).catch(() => {});
+            }
+            safeReplyText = requestedPixAmount > 0
+              ? 'Ainda não gerei o Pix porque os dados de pagamento ainda não estão configurados. A equipe precisa configurar a chave Pix ou o checkout antes de concluir a cobrança.'
+              : paymentUnavailableReply({ hasPix: hasConfiguredPix, hasCheckout: hasConfiguredCheckout });
+          } else if (needsAdminPixDecision) {
             safeReplyText = await requestAdminPixApproval(
               requestedPixAmount,
               s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'

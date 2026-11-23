@@ -771,6 +771,27 @@ export async function handleOwnerSession({
                     identity,
                     session: targetSession
                   });
+                  if (!pixRes?.success && pixRes?.error === 'pix_key_not_configured') {
+                    const unavailableReply = 'Não consegui gerar a cobrança Pix porque a chave Pix ainda não está configurada. A equipe precisa configurar os dados de pagamento antes de tentar novamente.';
+                    try {
+                      if (typeof whatsapp?.sendText === 'function') await whatsapp.sendText(targetDest, formatOutgoingMessage(unavailableReply));
+                      targetSession.history ??= [];
+                      targetSession.history.push({ role: 'assistant', content: unavailableReply, createdAt: timestamp });
+                      targetSession.pendingAdminConsult = null;
+                      targetSession.pendingAdminDecision = null;
+                      targetSession.pendingClientPayment = null;
+                      targetSession.human = false;
+                      targetSession.lastBotAt = timestamp;
+                      targetSession.awaitingReply = true;
+                      targetSession.updatedAt = timestamp;
+                      if (consult.commitmentId) await liaRuntime?.commitments?.fulfill?.(consult.commitmentId).catch(() => {});
+                      store.markDirty();
+                      await store.flush?.().catch(() => {});
+                      return recordSelfTurn(`⚠️ A cobrança de *${targetName}* não foi gerada: a chave Pix ainda não está configurada. Enviei a orientação ao cliente.`);
+                    } catch (error) {
+                      return recordSelfTurn('⚠️ A chave Pix ainda não está configurada e não consegui confirmar a entrega da orientação ao cliente. Verifique a conversa antes de tentar novamente.');
+                    }
+                  }
                   if (pixRes?.success) {
                     const valFmt = pixRes.valor ? `R$ ${Number(pixRes.valor).toFixed(2).replace('.', ',')}` : 'Valor livre';
                     const showPage = botConfig?.tools?.settings?.gerenciar_cobranca_pagamento?.enablePaymentPage !== false;
@@ -998,8 +1019,30 @@ export async function handleOwnerSession({
               targetSession.updatedAt = new Date(now()).toISOString();
               store.markDirty();
               await persistAdminPixDecisionBestEffort();
+              const clientFailure = pixResult?.error === 'pix_key_not_configured'
+                ? 'Não consegui gerar a cobrança Pix porque a chave Pix ainda não está configurada. A equipe precisa configurar os dados de pagamento antes de tentar novamente.'
+                : 'Não consegui gerar a cobrança Pix neste momento. A equipe precisa verificar a configuração antes de tentar novamente.';
+              try {
+                if (typeof whatsapp?.sendText !== 'function') throw new Error('Envio de mensagem WhatsApp indisponível');
+                await whatsapp.sendText(targetAddress, formatOutgoingMessage(clientFailure));
+                targetSession.history ??= [];
+                targetSession.history.push({ role: 'assistant', content: clientFailure, createdAt: timestamp });
+                targetSession.human = false;
+                targetSession.humanSource = null;
+                targetSession.awaitingReply = true;
+                targetSession.lastBotAt = timestamp;
+                targetSession.updatedAt = timestamp;
+                store.markDirty();
+                await persistAdminPixDecisionBestEffort();
+              } catch (error) {
+                targetSession.human = true;
+                targetSession.humanSource = 'admin';
+                targetSession.updatedAt = timestamp;
+                store.markDirty();
+                await persistAdminPixDecisionBestEffort();
+              }
               return recordSelfTurn(filterReply(
-                `Não consegui gerar o Pix para ${targetLabel}: ${decision.error} Nenhuma confirmação de cobrança foi enviada ao cliente. A decisão continua pendente; corrija o problema e autorize novamente, ou assuma o atendimento.`,
+                `Não consegui gerar o Pix para ${targetLabel}: ${decision.error} ${clientFailure} A decisão continua pendente; corrija o problema e autorize novamente, ou assuma o atendimento.`,
                 { isCopilot: true }
               ).text);
             }
