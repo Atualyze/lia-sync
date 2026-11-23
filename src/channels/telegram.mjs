@@ -335,14 +335,14 @@ export function createTelegramCopilot({
     return true;
   }
 
-  async function downloadTelegramAudio(fileId, mimeType = 'audio/ogg') {
+  async function downloadTelegramFile(fileId, mimeType = 'application/octet-stream', kind = 'media') {
     const token = currentToken();
     if (!token || !fileId) return null;
     const fileInfo = await apiCall('getFile', { file_id: fileId }, { token, timeoutMs: 15000 });
     const filePath = String(fileInfo?.file_path || '').trim();
     if (!filePath || filePath.includes('..')) return null;
     if (Number(fileInfo?.file_size || 0) > MAX_MEDIA_BYTES) {
-      throw new Error('telegram_audio_too_large');
+      throw new Error(`telegram_${kind}_too_large`);
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
@@ -350,14 +350,18 @@ export function createTelegramCopilot({
       const res = await fetchImpl(`${TELEGRAM_API_BASE}/file/bot${token}/${filePath}`, { signal: controller.signal });
       if (!res.ok) throw new Error(`telegram_file_download_http_${res.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > MAX_MEDIA_BYTES) throw new Error('telegram_audio_too_large');
+      if (buf.length > MAX_MEDIA_BYTES) throw new Error(`telegram_${kind}_too_large`);
       return { base64: buf.toString('base64'), mimeType };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function runOwnerTurn({ chatId, text, pushName = '', messageId = '' }) {
+  async function downloadTelegramAudio(fileId, mimeType = 'audio/ogg') {
+    return downloadTelegramFile(fileId, mimeType, 'audio');
+  }
+
+  async function runOwnerTurn({ chatId, text, pushName = '', messageId = '', mediaType = 'text', rawItem = null, attachments = [] }) {
     if (!flow?.process) return;
     void apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
 
@@ -371,7 +375,10 @@ export function createTelegramCopilot({
         rawItem: { channel: 'telegram', chatId: String(chatId) },
         pushName: pushName || 'Admin Telegram',
         authorizedResume: true,
-        messageId: messageId ? `tg:${messageId}` : ''
+        messageId: messageId ? `tg:${messageId}` : '',
+        mediaType,
+        rawItem: rawItem || { channel: 'telegram', chatId: String(chatId) },
+        attachments
       });
       await store?.flush?.().catch(() => {});
       return reply;
@@ -431,6 +438,50 @@ export function createTelegramCopilot({
 
     const pushName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ').trim() || msg.from?.username || '';
     const messageId = String(msg.message_id || '');
+
+    // Imagem/documento: o Telegram não expõe a mídia como attachment no payload
+    // do Copiloto automaticamente. Baixamos o arquivo pela Bot API e entregamos
+    // ao mesmo contrato de attachments usado pelo painel/WhatsApp.
+    const photoObj = Array.isArray(msg.photo) && msg.photo.length ? msg.photo[msg.photo.length - 1] : null;
+    const documentObj = msg.document?.file_id ? msg.document : null;
+    const imageFileId = photoObj?.file_id || '';
+    const documentFileId = documentObj?.file_id || '';
+    if (imageFileId || documentFileId) {
+      try {
+        const isImage = Boolean(imageFileId);
+        const fileId = isImage ? imageFileId : documentFileId;
+        const mimeType = isImage
+          ? String(photoObj?.mime_type || 'image/jpeg')
+          : String(documentObj?.mime_type || 'application/octet-stream');
+        const media = await downloadTelegramFile(fileId, mimeType, isImage ? 'image' : 'document');
+        if (!media?.base64) {
+          await sendMessage(chatId, isImage ? '⚠️ Não consegui baixar a imagem do Telegram para análise.' : '⚠️ Não consegui baixar o documento do Telegram para análise.');
+          return;
+        }
+        const fileName = isImage
+          ? `telegram-${messageId || Date.now()}.jpg`
+          : String(documentObj?.file_name || `telegram-${messageId || Date.now()}`);
+        await runOwnerTurn({
+          chatId,
+          text: parsedCmd.text || rawText,
+          pushName,
+          messageId,
+          mediaType: isImage ? 'image' : 'document',
+          rawItem: msg,
+          attachments: [{
+            fileName,
+            name: fileName,
+            mimeType,
+            type: isImage ? 'image' : 'document',
+            base64: media.base64
+          }]
+        });
+      } catch (err) {
+        safeLogError(`[telegram] Falha ao processar ${imageFileId ? 'imagem' : 'documento'}:`, err);
+        await sendMessage(chatId, imageFileId ? '⚠️ Tive um erro ao baixar ou analisar a imagem.' : '⚠️ Tive um erro ao baixar ou analisar o documento.');
+      }
+      return;
+    }
 
     // Áudio / Nota de voz
     const audioObj = msg.voice || msg.audio;
