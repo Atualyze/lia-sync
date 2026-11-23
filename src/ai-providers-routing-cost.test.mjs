@@ -36,7 +36,7 @@ test('CustomProviderStore cadastra provedor OpenAI-compatible, mascara chave, in
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-custom-prov-'));
   const filePath = path.join(dir, 'custom-providers.json');
   try {
-    const store = new CustomProviderStore({ filePath, logger: { warn() {}, error() {} } });
+    const store = new CustomProviderStore({ filePath, secretEncryptionKey: Buffer.alloc(32, 9).toString('base64'), logger: { warn() {}, error() {} } });
     await store.load();
 
     const saved = await store.upsert({
@@ -80,7 +80,7 @@ test('CustomProviderStore cadastra provedor OpenAI-compatible, mascara chave, in
 
 test('summarizePersistentCalls calcula custo de provedores customizados, modelos :free = $0 e projeção mensal', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-cost-calc-'));
-  const store = new CustomProviderStore({ filePath: path.join(dir, 'custom-providers.json'), logger: { warn() {}, error() {} } });
+  const store = new CustomProviderStore({ filePath: path.join(dir, 'custom-providers.json'), secretEncryptionKey: Buffer.alloc(32, 9).toString('base64'), logger: { warn() {}, error() {} } });
   try {
     await store.load();
     await store.upsert({

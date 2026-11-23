@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { maskSecretValue } from '../api-settings.mjs';
+import { decryptSecret, encryptSecret, hasSecretEncryptionKey, isEncryptedSecret } from '../security/secrets.mjs';
 
 const PROJECTION_KEY = 'custom_ai_providers';
 const BUILTIN_IDS = new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare']);
@@ -12,29 +13,17 @@ let activeRegistry = new Map();
 export function getCustomProvider(id = '') {
   return activeRegistry.get(String(id || '').trim().toLowerCase()) || null;
 }
-
 export function listCustomProviders() {
   return [...activeRegistry.values()];
 }
-
 export function getCustomProviderPricingRates() {
   const rates = [];
   for (const p of activeRegistry.values()) {
     if (p.defaultModel && Number.isFinite(p.inputUsdPerMillion) && Number.isFinite(p.outputUsdPerMillion)) {
-      rates.push({
-        provider: p.id,
-        model: p.defaultModel,
-        inputUsdPerMillion: p.inputUsdPerMillion,
-        outputUsdPerMillion: p.outputUsdPerMillion
-      });
+      rates.push({ provider: p.id, model: p.defaultModel, inputUsdPerMillion: p.inputUsdPerMillion, outputUsdPerMillion: p.outputUsdPerMillion });
     }
     if (Number.isFinite(p.inputUsdPerMillion) && Number.isFinite(p.outputUsdPerMillion)) {
-      rates.push({
-        provider: p.id,
-        model: '*',
-        inputUsdPerMillion: p.inputUsdPerMillion,
-        outputUsdPerMillion: p.outputUsdPerMillion
-      });
+      rates.push({ provider: p.id, model: '*', inputUsdPerMillion: p.inputUsdPerMillion, outputUsdPerMillion: p.outputUsdPerMillion });
     }
   }
   return rates;
@@ -52,19 +41,16 @@ function normalizeProvider(input = {}, existing = null) {
   const baseUrl = rawUrl.replace(/\/$/, '');
   const defaultModel = String(input.defaultModel ?? existing?.defaultModel ?? '').trim().slice(0, 140);
   if (!defaultModel) throw new Error('provider_default_model_required');
-
   const rawKey = input.apiKey;
   const apiKey = rawKey === '__CLEAR__'
     ? ''
     : (typeof rawKey === 'string' && rawKey.trim() ? rawKey.trim().slice(0, 512) : (existing?.apiKey || ''));
-
-  const parseRate = (val, fallback) => {
-    if (val === '' || val === null || val === undefined) return fallback;
-    const n = Number(val);
-    if (!Number.isFinite(n) || n < 0) throw new Error('invalid_provider_rate');
-    return n;
+  const parseRate = (value, fallback) => {
+    if (value === '' || value === null || value === undefined) return fallback;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new Error('invalid_provider_rate');
+    return number;
   };
-
   return {
     id,
     name,
@@ -79,22 +65,54 @@ function normalizeProvider(input = {}, existing = null) {
 }
 
 export class CustomProviderStore {
-  constructor({
-    client = null,
-    filePath = './data/custom-ai-providers.json',
-    logger = console
-  } = {}) {
+  constructor({ client = null, filePath = './data/custom-ai-providers.json', logger = console, secretEncryptionKey } = {}) {
     this.client = client;
     this.filePath = filePath;
     this.logger = logger;
+    this.secretEncryptionKey = secretEncryptionKey;
     this.providers = new Map();
     this.mode = 'local';
   }
-
   _syncGlobalRegistry() {
     activeRegistry = new Map(this.providers);
   }
-
+  _context(id) {
+    return 'custom-ai-provider:' + id;
+  }
+  _serialize(providers) {
+    return [...providers.values()].map(provider => ({
+      ...provider,
+      apiKey: provider.apiKey
+        ? encryptSecret(provider.apiKey, { key: this.secretEncryptionKey, context: this._context(provider.id) })
+        : ''
+    }));
+  }
+  async _saveLocal(serializedProviders) {
+    const dir = path.dirname(this.filePath);
+    await fs.mkdir(dir, { recursive: true });
+    const tmp = this.filePath + '.tmp-' + process.pid + '-' + crypto.randomUUID().slice(0, 8);
+    try {
+      await fs.writeFile(tmp, JSON.stringify({ providers: serializedProviders }, null, 2), 'utf8', { mode: 0o600 });
+      await fs.chmod(tmp, 0o600).catch(() => {});
+      await fs.rename(tmp, this.filePath);
+      await fs.chmod(this.filePath, 0o600).catch(() => {});
+    } catch (error) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw error;
+    }
+  }
+  async _persist(providers = this.providers) {
+    const serialized = this._serialize(providers);
+    if (this.client?.enabled && this.mode === 'supabase') {
+      await this.client.upsert('runtime_projections', [{
+        key: PROJECTION_KEY,
+        payload: { providers: serialized },
+        updated_at: new Date().toISOString()
+      }], 'key');
+    } else {
+      await this._saveLocal(serialized);
+    }
+  }
   async _readLocal() {
     try {
       const raw = JSON.parse(await fs.readFile(this.filePath, 'utf8'));
@@ -104,43 +122,16 @@ export class CustomProviderStore {
       throw error;
     }
   }
-
-  async _saveLocal() {
-    const dir = path.dirname(this.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    const tmp = `${this.filePath}.tmp-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
-    try {
-      await fs.writeFile(tmp, JSON.stringify({ providers: [...this.providers.values()] }, null, 2), 'utf8');
-      await fs.rename(tmp, this.filePath);
-    } catch (error) {
-      await fs.rm(tmp, { force: true }).catch(() => {});
-      throw error;
-    }
-  }
-
-  async _persist() {
-    const list = [...this.providers.values()];
-    if (this.client?.enabled && this.mode === 'supabase') {
-      await this.client.upsert('runtime_projections', [{
-        key: PROJECTION_KEY,
-        payload: { providers: list },
-        updated_at: new Date().toISOString()
-      }], 'key');
-    } else {
-      await this._saveLocal();
-    }
-  }
-
   async load() {
     let loaded = [];
     if (this.client?.enabled) {
       try {
-        const rows = await this.client.select('runtime_projections', `select=key,payload,updated_at&key=eq.${encodeURIComponent(PROJECTION_KEY)}&limit=1`);
+        const rows = await this.client.select('runtime_projections', 'select=key,payload,updated_at&key=eq.' + encodeURIComponent(PROJECTION_KEY) + '&limit=1');
         this.mode = 'supabase';
         const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
         if (Array.isArray(row?.payload?.providers)) loaded = row.payload.providers;
       } catch (error) {
-        this.logger.warn?.(`[custom-providers] Supabase indisponível (${error?.code || error?.name || 'err'}); usando fallback local.`);
+        this.logger.warn?.('[custom-providers] Supabase indisponível (' + (error?.code || error?.name || 'err') + '); usando fallback local.');
         loaded = await this._readLocal().catch(() => []);
         this.mode = 'local';
       }
@@ -149,46 +140,69 @@ export class CustomProviderStore {
       this.mode = 'local';
     }
     this.providers.clear();
+    let needsPersistence = false;
+    let legacyPlaintextCount = 0;
     for (const item of loaded) {
       try {
-        const norm = normalizeProvider(item);
-        this.providers.set(norm.id, norm);
-      } catch {}
+        const storedKey = String(item?.apiKey || '');
+        let apiKey = storedKey;
+        if (isEncryptedSecret(storedKey)) {
+          apiKey = decryptSecret(storedKey, { key: this.secretEncryptionKey, context: this._context(item.id) });
+        } else if (storedKey) {
+          legacyPlaintextCount += 1;
+          if (hasSecretEncryptionKey(this.secretEncryptionKey)) needsPersistence = true;
+        }
+        const normalized = normalizeProvider({ ...item, apiKey });
+        this.providers.set(normalized.id, normalized);
+      } catch (error) {
+        this.logger.error?.('[custom-providers] provedor ignorado por falha ao abrir credencial (' + (error?.code || error?.message || 'err') + ').');
+      }
     }
     this._syncGlobalRegistry();
+    if (needsPersistence) {
+      try {
+        await this._persist();
+        this.logger.info?.('[custom-providers] credenciais legadas migradas para armazenamento criptografado.');
+      } catch (error) {
+        this.logger.error?.('[custom-providers] migração de credenciais não concluída (' + (error?.code || error?.message || 'err') + ').');
+      }
+    } else if (legacyPlaintextCount > 0) {
+      this.logger.warn?.('[custom-providers] ' + legacyPlaintextCount + ' credencial(is) legada(s) ainda sem criptografia; configure API_SECRETS_ENCRYPTION_KEY para migrá-las.');
+    }
     return this;
   }
-
   listSafe() {
-    return [...this.providers.values()].map(p => ({
-      id: p.id,
-      name: p.name,
-      baseUrl: p.baseUrl,
-      defaultModel: p.defaultModel,
-      inputUsdPerMillion: p.inputUsdPerMillion,
-      outputUsdPerMillion: p.outputUsdPerMillion,
-      enabled: p.enabled,
-      configured: Boolean(p.enabled && p.apiKey && p.baseUrl),
-      maskedKey: maskSecretValue(p.apiKey),
-      updatedAt: p.updatedAt
+    return [...this.providers.values()].map(provider => ({
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      defaultModel: provider.defaultModel,
+      inputUsdPerMillion: provider.inputUsdPerMillion,
+      outputUsdPerMillion: provider.outputUsdPerMillion,
+      enabled: provider.enabled,
+      configured: Boolean(provider.enabled && provider.apiKey && provider.baseUrl),
+      maskedKey: maskSecretValue(provider.apiKey),
+      updatedAt: provider.updatedAt
     }));
   }
-
   async upsert(input = {}) {
-    const existing = this.providers.get(String(input.id || '').trim().toLowerCase()) || null;
-    const normalized = normalizeProvider(input, existing);
-    this.providers.set(normalized.id, normalized);
+    const id = String(input.id || '').trim().toLowerCase();
+    const normalized = normalizeProvider(input, this.providers.get(id) || null);
+    const next = new Map(this.providers);
+    next.set(normalized.id, normalized);
+    await this._persist(next);
+    this.providers = next;
     this._syncGlobalRegistry();
-    await this._persist();
-    return this.listSafe().find(p => p.id === normalized.id);
+    return this.listSafe().find(provider => provider.id === normalized.id);
   }
-
   async remove(id) {
     const key = String(id || '').trim().toLowerCase();
     if (!this.providers.has(key)) return false;
-    this.providers.delete(key);
+    const next = new Map(this.providers);
+    next.delete(key);
+    await this._persist(next);
+    this.providers = next;
     this._syncGlobalRegistry();
-    await this._persist();
     return true;
   }
 }

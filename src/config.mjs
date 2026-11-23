@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { hasSecretEncryptionKey } from './security/secrets.mjs';
 
 const bool = (name, fallback = false) => process.env[name] === undefined ? fallback : process.env[name] === 'true';
 const num = (name, fallback) => Number.isFinite(Number(process.env[name])) ? Number(process.env[name]) : fallback;
@@ -17,6 +18,7 @@ export const config = {
   allowInsecureWebhook: bool('ALLOW_INSECURE_WEBHOOK') && process.env.NODE_ENV !== 'production' && loopbackHost,
   aiMaxOutputTokens: Math.max(1024, num('AI_MAX_OUTPUT_TOKENS', 1024)),
   aiTimeoutMs: num('AI_TIMEOUT_MS', 30000),
+  // Variáveis legadas são mantidas apenas como fonte de migração inicial pelo ApiSettingsStore.
   geminiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
   geminiFreeKey: process.env.GEMINI_FREE_API_KEY || '',
   geminiThinkingBudget: num('GEMINI_THINKING_BUDGET', 0),
@@ -80,6 +82,9 @@ export function validateConfig({ strict = false } = {}) {
   }
   if (config.whatsappProvider === 'evolution' && !config.evolutionInstance) {
     errors.push('EVOLUTION_INSTANCE não configurada para o provedor legado Evolution');
+  }
+  if (process.env.NODE_ENV === 'production' && !hasSecretEncryptionKey()) {
+    errors.push('API_SECRETS_ENCRYPTION_KEY não configurada ou inválida (gere 32 bytes aleatórios em Base64)');
   }
   if (!config.webhookToken && !config.allowInsecureWebhook) {
     errors.push('WEBHOOK_TOKEN não configurado (use ALLOW_INSECURE_WEBHOOK=true apenas em desenvolvimento)');
