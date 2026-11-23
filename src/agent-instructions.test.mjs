@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { appendMasterSystemInstruction } from './ai/call.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
+import { DEFAULT_BOT_CONFIG, validateBotConfig } from './admin-config.mjs';
 
 test('diretriz mestre do painel é aplicada uma única vez e sem substituir as regras centrais', () => {
   const botConfig = { ai: { systemInstruction: 'Use linguagem simples e acolhedora.' } };
@@ -40,4 +41,24 @@ test('personalidade usa personality.tone e, na ausência, identity.tone', () => 
   });
   assert.match(explicitPersonality, /Tom configurado: descontraído e objetivo/);
   assert.doesNotMatch(explicitPersonality, /Tom configurado: formal/);
+});
+
+test('configuração rejeita instrução mestre acima do limite definido', () => {
+  const config = structuredClone(DEFAULT_BOT_CONFIG);
+  config.ai.systemInstruction = 'x'.repeat(8001);
+  const errors = validateBotConfig(config);
+  assert.ok(errors.some(error => /diretriz mestre.*8000 caracteres/i.test(error)));
+});
+
+test('Baileys é o provedor padrão quando WHATSAPP_PROVIDER não está definido', async () => {
+  const previousProvider = process.env.WHATSAPP_PROVIDER;
+  try {
+    delete process.env.WHATSAPP_PROVIDER;
+    const { config, validateConfig } = await import('./config.mjs?baileys-default-test');
+    assert.equal(config.whatsappProvider, 'baileys');
+    assert.equal(validateConfig().some(error => /EVOLUTION_/i.test(error)), false);
+  } finally {
+    if (previousProvider === undefined) delete process.env.WHATSAPP_PROVIDER;
+    else process.env.WHATSAPP_PROVIDER = previousProvider;
+  }
 });
