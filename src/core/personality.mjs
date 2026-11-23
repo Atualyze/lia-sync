@@ -14,8 +14,13 @@ export function buildPersonalityPrompt({ botName = 'Lia', isOwner = false, botCo
   const custom = botConfig?.personality || {};
   const maxQuestions = Number.isInteger(custom.maxQuestionsPerTurn) ? custom.maxQuestionsPerTurn : 1;
   const allowHumor = custom.allowHumor !== false;
-  const toneNote = typeof custom.tone === 'string' && custom.tone.trim()
-    ? `\n- Tom configurado: ${custom.tone.trim()}.`
+  // A personalidade específica prevalece; na ausência dela, respeita o tom
+  // configurado na identidade do agente (campo já exposto no painel).
+  const configuredTone = typeof custom.tone === 'string' && custom.tone.trim()
+    ? custom.tone.trim()
+    : (typeof botConfig?.identity?.tone === 'string' ? botConfig.identity.tone.trim() : '');
+  const toneNote = configuredTone
+    ? `\n- Tom configurado: ${configuredTone}.`
     : '';
 
   return `[PERSONALIDADE CONVERSACIONAL - ${String(botName || 'Lia').toUpperCase()}]
