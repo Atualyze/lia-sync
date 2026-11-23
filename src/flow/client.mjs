@@ -3,7 +3,7 @@ import { getRecentAIErrorSummary } from '../ai.mjs';
 import { getNextProviderRecoveryDelayMs } from '../ai/state.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
-import { OWNER_SELF_KEY, identityNames } from '../core/identity.mjs';
+import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
 import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
@@ -13,13 +13,15 @@ import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
-import { cleanForSpeech, escapeText, isHumanRequest, isTalkToOwnerRequest } from './text.mjs';
+import { cleanForSpeech, escapeText } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
+const CLIENT_HANDOFF_CATEGORIES = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia']);
+
 export async function buildAIUnavailableReply({ ai, session = {}, currentText = '', botConfig = {}, assistant = 'assistente', now = () => Date.now() } = {}) {
   const history = (Array.isArray(session.history) ? session.history : [])
     .slice(-8)
@@ -352,19 +354,7 @@ export async function handleClientMessage({
         }
 
         if (!transcribed || !transcribed.trim()) {
-          const clientName = s.clientName || pushName || 'Contato';
-          const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
-          const alertMsg = `🎙️ *Novo áudio recebido de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n\n_A ${assistant} notificou o cliente e aguarda você ouvir._`;
-
-          await triggerHandoff(s, {
-            reason: 'Áudio recebido do cliente',
-            urgency: 'normal',
-            now: now(),
-            notify: () => notify(alertMsg),
-            identity
-          });
-
-          const reply = `Recebi seu áudio por aqui! 🎙️\n\nJá notifiquei *${owner}* para ouvir com atenção e te responder assim que puder, tá bom?`;
+          const reply = 'Recebi seu áudio, mas não consegui identificar o conteúdo com segurança. Pode reenviar o áudio ou escrever brevemente o que precisa?';
           s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
           s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
           store.markDirty();
@@ -419,22 +409,9 @@ export async function handleClientMessage({
           clean = historyNote;
           mediaAnalyzedForAI = true;
         } else {
-          const clientName = s.clientName || pushName || 'Contato';
-          const cleanPhone = String(phone).replace(/@.*$/, '').replace(/\D/g, '');
-          const visionExtra = imageAnalysis?.summary
-            ? `\n📋 *Análise Visual (${String(imageAnalysis.docType || 'Imagem').toUpperCase()}):*\n${imageAnalysis.summary}`
-            : '';
-          const alertMsg = `📸 *Novo(a) ${typeLabel} recebido(a) de ${clientName}!*\n📱 *WhatsApp:* https://wa.me/${cleanPhone}\n💬 *Legenda:* "${clean || '(Sem legenda)'}"${visionExtra}\n\n_A ${assistant} notificou o cliente e pausou o bot para você continuar._`;
-
-          await triggerHandoff(s, {
-            reason: `Envio de ${typeLabel} pelo cliente`,
-            urgency: 'normal',
-            now: now(),
-            notify: () => notify(alertMsg),
-            identity
-          });
-
-          const reply = `Recebi sua *${typeLabel}* por aqui! 📸\n\nJá dei um toque em *${owner}* para dar uma olhada e te responder com atenção assim que puder.`;
+          const reply = mediaType === 'video'
+            ? 'Recebi seu vídeo por aqui, mas ainda não consigo analisar esse formato automaticamente. Pode descrever o que gostaria que eu verificasse?'
+            : 'Recebi sua imagem, mas não consegui analisá-la com segurança. Pode reenviar em melhor qualidade ou descrever o que precisa?';
           s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
           s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
           store.markDirty();
@@ -552,20 +529,6 @@ export async function handleClientMessage({
         return reply;
       }
 
-      // Se o usuário pediu diretamente para falar com o responsável
-      if (isTalkToOwnerRequest(clean, identity) || isHumanRequest(clean, identity)) {
-        await triggerHandoff(s, { reason: `solicitação para falar diretamente com ${owner}`, urgency: 'normal', now: now(), notify, identity });
-        // Texto editável no painel também passa pelo filtro antes de ir ao cliente.
-        const talkOwnerFiltered = filterReply(String(messages.talkToOwner || ''), { allowedPrices: getAllowedPrices(), strictPrices: true });
-        const reply = talkOwnerFiltered.blocked || !talkOwnerFiltered.text
-          ? 'Já avisei a equipe responsável para te atender aqui mesmo. Um momento, por favor!'
-          : talkOwnerFiltered.text;
-        s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
-        s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
-        store.markDirty();
-        return reply;
-      }
-
       // 2.5 DETECÇÃO DE PREFERÊNCIA DE FORMATO (ÁUDIO vs TEXTO) PELO CLIENTE
       const normUser = normalize(clean);
       if (/(?:prefiro|quero|responde|responda|responder|envia|envie|manda|mandar|mande|fala|falar|fale)\s+(?:por\s+|em\s+|com\s+)?(?:um\s+)?(?:texto|escrito|escrever)\b/i.test(normUser)) {
@@ -614,18 +577,15 @@ export async function handleClientMessage({
       }
 
       // ==========================================
-      // 2.5.2 TRIAGEM LEVE DE SETOR
-      // ==========================================
-      // Autoridade: projeção de runtime enviada pelo Chatwoot através da ponte.
-      // O caminho em botConfig continua aceito apenas por compatibilidade com publicações antigas.
+      // 2.5.2 SINAL AUXILIAR DE TRIAGEM (OBSERVABILIDADE)
+      // A classificação lexical nunca altera a sessão nem decide encaminhamento.
       const triageSectors = (Array.isArray(sectors) && sectors.length) ? sectors : (botConfig?.business?.sectors || []);
       if (Array.isArray(triageSectors) && triageSectors.length > 0) {
-        const triageResult = classificarSetorPorTexto(clean, triageSectors, identity);
-        if (triageResult.sectorId && triageResult.confidence >= 0.3) {
-          s.sectorId = triageResult.sectorId;
-          s.sectorName = triageResult.sectorName;
-          s.sectorCategory = triageResult.category;
-        }
+        const triageHint = classificarSetorPorTexto(clean, triageSectors, identity);
+        if (triageHint.category) logger.debug?.('[flow:triage] sinal lexical auxiliar:', {
+          category: triageHint.category,
+          confidence: triageHint.confidence
+        });
       }
 
       // Atendimento inteligente: a assistente usa a IA com memória do contexto
@@ -880,7 +840,10 @@ export async function handleClientMessage({
         raw = m ? (m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()) : '';
       }
 
-      const hasPendingToolCalls = (Array.isArray(result?.tool_calls) && result.tool_calls.length > 0)
+      const modelToolCalls = result?.needs_tool === false
+        ? []
+        : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
+      const hasPendingToolCalls = modelToolCalls.length > 0
         || Boolean(s.pendingClientAgenda && pendingAgendaAnswer)
         || Boolean(s.pendingClientPayment && pendingPaymentAnswer)
         || Boolean(!isOwnerSender(phone) && origin !== 'owner' && isPixActionRequest(actionText));
@@ -1065,11 +1028,18 @@ export async function handleClientMessage({
             if (!faqFiltered.blocked) faqPriceReply = faqFiltered.text;
           }
         }
-        if (isPriceViolation && !priceContextActive) {
+        if (filtered.violations.includes('clinica')) {
+          // Bloqueios clínicos são a exceção de segurança/emergência, não um handoff técnico genérico.
+          result.handoff = true;
+          result.handoff_category = 'emergencia';
+          result.handoff_reason = 'Orientação clínica de risco bloqueada pelo filtro de segurança';
+          safeReplyText = 'Não posso orientar sobre dose ou uso de medicamento com segurança. Este caso precisa de avaliação da equipe; se houver risco imediato, procure um serviço de emergência.';
+        } else if (isPriceViolation && !priceContextActive) {
           // An unrequested price in the model draft is a safety failure, not a
           // customer request for pricing and not grounds for a human handoff.
           // Retry using only the active thread; discard stale actions/handoffs.
           result.handoff = false;
+          result.handoff_category = null;
           result.handoff_reason = null;
           if (result.intent === 'falar_com_responsavel' || result.intent === 'humano') result.intent = 'outro';
           result.tool_calls = [];
@@ -1121,17 +1091,9 @@ export async function handleClientMessage({
               ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
               : 'Preciso confirmar essa informação com a equipe antes de informar o preço; ainda não registrei a consulta e nenhuma cobrança foi gerada.';
           } else {
-            await triggerHandoff(s, {
-              reason: `resposta bloqueada pelo filtro de segurança (${filtered.violations.join(', ')})`,
-              urgency: filtered.violations.includes('clinica') ? 'urgente' : 'normal',
-              now: now(),
-              notify,
-              forceNotify: true,
-              identity
-            });
             safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
-              : 'Quero te orientar com segurança, por isso encaminhei sua mensagem para nossa equipe avaliar e responder com cuidado.');
+              : 'Não consigo orientar sobre esse ponto com segurança. Posso ajudar com outra dúvida ou você pode reformular o que precisa.');
           }
         }
       }
@@ -1213,7 +1175,7 @@ export async function handleClientMessage({
         }
       }
 
-      let toolCalls = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
+      let toolCalls = [...modelToolCalls];
       if (syntheticToolCalls.length > 0) {
         // Evita que uma tool_call repetida pela IA gere duas cobranças/agendamentos.
         toolCalls = toolCalls.filter(tc => !['gerar_cobranca_pix', 'checkout_infinitepay', 'gerenciar_agenda_google'].includes(tc?.name));
@@ -1466,11 +1428,7 @@ export async function handleClientMessage({
               if (tc.name === 'agendar_retorno_ou_followup') {
                 toolReplyOverride = toolRes?.success
                   ? toolRes.message
-                  : 'Não consegui confirmar o agendamento porque o lembrete não foi persistido. Vou pedir à equipe para verificar.';
-                if (!toolRes?.success) {
-                  result.handoff = true;
-                  result.handoff_reason = 'falha ao persistir lembrete do cliente';
-                }
+                  : 'Não consegui confirmar o retorno porque o lembrete não foi salvo. Ele não está agendado. Você pode me informar outro horário para tentar novamente?';
               }
               if (tc.name === 'gerenciar_agenda_google') {
                 if (toolRes?.success) {
@@ -1487,9 +1445,7 @@ export async function handleClientMessage({
                     toolReplyOverride = 'A consulta da agenda foi concluída, mas não encontrei compromissos ou horários disponíveis para esse período.';
                   }
                 } else {
-                  toolReplyOverride = toolRes?.message || 'Não consegui consultar a agenda agora. Vou encaminhar essa verificação para a equipe e evitar confirmar um horário sem validação.';
-                  result.handoff = true;
-                  result.handoff_reason = 'falha ao consultar Google Calendar';
+                  toolReplyOverride = toolRes?.message || 'Não consegui consultar a agenda agora, então ainda não posso confirmar horários. Podemos tentar novamente com outra data ou horário.';
                 }
               }
               if (tc.name === 'agendar_retorno_ou_followup') reminderHandledByTool = true;
@@ -1502,14 +1458,11 @@ export async function handleClientMessage({
                     botConfig,
                     deadline: aiDeadline
                   });
-                  toolReplyOverride = String(answerResult?.reply || '').trim() || 'N\u00e3o consegui responder com seguran\u00e7a. Vou encaminhar sua d\u00favida para a equipe.';
-                  if (!answerResult?.reply) {
+                  toolReplyOverride = String(answerResult?.reply || '').trim() || 'Não consegui confirmar esse detalhe com segurança. Pode reformular sua dúvida para eu tentar por outro caminho?';
+                  if (CLIENT_HANDOFF_CATEGORIES.has(answerResult?.handoff_category)) {
                     result.handoff = true;
-                    result.handoff_reason = 'knowledge_base_answer_unavailable';
-                  }
-                  if (answerResult?.handoff) {
-                    result.handoff = true;
-                    result.handoff_reason = answerResult.handoff_reason || 'knowledge_base_answer_handoff';
+                    result.handoff_category = answerResult.handoff_category;
+                    result.handoff_reason = answerResult.handoff_reason || 'handoff_decidido_na_sintese_da_base';
                   }
                 } else {
                   // Base de conhecimento sem correspondência: mantém a resposta natural da IA
@@ -1553,8 +1506,7 @@ export async function handleClientMessage({
                 }
               }
               if (toolRes?.handoffRequested) {
-                result.handoff = true;
-                result.handoff_reason = toolRes.motivo || `Transferência via tool ${tc.name}`;
+                logger.debug?.('[flow:tool] solicitação interna de roteamento retornada por:', tc.name);
               }
               if (tc.name === 'consultar_web') webSearchResult = toolRes;
               if (['gerenciar_drive_google', 'consultar_planilha_google'].includes(tc.name) && toolRes?.success) {
@@ -1564,19 +1516,13 @@ export async function handleClientMessage({
               logger.error?.(`[flow:tool] Falha em ${tc.name}; tipo: ${err?.name || 'Error'}`);
               if (tc.name === 'agendar_retorno_ou_followup') reminderHandledByTool = true;
               if (tc.name === 'consultar_base_conhecimento') {
-                toolReplyOverride = 'N\u00e3o consegui concluir essa a\u00e7\u00e3o com seguran\u00e7a. Vou encaminhar para a equipe.';
-                result.handoff = true;
-                result.handoff_reason = 'falha ao consultar a base de conhecimento';
+                toolReplyOverride = 'Não consegui consultar esse conteúdo agora. Posso tentar novamente ou você pode reformular a pergunta.';
               }
               if (tc.name === 'agendar_retorno_ou_followup') {
-                toolReplyOverride = 'Não consegui concluir essa ação com segurança. Vou encaminhar para a equipe.';
-                result.handoff = true;
-                result.handoff_reason = 'falha ao persistir lembrete do cliente';
+                toolReplyOverride = 'Não consegui salvar o lembrete, então ele não está agendado. Você pode me informar outro horário para tentar novamente?';
               }
               if (tc.name === 'gerenciar_agenda_google') {
-                toolReplyOverride = 'Não consegui consultar a agenda com segurança neste momento. Vou encaminhar essa verificação para a equipe.';
-                result.handoff = true;
-                result.handoff_reason = 'falha ao consultar Google Calendar';
+                toolReplyOverride = 'Não consegui consultar a agenda com segurança neste momento. Ainda não posso confirmar nenhum horário; podemos tentar novamente com outra data.';
               }
               if (tc.name === 'consultar_web') {
                 webSearchResult = { success: false, error: { code: 'WEB_SEARCH_EXECUTION_ERROR', message: err.message } };
@@ -1600,7 +1546,7 @@ export async function handleClientMessage({
           });
           toolReplyOverride = String(answerResult?.reply || '').trim() || `Não consegui concluir a pesquisa web com segurança.\n\nFontes:\n${sources || 'Nenhuma fonte retornada.'}`;
         } else {
-          toolReplyOverride = 'Não consegui consultar a web neste momento. Posso tentar novamente ou encaminhar sua dúvida para a equipe.';
+          toolReplyOverride = 'Não consegui consultar a web neste momento. Posso tentar novamente ou você pode reformular a dúvida.';
         }
       }
 
@@ -1711,7 +1657,7 @@ export async function handleClientMessage({
 
       if (!String(finalReply || '').trim() && hasPendingToolCalls) {
         const synthesized = await ai?.askAI?.({
-          system: `${systemPrompt}\n\n[SÍNTESE_FINAL_SEM_FERRAMENTAS]\nResponda diretamente ao cliente em texto natural e claro, sem chamar ferramentas. Se o recurso solicitado (como contrato ou documento interno) depender de ${owner}, explique de forma acolhedora que vai verificar com ${owner} e retornar por aqui.`,
+          system: `${systemPrompt}\n\n[SÍNTESE_FINAL_SEM_FERRAMENTAS]\nResponda diretamente ao cliente em texto natural e claro, sem chamar ferramentas. Se o recurso solicitado depender de acesso interno que não está disponível, explique que não conseguiu confirmar ou acessar o recurso; não prometa retorno ou contato humano.`,
           history: activeContext.history.slice(-contextTurns, -1),
           userText,
           botConfig,
@@ -1760,6 +1706,7 @@ export async function handleClientMessage({
         }
         safeReplyText = finalReply;
         result.handoff = false;
+        result.handoff_category = null;
         result.handoff_reason = null;
       }
 
@@ -1768,18 +1715,20 @@ export async function handleClientMessage({
         finalReply = safeReplyText;
       }
 
-      const cleanReplyForHint = String(finalReply || '').replace(/[*_~`]/g, '');
-      const ownerHint = identityNames(identity).map(normalize).filter(Boolean).map(escapeText).join('|') || 'responsavel|equipe';
-      const textHintsHandoff = new RegExp(`(?:ja avisei|avisei|ja notifiquei|notifiquei|ja acionei|acionei|ja chamei|chamei|ja encaminhei|encaminhei|vou encaminhar|ja transferi|estou transferindo|vou transferir|passei seu atendimento|repassei seu atendimento|dei um toque|alinhar com (?:o |a )?(?:${ownerHint})|falar direto com (?:o |a )?(?:${ownerHint})|colocar em contato com (?:o |a )?(?:${ownerHint})|(?:${ownerHint}) ja vai te responder|(?:${ownerHint}) vai te responder|notifiquei (?:a )?(?:${ownerHint})|encaminhei para (?:a )?(?:${ownerHint}))`, 'i').test(normalize(cleanReplyForHint));
-      const userDirectedToOwner = new RegExp(`(?:avisa|avise|notifica|notifique|fala|fale|passa|passe|repassa|repasse|pede|peca|pergunta|pergunte|lembra|lembre|diz|diga|chama|chame|aciona|acione)\\s+(?:para\\s+|pro\\s+|pra\\s+|ao\\s+|com\\s+|a\\s+)?(?:o\\s+|a\\s+)?(?:${ownerHint})\\b`, 'i').test(normalize(actionText));
-
-      if (!adminPixApprovalPending && !adminConsultPending && (pixFailureHandoff || result?.handoff || result?.intent === 'falar_com_responsavel' || textHintsHandoff || userDirectedToOwner)) {
+      const handoffCategory = CLIENT_HANDOFF_CATEGORIES.has(result?.handoff_category)
+        ? result.handoff_category
+        : null;
+      if (!adminPixApprovalPending && !adminConsultPending && (pixFailureHandoff || handoffCategory)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
-          (userDirectedToOwner ? `Assunto direcionado a ${owner}: "${clean.slice(0, 90)}"` :
-            (textHintsHandoff ? `Assunto encaminhado pela ${assistant} a ${owner}: "${clean.slice(0, 90)}"` : `sugerido pela ${assistant} pelo contexto`));
+          ({
+            financeiro: 'Solicitação financeira que exige validação humana',
+            reclamacao: 'Insatisfação com produto, serviço ou atendimento',
+            pedido_pessoa: 'Pedido explícito de atendimento humano',
+            emergencia: 'Situação de emergência identificada no contexto'
+          }[handoffCategory] || 'Solicitação exige atendimento humano');
         await triggerHandoff(s, {
           reason: handoffReason,
-          urgency: 'normal',
+          urgency: handoffCategory === 'emergencia' ? 'emergencia' : 'normal',
           now: now(),
           notify,
           identity

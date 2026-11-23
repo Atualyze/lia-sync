@@ -67,6 +67,7 @@ export const MODEL_CAPABILITIES = Object.freeze({
   }
 });
 
+// Dica lexical de complexidade para escolher tier/modelo. Nunca autoriza nem bloqueia ferramenta.
 const TOOL_INTENT_REGEX = /\b(?:agend\w*|marcar|marque|remarcar|compromisso|reuni[aã]o|hor[aá]rios?\s+livres?|minha\s+agenda|google\s+agenda|lembr\w*|follow-?up|retorno|transfer\w*|financeiro|comercial|suporte|setor|humano|atendente|lead|crm|ficha|cadastr\w*|est[aá]gio|envi(?:e|ar)|mand(?:e|ar)|dispar\w*|grav(?:e|ar)\s+(?:um\s+)?[aá]udio|(?:em|por)\s+[aá]udio|ger(?:e|ar)\s+(?:um\s+)?pdf|or[cç]amento|recibo|proposta|declara[cç][aã]o|boleto|segunda\s+via|pix|pagar|pagamento|checkout|infinitepay|comprovante|planilha|drive|cat[aá]logo|cep|cnpj|status|fila|sa[uú]de|comprar|plano|contrat\w*|cancel\w*|urgente|emerg\w*|reclam\w*)\b/i;
 
 const WEB_SEARCH_INTENT_REGEX = /\b(?:pesquis\w*|busc(?:a|ar)\s+na\s+web|consult(?:a|ar)\s+(?:na\s+)?web|na\s+internet|google|cota[cç][aã]o|d[oó]lar|euro|bitcoin|btc|selic|ipca|infla[cç][aã]o|ibovespa|not[ií]cias?\s+de|previs[aã]o\s+do\s+tempo|clima\s+hoje|feriado|cnpj\s+de|endere[cç]o\s+de|quem\s+(?:é|foi|ganhou)|resultado\s+do\s+jogo)\b/i;

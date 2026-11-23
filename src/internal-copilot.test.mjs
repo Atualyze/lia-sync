@@ -646,7 +646,7 @@ test('Áudio personalizado: Lia NUNCA envia o comando literal, gera prévia amig
   assert.match(confirmed, /Áudio gravado e enviado com sucesso/i);
 });
 
-test('Notificação ao Tauan: sempre notifica quando assunto é direcionado ao Tauan (mesmo com *Tauan* ou handoff anterior)', async () => {
+test('texto da resposta que menciona Tauan não cria handoff sem categoria autorizada', async () => {
   const store = createMockStore();
   const sLima = store.get('5585991099483');
   sLima.clientName = 'Lima';
@@ -664,7 +664,7 @@ test('Notificação ao Tauan: sempre notifica quando assunto é direcionado ao T
     },
     ai: {
       askAI: async () => ({
-        reply: 'Perfeito, Lima! Já acionei o *Tauan* para pegarmos o link atualizado do rastreio do site para você. 📲',
+        reply: 'Perfeito, Lima! Para localizar o rastreio do site, me informe o número do pedido ou o código de acompanhamento.',
         intent: 'duvida',
         handoff: false
       })
@@ -676,12 +676,9 @@ test('Notificação ao Tauan: sempre notifica quando assunto é direcionado ao T
     text: 'Preciso que mande o rastreio do site'
   });
 
-  assert.match(reply, /acionei o \*Tauan\*/);
-  assert.equal(sLima.human, true, 'Sessão deve entrar em modo humano');
-  assert.equal(notifications.length, 1, 'Tauan DEVE receber notificação no WhatsApp mesmo se handoffNotified antigo era true');
-  assert.equal(notifications[0].phone, '5588921694598');
-  assert.match(notifications[0].text, /Novo contato para você, Tauan/);
-  assert.match(notifications[0].text, /Lima/);
+  assert.match(reply, /número do pedido|código de acompanhamento/i);
+  assert.equal(sLima.human, false, 'Menção ao responsável não é, por si só, decisão de handoff');
+  assert.equal(notifications.length, 0, 'Texto livre do modelo não pode notificar nem transferir sem categoria autorizada');
 });
 
 test('Ajuste na prévia do áudio: converte 3ª pessoa ("ele") para 2ª pessoa ("você") e NUNCA dispara o feedback do Tauan pro cliente', async () => {

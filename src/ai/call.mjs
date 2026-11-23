@@ -49,6 +49,8 @@ function rawWithToolCalls(text, calls) {
     intent: parsed.intent || 'outro',
     red_flags: Boolean(parsed.red_flags),
     handoff: Boolean(parsed.handoff),
+    handoff_category: parsed.handoff_category || null,
+    needs_tool: Array.isArray(calls) && calls.length > 0,
     tool_calls: calls
   });
 }
@@ -577,9 +579,11 @@ export async function askAI(args) {
   const disableToolCalling = args?.disableToolCalling === true;
   const explicitDisableTools = disableToolCalling || args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
   const toolMode = !isSynthesisTurn && !disableToolCalling && (actor === 'owner' || !explicitDisableTools);
+  // O catálogo oferecido vem da allowlist do ator e das configurações publicadas, nunca de palavras-chave.
+  const permittedTools = toolMode ? getEnabledTools(args?.botConfig, { actor }) : [];
   const webOnlyFallback = !isSynthesisTurn && !disableToolCalling && !toolMode && args?.botConfig?.webSearch?.enabled !== false && shouldEnableGoogleSearch(args?.userText);
-  const toolDeclarations = toolMode
-    ? getEnabledTools(args?.botConfig, { actor })
+  const toolDeclarations = permittedTools.length
+    ? permittedTools
     : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
   const providerList = providers(args?.botConfig);
   let creditExhaustionProvider = null;
