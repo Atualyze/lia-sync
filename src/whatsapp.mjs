@@ -3,6 +3,7 @@ import { config } from './config.mjs';
 import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
+import { extractWhatsAppMessageContext } from './channels/message-context.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -74,6 +75,7 @@ export function parsePayload(data) {
   const d = data?.data || data;
   const key = d?.key || {};
   const message = d?.message || {};
+  const messageContext = extractWhatsAppMessageContext(message);
   const jid = String(key.remoteJid || d?.remoteJid || '');
   const alt = String(d.remoteJidAlt || d.senderPn || d.participantPn || key.remoteJidAlt || '');
   const lid = /@lid$/i.test(jid) ? jid : (/@lid$/i.test(alt) ? alt : '');
@@ -85,6 +87,7 @@ export function parsePayload(data) {
     message.imageMessage?.caption ||
     message.videoMessage?.caption ||
     message.documentMessage?.caption ||
+    messageContext.interactiveText ||
     d.content || '';
 
   let mediaType = null;
@@ -112,6 +115,7 @@ export function parsePayload(data) {
     text,
     nonText,
     mediaType,
+    contextText: messageContext.contextText,
     eventTimestamp: Number.isFinite(eventTimestamp) && eventTimestamp > 0 ? eventTimestamp : null,
     fromMe: Boolean(key.fromMe || d.fromMe),
     pushName: d.pushName || d.pushname || key.pushName || ''
