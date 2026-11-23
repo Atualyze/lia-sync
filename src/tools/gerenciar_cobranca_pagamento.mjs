@@ -199,6 +199,17 @@ export class InfinitePayOrderStore {
   }
 }
 
+
+export class SupabaseInfinitePayOrderStore {
+  constructor({ client, logger = console } = {}) { this.client = client; this.logger = logger; this.cache = new Map(); }
+  _row(o = {}) { return { order_nsu: String(o.orderNsu || '').trim(), status: String(o.status || 'pending'), conversation_id: o.conversationId || null, phone: String(o.phone || '').slice(0, 32), client_name: String(o.clientName || '').slice(0, 160), payment_method: String(o.paymentMethod || 'checkout').slice(0, 40), amount_cents: Number(o.amountCents || 0), paid_amount_cents: Number(o.paidAmountCents || 0), description: String(o.description || '').slice(0, 160), handle: String(o.handle || '').slice(0, 120), checkout_url: String(o.checkoutUrl || '').slice(0, 1000), payment_url: String(o.paymentUrl || '').slice(0, 1000), slug: String(o.slug || '').slice(0, 160), transaction_nsu: String(o.transactionNsu || '').slice(0, 160), capture_method: String(o.captureMethod || '').slice(0, 40), created_at: o.createdAt || new Date().toISOString(), paid_at: o.paidAt || null, metadata: { actor: String(o.actor || 'system').slice(0, 40), installments: Number(o.installments || 0) || null } }; }
+  _order(r) { if (!r) return null; return { orderNsu:r.order_nsu,status:r.status,conversationId:r.conversation_id,phone:r.phone,clientName:r.client_name,paymentMethod:r.payment_method,amountCents:r.amount_cents,paidAmountCents:r.paid_amount_cents,description:r.description,handle:r.handle,checkoutUrl:r.checkout_url,paymentUrl:r.payment_url,slug:r.slug,transactionNsu:r.transaction_nsu,captureMethod:r.capture_method,createdAt:r.created_at,paidAt:r.paid_at,...(r.metadata||{}) }; }
+  async recordOrder(o) { if (!this.client?.enabled || !o?.orderNsu) return null; const rows=await this.client.upsert('payment_orders',[this._row(o)],'order_nsu'); const saved=this._order(rows?.[0]||this._row(o)); this.cache.set(saved.orderNsu,saved); return saved; }
+  async getOrder(nsu) { const k=String(nsu||'').trim(); if(!k) return null; if(this.cache.has(k)) return this.cache.get(k); if(!this.client?.enabled) return null; const rows=await this.client.select('payment_orders',`select=*&order_nsu=eq.${encodeURIComponent(k)}&limit=1`); const v=this._order(rows?.[0]); if(v)this.cache.set(k,v); return v; }
+  async findLatestByPhone(phone) { const d=String(phone||'').replace(/\D/g,''); if(!d||!this.client?.enabled)return null; const rows=await this.client.select('payment_orders',`select=*&phone=eq.${encodeURIComponent(d)}&order=created_at.desc&limit=1`); const v=this._order(rows?.[0]); if(v)this.cache.set(v.orderNsu,v); return v; }
+  async markPaid(nsu,d={}) { const k=String(nsu||'').trim(); const old=await this.getOrder(k); if(!old||old.status==='paid')return old; const update={status:'paid',paid_amount_cents:Number(d.paidAmountCents||0),transaction_nsu:String(d.transactionNsu||old.transactionNsu||''),slug:String(d.slug||old.slug||''),capture_method:String(d.captureMethod||old.captureMethod||''),paid_at:d.paidAt||new Date().toISOString(),updated_at:new Date().toISOString()}; const rows=await this.client.patch('payment_orders',`order_nsu=eq.${encodeURIComponent(k)}&status=eq.pending`,update); const v=this._order(rows?.[0]||{...this._row(old),...update}); this.cache.set(k,v); return v; }
+}
+
 export const infinitePayOrders = new InfinitePayOrderStore();
 
 export function normalizeHandle(raw) {
@@ -351,6 +362,7 @@ export const toolGerenciarCobrancaPagamento = {
       quantidade: { type: 'NUMBER', description: 'Quantidade de itens do checkout, padrão 1.' },
       chavePix: { type: 'STRING', description: 'Chave Pix configurada; só pode ser informada pelo responsável.' },
       enviarWhatsApp: { type: 'BOOLEAN', description: 'Enviar QR Code ao destino configurado.' },
+      formato: { type: 'STRING', enum: ['chave_pix', 'copia_e_cola'], description: 'Formato escolhido pelo cliente para Pix.' },
       orderNsu: { type: 'STRING', description: 'Pedido a consultar.' },
       transactionNsu: { type: 'STRING', description: 'Identificador da transação.' },
       slug: { type: 'STRING', description: 'Slug da fatura.' }
@@ -363,7 +375,7 @@ export const toolGerenciarCobrancaPagamento = {
     const action = requestedAction === 'criar_link' ? 'criar_checkout' : requestedAction;
     const orderStore = context?.infinitePayOrders || infinitePayOrders;
     if (action === 'verificar_pagamento') {
-      const stored = args.orderNsu ? orderStore.getOrder(args.orderNsu) : orderStore.findLatestByPhone(context?.targetPhone || context?.phone);
+      const stored = args.orderNsu ? await orderStore.getOrder(args.orderNsu) : await orderStore.findLatestByPhone(context?.targetPhone || context?.phone);
       const nsu = String(args.orderNsu || stored?.orderNsu || '').trim();
       if (!nsu) return { success: false, error: 'order_nsu_not_found', message: 'Não encontrei um pedido para consultar.' };
       if (stored?.status === 'paid') return { success: true, action, paid: true, orderNsu: nsu, amount: stored.amountCents || 0, paidAmount: stored.paidAmountCents || stored.amountCents || 0, captureMethod: stored.captureMethod || 'pix' };
@@ -371,7 +383,7 @@ export const toolGerenciarCobrancaPagamento = {
       const expected = Number(stored?.amountCents || 0);
       const paidAmount = Number(check.paidAmount || check.amount || 0);
       if (check.paid && expected > 0 && paidAmount !== expected) return { success: true, action, paid: false, error: 'amount_mismatch', orderNsu: nsu, expectedAmount: expected, paidAmount };
-      if (check.paid) orderStore.markPaid(nsu, { paidAmountCents: paidAmount || expected, captureMethod: check.captureMethod, installments: check.installments });
+      if (check.paid) await orderStore.markPaid(nsu, { paidAmountCents: paidAmount || expected, captureMethod: check.captureMethod, installments: check.installments });
       return { success: true, action, orderNsu: nsu, ...check, paid: Boolean(check.paid && (!expected || paidAmount === expected)) };
     }
 
@@ -400,20 +412,21 @@ export const toolGerenciarCobrancaPagamento = {
       if (args.enviarWhatsApp !== false && validTarget && context?.whatsapp?.sendImage) {
         try { await context.whatsapp.sendImage(rawTarget, { dataUrl, mimetype: 'image/png', caption: `💳 *QR Code Pix* - R$ ${(amountCents / 100).toFixed(2).replace('.', ',')}${description ? ` (${description.slice(0, 40)})` : ''}` }); qrCodeSent = true; } catch {}
       }
-      return { success: true, action, pixCopiaECola: payload, paymentUrl, valor: amountCents / 100, amountCents, txid, favorecido: merchantName, qrCodeSent, qrCodeDataUrl: dataUrl };
+      await orderStore.recordOrder({ orderNsu: txid, phone: String(context?.targetPhone || context?.phone || '').replace(/\D/g, ''), clientName: context?.clientName || '', amountCents, description, paymentMethod: args.formato === 'chave_pix' ? 'pix_key' : 'pix_copy_paste', paymentUrl, actor: context?.actor || 'client' });
+      return { success: true, action, paymentMethod: args.formato === 'chave_pix' ? 'pix_key' : 'pix_copy_paste', ...(args.formato === 'chave_pix' ? { chavePix: pixKey } : { pixCopiaECola: payload, paymentUrl }), valor: amountCents / 100, amountCents, txid, favorecido: merchantName, qrCodeSent, ...(args.formato === 'chave_pix' ? {} : { qrCodeDataUrl: dataUrl }) };
     }
 
     if (!settings.handle && !settings.apiKey) return { success: false, error: 'infinitepay_not_configured', message: 'Configure o handle ou API Key do provedor na ferramenta unificada.' };
     const qty = Math.max(1, Math.round(Number(args.quantidade) || 1));
     const baseUrl = String(settings.publicBaseUrl || '').trim().replace(/\/webhook\/infinitepay\/?$/i, '').replace(/\/$/, '');
-    const created = await createInfinitePayLink({ handle: settings.handle, apiKey: settings.apiKey, items: [{ quantity: qty, price: Math.round(amountCents), description }], orderNsu: args.orderNsu, webhookUrl: baseUrl ? `${baseUrl}/webhook/infinitepay` : '', redirectUrl: settings.redirectUrl || '', customer: null, fetchImpl: context?.fetchImpl });
+    const created = await createInfinitePayLink({ handle: settings.handle, apiKey: settings.apiKey, items: [{ quantity: qty, price: Math.round(amountCents), description }], orderNsu: args.orderNsu, webhookUrl: baseUrl ? `${baseUrl}/webhook/infinitepay` : '', redirectUrl: settings.redirectUrl || '', customer: null, options: settings.paymentMethodsEnabled ? { payment_methods_enabled: settings.paymentMethodsEnabled } : undefined, fetchImpl: context?.fetchImpl });
     const targetPhone = String(context?.targetPhone || context?.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
     let paymentUrl = created.checkoutUrl;
     if (settings.pixKey) {
       const payload = buildPixPayload({ pixKey: settings.pixKey, keyType: settings.pixKeyType, amount: amountCents * qty / 100, merchantName, merchantCity, txid: created.orderNsu, description });
       paymentUrl = paymentUrlFor({ baseUrl: settings.paymentBaseUrl, payload, amountCents: amountCents * qty, merchantName, description, txid: created.orderNsu, checkoutUrl: created.checkoutUrl });
     }
-    orderStore.recordOrder({ orderNsu: created.orderNsu, handle: created.handle || settings.handle, slug: created.slug || '', checkoutUrl: created.checkoutUrl, paymentUrl, phone: targetPhone.length >= 8 ? targetPhone : '', clientName: context?.clientName || '', amountCents: amountCents * qty, description, actor: context?.actor || 'owner' });
+    await orderStore.recordOrder({ orderNsu: created.orderNsu, handle: created.handle || settings.handle, slug: created.slug || '', checkoutUrl: created.checkoutUrl, paymentUrl, phone: targetPhone.length >= 8 ? targetPhone : '', clientName: context?.clientName || '', amountCents: amountCents * qty, description, actor: context?.actor || 'owner', paymentMethod: 'checkout', conversationId: context?.session?._conversationId || null });
     return { success: true, action, checkoutUrl: created.checkoutUrl, paymentUrl, orderNsu: created.orderNsu, valor: (amountCents * qty) / 100, amountCents: amountCents * qty, descricao: description, handle: created.handle || settings.handle, webhookConfigured: Boolean(baseUrl) };
   }
 };

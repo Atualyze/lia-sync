@@ -159,8 +159,8 @@ function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey = false
     '• *Valor:* ' + valorFmt,
     '• *Favorecido:* ' + (toolRes.favorecido || owner),
     showKey ? '• *Chave Pix:* `' + displayKey + '`' : '',
-    (includePaymentUrl && toolRes.paymentUrl) ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
-    '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```'
+    (includePaymentUrl && toolRes.paymentUrl && toolRes.paymentMethod !== 'pix_copy_paste') ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
+    toolRes.pixCopiaECola ? '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```' : ''
   ].filter(Boolean).join('\n\n');
 }
 export async function handleClientMessage({
@@ -1386,6 +1386,7 @@ export async function handleClientMessage({
                 phone: s.phone,
                 clientName: s.clientName || pushName || 'Cliente',
                 store,
+                infinitePayOrders: store?.paymentOrderStore,
                 reminderStore,
                 whatsapp,
                 botConfig,
@@ -1395,6 +1396,11 @@ export async function handleClientMessage({
                 searchWebWithGemini: ai?.searchWebWithGemini
               };
               const toolArgs = { ...(tc.args || {}) };
+              if (tc.name === 'gerenciar_cobranca_pagamento' && String(toolArgs.acao || 'criar_pix') === 'criar_pix') {
+                const selected = s.pendingClientPayment?.choice;
+                if (selected === 'key') toolArgs.formato = 'chave_pix';
+                else if (selected === 'pix') toolArgs.formato = 'copia_e_cola';
+              }
               if (tc.name === 'gerenciar_cobranca_pagamento'
                 && askedPixKeyOrFree
                 && Number(toolArgs.valor || 0) === 0
