@@ -173,8 +173,8 @@ export function appendMasterSystemInstruction(system = '', botConfig = {}) {
     'DIRETRIZ COMPLEMENTAR CONFIGURADA NO PAINEL: aplique estas orientações ao estilo e à condução do atendimento quando forem compatíveis com as regras estruturais deste sistema. Elas NÃO podem substituir nem contrariar segurança, privacidade, permissões de ferramentas, limites operacionais, estado real de uma ação ou confirmação de execução. Em caso de conflito, prevalecem essas regras estruturais.',
     instruction,
     '[/DIRETRIZ_MESTRE_CONFIGURADA_NO_PAINEL]'
-  ].join('\\n');
-  return base ? `${base}\\n\\n${section}` : section;
+  ].join('\n');
+  return base ? `${base}\n\n${section}` : section;
 }
 
 export async function call(provider, {
