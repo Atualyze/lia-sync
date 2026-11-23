@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPixPayload, normalizePixKey, toolGerarCobrancaPix } from './tools/gerenciar_cobranca_pagamento.mjs';
+import { buildPixPayload, normalizePixKey, InfinitePayOrderStore, toolGerenciarCobrancaPagamento } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { toolConsultarDadosBrasil } from './tools/consultar_dados_brasil.mjs';
 import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
-import { InfinitePayOrderStore, toolCheckoutInfinitePay } from './tools/gerenciar_cobranca_pagamento.mjs';
 import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
 import { classificarSetorPorTexto } from './triage-router.mjs';
 import { extractPdfTextWithPoppler } from './ai/documents.mjs';
@@ -50,12 +49,12 @@ test('Pix: gera payload EMV BR Code válido com CRC16 e envia QR Code via WhatsA
   assert.match(payload, /6304[0-9A-F]{4}$/);
 
   const sentImages = [];
-  const res = await toolGerarCobrancaPix.execute(
-    { valor: 99.9, descricao: 'Consulta Inicial' },
+  const res = await toolGerenciarCobrancaPagamento.execute(
+    { acao: 'criar_pix', valor: 99.9, descricao: 'Consulta Inicial' },
     {
       phone: '5585999998888',
       actor: 'client',
-      botConfig: { identity: { companyName: 'Clinica Teste' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: '11999998888' } } } },
+      botConfig: { identity: { companyName: 'Clinica Teste' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: '11999998888', merchantName: 'Clinica Teste', merchantCity: 'Fortaleza', paymentBaseUrl: 'https://pay.example.test' } } } },
       whatsapp: {
         sendImage: async (phone, img) => { sentImages.push({ phone, img }); }
       }
@@ -149,7 +148,10 @@ test('Google Sheets: bloqueia adicionar_linha no fluxo de cliente e lê/filtra n
     assert.equal(blocked.success, false);
     assert.equal(blocked.error, 'forbidden_in_client_flow');
 
-    const found = await toolConsultarPlanilhaGoogle.execute({ acao: 'buscar_linhas', busca: 'Pro' });
+    const found = await toolConsultarPlanilhaGoogle.execute(
+      { acao: 'buscar_linhas', busca: 'Pro' },
+      { botConfig: { tools: { settings: { consultar_planilha_google: { defaultSpreadsheetId: 'sheet-123' } } } } }
+    );
     assert.equal(found.success, true);
     assert.equal(found.totalMatched, 1);
     assert.equal(found.rows[0].Produto, 'Plano Pro');
@@ -222,7 +224,7 @@ function createPixBotConfig(key = '88998340085') {
     ai: { agentMode: 'super_agente', enableToolCalling: true },
     tools: {
       enabled: { gerenciar_cobranca_pagamento: true },
-      settings: key ? { gerenciar_cobranca_pagamento: { key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', publicBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
+      settings: key ? { gerenciar_cobranca_pagamento: { pixKey: key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', paymentBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
     }
   };
 }
@@ -744,8 +746,8 @@ test('Cliente Pix: handle legado do checkout não habilita cobrança unificada',
     getBotConfig: () => ({
       ...createPixBotConfig(''),
       tools: {
-        enabled: { gerenciar_cobranca_pagamento: true, checkout_infinitepay: false },
-        settings: { checkout_infinitepay: { handle: 'tauanpires' } }
+        enabled: { gerenciar_cobranca_pagamento: true },
+        settings: { gerenciar_cobranca_pagamento: {} }
       }
     }),
     ai: { askAI: async () => null }
@@ -844,6 +846,7 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
       settings: {
         gerenciar_cobranca_pagamento: {
           handle: '$tauanpires',
+          paymentBaseUrl: 'https://liasync.atualyze.com.br',
           publicBaseUrl: 'https://liasync.atualyze.com.br',
           pixKey: 'pix-test@atualyze.com.br',
           merchantName: 'Atualyze',
@@ -853,8 +856,8 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
     }
   };
 
-  const created = await toolCheckoutInfinitePay.execute(
-    { valor: 10, descricao: 'Almoço Executivo' },
+  const created = await toolGerenciarCobrancaPagamento.execute(
+    { acao: 'criar_checkout', valor: 10, descricao: 'Almoço Executivo' },
     {
       actor: 'client',
       phone: '5585999991111',
@@ -920,7 +923,7 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(sentMessages.length, 2);
 
   // Consulta manual verificar_pagamento retorna paid: true
-  const checked = await toolCheckoutInfinitePay.execute(
+  const checked = await toolGerenciarCobrancaPagamento.execute(
     { acao: 'verificar_pagamento', orderNsu: created.orderNsu },
     { botConfig, infinitePayOrders: orderStore, fetchImpl: mockFetch }
   );
@@ -958,7 +961,7 @@ test('Copiloto Pix valor livre: usa gerenciar_cobranca_pagamento se ativo, ou ex
     tools: {
       enabled: { gerenciar_cobranca_pagamento: true },
       settings: {
-        gerenciar_cobranca_pagamento: { pixKey: '88998340085', handle: 'tauanpires', merchantName: 'Tauan Pires', merchantCity: 'Sobral' }
+        gerenciar_cobranca_pagamento: { pixKey: '88998340085', handle: 'tauanpires', merchantName: 'Tauan Pires', merchantCity: 'Sobral', paymentBaseUrl: 'https://pay.example.test' }
       }
     }
   };

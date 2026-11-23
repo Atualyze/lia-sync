@@ -80,7 +80,7 @@ test('gerenciar_codigo rejeita caminhos e atores inseguros antes de escrever', a
     acao: 'criar_pr',
     confirmar: true,
     arquivos: [{ caminho: '.env', conteudo: 'SECRET=x' }]
-  }, { actor: 'owner', githubToken: 'test-token' });
+  }, { actor: 'owner', githubToken: 'test-token', githubRepository: 'Atualyze/lia-sync' });
   assert.equal(invalidPath.success, false);
   assert.match(invalidPath.error, /caminho não permitido/i);
 });

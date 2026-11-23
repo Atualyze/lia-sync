@@ -60,6 +60,7 @@ export async function handleOwnerSession({
             isOwner: context.isOwner ?? true,
             operationsStore: context.operationsStore || operationsStore,
             liaRuntime: context.liaRuntime || liaRuntime,
+            githubRepository: context.githubRepository || adminConfig?.active?.integrations?.github?.repository,
             now,
             auditActorLabel: context.auditActorLabel || 'responsável'
           });

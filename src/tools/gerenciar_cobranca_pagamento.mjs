@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
-import { resolveIdentity } from '../core/identity.mjs';
 import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
 function tlv(id, value) {
@@ -317,13 +316,13 @@ function settingsFor(context = {}) {
   const settings = { ...unified };
   return {
     ...settings,
-    pixKey: settings.pixKey || settings.key || '',
-    pixKeyType: settings.pixKeyType || settings.keyType || 'auto',
-    merchantName: settings.merchantName || context?.botConfig?.integrations?.pix?.merchantName || resolveIdentity(context?.botConfig || {}).companyName || 'Atualyze',
-    merchantCity: settings.merchantCity || 'SAO PAULO',
+    pixKey: String(settings.pixKey || '').trim(),
+    pixKeyType: String(settings.pixKeyType || '').trim(),
+    merchantName: String(settings.merchantName || '').trim(),
+    merchantCity: String(settings.merchantCity || '').trim(),
     handle: normalizeHandle(settings.handle || ''),
     apiKey: String(settings.apiKey || '').trim(),
-    paymentBaseUrl: String(settings.paymentBaseUrl || settings.publicBaseUrl || 'https://pay.atualyze.com.br').replace(/\/$/, '')
+    paymentBaseUrl: String(settings.paymentBaseUrl || '').trim().replace(/\/$/, '')
   };
 }
 
@@ -388,6 +387,9 @@ export const toolGerenciarCobrancaPagamento = {
     if (isPix) {
       const pixKey = String((context?.actor !== 'client' && args.chavePix) || settings.pixKey).trim();
       if (!pixKey) return { success: false, error: 'pix_key_not_configured', message: 'Chave Pix não configurada na ferramenta unificada.' };
+      if (!settings.merchantName || !settings.merchantCity || !settings.paymentBaseUrl) {
+        return { success: false, error: 'pix_settings_incomplete', message: 'Configure no banco o nome, a cidade e a URL pública da cobrança Pix.' };
+      }
       const txid = String(args.txid || `LIA${Date.now().toString().slice(-8)}`).replace(/[^A-Za-z0-9]/g, '').slice(0, 25) || '***';
       const payload = buildPixPayload({ pixKey, keyType: settings.pixKeyType, amount: amountCents / 100, merchantName, merchantCity, txid, description });
       const dataUrl = await QRCode.toDataURL(payload, { width: 512, margin: 2 });
@@ -403,7 +405,7 @@ export const toolGerenciarCobrancaPagamento = {
 
     if (!settings.handle && !settings.apiKey) return { success: false, error: 'infinitepay_not_configured', message: 'Configure o handle ou API Key do provedor na ferramenta unificada.' };
     const qty = Math.max(1, Math.round(Number(args.quantidade) || 1));
-    const baseUrl = String(settings.publicBaseUrl || process.env.PUBLIC_BASE_URL || process.env.DASHBOARD_ORIGIN || '').trim().replace(/\/webhook\/infinitepay\/?$/i, '').replace(/\/$/, '');
+    const baseUrl = String(settings.publicBaseUrl || '').trim().replace(/\/webhook\/infinitepay\/?$/i, '').replace(/\/$/, '');
     const created = await createInfinitePayLink({ handle: settings.handle, apiKey: settings.apiKey, items: [{ quantity: qty, price: Math.round(amountCents), description }], orderNsu: args.orderNsu, webhookUrl: baseUrl ? `${baseUrl}/webhook/infinitepay` : '', redirectUrl: settings.redirectUrl || '', customer: null, fetchImpl: context?.fetchImpl });
     const targetPhone = String(context?.targetPhone || context?.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
     let paymentUrl = created.checkoutUrl;
@@ -417,23 +419,3 @@ export const toolGerenciarCobrancaPagamento = {
 };
 
 export { parseAmountCents };
-
-// Compatibilidade de importação durante a migração; estes nomes não entram em ALL_TOOLS.
-export const toolGerarCobrancaPix = {
-  ...toolGerenciarCobrancaPagamento,
-  name: 'gerar_cobranca_pix',
-  async execute(args = {}, context = {}) {
-    return toolGerenciarCobrancaPagamento.execute({ ...args, acao: 'criar_pix' }, context);
-  }
-};
-
-export const toolCheckoutInfinitePay = {
-  ...toolGerenciarCobrancaPagamento,
-  name: 'checkout_infinitepay',
-  async execute(args = {}, context = {}) {
-    return toolGerenciarCobrancaPagamento.execute({
-      ...args,
-      acao: args.acao === 'verificar_pagamento' ? 'verificar_pagamento' : 'criar_checkout'
-    }, context);
-  }
-};

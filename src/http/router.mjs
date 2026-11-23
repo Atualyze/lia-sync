@@ -224,7 +224,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (prospectingResult !== NOT_HANDLED) return prospectingResult;
     const runtimeResult = await handleDashboardRuntimeRoutes({ req, res, u, store, runtimeAI, readinessCheck, campaignStore, adminConfig, operationsStore, aiBudgetGate });
     if (runtimeResult !== NOT_HANDLED) return runtimeResult;
-    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore, copilotTaskStore, onAIConfigUpdated });
+    const liaEngineResult = await handleRuntimeDashboardRoutes({ req, res, u, authContext: req.dashboardAuth || {}, liaRuntime, liaLearning, liaAutonomy, apiSettingsStore, customProviderStore, baileysProvider, operationsStore, copilotTaskStore, onAIConfigUpdated, adminConfig });
     if (liaEngineResult !== NOT_HANDLED) return liaEngineResult;
     const webhookResult = await handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore, prospecting });
     if (webhookResult !== NOT_HANDLED) return webhookResult;

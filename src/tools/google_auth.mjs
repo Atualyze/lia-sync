@@ -1,18 +1,17 @@
 import crypto from 'node:crypto';
-import { config } from '../config.mjs';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const tokenCache = new Map();
 
 export function readGoogleCredentials(envPrefix = 'GOOGLE') {
-  const rawPrivateKey = config.googleServiceAccountPrivateKey || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '';
+  const rawPrivateKey = process.env[`${envPrefix}_SERVICE_ACCOUNT_PRIVATE_KEY`] || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '';
   return {
     accessToken: process.env[`${envPrefix}_ACCESS_TOKEN`] || process.env.GOOGLE_ACCESS_TOKEN || '',
     apiKey: process.env[`${envPrefix}_API_KEY`] || process.env.GOOGLE_API_KEY || '',
-    clientId: process.env[`${envPrefix}_CLIENT_ID`] || config.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env[`${envPrefix}_CLIENT_SECRET`] || config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || '',
-    refreshToken: process.env[`${envPrefix}_REFRESH_TOKEN`] || config.googleRefreshToken || process.env.GOOGLE_REFRESH_TOKEN || '',
-    serviceAccountEmail: config.googleServiceAccountEmail || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
+    clientId: process.env[`${envPrefix}_CLIENT_ID`] || process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env[`${envPrefix}_CLIENT_SECRET`] || process.env.GOOGLE_CLIENT_SECRET || '',
+    refreshToken: process.env[`${envPrefix}_REFRESH_TOKEN`] || process.env.GOOGLE_REFRESH_TOKEN || '',
+    serviceAccountEmail: process.env[`${envPrefix}_SERVICE_ACCOUNT_EMAIL`] || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
     serviceAccountPrivateKey: String(rawPrivateKey).replace(/\\n/g, '\n')
   };
 }

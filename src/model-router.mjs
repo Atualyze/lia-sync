@@ -142,10 +142,12 @@ export function decidirModeloPorContexto({
   isOwner = false,
   isSuperAgent = false,
   hasAttachments = false,
-  configuredModel = 'gemini-3.8-flash',
+  configuredModel = '',
   autoRoutingEnabled = true
 } = {}) {
   const ownerMode = Boolean(isOwner);
+  const publishedModel = String(configuredModel || '').trim();
+  const publishedMeta = MODEL_CAPABILITIES[publishedModel];
   const clean = String(userText || '').replace(/<\/?mensagem_do_cliente>/gi, '').trim();
   const lower = clean.toLowerCase();
   const capabilities = detectarCapacidadesExigidas({
@@ -175,18 +177,17 @@ export function decidirModeloPorContexto({
     const isDeepReasoning = DEEP_REASONING_REGEX.test(lower) || capabilities.includes('deep_reasoning');
     if (isDeepReasoning) {
       return {
-        model: 'gemini-pro-latest',
-        resolvedModel: 'gemini-2.5-pro',
+        model: publishedModel,
+        resolvedModel: publishedMeta?.resolvedModel || publishedModel,
         tier: 'pro',
         capabilities,
         thinkingBudget: 2048,
         reason: 'Copiloto: Análise profunda e raciocínio estratégico'
       };
     }
-    const flashModel = configuredModel || 'gemini-3.8-flash';
     return {
-      model: flashModel,
-      resolvedModel: MODEL_CAPABILITIES[flashModel]?.resolvedModel || 'gemini-2.5-flash',
+      model: publishedModel,
+      resolvedModel: publishedMeta?.resolvedModel || publishedModel,
       tier: 'flash',
       capabilities,
       thinkingBudget: 1024,
@@ -203,8 +204,8 @@ export function decidirModeloPorContexto({
 
   if (!needsFullFlashCapabilities && capabilities.includes('fast_chat')) {
     return {
-      model: 'gemini-3.1-flash-lite',
-      resolvedModel: 'gemini-3.1-flash-lite',
+        model: publishedModel,
+        resolvedModel: publishedMeta?.resolvedModel || publishedModel,
       tier: 'lite',
       capabilities,
       thinkingBudget: 0,
@@ -215,8 +216,8 @@ export function decidirModeloPorContexto({
   // 3. CASO SUPER AGENTE COM FERRAMENTAS / BUSCA WEB / CONSULTAS AO CRM / ATENDIMENTO COMPLETO
   if (isSuperAgent || needsFullFlashCapabilities) {
     return {
-      model: 'gemini-3.8-flash',
-      resolvedModel: 'gemini-2.5-flash',
+        model: publishedModel,
+        resolvedModel: publishedMeta?.resolvedModel || publishedModel,
       tier: 'flash',
       capabilities,
       thinkingBudget: capabilities.includes('deep_reasoning') ? 1536 : 1024,
@@ -225,10 +226,9 @@ export function decidirModeloPorContexto({
   }
 
   // 4. Padrão equilibrado (com raciocínio prévio antes de responder)
-  const defaultModel = configuredModel || 'gemini-3.8-flash';
   return {
-    model: defaultModel,
-    resolvedModel: MODEL_CAPABILITIES[defaultModel]?.resolvedModel || 'gemini-2.5-flash',
+    model: publishedModel,
+    resolvedModel: publishedMeta?.resolvedModel || publishedModel,
     tier: 'flash',
     capabilities,
     thinkingBudget: 512,

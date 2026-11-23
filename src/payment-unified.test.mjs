@@ -21,8 +21,8 @@ test('pagamento: catálogo expõe somente a ferramenta unificada', () => {
   assert.equal(ALL_TOOLS.filter(tool => tool.name === 'gerenciar_cobranca_pagamento').length, 1);
   assert.equal(ALL_TOOLS.some(tool => tool.name === 'gerar_cobranca_pix'), false);
   assert.equal(ALL_TOOLS.some(tool => tool.name === 'checkout_infinitepay'), false);
-  assert.equal(resolveToolName('gerar_cobranca_pix'), 'gerenciar_cobranca_pagamento');
-  assert.equal(resolveToolName('checkout_infinitepay'), 'gerenciar_cobranca_pagamento');
+  assert.notEqual(resolveToolName('gerar_cobranca_pix'), 'gerenciar_cobranca_pagamento');
+  assert.notEqual(resolveToolName('checkout_infinitepay'), 'gerenciar_cobranca_pagamento');
 });
 
 test('pagamento: rejeita valores negativos, zero, subcentavo e inválidos', async () => {

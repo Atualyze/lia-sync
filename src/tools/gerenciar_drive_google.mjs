@@ -1,6 +1,5 @@
 import { resolveGoogleAccessToken } from './google_auth.mjs';
 import { createGoogleHttp, GoogleHttpError } from './google_http.mjs';
-import { config } from '../config.mjs';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
@@ -33,7 +32,7 @@ export const toolGerenciarDriveGoogle = {
       },
       folderId: {
         type: 'STRING',
-        description: 'ID da pasta no Google Drive (opcional; usa GOOGLE_DRIVE_FOLDER_ID se omitido).'
+        description: 'ID da pasta no Google Drive (opcional; usa defaultFolderId publicado se omitido).'
       },
       modo: {
         type: 'STRING',
@@ -144,7 +143,7 @@ export const toolGerenciarDriveGoogle = {
 
     if (acao === 'listar_arquivos' || acao === 'buscar_arquivo') {
       const toolSettings = context?.botConfig?.tools?.settings?.gerenciar_drive_google || {};
-      const folderId = sanitizeQueryTerm(args.folderId || toolSettings.defaultFolderId || config.googleDriveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '');
+      const folderId = sanitizeQueryTerm(args.folderId || toolSettings.defaultFolderId || '');
       const search = sanitizeQueryTerm(args.busca || '');
       const clauses = ['trashed = false'];
       if (folderId) clauses.push(`'${folderId}' in parents`);

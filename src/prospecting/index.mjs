@@ -4,31 +4,27 @@ import { evaluateProspectGuards, isWithinBusinessWindow, computeWarmupDailyCap }
 import { runProspectingTick, renderFallbackTemplate } from './scheduler.mjs';
 import { handleInboundOptOut, isOptOutMessage } from './optout.mjs';
 
-export function createProspecting({ client = null, sender, campaignStore, sessionStore = null, adminConfig = null, env = process.env } = {}) {
+export function createProspecting({ client = null, sender, campaignStore, sessionStore = null, adminConfig = null } = {}) {
   const leadStore = new ProspectLeadStore({ client });
   let activeTick = null;
 
   const isEnabled = () => {
-    if (adminConfig?.active?.prospecting?.enabled !== undefined) {
-      return Boolean(adminConfig.active.prospecting.enabled);
-    }
-    return String(env.PROSPECTING_ENABLED || 'false').toLowerCase() === 'true';
+    return adminConfig?.active?.prospecting?.enabled === true;
   };
 
   const getRuntimeConfig = () => {
     const ui = adminConfig?.active?.prospecting || {};
-    const envWindow = String(env.PROSPECTING_WINDOW || '09:00-18:00').split('-');
     return {
-      timeZone: adminConfig?.active?.business?.hoursConfig?.timezone || adminConfig?.active?.business?.timezone || 'America/Sao_Paulo',
-      dailyCap: Number(ui.dailyCap ?? env.PROSPECTING_DAILY_CAP) || 20,
-      warmupDays: Number(ui.warmupDays ?? env.PROSPECTING_WARMUP_DAYS ?? 21),
-      windowStart: ui.windowStart || envWindow[0] || '09:00',
-      windowEnd: ui.windowEnd || envWindow[1] || '18:00',
-      minDelayMs: Number(ui.minDelayMs ?? env.PROSPECTING_MIN_DELAY_MS ?? 20000),
-      maxDelayMs: Number(ui.maxDelayMs ?? env.PROSPECTING_MAX_DELAY_MS ?? 90000),
-      maxAttempts: Number(ui.maxAttempts ?? env.PROSPECTING_MAX_ATTEMPTS ?? 3),
-      retryBaseMinutes: Number(ui.retryBaseMinutes ?? env.PROSPECTING_RETRY_BASE_MINUTES ?? 15),
-      defaultTemplate: ui.defaultTemplate || undefined
+      timeZone: adminConfig?.active?.business?.hoursConfig?.timezone || adminConfig?.active?.business?.timezone,
+      dailyCap: Number(ui.dailyCap),
+      warmupDays: Number(ui.warmupDays),
+      windowStart: ui.windowStart,
+      windowEnd: ui.windowEnd,
+      minDelayMs: Number(ui.minDelayMs),
+      maxDelayMs: Number(ui.maxDelayMs),
+      maxAttempts: Number(ui.maxAttempts),
+      retryBaseMinutes: Number(ui.retryBaseMinutes),
+      defaultTemplate: ui.defaultTemplate
     };
   };
 

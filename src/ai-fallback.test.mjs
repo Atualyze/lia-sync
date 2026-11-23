@@ -94,7 +94,8 @@ test('fallback: flash-lite com 503 cai para flash subsequente', async (t) => {
     botConfig: {
       ai: {
         activeProvider: 'gemini',
-        activeModel: 'gemini-3.8-flash',
+        activeModel: 'gemini-3.1-flash-lite',
+        fallbackModels: ['gemini-3.8-flash'],
         autoRouting: true
       }
     },

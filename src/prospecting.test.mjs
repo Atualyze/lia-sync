@@ -249,6 +249,18 @@ function mockRes() {
   };
 }
 
+test('prospecting: ambiente não habilita nem configura execução sem snapshot ativo', () => {
+  const previous = process.env.PROSPECTING_ENABLED;
+  process.env.PROSPECTING_ENABLED = 'true';
+  try {
+    const prospecting = createProspecting({ sender: async () => {}, campaignStore: {} });
+    assert.equal(prospecting.enabled, false);
+  } finally {
+    if (previous === undefined) delete process.env.PROSPECTING_ENABLED;
+    else process.env.PROSPECTING_ENABLED = previous;
+  }
+});
+
 test('prospecting routes & UI config: imports CSV, lists stats, toggles status, and reads adminConfig', async () => {
   const adminConfig = {
     active: {

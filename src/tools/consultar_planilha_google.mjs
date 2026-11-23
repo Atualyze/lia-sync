@@ -1,5 +1,4 @@
 import { resolveGoogleAccessToken } from './google_auth.mjs';
-import { config } from '../config.mjs';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
@@ -32,7 +31,7 @@ export const toolConsultarPlanilhaGoogle = {
       },
       spreadsheetId: {
         type: 'STRING',
-        description: 'ID da planilha do Google Sheets (opcional se GOOGLE_SHEETS_DEFAULT_ID estiver configurado).'
+        description: 'ID da planilha do Google Sheets (opcional se houver defaultSpreadsheetId publicado nas configurações da ferramenta).'
       },
       range: {
         type: 'STRING',
@@ -53,13 +52,17 @@ export const toolConsultarPlanilhaGoogle = {
 
   async execute(args = {}, context = {}) {
     const acao = String(args.acao || '').trim();
+    if (acao === 'adicionar_linha' && context?.actor === 'client') {
+      return {
+        success: false,
+        error: 'forbidden_in_client_flow',
+        message: 'Gravação em planilha é permitida apenas para o operador/proprietário.'
+      };
+    }
     const toolSettings = context?.botConfig?.tools?.settings?.consultar_planilha_google || {};
     const spreadsheetId = String(
       args.spreadsheetId ||
       toolSettings.defaultSpreadsheetId ||
-      context?.botConfig?.integrations?.googleSheets?.defaultSpreadsheetId ||
-      config.googleSheetsDefaultId ||
-      process.env.GOOGLE_SHEETS_DEFAULT_ID ||
       ''
     ).trim();
 
@@ -67,15 +70,7 @@ export const toolConsultarPlanilhaGoogle = {
       return {
         success: false,
         error: 'google_sheets_id_missing',
-        message: 'Informe o spreadsheetId ou configure GOOGLE_SHEETS_DEFAULT_ID.'
-      };
-    }
-
-    if (acao === 'adicionar_linha' && context?.actor === 'client') {
-      return {
-        success: false,
-        error: 'forbidden_in_client_flow',
-        message: 'Gravação em planilha é permitida apenas para o operador/proprietário.'
+        message: 'Informe o spreadsheetId ou publique tools.settings.consultar_planilha_google.defaultSpreadsheetId.'
       };
     }
 

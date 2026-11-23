@@ -228,7 +228,7 @@ test('NVIDIA NIM integrado como provedor nativo: roteamento, chamada OpenAI-comp
     config.nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
 
     assert.ok(available('nvidia'));
-    assert.equal(providerDefaultModel('nvidia', { provider: 'gemini', model: 'gemini-2.5-flash', fallbackModels: [] }), 'meta/llama-3.3-70b-instruct');
+    assert.equal(providerDefaultModel('nvidia', { provider: 'gemini', model: 'gemini-2.5-flash', fallbackModels: ['nvidia:meta/llama-3.3-70b-instruct'] }), 'meta/llama-3.3-70b-instruct');
     assert.deepEqual(parseFallbackModel('nvidia:meta/llama-3.3-70b-instruct'), {
       provider: 'nvidia',
       model: 'meta/llama-3.3-70b-instruct'

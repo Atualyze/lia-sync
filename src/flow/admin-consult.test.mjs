@@ -167,6 +167,8 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
   const prevSecret = config.googleClientSecret;
   const prevRefresh = config.googleRefreshToken;
   const prevToken = process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
+  const prevSheetsToken = process.env.GOOGLE_SHEETS_ACCESS_TOKEN;
+  const prevCalendarToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
   const prevFetch = globalThis.fetch;
 
   try {
@@ -174,12 +176,21 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
     config.googleClientSecret = 'test-client-secret';
     config.googleRefreshToken = 'test-refresh-token';
 
-    const tools = getEnabledTools({}, { actor: 'client' }).map(t => t.name);
+    process.env.GOOGLE_DRIVE_ACCESS_TOKEN = 'ya29.test-token';
+    process.env.GOOGLE_SHEETS_ACCESS_TOKEN = 'ya29.test-token';
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = 'ya29.test-token';
+    const activeConfig = {
+      tools: {
+        enabled: { gerenciar_drive_google: true, consultar_planilha_google: true, gerenciar_agenda_google: true },
+        settings: { gerenciar_agenda_google: { calendarId: 'calendar-123' } }
+      },
+      integrations: { googleCalendar: { enabled: true } }
+    };
+    const tools = getEnabledTools(activeConfig, { actor: 'client' }).map(t => t.name);
     assert.equal(tools.includes('gerenciar_drive_google'), true);
     assert.equal(tools.includes('consultar_planilha_google'), true);
     assert.equal(tools.includes('gerenciar_agenda_google'), true);
 
-    process.env.GOOGLE_DRIVE_ACCESS_TOKEN = 'ya29.test-token';
     globalThis.fetch = async (url) => {
       const sUrl = String(url);
       if (sUrl.includes('fields=id,name,mimeType,size')) {
@@ -206,6 +217,10 @@ test('Google Workspace hot-reload ativa Drive/Docs/Sheets/Agenda e ler_documento
     config.googleRefreshToken = prevRefresh;
     if (prevToken === undefined) delete process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
     else process.env.GOOGLE_DRIVE_ACCESS_TOKEN = prevToken;
+    if (prevSheetsToken === undefined) delete process.env.GOOGLE_SHEETS_ACCESS_TOKEN;
+    else process.env.GOOGLE_SHEETS_ACCESS_TOKEN = prevSheetsToken;
+    if (prevCalendarToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = prevCalendarToken;
     globalThis.fetch = prevFetch;
   }
 });

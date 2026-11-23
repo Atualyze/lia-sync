@@ -29,7 +29,8 @@ export async function handleRuntimeDashboardRoutes({
   baileysProvider,
   operationsStore,
   copilotTaskStore = null,
-  onAIConfigUpdated = null
+  onAIConfigUpdated = null,
+  adminConfig = null
 }) {
   const pathname = u.pathname;
   const isRuntimePath = pathname.startsWith('/api/dashboard/runtime');
@@ -60,7 +61,7 @@ export async function handleRuntimeDashboardRoutes({
     }
     if (req.method === 'GET' && pathname === '/api/dashboard/oauth/google/resources') {
       try {
-        const resources = await fetchGoogleWorkspaceResources();
+        const resources = await fetchGoogleWorkspaceResources({ botConfig: adminConfig?.active || {} });
         return json(res, 200, resources);
       } catch (error) {
         return json(res, 200, { connected: false, calendars: [], folders: [], spreadsheets: [], error: error?.message || 'google_resources_failed' });

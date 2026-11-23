@@ -170,7 +170,7 @@ export async function exchangeGoogleOAuthCode({
  * Busca recursos reais da conta Google conectada (agendas, pastas do Drive e planilhas)
  * para preencher os seletores visuais do painel sem o usuário precisar copiar IDs manualmente.
  */
-export async function fetchGoogleWorkspaceResources({ fetchImpl = globalThis.fetch } = {}) {
+export async function fetchGoogleWorkspaceResources({ fetchImpl = globalThis.fetch, botConfig = {} } = {}) {
   const token = await resolveGoogleAccessToken({
     scopes: [
       'https://www.googleapis.com/auth/calendar.readonly',
@@ -228,9 +228,9 @@ export async function fetchGoogleWorkspaceResources({ fetchImpl = globalThis.fet
     folders,
     spreadsheets,
     selected: {
-      googleCalendarId: config.googleCalendarId || process.env.GOOGLE_CALENDAR_ID || 'primary',
-      googleDriveFolderId: config.googleDriveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '',
-      googleSheetsDefaultId: config.googleSheetsDefaultId || process.env.GOOGLE_SHEETS_DEFAULT_ID || ''
+      googleCalendarId: botConfig?.tools?.settings?.gerenciar_agenda_google?.calendarId || botConfig?.integrations?.googleCalendar?.calendarId || '',
+      googleDriveFolderId: botConfig?.tools?.settings?.gerenciar_drive_google?.defaultFolderId || '',
+      googleSheetsDefaultId: botConfig?.tools?.settings?.consultar_planilha_google?.defaultSpreadsheetId || ''
     }
   };
 }

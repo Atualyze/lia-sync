@@ -427,11 +427,11 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     logger: console
   });
   const runtimeAI = () => {
-    const provider = adminConfig.active.ai?.activeProvider || (config.geminiKey ? 'gemini' : (config.openrouterKey ? 'openrouter' : 'gemini'));
-    const model = adminConfig.active.ai?.activeModel || (provider === 'gemini' ? 'gemini-3.8-flash' : 'nvidia/nemotron-3.5-lightning:free');
-    const fallbackModels = (Array.isArray(adminConfig.active.ai?.fallbackModels) && adminConfig.active.ai.fallbackModels.length)
+    const provider = String(adminConfig.active.ai?.activeProvider || '').trim();
+    const model = String(adminConfig.active.ai?.activeModel || '').trim();
+    const fallbackModels = Array.isArray(adminConfig.active.ai?.fallbackModels)
       ? adminConfig.active.ai.fallbackModels
-      : ['nvidia/nemotron-3.5-lightning:free'];
+      : [];
     return { provider, model, fallbackModels };
   };
   const integrationsStore = new IntegrationsStore({ client: supabaseRuntime.client });

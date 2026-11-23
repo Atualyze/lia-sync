@@ -4,20 +4,20 @@ import { getCustomProvider, listCustomProviders } from './custom-providers.mjs';
 
 export function resolveAIConfig(botConfig = {}) {
   const ai = botConfig?.ai || botConfig || {};
-  const provider = String(ai.activeProvider || ai.provider || config.defaultProvider || 'gemini').toLowerCase();
+  const provider = String(ai.activeProvider || ai.provider || '').toLowerCase();
   const rawModel = typeof ai.activeModel === 'string' && ai.activeModel.trim()
     ? ai.activeModel.trim()
-    : (typeof ai.model === 'string' && ai.model.trim() ? ai.model.trim() : (config.defaultModel || 'gemini-3.8-flash'));
+    : (typeof ai.model === 'string' && ai.model.trim() ? ai.model.trim() : '');
   const fallbackModels = [...new Set((Array.isArray(ai.fallbackModels) ? ai.fallbackModels : [])
     .filter(model => typeof model === 'string')
     .map(model => model.trim())
     .filter(model => model && model !== rawModel))].slice(0, 3);
   return {
-    provider: provider || 'gemini',
-    model: rawModel || 'gemini-3.8-flash',
+    provider,
+    model: rawModel,
     fallbackModels,
     openrouterFreeOnly: ai.openrouterFreeOnly !== false,
-    maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || config.aiMaxOutputTokens || 2048),
+    maxOutputTokens: Math.max(2048, Number(ai.maxOutputTokens) || 2048),
     structuredOutputs: ai.structuredOutputs === true,
     requireParameters: ai.requireParameters === true
   };
@@ -274,10 +274,6 @@ export function providerDefaultModel(provider, aiConfig, fixedModel) {
   if (provider === aiConfig.provider) return aiConfig.model;
   const configuredFallback = fallbackModelsForProvider(aiConfig, provider)[0];
   if (configuredFallback) return configuredFallback;
-  if (provider === 'openrouter') return 'nvidia/nemotron-3.5-lightning:free';
-  if (provider === 'groq') return 'llama-3.3-70b-versatile';
-  if (provider === 'nvidia') return 'meta/llama-3.3-70b-instruct';
-  if (provider === 'cloudflare') return '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
   const custom = getCustomProvider(provider);
   if (custom?.defaultModel) return custom.defaultModel;
   return '';

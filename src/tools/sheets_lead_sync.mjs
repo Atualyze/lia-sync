@@ -1,4 +1,3 @@
-import { config } from '../config.mjs';
 import { isOwnerKey } from '../core/identity.mjs';
 import { isToolEnabled } from './index.mjs';
 import { toolConsultarPlanilhaGoogle } from './consultar_planilha_google.mjs';
@@ -22,7 +21,7 @@ function formatBrtDateTime(ms = Date.now(), timezone = 'America/Sao_Paulo') {
 
 /**
  * Registra automaticamente leads qualificados, agendamentos confirmados e transbordos
- * na aba `Leads` da planilha padrão do Google Sheets (`googleSheetsDefaultId`).
+ * na aba `Leads` da planilha padrão publicada em `tools.settings.consultar_planilha_google.defaultSpreadsheetId`.
  * - Best-effort (nunca bloqueia nem quebra o atendimento ao cliente)
  * - Ignora simulações e chat interno do dono
  * - Deduplica o mesmo (estágio + interesse) na janela de 6 horas por contato
@@ -46,9 +45,7 @@ export async function syncLeadToGoogleSheet({
     return { synced: false, reason: 'tool_disabled' };
   }
   const spreadsheetId = String(
-    config.googleSheetsDefaultId ||
-    process.env.GOOGLE_SHEETS_DEFAULT_ID ||
-    botConfig?.integrations?.googleSheets?.defaultSpreadsheetId ||
+    botConfig?.tools?.settings?.consultar_planilha_google?.defaultSpreadsheetId ||
     ''
   ).trim();
   if (!spreadsheetId) {

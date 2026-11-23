@@ -1,4 +1,4 @@
-import { config } from '../config.mjs';
+import { readGoogleCredentials } from './google_auth.mjs';
 import { toolConsultarContato } from './consultar_contato.mjs';
 import { toolAgendarRetorno } from './agendar_retorno.mjs';
 import { toolTransferirSetor } from './transferir_setor.mjs';
@@ -20,6 +20,16 @@ import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs
 import { toolGerenciarGmailGoogle } from './gerenciar_gmail_google.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
+  gerenciar_agenda_google: [
+    { key: 'calendarId', label: 'ID da agenda Google', type: 'text', placeholder: 'ID publicado da agenda autorizada' }
+  ],
+  consultar_planilha_google: [
+    { key: 'defaultSpreadsheetId', label: 'Planilha padrão', type: 'text', placeholder: 'ID publicado da planilha' },
+    { key: 'defaultRange', label: 'Intervalo padrão', type: 'text', placeholder: 'Ex.: Leads!A:Z' }
+  ],
+  gerenciar_drive_google: [
+    { key: 'defaultFolderId', label: 'Pasta padrão do Drive', type: 'text', placeholder: 'ID publicado da pasta' }
+  ],
   gerenciar_cobranca_pagamento: [
     { key: 'pixKey', label: 'Chave Pix', type: 'text', placeholder: 'CPF/CNPJ, e-mail, telefone ou chave aleatória' },
     { key: 'pixKeyType', label: 'Tipo da Chave Pix', type: 'text', placeholder: 'auto (ou telefone, cpf, cnpj, email, aleatoria)' },
@@ -68,8 +78,6 @@ const TOOL_NAME_ALIASES = {
   google_gmail: 'gerenciar_gmail_google',
   gmail: 'gerenciar_gmail_google',
   consultar_cep_cnpj: 'consultar_dados_brasil',
-  gerar_cobranca_pix: 'gerenciar_cobranca_pagamento',
-  checkout_infinitepay: 'gerenciar_cobranca_pagamento',
 };
 
 export function resolveToolName(toolName) {
@@ -89,29 +97,33 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
 ]);
 export const isClientToolAllowed = (toolName) => CLIENT_ALLOWED_TOOL_NAMES.has(resolveToolName(toolName));
 
-export function hasGoogleWorkspaceCredentials() {
+export function hasGoogleWorkspaceCredentials(envPrefix = 'GOOGLE') {
+  const credentials = readGoogleCredentials(envPrefix);
   return Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-    || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-    || (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey)
-    || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
-    || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
-    || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
-    || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
-    || process.env.GOOGLE_GMAIL_ACCESS_TOKEN
-    || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
-    || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
+    credentials.accessToken
+    || (credentials.clientId && credentials.clientSecret && credentials.refreshToken)
+    || (credentials.serviceAccountEmail && credentials.serviceAccountPrivateKey)
   );
 }
 
 export function isToolConfigured(toolName, botConfig = {}) {
   const canonical = resolveToolName(toolName);
-  if (canonical === 'gerenciar_drive_google' || canonical === 'consultar_planilha_google' || canonical === 'gerenciar_gmail_google') {
-    return hasGoogleWorkspaceCredentials();
+  if (canonical === 'gerenciar_drive_google') {
+    return hasGoogleWorkspaceCredentials('GOOGLE_DRIVE');
+  }
+  if (canonical === 'consultar_planilha_google') {
+    return hasGoogleWorkspaceCredentials('GOOGLE_SHEETS');
+  }
+  if (canonical === 'gerenciar_gmail_google') {
+    return hasGoogleWorkspaceCredentials('GOOGLE_GMAIL');
   }
   if (canonical === 'gerenciar_agenda_google') {
-    return hasGoogleWorkspaceCredentials()
-      || botConfig?.integrations?.googleCalendar?.showMockSlotsWhenUnavailable === true;
+    const calendar = botConfig?.integrations?.googleCalendar || {};
+    const calendarId = botConfig?.tools?.settings?.gerenciar_agenda_google?.calendarId || calendar.calendarId;
+    return Boolean(calendar.enabled !== false && calendarId && (
+      hasGoogleWorkspaceCredentials('GOOGLE_CALENDAR')
+      || calendar.showMockSlotsWhenUnavailable === true
+    ));
   }
   return true;
 }

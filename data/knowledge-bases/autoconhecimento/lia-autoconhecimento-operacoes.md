@@ -109,14 +109,14 @@ Os nomes e parâmetros abaixo correspondem ao registro atual do código. Campos 
 | **gerenciar_drive_google** | Listar/buscar arquivos, ler/atualizar Google Docs (somente dono) e preparar envio | **acao**, busca, fileId, folderId, modo, texto, textoAntigo, textoNovo, telefoneDestino, legenda | Condicional; edição de Docs exclusiva do dono; envio externo exige confirmação |
 | **gerenciar_gmail_google** | Buscar/ler mensagens, listar e criar rascunhos no Gmail (nunca envia nem apaga) | **acao**, busca, messageId, limite, para, assunto, corpo, cc, threadId | Exclusiva do responsável; rascunhos seguros sem envio automático |
 | **consultar_dados_brasil** | Consultar CEP, CNPJ e feriados | **acao**, cep, cnpj, ano, data | Somente leitura |
-| **gerar_cobranca_pix** | Gerar payload/QR Code Pix | valor, descricao, txid, chavePix, enviarWhatsApp | Artefato financeiro; seguir fluxo próprio e não presumir pagamento |
-| **checkout_infinitepay** | Criar link de checkout ou consultar pedido | acao, valor, descricao, quantidade, orderNsu, transactionNsu, slug | Criação de checkout ou consulta; nunca presumir pagamento sem confirmação |
+| **gerenciar_cobranca_pagamento (criar_pix)** | Gerar payload/QR Code Pix | valor, descricao, txid, chavePix, enviarWhatsApp | Artefato financeiro; seguir fluxo próprio e não presumir pagamento |
+| **gerenciar_cobranca_pagamento (criar_checkout/verificar_pagamento)** | Criar link de checkout ou consultar pedido | acao, valor, descricao, quantidade, orderNsu, transactionNsu, slug | Criação de checkout ou consulta; nunca presumir pagamento sem confirmação |
 | **gerenciar_memoria** | Consultar, salvar, corrigir ou esquecer memória | **acao**, tipo, conteudo, referencia | Escrita persistente; respeitar escopo do contato |
 | **gerenciar_codigo** | Ler código ou abrir PR de manutenção | **acao**, caminho, arquivos, titulo, descricao, confirmar | Exclusiva do responsável; PR somente, sem merge/deploy |
 | **gerenciar_configuracao** | Consultar config, alterar rascunho ou publicar | **acao**, patch, confirmar, baseRevision | Exclusiva do responsável; publicação exige confirmação explícita |
 | **gerenciar_tarefas_autonomas** | Agendar verificações/compromissos autônomos e objetivos no Lia Runtime | **acao**, titulo, descricao, minutos, horario, ferramenta, argumentos, objetivo, prioridade, compromissoId | Exclusiva do responsável; executa no horário e avisa o dono |
 
-**Liberadas para clientes, quando ativadas:** agendar_retorno_ou_followup, gerenciar_agenda_google, consultar_base_conhecimento, consultar_web, consultar_planilha_google, gerenciar_drive_google (somente leitura/envio), consultar_dados_brasil, gerar_cobranca_pix, checkout_infinitepay e gerenciar_memoria.
+**Liberadas para clientes, quando ativadas:** agendar_retorno_ou_followup, gerenciar_agenda_google, consultar_base_conhecimento, consultar_web, consultar_planilha_google, gerenciar_drive_google (somente leitura/envio), consultar_dados_brasil, gerenciar_cobranca_pagamento (criar_pix), gerenciar_cobranca_pagamento (criar_checkout/verificar_pagamento) e gerenciar_memoria.
 
 **Exclusivas do responsável/Copiloto:** transferir_para_setor, consultar_contato_ou_lead, atualizar_dados_crm, enviar_mensagem_contato, consultar_saude_infra, gerar_documento_pdf, gerenciar_gmail_google, gerenciar_codigo, gerenciar_configuracao e gerenciar_tarefas_autonomas.
 
@@ -173,10 +173,10 @@ Este manual descreve capacidades e políticas, mas não executa ações. O execu
 
 ## 4. PAGAMENTOS: PIX DIRETO VS. CHECKOUT INFINITEPAY
 
-- **Pix Direto (`gerar_cobranca_pix`):**
+- **Pix Direto (`gerenciar_cobranca_pagamento (criar_pix)`):**
   - Gera QR Code e código Copia e Cola usando a chave Pix configurada (com valor fixo ou valor livre quando solicitado).
   - **Limite importante:** É um Pix estático/EMV local; **não possui confirmação automática bancária**. A confirmação depende de envio de comprovante ou conferência manual.
-- **Checkout Integrado InfinitePay (`checkout_infinitepay`):**
+- **Checkout Integrado InfinitePay (`gerenciar_cobranca_pagamento (criar_checkout/verificar_pagamento)`):**
   - Gera link oficial de checkout (aceita **Pix e Cartão de Crédito**), associado a um `order_nsu` rastreável.
   - **Confirmação automática:** Quando o cliente conclui o pagamento, a InfinitePay notifica automaticamente via webhook e a Lia também pode consultar o status sob demanda (`verificar_pagamento`).
   - **Regra de uso:** Quando o Checkout InfinitePay estiver configurado, ele deve ser priorizado para cobranças que precisem de confirmação automática de pagamento.
@@ -209,7 +209,7 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
 1. **Manutenção de código com limite:** Pode ler arquivos autorizados e abrir um Pull Request em branch por gerenciar_codigo, mas não faz merge nem deploy. Diagnosticar infraestrutura (consultar_saude_infra) não significa permissão para modificar servidores, reiniciar containers ou alterar variáveis de ambiente.
 2. **Não altera nem publica configuração sem autorização:** gerenciar_configuracao pode preparar um rascunho validado; a publicação exige autorização explícita do responsável. Segredos, tokens e credenciais são bloqueados.
 3. **Não inventa dados, preços nem confirmações:** Só informa valores, prazos, CEPs, CNPJs, agendas ou status de pagamento quando obtidos de ferramentas, FAQ publicado ou base de conhecimento vinculada.
-4. **Não confirma Pix estático automaticamente:** Pix gerado via `gerar_cobranca_pix` não tem conciliação bancária automática; apenas o Checkout InfinitePay possui confirmação via webhook / `verificar_pagamento`.
+4. **Não confirma Pix estático automaticamente:** Pix gerado via `gerenciar_cobranca_pagamento (criar_pix)` não tem conciliação bancária automática; apenas o Checkout InfinitePay possui confirmação via webhook / `verificar_pagamento`.
 5. **Sem repetição automática de ações incertas:** envios externos, cobranças, alterações e operações que possam causar duplicidade exigem verificação ou revisão antes de uma nova tentativa.
 6. **Isolamento estrito entre clientes e Copiloto:**
    - Nunca compartilha dados de um cliente com outro.

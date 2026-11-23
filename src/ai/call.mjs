@@ -195,25 +195,12 @@ export async function call(provider, {
     : (system || '');
 
   if (provider === 'gemini') {
-    // Modelo fixo: tenta ele e, apenas se for alias legado inexistente (404), permite equivalente 2.5
-    // Modelo preferido: tenta o roteado e depois a cadeia padrão
-    const LEGACY_GEMINI_EQUIVALENT = {
-      'gemini-3.8-flash': 'gemini-2.5-flash',
-      'gemini-3.5-flash-lite': 'gemini-3.1-flash-lite',
-      'gemini-2.5-flash-lite': 'gemini-3.1-flash-lite'
-    };
     const geminiFixed = fixedModel && String(fixedModel).startsWith('gemini-') ? fixedModel : null;
     const candidateModels = (geminiFixed
-      ? [geminiFixed, LEGACY_GEMINI_EQUIVALENT[geminiFixed]].filter(Boolean)
+      ? [geminiFixed]
       : [
-          preferredModel || legacyModel,
-          LEGACY_GEMINI_EQUIVALENT[preferredModel || legacyModel],
-          (runtime.model && runtime.model.startsWith('gemini-') && runtime.model !== 'gemini-1.5-flash') ? runtime.model : null,
-          LEGACY_GEMINI_EQUIVALENT[runtime.model],
-          ...(runtime.fallbackModels.length
-            ? runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')).slice(0, 3)
-            : []),
-          'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash'
+          preferredModel || runtime.model,
+          ...runtime.fallbackModels.filter(m => typeof m === 'string' && m.startsWith('gemini-')).slice(0, 3)
         ]
     )
       .filter(Boolean)
@@ -291,10 +278,10 @@ export async function call(provider, {
   }
 
   if (provider === 'cloudflare') {
-    const cfDefault = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-    const model = fixedModel || preferredModel || legacyModel || cfDefault;
+    const model = fixedModel || preferredModel || legacyModel;
     const sameProviderFallbacks = provider === runtime.provider ? fallbackModelsForProvider(runtime, provider) : [];
-    const candidateModels = [...new Set([model, ...sameProviderFallbacks, cfDefault].filter(c => typeof c === 'string' && c.trim()))].slice(0, 4);
+    const candidateModels = [...new Set([model, ...sameProviderFallbacks].filter(c => typeof c === 'string' && c.trim()))].slice(0, 4);
+    if (!candidateModels.length) throw new Error('cloudflare_model_not_published');
     const headers = { 'content-type': 'application/json', Authorization: `Bearer ${config.cloudflareApiToken}` };
     let lastError = null;
     for (const candidateModel of candidateModels) {
@@ -356,7 +343,7 @@ export async function call(provider, {
 
   // Provedores não-Gemini (built-ins OpenAI-compatible e provedores customizados)
   const customProv = getCustomProvider(provider);
-  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || (provider === 'openrouter' ? 'nvidia/nemotron-3.5-lightning:free' : provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'nvidia' ? 'meta/llama-3.3-70b-instruct' : '');
+  const model = fixedModel || preferredModel || legacyModel || customProv?.defaultModel || '';
   const base = customProv ? customProv.baseUrl : (provider === 'groq' ? config.groqBaseUrl : provider === 'nvidia' ? config.nvidiaBaseUrl : provider === 'openrouter' ? config.openrouterBaseUrl : provider === 'qwen' ? config.qwenBaseUrl : 'https://api.openai.com/v1');
   const key = customProv ? customProv.apiKey : (provider === 'groq' ? config.groqKey : provider === 'nvidia' ? config.nvidiaKey : provider === 'openrouter' ? config.openrouterKey : provider === 'qwen' ? config.qwenKey : config.openaiKey);
   const headers = { 'content-type': 'application/json', Authorization: `Bearer ${key}` };
@@ -624,7 +611,7 @@ export async function askAI(args) {
           maxOutputTokens: aiConfig.maxOutputTokens
         },
         fixedModel: provider === 'gemini' ? (fixedModel?.startsWith('gemini-') ? fixedModel : null) : providerModel,
-        preferredModel: provider === 'gemini' ? (preferredModel?.startsWith('gemini-') ? preferredModel : (providerDefaultModel('gemini', aiConfig, null) || 'gemini-3.8-flash')) : null
+        preferredModel: provider === 'gemini' ? (preferredModel?.startsWith('gemini-') ? preferredModel : providerDefaultModel('gemini', aiConfig, null)) : null
       });
       if (res?.raw) {
         const parsed = parseAIResponse(res.raw);
@@ -645,7 +632,7 @@ export async function askAI(args) {
         await recordAICall({
           requestId: res.budgetPermit?.requestId || null,
           provider,
-          model: res.model || providerModel || preferredModel || 'gemini-3.8-flash',
+          model: res.model || providerModel || preferredModel || '',
           latencyMs: Date.now() - start,
           promptTokens: res.tokens?.promptTokens,
           completionTokens: res.tokens?.completionTokens,

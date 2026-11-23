@@ -652,9 +652,6 @@ test('Google OAuth2 (estilo n8n) - gera authUrl com escopos escolhidos, valida s
 
 test('Auto-registro de Leads no Google Sheets - grava na aba Leads!A:G, deduplica 6h e ignora simulação/dono', async () => {
   const { syncLeadToGoogleSheet } = await import('./tools/sheets_lead_sync.mjs');
-  const { config } = await import('./config.mjs');
-  const prevSheet = config.googleSheetsDefaultId;
-  config.googleSheetsDefaultId = 'sheet-demo-123';
   try {
     const appended = [];
     const executeAppend = async (args) => {
@@ -662,7 +659,8 @@ test('Auto-registro de Leads no Google Sheets - grava na aba Leads!A:G, deduplic
       return { success: true, updatedRange: 'Leads!A2:G2' };
     };
     const session = { phone: '5588999991234', clientName: 'Carlos', origin: 'real', contextSummary: 'Automação WhatsApp' };
-    const r1 = await syncLeadToGoogleSheet({ session, stage: 'Agendado', interest: 'Diagnóstico 30 min', executeAppend });
+    const botConfig = { tools: { enabled: { consultar_planilha_google: true }, settings: { consultar_planilha_google: { defaultSpreadsheetId: 'sheet-demo-123' } } } };
+    const r1 = await syncLeadToGoogleSheet({ session, stage: 'Agendado', interest: 'Diagnóstico 30 min', botConfig, executeAppend });
     assert.equal(r1.synced, true);
     assert.equal(appended.length, 1);
     assert.equal(appended[0].range, 'Leads!A:G');
@@ -670,16 +668,14 @@ test('Auto-registro de Leads no Google Sheets - grava na aba Leads!A:G, deduplic
     assert.equal(appended[0].valores[4], 'Agendado');
 
     // Deduplicação: mesmo estágio + interesse na janela de 6h não duplica
-    const r2 = await syncLeadToGoogleSheet({ session, stage: 'Agendado', interest: 'Diagnóstico 30 min', executeAppend });
+    const r2 = await syncLeadToGoogleSheet({ session, stage: 'Agendado', interest: 'Diagnóstico 30 min', botConfig, executeAppend });
     assert.equal(r2.synced, false);
     assert.equal(r2.reason, 'deduped');
     assert.equal(appended.length, 1);
 
     // Simulação nunca grava na planilha real
-    const simRes = await syncLeadToGoogleSheet({ session: { phone: 'sim:5588999991234', origin: 'simulation' }, stage: 'Qualificado', executeAppend });
+    const simRes = await syncLeadToGoogleSheet({ session: { phone: 'sim:5588999991234', origin: 'simulation' }, stage: 'Qualificado', botConfig, executeAppend });
     assert.equal(simRes.synced, false);
     assert.equal(simRes.reason, 'non_client_session');
-  } finally {
-    config.googleSheetsDefaultId = prevSheet;
-  }
+  } finally {}
 });

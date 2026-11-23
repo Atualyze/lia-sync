@@ -10,7 +10,8 @@ import { isClientToolAllowed } from './tools/index.mjs';
 const baseConfig = {
   identity: { botName: 'Lia', responsible: 'Equipe' },
   ai: { agentMode: 'super_agente', enableToolCalling: true },
-  integrations: { googleCalendar: { enabled: true } }
+  integrations: { googleCalendar: { enabled: true, showMockSlotsWhenUnavailable: true } },
+  tools: { settings: { gerenciar_agenda_google: { calendarId: 'test-calendar' } } }
 };
 
 async function makeStore(label) {
@@ -24,14 +25,7 @@ test('agenda do Google é permitida no fluxo de cliente quando habilitada', () =
 });
 
 test('fluxo do cliente retorna horários reais da agenda em vez de deixar promessa pendente', async (t) => {
-  const oldNodeEnv = process.env.NODE_ENV;
-  const oldMock = process.env.GOOGLE_CALENDAR_MOCK;
-  process.env.NODE_ENV = 'test';
-  process.env.GOOGLE_CALENDAR_MOCK = 'true';
-  t.after(() => {
-    if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv;
-    if (oldMock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldMock;
-  });
+
 
   const store = await makeStore('calendar-success');
   const reminderStore = new ReminderStore(path.join(os.tmpdir(), `schedule-reminders-${Date.now()}.json`));
@@ -81,14 +75,7 @@ test('falha da agenda também gera resposta e não deixa o cliente sem retorno',
 });
 
 test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a pendência', async (t) => {
-  const oldNodeEnv = process.env.NODE_ENV;
-  const oldMock = process.env.GOOGLE_CALENDAR_MOCK;
-  process.env.NODE_ENV = 'test';
-  process.env.GOOGLE_CALENDAR_MOCK = 'true';
-  t.after(() => {
-    if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv;
-    if (oldMock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldMock;
-  });
+
 
   const store = await makeStore('calendar-confirmation');
   let aiCalls = 0;

@@ -35,9 +35,6 @@ export const API_SETTING_FIELDS = Object.freeze([
   { key: 'googleRefreshToken', label: 'Google OAuth Refresh Token', group: 'google', secret: true },
   { key: 'googleServiceAccountEmail', label: 'Google Service Account Email', group: 'google', secret: false },
   { key: 'googleServiceAccountPrivateKey', label: 'Google Service Account Private Key (PEM)', group: 'google', secret: true, maxLength: 8192 },
-  { key: 'googleDriveFolderId', label: 'Google Drive Folder ID (Padrão)', group: 'google', secret: false },
-  { key: 'googleSheetsDefaultId', label: 'Google Sheets Spreadsheet ID (Padrão)', group: 'google', secret: false },
-  { key: 'googleCalendarId', label: 'Google Calendar ID (ex: primary)', group: 'google', secret: false },
   // Integrações & API v1
   { key: 'telegramBotToken', label: 'Telegram Bot Token (@BotFather)', group: 'integrations', secret: true },
   { key: 'telegramAdminChatId', label: 'Telegram Admin Chat ID (use /meu_id no bot)', group: 'integrations', secret: false },

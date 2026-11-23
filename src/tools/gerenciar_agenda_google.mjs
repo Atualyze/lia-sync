@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { config } from '../config.mjs';
 import { normalizarJanelaDeAtendimento, diasSemanaTexto } from '../business-hours.mjs';
+import { readGoogleCredentials } from './google_auth.mjs';
 
 const WEEKDAY_NAMES_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const WEEKDAY_MAP_EN = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -17,10 +17,10 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 let cachedOAuthToken = { token: '', expiresAt: 0 };
 
-const mockEnabled = () => process.env.GOOGLE_CALENDAR_MOCK === 'true' && ['development', 'test'].includes(process.env.NODE_ENV || 'development');
-
 const integration = (botConfig = {}) => {
   const configured = botConfig?.integrations?.googleCalendar || {};
+  const toolSettings = botConfig?.tools?.settings?.gerenciar_agenda_google || {};
+  const credentials = readGoogleCredentials('GOOGLE_CALENDAR');
   const rawBh = botConfig?.business?.hoursConfig || botConfig?.behavior?.businessHours || botConfig?.businessHours || null;
   const shouldRestrictSchedule = Boolean(
     rawBh && (rawBh.enabled === true || rawBh.restrictScheduling === true)
@@ -36,14 +36,9 @@ const integration = (botConfig = {}) => {
     businessHoursSummary: bh ? `${diasSemanaTexto(bh.weekdays)}, das ${bh.start} às ${bh.end}` : '',
     slotDurationMinutes: Number(configured.slotDurationMinutes) || 60,
     defaultEventDurationMinutes: Number(configured.defaultEventDurationMinutes) || 30,
-    accessToken: process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || '',
-    apiKey: process.env.GOOGLE_CALENDAR_API_KEY || '',
-    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || config.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || '',
-    refreshToken: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || config.googleRefreshToken || process.env.GOOGLE_REFRESH_TOKEN || '',
-    serviceAccountEmail: config.googleServiceAccountEmail || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
-    serviceAccountPrivateKey: (config.googleServiceAccountPrivateKey || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    calendarId: config.googleCalendarId || process.env.GOOGLE_CALENDAR_ID || 'primary'
+    ...credentials,
+    calendarId: String(toolSettings.calendarId || configured.calendarId || '').trim(),
+    showMockSlotsWhenUnavailable: configured.showMockSlotsWhenUnavailable === true
   };
 };
 
@@ -336,7 +331,7 @@ export const toolGerenciarAgendaGoogle = {
       };
     }
 
-    if (mockEnabled()) {
+    if (settings.showMockSlotsWhenUnavailable) {
       if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
       if (action === 'sugerir_horarios') {
         const dur = Number(durationMinutes) || settings.defaultEventDurationMinutes;

@@ -24,9 +24,10 @@ function createBotConfig() {
       enabled: { gerenciar_cobranca_pagamento: true },
       settings: {
         gerenciar_cobranca_pagamento: {
-          key: 'pix-test@atualyze.com.br',
+          pixKey: 'pix-test@atualyze.com.br',
           merchantName: 'Atualyze',
-          merchantCity: 'Sobral'
+          merchantCity: 'Sobral',
+          paymentBaseUrl: 'https://pay.example.test'
         }
       }
     }

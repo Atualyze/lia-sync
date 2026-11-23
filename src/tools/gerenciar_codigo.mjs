@@ -1,4 +1,3 @@
-const DEFAULT_REPO = 'Atualyze/lia-sync';
 const SAFE_PATHS = [
   /^src\//,
   /^scripts\//,
@@ -8,7 +7,7 @@ const SAFE_PATHS = [
   /^docs\//
 ];
 
-function repoParts(value = DEFAULT_REPO) {
+function repoParts(value = '') {
   const match = String(value || '').trim().match(/^([^/]+)\/([^/]+)$/);
   if (!match) throw new Error('Repositório GitHub inválido.');
   return { owner: match[1], repo: match[2] };
@@ -24,8 +23,9 @@ function safePath(path = '') {
 
 function githubConfig(context = {}) {
   const token = String(context.githubToken || process.env.GITHUB_TOKEN || '').trim();
-  const repository = String(context.githubRepository || process.env.GITHUB_REPOSITORY || DEFAULT_REPO).trim();
   if (!token) throw new Error('GITHUB_TOKEN não configurado para manutenção de código.');
+  const repository = String(context.githubRepository || '').trim();
+  if (!repository) throw new Error('Repositório GitHub não publicado na configuração ativa.');
   return { token, repository, ...repoParts(repository) };
 }
 
@@ -99,9 +99,12 @@ export const toolGerenciarCodigo = {
     }
 
     const action = String(args.acao || '').trim().toLowerCase();
-    const { token, owner, repo } = githubConfig(context);
 
     if (action === 'ler_arquivo') {
+      let github;
+      try { github = githubConfig(context); }
+      catch (error) { return { success: false, error: String(error.message || error) }; }
+      const { token, owner, repo } = github;
       let path;
       try {
         path = safePath(args.caminho);
@@ -129,6 +132,11 @@ export const toolGerenciarCodigo = {
           error: 'Para alterar o código, preciso de autorização explícita do responsável para criar o Pull Request.'
         };
       }
+
+      let github;
+      try { github = githubConfig(context); }
+      catch (error) { return { success: false, error: String(error.message || error) }; }
+      const { token, owner, repo } = github;
 
       const files = Array.isArray(args.arquivos) ? args.arquivos : [];
       if (!files.length) return { success: false, error: 'Nenhum arquivo foi informado para alteração.' };
