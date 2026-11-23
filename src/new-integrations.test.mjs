@@ -734,6 +734,23 @@ test('Cliente Pix: nunca envia placeholder como se fosse chave configurada', asy
   assert.doesNotMatch(reply, /INSERIR CHAVE PIX AQUI/i);
 });
 
+test('Cliente Pix: handle InfinitePay placeholder não oferece checkout como método disponível', async () => {
+  const flow = createFlow({
+    store: new SessionStore(),
+    getBotConfig: () => ({
+      ...createPixBotConfig(''),
+      tools: {
+        enabled: { gerenciar_cobranca_pagamento: true },
+        settings: { gerenciar_cobranca_pagamento: { handle: 'suaempresa' } }
+      }
+    }),
+    ai: { askAI: async () => null }
+  });
+  const reply = await flow.process({ phone: '5511976543210', text: 'Preciso do Pix', origin: 'client' });
+  assert.match(reply, /não estão configurados|não temos uma opção de pagamento automático/i);
+  assert.doesNotMatch(reply, /posso criar um link|checkout com valor fixo/i);
+});
+
 test('Cliente Pix: falha de geração não repete pedido de valor/descrição se a IA estiver indisponível', async () => {
   const originalPixKey = process.env.PIX_KEY;
   delete process.env.PIX_KEY;

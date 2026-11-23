@@ -83,13 +83,23 @@ function hasActivePriceContext(currentText = '', history = [], pendingPayment = 
   return priceTopic.test(normalizedClientText(previousClientMessage?.content || ''));
 }
 
+function isUsablePaymentCredential(value = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) return false;
+  return !/^(?:suaempresa|seu[_ -]?(?:handle|token|api[_ -]?key)|inserir(?: aqui)?|exemplo|example|placeholder|changeme|configure(?: aqui)?|teste|test)$/i.test(normalized)
+    && !/(?:inserir|placeholder|exemplo|suaempresa|changeme|configure).*(?:handle|api|chave|token)?/i.test(normalized);
+}
+
 function isCheckoutConfigured(botConfig = {}) {
   if (!isToolEnabled('gerenciar_cobranca_pagamento', botConfig)) return false;
   const settings = {
     ...(botConfig?.tools?.settings?.checkout_infinitepay || {}),
     ...(botConfig?.tools?.settings?.gerenciar_cobranca_pagamento || {})
   };
-  return Boolean(String(settings.handle || settings.apiKey || process.env.INFINITEPAY_HANDLE || process.env.INFINITEPAY_API_KEY || '').trim());
+  return isUsablePaymentCredential(settings.handle)
+    || isUsablePaymentCredential(settings.apiKey)
+    || isUsablePaymentCredential(process.env.INFINITEPAY_HANDLE)
+    || isUsablePaymentCredential(process.env.INFINITEPAY_API_KEY);
 }
 
 function isPixConfigured(botConfig = {}) {
