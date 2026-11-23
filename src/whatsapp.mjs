@@ -3,6 +3,7 @@ import { config } from './config.mjs';
 import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
+import { extractWhatsAppMessageContext } from './channels/message-context.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -73,26 +74,30 @@ export function wasSentByBot(id, phone = '', text = '') {
 export function parsePayload(data) {
   const d = data?.data || data;
   const key = d?.key || {};
-  const message = d?.message || {};
+  const rawMessage = d?.message || {};
+  const messageContext = extractWhatsAppMessageContext(rawMessage);
+  const message = messageContext.normalizedMessage || rawMessage;
   const jid = String(key.remoteJid || d?.remoteJid || '');
   const alt = String(d.remoteJidAlt || d.senderPn || d.participantPn || key.remoteJidAlt || '');
   const lid = /@lid$/i.test(jid) ? jid : (/@lid$/i.test(alt) ? alt : '');
   const rawPhone = alt && !/@lid$/i.test(alt) ? alt.split('@')[0].replace(/\D/g, '') : /@lid$/i.test(jid) ? jid : jid.split('@')[0].replace(/\D/g, '');
   const phone = /@lid$/i.test(rawPhone) ? rawPhone : normalizePhone(rawPhone);
 
-  const text = message.conversation ||
+  const text = messageContext.messageText ||
+    message.conversation ||
     message.extendedTextMessage?.text ||
     message.imageMessage?.caption ||
     message.videoMessage?.caption ||
     message.documentMessage?.caption ||
+    messageContext.interactiveText ||
     d.content || '';
 
-  let mediaType = null;
-  if (message.audioMessage) mediaType = 'audio';
-  else if (message.imageMessage) mediaType = 'image';
-  else if (message.videoMessage) mediaType = 'video';
-  else if (message.documentMessage) mediaType = 'document';
-  else if (message.stickerMessage) mediaType = 'sticker';
+  let mediaType = messageContext.mediaType || null;
+  if (!mediaType && message.audioMessage) mediaType = 'audio';
+  else if (!mediaType && message.imageMessage) mediaType = 'image';
+  else if (!mediaType && message.videoMessage) mediaType = 'video';
+  else if (!mediaType && message.documentMessage) mediaType = 'document';
+  else if (!mediaType && message.stickerMessage) mediaType = 'sticker';
 
   const nonText = !text && Boolean(mediaType);
   const rawTimestamp = d.messageTimestamp || d.message?.messageTimestamp || d.timestamp || key.messageTimestamp;
@@ -112,6 +117,7 @@ export function parsePayload(data) {
     text,
     nonText,
     mediaType,
+    contextText: messageContext.contextText,
     eventTimestamp: Number.isFinite(eventTimestamp) && eventTimestamp > 0 ? eventTimestamp : null,
     fromMe: Boolean(key.fromMe || d.fromMe),
     pushName: d.pushName || d.pushname || key.pushName || ''

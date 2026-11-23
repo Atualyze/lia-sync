@@ -2,6 +2,7 @@ import { config } from '../config.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatOutgoingMessage } from '../core/format.mjs';
 import { redactSecrets } from '../ops/log-redaction.mjs';
+import { extractTelegramMessageContext, extractTelegramCallbackContext } from './message-context.mjs';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 const MAX_MESSAGE_LEN = 3900;
@@ -361,7 +362,7 @@ export function createTelegramCopilot({
     return downloadTelegramFile(fileId, mimeType, 'audio');
   }
 
-  async function runOwnerTurn({ chatId, text, pushName = '', messageId = '', mediaType = 'text', rawItem = null, attachments = [] }) {
+  async function runOwnerTurn({ chatId, text, pushName = '', messageId = '', mediaType = 'text', rawItem = null, attachments = [], contextText = '' }) {
     if (!flow?.process) return;
     void apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
 
@@ -378,7 +379,8 @@ export function createTelegramCopilot({
         messageId: messageId ? `tg:${messageId}` : '',
         mediaType,
         rawItem: rawItem || { channel: 'telegram', chatId: String(chatId) },
-        attachments
+        attachments,
+        contextText
       });
       await store?.flush?.().catch(() => {});
       return reply;
@@ -410,6 +412,7 @@ export function createTelegramCopilot({
     const adminIds = currentAdminIds();
     const isAuthorized = adminIds.includes(chatIdStr);
     const rawText = String(msg.text || msg.caption || '').trim();
+    const contextText = extractTelegramMessageContext(msg);
     const parsedCmd = mapTelegramSlashCommand(rawText);
 
     // Permite /meu_id ou /start para descoberta do Chat ID apenas quando ainda não há admin vinculado (ou se já for admin)
@@ -468,6 +471,7 @@ export function createTelegramCopilot({
           messageId,
           mediaType: isImage ? 'image' : 'document',
           rawItem: msg,
+          contextText,
           attachments: [{
             fileName,
             name: fileName,
@@ -500,7 +504,7 @@ export function createTelegramCopilot({
           return;
         }
         const combined = rawText ? `${rawText}\n${cleanTranscript}` : cleanTranscript;
-        await runOwnerTurn({ chatId, text: combined, pushName, messageId });
+        await runOwnerTurn({ chatId, text: combined, pushName, messageId, contextText });
       } catch (err) {
         safeLogError('[telegram] Falha ao processar áudio:', err);
         await sendMessage(chatId, '⚠️ Tive um erro ao baixar ou transcrever esse áudio.');
@@ -511,7 +515,7 @@ export function createTelegramCopilot({
     if (!parsedCmd.text) return;
 
     try {
-      await runOwnerTurn({ chatId, text: parsedCmd.text, pushName, messageId });
+      await runOwnerTurn({ chatId, text: parsedCmd.text, pushName, messageId, contextText });
     } catch (err) {
       safeLogError('[telegram] Erro ao processar mensagem do Copiloto:', err);
       await sendMessage(chatId, '⚠️ Ocorreu um erro interno ao processar seu comando. Tente novamente em instantes.').catch(() => {});
@@ -530,6 +534,7 @@ export function createTelegramCopilot({
     }
     const data = String(query.data || '');
     const pushName = [query.from?.first_name, query.from?.last_name].filter(Boolean).join(' ').trim() || query.from?.username || '';
+    const callbackContext = extractTelegramCallbackContext(query);
 
     const CALLBACK_ACTIONS = {
       'outbound:approve': { toast: 'Aprovando disparo...', command: 'sim' },
@@ -551,7 +556,7 @@ export function createTelegramCopilot({
         }).catch(() => {});
       }
       try {
-        await runOwnerTurn({ chatId, text: action.command, pushName, messageId: `cb:${callbackId}` });
+        await runOwnerTurn({ chatId, text: action.command, pushName, messageId: `cb:${callbackId}`, contextText: callbackContext.contextText });
       } catch (err) {
         safeLogError('[telegram] Erro ao processar callback:', err);
       }
@@ -559,6 +564,18 @@ export function createTelegramCopilot({
     }
 
     await apiCall('answerCallbackQuery', { callback_query_id: callbackId }).catch(() => {});
+    try {
+      await runOwnerTurn({
+        chatId,
+        text: callbackContext.selectedText || data,
+        pushName,
+        messageId: `cb:${callbackId}`,
+        contextText: callbackContext.contextText
+      });
+    } catch (err) {
+      safeLogError('[telegram] Erro ao processar resposta de interação:', err);
+      await sendMessage(chatId, '⚠️ Não consegui interpretar essa resposta da interação. Pode responder por texto?').catch(() => {});
+    }
   }
 
   async function handleUpdate(update) {

@@ -319,3 +319,97 @@ test('extractDispatchIntent preserva pendingRecipient quando o recado contém "p
   assert.equal(intent.recipient, '88921694598');
   assert.ok(intent.message && intent.message.includes('finalizar a reunião'));
 });
+
+
+test('Telegram Copiloto envia ao fluxo o contexto de encaminhamento e resposta citada', async () => {
+  const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
+  const processed = [];
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, result: { message_id: 101 } })
+  });
+  const bot = createTelegramCopilot({
+    getConfig: () => cfg,
+    fetchImpl,
+    flow: {
+      process: async payload => {
+        processed.push(payload);
+        return 'Contexto recebido.';
+      }
+    },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  await bot.handleUpdate({
+    message: {
+      message_id: 101,
+      chat: { id: 999888 },
+      from: { first_name: 'Tauan' },
+      text: 'E essa opção, pode seguir?',
+      forward_origin: {
+        type: 'channel',
+        chat: { title: 'Canal de referências' }
+      },
+      reply_to_message: {
+        from: { first_name: 'Lia' },
+        text: 'Você prefere a opção A ou a opção B?'
+      }
+    }
+  });
+
+  assert.equal(processed.length, 1);
+  assert.equal(processed[0].text, 'E essa opção, pode seguir?');
+  assert.match(processed[0].contextText, /encaminhada de Canal de referências/i);
+  assert.match(processed[0].contextText, /Você prefere a opção A ou a opção B\?/);
+});
+
+test('Telegram Copiloto interpreta callbacks genéricos com o rótulo e a mensagem original', async () => {
+  const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
+  const processed = [];
+  const apiCalls = [];
+  const fetchImpl = async (url, init) => {
+    const method = url.split('/').pop();
+    apiCalls.push(method);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 102 } })
+    };
+  };
+  const bot = createTelegramCopilot({
+    getConfig: () => cfg,
+    fetchImpl,
+    flow: {
+      process: async payload => {
+        processed.push(payload);
+        return 'Opção contextualizada.';
+      }
+    },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  await bot.handleUpdate({
+    callback_query: {
+      id: 'cb_generic_1',
+      data: 'schedule:tuesday',
+      from: { first_name: 'Tauan' },
+      message: {
+        message_id: 102,
+        chat: { id: 999888 },
+        text: 'Qual dia funciona melhor para você?',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: 'Terça-feira', callback_data: 'schedule:tuesday' }
+          ]]
+        }
+      }
+    }
+  });
+
+  assert.equal(processed.length, 1);
+  assert.equal(processed[0].text, 'Terça-feira');
+  assert.match(processed[0].contextText, /Qual dia funciona melhor para você\?/);
+  assert.match(processed[0].contextText, /Terça-feira/);
+  assert.ok(apiCalls.includes('answerCallbackQuery'));
+});

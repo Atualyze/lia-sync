@@ -1,4 +1,5 @@
 import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions } from '../safety.mjs';
+import { formatMessageContextForAI } from '../channels/message-context.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { getNextProviderRecoveryDelayMs } from '../ai/state.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
@@ -80,7 +81,7 @@ export async function handleClientMessage({
   botConfig, identity, messages, owner, assistant, sectors = [],
   operationsStore = null,
   liaRuntime = null,
-  phone, text, origin, nonText, mediaType, rawItem, pushName, messageId
+  phone, text, origin, nonText, mediaType, rawItem, pushName, messageId, contextText = ''
 }) {
       const auditPhoneDigits = String(phone || '').replace(/\D/g, '');
       const defaultAuditActorLabel = auditPhoneDigits.length >= 8
@@ -297,9 +298,9 @@ export async function handleClientMessage({
 
         if (transcribed && transcribed.trim()) {
           clean = sanitizeInput(transcribed.trim(), maxInputChars);
-          s.history.push({ role: 'user', content: `[Áudio]: ${clean}`, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+          s.history.push({ role: 'user', content: `[Áudio]: ${clean}${formatMessageContextForAI(contextText)}`, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         } else {
-          s.history.push({ role: 'user', content: '[Áudio enviado]', createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+          s.history.push({ role: 'user', content: '[Áudio enviado]' + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         }
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
@@ -348,7 +349,7 @@ export async function handleClientMessage({
             (Array.isArray(imageAnalysis.keyPoints) && imageAnalysis.keyPoints.length ? `\nPontos-chave: ${imageAnalysis.keyPoints.join('; ')}` : '') +
             (imageAnalysis.actionNeeded ? `\nAção sugerida pela análise: ${imageAnalysis.actionNeeded}` : '')
           : `[${typeLabel} enviada]` + (clean ? `: ${clean}` : '');
-        s.history.push({ role: 'user', content: historyNote, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+        s.history.push({ role: 'user', content: historyNote + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         if (imageAnalysis?.summary) {
           s.lastAnalyzedDocument = { ...imageAnalysis, analyzedAt: new Date(now()).toISOString() };
         }
@@ -402,7 +403,7 @@ export async function handleClientMessage({
           const keySummary = `[Documento ${docTypeFormatted} analisado${clean ? ` | Legenda: ${clean}` : ''}]\nResumo: ${docAnalysis.summary}` +
             (Array.isArray(docAnalysis.keyPoints) && docAnalysis.keyPoints.length ? `\nPontos-chave: ${docAnalysis.keyPoints.join('; ')}` : '') +
             (docAnalysis.actionNeeded ? `\nAção sugerida pela análise: ${docAnalysis.actionNeeded}` : '');
-          s.history.push({ role: 'user', content: keySummary, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+          s.history.push({ role: 'user', content: keySummary + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
           s.lastAnalyzedDocument = { ...docAnalysis, analyzedAt: new Date(now()).toISOString() };
           clean = keySummary;
           mediaAnalyzedForAI = true;
@@ -415,7 +416,7 @@ export async function handleClientMessage({
         const last = nonTextNotice.get(phone) || 0;
         if (now() - last < 3600000) return null;
         nonTextNotice.set(phone, now());
-        s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]', createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+        s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]' + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         store.markDirty();
         return 'Recebi seu arquivo por aqui! 📄\n\nSe preferir escrever ou mandar um áudio com o que você precisa, fico à disposição por aqui.';
       }
@@ -423,7 +424,7 @@ export async function handleClientMessage({
       if (!clean) { store.markDirty(); return null; }
       const isAutoReactivation = origin === 'reactivation_auto';
       if (!isAIRetry && !isAutoReactivation && mediaType !== 'audio' && !mediaAnalyzedForAI) {
-        s.history.push({ role: 'user', content: clean, createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
+        s.history.push({ role: 'user', content: clean + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
       }
 
       // ==========================================
@@ -554,7 +555,7 @@ export async function handleClientMessage({
       }
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
-      const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>`;
+      const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>${formatMessageContextForAI(contextText)}`;
       const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
       const hasPendingClientWork = Boolean(
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
