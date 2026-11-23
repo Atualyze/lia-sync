@@ -109,6 +109,11 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Página indisponível</title></head><body style="font-family:system-ui,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px"><div style="max-width:420px;text-align:center"><h2 style="margin:0 0 8px">Página de pagamento temporariamente desativada</h2><p style="color:#cbd5e1">Solicite a chave Pix ou QR Code diretamente pelo nosso WhatsApp.</p></div></body></html>');
     };
+    const dashboardHost = (() => { try { return new URL(config.dashboardOrigin || '').host.replace(/:\d+$/, '').toLowerCase(); } catch { return ''; } })();
+    if (req.method === 'GET' && u.pathname === '/' && dashboardHost && requestHost === dashboardHost) {
+      res.writeHead(302, { location: '/dashboard', 'cache-control': 'no-store' });
+      return res.end();
+    }
     if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
       if (!payHomeEnabled) return renderPaymentPageDisabled();
       try {
@@ -140,6 +145,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       res,
       u,
       store,
+      orderStore: store?.paymentOrderStore,
       getHumanPhone,
       webhookSecret: resolveInfinitePayWebhookSecret(paymentSettings)
     });

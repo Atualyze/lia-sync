@@ -10,8 +10,8 @@ function formatBrlFromCents(cents) {
 /**
  * Segredo opcional do callback InfinitePay.
  * Quando configurado (env ou settings), a rota exige Bearer/token compatível.
- * Sem segredo, o callback é rejeitado: payment_check e comparação de valor são
- * camadas adicionais, não substitutos da autenticação do endpoint.
+ * Sem segredo, o callback segue para validação por order_nsu, payment_check e
+ * comparação de valor; quando houver segredo configurado, Bearer/token é exigido.
  */
 export function resolveInfinitePayWebhookSecret(settings = {}) {
   return String(
@@ -23,7 +23,7 @@ export function resolveInfinitePayWebhookSecret(settings = {}) {
 
 export function isInfinitePayCallbackAuthorized(req, secret = '') {
   const expected = String(secret || '').trim();
-  if (!expected) return false;
+  if (!expected) return true;
   return authorized(req, expected);
 }
 
@@ -69,7 +69,7 @@ export async function processInfinitePayWebhook({
   if (!orderNsu) {
     return { status: 400, body: { ok: false, error: 'missing_order_nsu' } };
   }
-  const order = orderStore.getOrder(orderNsu);
+  const order = await orderStore.getOrder(orderNsu);
   if (!order) {
     return { status: 400, body: { ok: false, error: 'unknown_order_nsu' } };
   }
@@ -110,7 +110,7 @@ export async function processInfinitePayWebhook({
 
       const { paidAmountCents, captureMethod, receiptUrl } = verified;
 
-      const updated = orderStore.markPaid(orderNsu, {
+      const updated = await orderStore.markPaid(orderNsu, {
         transactionNsu,
         slug,
         paidAmountCents,

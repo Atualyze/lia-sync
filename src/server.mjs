@@ -57,6 +57,7 @@ const defaultAdminConfig = supabaseRuntime.enabled ? new SupabaseAdminConfigStor
 
 export async function createApp({ store = defaultStore, flow, dashboardAuth, webhookAuthorize, adminConfig = defaultAdminConfig, chatwootInternalUrl = config.chatwootInternalUrl, readinessCheck } = {}) {
   await store.load();
+  store.paymentOrderStore = store.client?.enabled ? new SupabaseInfinitePayOrderStore({ client: store.client }) : null;
   await adminConfig.load();
   const apiSettingsStore = new ApiSettingsStore({
     client: store.client,
