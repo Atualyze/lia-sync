@@ -1,4 +1,5 @@
 const MAX_HISTORY_ITEMS = 12;
+import { isHumanHandoffActive } from './human-handoff-state.mjs';
 const MAX_HISTORY_CHARS = 700;
 
 function text(value, max = 500) {
@@ -41,7 +42,7 @@ export function buildCopilotContext({
     conversation: {
       contactLabel: text(session?.clientName || session?.contactName || '', 120),
       isInternalChat: session?.isInternalChat === true,
-      humanMode: session?.human === true,
+      humanMode: isHumanHandoffActive(session),
       recentHistory: history
     },
     activeTask: session?.pendingCopilotTask && typeof session.pendingCopilotTask === 'object'
