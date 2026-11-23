@@ -17,6 +17,7 @@ import { cleanForSpeech, escapeText } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
+import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { normalizedClientText, amountFromText, hasActivePriceContext, isUsablePaymentCredential, paymentChoiceReply, paymentUnavailableReply, formatPixKeyForDisplay, directPixKeyReply, resolveConfiguredPixKey, formatPixSuccessReply } from './client-payment-context.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
@@ -110,11 +111,12 @@ export async function handleClientMessage({
         const sGlobal = store.get(phone, sessionOrigin);
         sGlobal.phone = phone;
         sGlobal.pendingAIRetry = null;
-        if (!sGlobal.human) {
-          sGlobal.human = true;
-          sGlobal.humanSource = 'global_disabled';
-          sGlobal.handoffAt = new Date(now()).toISOString();
-          sGlobal.handoffReason = `Bot pausado globalmente por ${owner}`;
+        if (!isHumanHandoffActive(sGlobal)) {
+          enterHumanHandoff(sGlobal, {
+            source: 'global_disabled',
+            at: now(),
+            reason: `Bot pausado globalmente por ${owner}`
+          });
           store.markDirty();
         }
         return null;
@@ -125,7 +127,7 @@ export async function handleClientMessage({
       s.phone = phone;
 
       if (isAIRetry) {
-        if (s.human || !s.pendingAIRetry) return null;
+        if (isHumanHandoffActive(s) || !s.pendingAIRetry) return null;
       } else {
         if (s.pendingAIRetry) s.pendingAIRetry = null;
         if (pushName && !s.clientName) s.clientName = pushName;
@@ -139,7 +141,7 @@ export async function handleClientMessage({
       // Em atendimento humano, mídias não devem ser baixadas, transcritas ou
       // analisadas pela IA. Registra apenas o recebimento e preserva o controle
       // do atendente; texto continua passando pela lógica explícita de retomada.
-      if (s.human && (mediaType || nonText)) {
+      if (isHumanHandoffActive(s) && (mediaType || nonText)) {
         const mediaLabels = {
           audio: 'Áudio recebido',
           image: 'Imagem recebida',
@@ -301,7 +303,7 @@ export async function handleClientMessage({
         }
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
-        if (s.human) {
+        if (isHumanHandoffActive(s)) {
           store.markDirty();
           return null;
         }
@@ -352,7 +354,7 @@ export async function handleClientMessage({
         }
 
         // Se já estiver em modo de atendimento humano, não interfere nem responde
-        if (s.human) {
+        if (isHumanHandoffActive(s)) {
           store.markDirty();
           return null;
         }
@@ -390,7 +392,7 @@ export async function handleClientMessage({
           console.error('[flow] Erro na análise de documento:', e.message);
         }
 
-        if (s.human) {
+        if (isHumanHandoffActive(s)) {
           store.markDirty();
           return null;
         }
@@ -409,7 +411,7 @@ export async function handleClientMessage({
 
       // 2.4 DOCUMENTO OU STICKER NÃO-TEXTO (FALLBACK)
       if (nonText && !clean) {
-        if (s.human) { store.markDirty(); return null; }
+        if (isHumanHandoffActive(s)) { store.markDirty(); return null; }
         const last = nonTextNotice.get(phone) || 0;
         if (now() - last < 3600000) return null;
         nonTextNotice.set(phone, now());
@@ -427,7 +429,7 @@ export async function handleClientMessage({
       // ==========================================
       // CONTROLE E RESPEITO AO MODO HUMANO
       // ==========================================
-      if (s.human) {
+      if (isHumanHandoffActive(s)) {
         const normClean = normalize(clean);
         const canClientResume = Boolean(allowClientResume || botConfig?.behavior?.allowClientResume);
 
@@ -438,13 +440,13 @@ export async function handleClientMessage({
           (/^(?:bot|menu|voltar)$/i.test(normClean) && normClean.length <= 6);
 
         if (canClientResume && isExplicitResumeCommand) {
-          s.human = false;
-          s.humanSource = 'resume';
-          s.handoffAt = null;
-          s.handoffReminderAt = null;
-          s.handoffNotified = false;
-          s.handoffReminder1Sent = false;
-          s.handoffReminder60Sent = false;
+          resumeHumanHandoff(s, {
+            source: 'resume',
+            clearHandoffAt: true,
+            clearReminderAt: true,
+            clearNotifications: true,
+            clearReminderFlags: true
+          });
 
           const resumeReply = 'Prontinho! *Atendimento automático retomado.* Já retomei o atendimento! ✨\n\nComo posso te ajudar agora?';
           s.history.push({ role: 'assistant', content: resumeReply, createdAt: new Date(now()).toISOString() });
@@ -902,10 +904,11 @@ export async function handleClientMessage({
             paymentMethod: 'pix_copy_paste',
             requestedAt: new Date(now()).toISOString()
           };
-          s.human = true;
-          s.humanSource = 'admin';
-          s.handoffAt = s.pendingAdminDecision.requestedAt;
-          s.handoffReason = 'configuração de pagamento ausente; aguardando decisão do responsável';
+          enterHumanHandoff(s, {
+            source: 'admin',
+            at: s.pendingAdminDecision.requestedAt,
+            reason: 'configuração de pagamento ausente; aguardando decisão do responsável'
+          });
           store.markDirty();
           await Promise.resolve(notify(`⚠️ *Cobrança Pix pendente:* o cliente ${s.clientName || s.phone} informou R$ ${forcedPaymentAmount.toFixed(2).replace('.', ',')}, mas não há chave Pix nem checkout configurado. Configure os dados antes de autorizar.`)).catch(() => {});
         }
@@ -929,11 +932,9 @@ export async function handleClientMessage({
         const sameDecision = existingDecision && Number(existingDecision.amount) === Number(numericAmount.toFixed(2));
         const snapshot = {
           pendingAdminDecision: s.pendingAdminDecision,
-          human: s.human,
-          humanSource: s.humanSource,
-          handoffAt: s.handoffAt,
-          handoffReason: s.handoffReason,
-          updatedAt: s.updatedAt
+          handoffState: captureHumanHandoffSnapshot(s, [
+            'human', 'humanSource', 'handoffAt', 'handoffReason', 'updatedAt'
+          ])
         };
         const requestedAt = sameDecision
           ? existingDecision.requestedAt
@@ -949,11 +950,13 @@ export async function handleClientMessage({
           };
         }
         const handoffReason = 'aguardando decisão do responsável para gerar cobrança Pix';
-        if (!s.human) {
-          s.human = true;
-          s.humanSource = s.humanSource || 'admin';
-          s.handoffAt = requestedAt;
-          s.handoffReason = handoffReason;
+        if (!isHumanHandoffActive(s)) {
+          enterHumanHandoff(s, {
+            source: 'admin',
+            preserveSource: true,
+            at: requestedAt,
+            reason: handoffReason
+          });
         }
         s.updatedAt = new Date(now()).toISOString();
         store.markDirty();
@@ -972,11 +975,7 @@ export async function handleClientMessage({
         } catch (error) {
           if (snapshot.pendingAdminDecision === undefined) delete s.pendingAdminDecision;
           else s.pendingAdminDecision = snapshot.pendingAdminDecision;
-          s.human = snapshot.human;
-          s.humanSource = snapshot.humanSource;
-          s.handoffAt = snapshot.handoffAt;
-          s.handoffReason = snapshot.handoffReason;
-          s.updatedAt = snapshot.updatedAt;
+          restoreHumanHandoffSnapshot(s, snapshot.handoffState);
           store.markDirty();
           if (hasDurableSessionStore) await store.flush?.().catch(() => {});
           else { clearTimeout(store.saveTimer); store.saveTimer = null; }
@@ -1076,10 +1075,11 @@ export async function handleClientMessage({
                 paymentMethod: 'pix_copy_paste',
                 requestedAt: new Date(now()).toISOString()
               };
-              s.human = true;
-              s.humanSource = 'admin';
-              s.handoffAt = s.pendingAdminDecision.requestedAt;
-              s.handoffReason = 'configuração de pagamento ausente; aguardando decisão do responsável';
+              enterHumanHandoff(s, {
+                source: 'admin',
+                at: s.pendingAdminDecision.requestedAt,
+                reason: 'configuração de pagamento ausente; aguardando decisão do responsável'
+              });
               store.markDirty();
               await Promise.resolve(notify(`⚠️ *Cobrança Pix pendente:* o cliente ${s.clientName || s.phone} informou R$ ${requestedPixAmount.toFixed(2).replace('.', ',')}, mas não há chave Pix nem checkout configurado. Configure os dados antes de autorizar.`)).catch(() => {});
             }
@@ -1092,9 +1092,10 @@ export async function handleClientMessage({
               s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
             );
           } else if (isPriceViolation && !filtered.violations.includes('clinica') && origin !== 'simulation' && origin !== 'preview') {
-            s.human = true;
-            s.handoffAt = new Date(now()).toISOString();
-            s.handoffReason = 'Confirmação de valor/preço pendente com a equipe';
+            enterHumanHandoff(s, {
+              at: now(),
+              reason: 'Confirmação de valor/preço pendente com a equipe'
+            });
             const consult = await createAdminConsultCommitment({
               reason: 'Confirmação de valor/preço antes de informar ao cliente',
               title: 'Confirmar informação de preço com responsável',
@@ -1793,7 +1794,7 @@ export async function handleClientMessage({
       s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
       store.markDirty();
 
-      if (!s.human && !s.lastSheetSyncAt && s.history.length >= 4 && (s.contextSummary || s.sectorName)) {
+      if (!isHumanHandoffActive(s) && !s.lastSheetSyncAt && s.history.length >= 4 && (s.contextSummary || s.sectorName)) {
         void syncLeadToGoogleSheet({
           session: s,
           stage: 'Qualificado',
