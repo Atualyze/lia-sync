@@ -25,7 +25,8 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 15. `migrations/20261121100000_lia_runtime.sql` — fundação do Lia Runtime (`lia_identity`, `lia_goals`, `lia_events`, `lia_commitments`, `lia_runtime_state`), RLS backend-only
 16. `migrations/20261121120000_lia_learning.sql` — Learning Engine (`lia_experiences`, `lia_knowledge`, `lia_hypotheses`, `lia_strategies`, `lia_experiments`, `lia_regressions`, `lia_relationships`, `lia_improvement_proposals`), RLS backend-only
 17. `migrations/20261121150000_lia_autonomy.sql` — Autonomy Engine (`lia_org_autonomy_policies`, `lia_autonomy_decisions`, `lia_sales_states`, `lia_proactive_notifications`), RLS backend-only
-18. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+18. `migrations/20261122120000_copilot_task_reconciliation.sql` — campos de reconciliação auditada da fila Copilot, RLS backend-only
+19. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 

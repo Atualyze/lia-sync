@@ -72,7 +72,11 @@ function mapTask(row = {}) {
     notifiedAt: row.notified_at || row.notifiedAt || null,
     leaseOwner: row.lease_owner || row.leaseOwner || null,
     leaseToken: row.lease_token || row.leaseToken || null,
-    leaseExpiresAt: row.lease_expires_at || row.leaseExpiresAt || null
+    leaseExpiresAt: row.lease_expires_at || row.leaseExpiresAt || null,
+    reconciledAt: row.reconciled_at || row.reconciledAt || null,
+    reconciledBy: row.reconciled_by || row.reconciledBy || null,
+    reconciliationOutcome: row.reconciliation_outcome || row.reconciliationOutcome || null,
+    reconciliationNote: row.reconciliation_note || row.reconciliationNote || null
   };
 }
 
@@ -553,6 +557,137 @@ export class CopilotTaskStore {
       }
       if (dirty) await this._saveLocal();
       return { recovered: requeued + markedUncertain, requeued, markedUncertain };
+    });
+  }
+
+
+  async listUncertain({ limit = 50 } = {}) {
+    if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
+    if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
+    const max = Math.max(1, Math.min(100, Number(limit) || 50));
+    if (this.remoteEnabled) {
+      const [executionRows, notificationRows] = await Promise.all([
+        this.client.select('copilot_tasks', 'select=*&status=eq.uncertain&order=updated_at.desc&limit=' + max),
+        this.client.select('copilot_tasks', 'select=*&status=in.(succeeded,failed)&notification_status=eq.uncertain&order=updated_at.desc&limit=' + max)
+      ]);
+      const merged = new Map();
+      for (const row of [...(executionRows || []), ...(notificationRows || [])]) {
+        const task = mapTask(row);
+        if (task.id) merged.set(task.id, task);
+      }
+      return [...merged.values()]
+        .sort((a, b) => Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0))
+        .slice(0, max);
+    }
+    return this._serial(async () => this.tasks
+      .filter(task => task.status === 'uncertain' || (
+        ['succeeded', 'failed'].includes(task.status) && task.notificationStatus === 'uncertain'
+      ))
+      .sort((a, b) => Date.parse(b.updatedAt || 0) - Date.parse(a.updatedAt || 0))
+      .slice(0, max)
+      .map(clone));
+  }
+
+  async reconcileUncertain(taskId, { decision, evidence, actor } = {}) {
+    if (!this.loaded) await this.load();
+    if (this.mode === 'unavailable') throw new Error('copilot_task_queue_unavailable');
+    if (!this.remoteEnabled && this.localCorrupt) throw new Error('copilot_task_local_store_corrupt');
+
+    const id = String(taskId || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error('invalid_copilot_task_id');
+    }
+    const allowed = new Set([
+      'confirmed_succeeded', 'confirmed_failed',
+      'notification_confirmed_sent', 'notification_confirmed_not_sent', 'still_uncertain'
+    ]);
+    if (!allowed.has(decision)) throw new Error('invalid_reconciliation_decision');
+    const note = String(evidence || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (note.length < 10) throw new Error('reconciliation_evidence_required');
+    const actorLabel = String(actor || '').trim().slice(0, 120);
+    if (!actorLabel) throw new Error('reconciliation_actor_required');
+    const reconciliationNote = note
+      .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{24,}\b/g, '[redacted]')
+      .replace(/\b\d{8,15}\b/g, '[number]')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+      .slice(0, 500);
+    const nowIso = new Date(this.now()).toISOString();
+
+    const applyDecision = current => {
+      if (!current) return null;
+      if (current.reconciledAt && current.reconciliationOutcome !== 'still_uncertain') throw new Error('copilot_task_already_reconciled');
+      const executionUncertain = current.status === 'uncertain';
+      const notificationUncertain = ['succeeded', 'failed'].includes(current.status)
+        && current.notificationStatus === 'uncertain';
+      if (!executionUncertain && !notificationUncertain) throw new Error('copilot_task_not_uncertain');
+      if (executionUncertain && !['confirmed_succeeded', 'confirmed_failed', 'still_uncertain'].includes(decision)) {
+        throw new Error('reconciliation_decision_mismatch');
+      }
+      if (notificationUncertain && !['notification_confirmed_sent', 'notification_confirmed_not_sent', 'still_uncertain'].includes(decision)) {
+        throw new Error('reconciliation_decision_mismatch');
+      }
+      return {
+        ...current,
+        status: executionUncertain
+          ? (decision === 'confirmed_succeeded' ? 'succeeded' : decision === 'confirmed_failed' ? 'failed' : 'uncertain')
+          : current.status,
+        // Never put a notification back in pending: reconciliation must not replay an external effect.
+        notificationStatus: executionUncertain
+          ? 'unaddressable'
+          : (decision === 'notification_confirmed_sent' ? 'sent' : decision === 'notification_confirmed_not_sent' ? 'unaddressable' : 'uncertain'),
+        reconciledAt: nowIso,
+        reconciledBy: actorLabel,
+        reconciliationOutcome: decision,
+        reconciliationNote,
+        updatedAt: nowIso,
+        leaseOwner: null,
+        leaseToken: null,
+        leaseExpiresAt: null
+      };
+    };
+
+    if (this.remoteEnabled) {
+      const rows = await this.client.select('copilot_tasks', 'select=*&id=eq.' + encodeURIComponent(id) + '&limit=1');
+      const current = Array.isArray(rows) && rows[0] ? mapTask(rows[0]) : null;
+      if (!current) return null;
+      const next = applyDecision(current);
+      const reconciledCompare = current.reconciledAt
+        ? '&reconciled_at=eq.' + encodeURIComponent(current.reconciledAt)
+        : '&reconciled_at=is.null';
+      const compare = 'id=eq.' + encodeURIComponent(id)
+        + '&status=eq.' + encodeURIComponent(current.status)
+        + '&notification_status=eq.' + encodeURIComponent(current.notificationStatus)
+        + '&updated_at=eq.' + encodeURIComponent(current.updatedAt || '')
+        + reconciledCompare;
+      const updated = await this.client.request('copilot_tasks', {
+        method: 'PATCH',
+        query: compare,
+        body: {
+          status: next.status,
+          notification_status: next.notificationStatus,
+          reconciled_at: next.reconciledAt,
+          reconciled_by: next.reconciledBy,
+          reconciliation_outcome: next.reconciliationOutcome,
+          reconciliation_note: next.reconciliationNote,
+          lease_owner: null,
+          lease_token: null,
+          lease_expires_at: null,
+          updated_at: next.updatedAt
+        },
+        prefer: 'return=representation'
+      });
+      if (!Array.isArray(updated) || updated.length !== 1) throw new Error('copilot_task_reconciliation_conflict');
+      return mapTask(updated[0]);
+    }
+
+    return this._serial(async () => {
+      const current = this.tasks.find(task => task.id === id);
+      if (!current) return null;
+      const next = applyDecision(current);
+      Object.assign(current, next);
+      await this._saveLocal();
+      return clone(current);
     });
   }
 

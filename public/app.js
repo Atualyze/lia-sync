@@ -5061,6 +5061,61 @@ async function loadApiIntegrationsPanel() {
     el.classList.remove('hidden');
   }
 
+
+  async function renderUncertainTasks() {
+    const listEl = $('#runtime-uncertain-tasks-list');
+    if (!listEl) return;
+    if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) {
+      listEl.innerHTML = '<p class="muted">Área restrita a administradores.</p>';
+      return;
+    }
+    try {
+      const data = await api('/api/dashboard/runtime/uncertain-tasks');
+      const items = data.items || [];
+      if (!items.length) {
+        listEl.innerHTML = '<p class="muted">Nenhuma tarefa ou entrega aguarda reconciliação.</p>';
+        return;
+      }
+      listEl.innerHTML = items.map(task => {
+        const id = runtimeEscape(task.id);
+        const executionUncertain = task.status === 'uncertain';
+        const options = executionUncertain
+          ? [
+              ['confirmed_succeeded', 'Execução confirmada como concluída'],
+              ['confirmed_failed', 'Execução confirmada como não concluída'],
+              ['still_uncertain', 'Continuar incerta']
+            ]
+          : [
+              ['notification_confirmed_sent', 'Entrega da notificação confirmada'],
+              ['notification_confirmed_not_sent', 'Entrega confirmada como não realizada'],
+              ['still_uncertain', 'Continuar incerta']
+            ];
+        const resolved = Boolean(task.reconciledAt && task.reconciliationOutcome !== 'still_uncertain');
+        const optionsHtml = options.map(item => '<option value="' + runtimeEscape(item[0]) + '">' + runtimeEscape(item[1]) + '</option>').join('');
+        const prior = task.reconciledAt
+          ? '<div class="muted" style="font-size:12px;margin-top:8px">Conferência anterior: ' + runtimeEscape(task.reconciliationOutcome || '-') + ' · ' + runtimeEscape(task.reconciledBy || 'admin') + ' · ' + runtimeEscape(new Date(task.reconciledAt).toLocaleString('pt-BR')) + '<br>' + runtimeEscape(task.reconciliationNote || '') + '</div>'
+          : '';
+        const controls = resolved
+          ? '<p class="muted" style="margin-top:8px">Esta tarefa já foi reconciliada. Nenhuma repetição automática será executada.</p>'
+          : '<div style="display:grid;gap:8px;margin-top:10px" data-role="admin">'
+            + '<label class="field"><span>Resultado verificado</span><select id="rt-uncertain-decision-' + id + '" data-uncertain-decision>' + optionsHtml + '</select></label>'
+            + '<label class="field"><span>Evidência da conferência (obrigatória, 10–500 caracteres)</span><textarea id="rt-uncertain-evidence-' + id + '" rows="2" minlength="10" maxlength="500" placeholder="Ex.: Conferi o Drive e confirmei que o arquivo existe; registro verificado..." required></textarea></label>'
+            + '<button type="button" class="btn-primary btn-sm" data-task-reconcile="' + id + '">Registrar conferência — sem replay</button>'
+            + '</div>';
+        return '<article class="panel" style="padding:12px;margin-bottom:8px">'
+          + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong>Job ' + id.slice(0, 8).toUpperCase() + '</strong><span class="badge-mini">' + runtimeEscape(task.status) + ' · notificação: ' + runtimeEscape(task.notificationStatus) + '</span></div>'
+          + '<div class="muted" style="font-size:12px;margin:6px 0">Destino: ' + runtimeEscape(task.target || 'não informado') + ' · Tentativas: ' + Number(task.attemptCount || 0) + ' · Atualizado: ' + (task.updatedAt ? runtimeEscape(new Date(task.updatedAt).toLocaleString('pt-BR')) : '-') + '</div>'
+          + '<div style="font-size:13px;margin:6px 0"><strong>Solicitação:</strong> ' + runtimeEscape(task.requestSummary || '-') + '</div>'
+          + '<div style="font-size:13px;margin:6px 0"><strong>Ferramentas:</strong> ' + runtimeEscape((task.steps || []).join(', ') || '-') + '</div>'
+          + '<div style="font-size:13px;margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere"><strong>Último resultado:</strong> ' + runtimeEscape(task.resultText || task.errorCode || 'Sem detalhe registrado') + '</div>'
+          + (task.errorCode ? '<div class="muted" style="font-size:11px">Código: ' + runtimeEscape(task.errorCode) + '</div>' : '')
+          + prior + controls + '</article>';
+      }).join('');
+    } catch (error) {
+      listEl.innerHTML = '<p class="muted">Não foi possível carregar a fila de reconciliação: ' + runtimeEscape(error.message) + '</p>';
+    }
+  }
+
   async function renderRuntimeView() {
     try {
       const data = await api('/api/dashboard/runtime/overview');
@@ -5150,6 +5205,8 @@ async function loadApiIntegrationsPanel() {
           </div>
         `).join('') : '';
       }
+
+      await renderUncertainTasks();
 
       const decEl = $('#runtime-decisions-list');
       if (decEl) {
@@ -5320,6 +5377,7 @@ async function loadApiIntegrationsPanel() {
   };
 
   $('#runtime-refresh-btn')?.addEventListener('click', () => renderRuntimeView());
+  $('#runtime-uncertain-refresh')?.addEventListener('click', () => renderUncertainTasks());
 
   $('#runtime-wake-btn')?.addEventListener('click', async () => {
     try {
@@ -5405,6 +5463,30 @@ async function loadApiIntegrationsPanel() {
   });
 
   $('#runtime-view')?.addEventListener('click', async (e) => {
+    const reconcileBtn = e.target.closest('[data-task-reconcile]');
+    if (reconcileBtn) {
+      if ((ROLE_LEVEL[state.role] ?? 0) < ROLE_LEVEL.admin) return;
+      const taskId = reconcileBtn.dataset.taskReconcile;
+      const decision = $('#rt-uncertain-decision-' + taskId)?.value || '';
+      const evidence = $('#rt-uncertain-evidence-' + taskId)?.value || '';
+      if (evidence.trim().length < 10) {
+        setRuntimeFeedback('#runtime-feedback', 'Descreva a evidência da conferência (mínimo de 10 caracteres).', true);
+        return;
+      }
+      try {
+        const result = await api('/api/dashboard/runtime/tasks/' + encodeURIComponent(taskId) + '/reconcile', {
+          method: 'POST',
+          body: JSON.stringify({ decision, evidence })
+        });
+        setRuntimeFeedback('#runtime-feedback', result.auditFinalized === false
+          ? 'Estado reconciliado e salvo no job. O evento final da auditoria ficou pendente; não clique novamente, pois nenhuma execução foi repetida.'
+          : 'Conferência registrada e auditada. Nenhuma tarefa, cobrança ou mensagem foi repetida.');
+        await renderUncertainTasks();
+      } catch (error) {
+        setRuntimeFeedback('#runtime-feedback', 'Falha ao reconciliar tarefa: ' + error.message, true);
+      }
+      return;
+    }
     const goalBtn = e.target.closest('[data-goal-act]');
     if (goalBtn) {
       await api(`/api/dashboard/runtime/goals/${encodeURIComponent(goalBtn.dataset.goalId)}`, {
