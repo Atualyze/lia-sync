@@ -254,14 +254,15 @@ npm run build
 npm start
 ```
 
-`EVOLUTION_INSTANCE` não tem default implícito e deve ser o nome da instância no Evolution API (ex.: `lia-sync`). Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento.
+O transporte padrão é o WhatsApp nativo via **Baileys** (`WHATSAPP_PROVIDER=baileys`), que faz o pareamento pelo painel e não exige Evolution API. A pasta de sessão pode ser definida em `BAILEYS_AUTH_DIR` (padrão: `./data/baileys-auth`). A integração Evolution permanece apenas como legado opcional: para usá-la, configure explicitamente `WHATSAPP_PROVIDER=evolution`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCE`. Sem `WEBHOOK_TOKEN`, o servidor não sobe, exceto com `ALLOW_INSECURE_WEBHOOK=true` em desenvolvimento e host local.
 
 Para iniciar o servidor localmente sem `WEBHOOK_TOKEN`, use somente em desenvolvimento e vincule-o ao loopback. O painel continua exigindo autenticação do Supabase; `ALLOW_UNAUTHENTICATED_DASHBOARD` não habilita acesso anônimo:
 
 ```bash
 PORT=3000 \
 HOST=127.0.0.1 \
-EVOLUTION_INSTANCE=lia-sync \
+WHATSAPP_PROVIDER=baileys \
+BAILEYS_AUTH_DIR=./data/baileys-auth \
 ALLOW_INSECURE_WEBHOOK=true \
 npm start
 ```
@@ -330,7 +331,7 @@ curl -X POST 'http://127.0.0.1:3000/api/dashboard/simulate?x=1' \
 
 ## Deploy e rollback do webhook
 
-Antes do deploy, execute `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run test:contract` e `git diff --check`. Salve a configuração atual da instância Evolution e a referência da imagem anterior. Atualize com `docker compose up -d --build bot`, confirme o container com `docker compose ps bot` e valide `curl --fail http://127.0.0.1:3000/health` e `/ready`. Só então valide um payload de teste sem envio a clientes e configure o webhook para `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a imagem/configuração anterior, valide health/readiness e mantenha os volumes de dados.
+Antes do deploy, execute `npm ci`, `npm run lint`, `npm run build`, `npm test`, `npm run test:contract` e `git diff --check`. Salve a configuração da Lia e a referência da imagem anterior. Atualize com `docker compose up -d --build bot`, confirme o container com `docker compose ps bot` e valide `curl --fail http://127.0.0.1:3000/health` e `/ready`. No transporte padrão Baileys, confirme o status da conexão e faça o pareamento pelo painel; não configure webhook da Evolution. Somente em instalações legadas que selecionem explicitamente `WHATSAPP_PROVIDER=evolution`, configure `/webhook/evolution`, evento `MESSAGES_UPSERT` e header `Authorization: Bearer <WEBHOOK_TOKEN>`. Para rollback, restaure a imagem/configuração anterior, valide health/readiness e mantenha os volumes de dados.
 
 ## Limites operacionais
 
