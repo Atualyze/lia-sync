@@ -43,6 +43,7 @@ import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { startGlobalEventLoopMonitor, stopGlobalEventLoopMonitor, getEventLoopHealthSnapshot } from './ops/event-loop-monitor.mjs';
 import { redactSecrets } from './ops/log-redaction.mjs';
 import { createAlertThrottle } from './ops/alert-throttle.mjs';
+import { createRuntimeAlertNotifier, notifyBeforeShutdown } from './ops/runtime-alerts.mjs';
 import { createTelegramCopilot } from './channels/telegram.mjs';
 
 // Fachada pública: os helpers HTTP vivem em src/http/* e continuam exportados aqui.
@@ -599,24 +600,17 @@ if (isDirectRun) {
   startGlobalEventLoopMonitor({ logger: console });
   const app = await createApp(); const store = app.store; const server = http.createServer((req, res) => app(req, res).catch(e => { console.error(redactSecrets(e?.stack || e?.message || String(e))); if (!res.headersSent) json(res, 500, { error: 'internal_error' }); }));
   const runtimeAlertThrottle = createAlertThrottle({ windowMs: 10 * 60_000 });
-  const notifyRuntimeAlert = async (key, message) => {
-    if (!runtimeAlertThrottle.allow(key)) return false;
-    const safeMessage = redactSecrets(String(message || '').slice(0, 3000));
-    const tasks = [];
-    const target = app.getHumanPhone?.();
-    if (target) tasks.push(Promise.resolve().then(() => sendText(target, formatOutgoingMessage(safeMessage))));
-    if (app.telegramCopilot?.notifyAdmin) tasks.push(Promise.resolve().then(() => app.telegramCopilot.notifyAdmin(safeMessage)));
-    if (!tasks.length) {
-      console.error('[runtime-alert] Nenhum canal do responsável disponível para alerta:', key);
-      return false;
-    }
-    const settled = await Promise.allSettled(tasks);
-    if (settled.every(item => item.status === 'rejected')) {
-      console.error('[runtime-alert] Não foi possível entregar o alerta:', key);
-      return false;
-    }
-    return true;
-  };
+  const notifyRuntimeAlert = createRuntimeAlertNotifier({
+    throttle: runtimeAlertThrottle,
+    getWhatsAppTarget: () => app.getHumanPhone?.(),
+    sendWhatsApp: (target, message) => sendText(target, message),
+    getTelegramNotifier: () => app.telegramCopilot?.notifyAdmin
+      ? message => app.telegramCopilot.notifyAdmin(message)
+      : null,
+    redact: message => redactSecrets(message),
+    formatWhatsAppMessage: message => formatOutgoingMessage(message),
+    logger: console
+  });
   if (config.whatsappProvider === 'baileys') {
     void app.baileysProvider?.start().catch(err => console.error('[baileys] Falha na inicialização automática:', err?.message || err));
   }
@@ -764,6 +758,8 @@ if (isDirectRun) {
     if (stopping) return;
     stopping = true;
     process.exitCode = exitCode;
+    const forceExit = setTimeout(() => process.exit(exitCode), 5000);
+    forceExit.unref?.();
     clearInterval(maintenanceTimer);
     clearInterval(runtimeSchedulerTimer);
     clearInterval(copilotTaskTimer);
@@ -774,8 +770,6 @@ if (isDirectRun) {
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});
-    const forceExit = setTimeout(() => process.exit(exitCode), 5000);
-    forceExit.unref?.();
     server.close(() => process.exit(exitCode));
   };
   process.on('SIGTERM', () => { void stop(0); });
@@ -788,8 +782,10 @@ if (isDirectRun) {
   process.on('uncaughtException', (error) => {
     const detail = redactSecrets(error?.stack || error?.message || String(error)).slice(0, 1200);
     console.error('[process] uncaughtException; iniciando encerramento controlado:', detail);
-    void notifyRuntimeAlert('process_uncaught_exception', '🚨 *Lia Sync: exceção não tratada*\n\nO processo iniciará um encerramento controlado para evitar continuar em estado inconsistente.\n\n*Diagnóstico:* ' + detail)
-      .catch(() => {})
-      .finally(() => { void stop(1); });
+    void notifyBeforeShutdown({
+      notify: () => notifyRuntimeAlert('process_uncaught_exception', '🚨 *Lia Sync: exceção não tratada*\n\nO processo iniciará um encerramento controlado para evitar continuar em estado inconsistente.\n\n*Diagnóstico:* ' + detail),
+      stop,
+      timeoutMs: 2500
+    }).catch(() => {});
   });
 }
