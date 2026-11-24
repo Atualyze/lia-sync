@@ -375,11 +375,34 @@ export const toolGerenciarCobrancaPagamento = {
     const action = requestedAction === 'criar_link' ? 'criar_checkout' : requestedAction;
     const orderStore = context?.infinitePayOrders || infinitePayOrders;
     if (action === 'verificar_pagamento') {
-      const stored = args.orderNsu ? await orderStore.getOrder(args.orderNsu) : await orderStore.findLatestByPhone(context?.targetPhone || context?.phone);
-      const nsu = String(args.orderNsu || stored?.orderNsu || '').trim();
+      const requesterPhone = String(context?.targetPhone || context?.phone || context?.session?.phone || '').replace(/\D/g, '');
+      let stored = null;
+      if (context?.actor === 'client') {
+        if (requesterPhone.length < 8) {
+          return { success: false, error: 'order_nsu_not_found', message: 'Não encontrei um pedido para consultar neste atendimento.' };
+        }
+        const candidate = args.orderNsu
+          ? await orderStore.getOrder(args.orderNsu)
+          : await orderStore.findLatestByPhone(requesterPhone);
+        const storedPhone = String(candidate?.phone || '').replace(/\D/g, '');
+        if (!candidate || storedPhone !== requesterPhone) {
+          // Resposta uniforme: não revela se o identificador de outro pedido existe.
+          return { success: false, error: 'order_nsu_not_found', message: 'Não encontrei um pedido para consultar neste atendimento.' };
+        }
+        stored = candidate;
+      } else {
+        stored = args.orderNsu ? await orderStore.getOrder(args.orderNsu) : await orderStore.findLatestByPhone(requesterPhone);
+      }
+      const nsu = String(stored?.orderNsu || (context?.actor === 'client' ? '' : args.orderNsu) || '').trim();
       if (!nsu) return { success: false, error: 'order_nsu_not_found', message: 'Não encontrei um pedido para consultar.' };
       if (stored?.status === 'paid') return { success: true, action, paid: true, orderNsu: nsu, amount: stored.amountCents || 0, paidAmount: stored.paidAmountCents || stored.amountCents || 0, captureMethod: stored.captureMethod || 'pix' };
-      const check = await checkInfinitePayPayment({ handle: stored?.handle || settings.handle, orderNsu: nsu, transactionNsu: args.transactionNsu || stored?.transactionNsu || '', slug: args.slug || stored?.slug || '', fetchImpl: context?.fetchImpl });
+      const transactionNsu = context?.actor === 'client'
+        ? (stored?.transactionNsu || '')
+        : (args.transactionNsu || stored?.transactionNsu || '');
+      const slug = context?.actor === 'client'
+        ? (stored?.slug || '')
+        : (args.slug || stored?.slug || '');
+      const check = await checkInfinitePayPayment({ handle: stored?.handle || settings.handle, orderNsu: nsu, transactionNsu, slug, fetchImpl: context?.fetchImpl });
       const expected = Number(stored?.amountCents || 0);
       const paidAmount = Number(check.paidAmount || check.amount || 0);
       if (check.paid && expected > 0 && paidAmount !== expected) return { success: true, action, paid: false, error: 'amount_mismatch', orderNsu: nsu, expectedAmount: expected, paidAmount };
@@ -419,7 +442,7 @@ export const toolGerenciarCobrancaPagamento = {
     if (!settings.handle && !settings.apiKey) return { success: false, error: 'infinitepay_not_configured', message: 'Configure o handle ou API Key do provedor na ferramenta unificada.' };
     const qty = Math.max(1, Math.round(Number(args.quantidade) || 1));
     const baseUrl = String(settings.publicBaseUrl || '').trim().replace(/\/webhook\/infinitepay\/?$/i, '').replace(/\/$/, '');
-    const created = await createInfinitePayLink({ handle: settings.handle, apiKey: settings.apiKey, items: [{ quantity: qty, price: Math.round(amountCents), description }], orderNsu: args.orderNsu, webhookUrl: baseUrl ? `${baseUrl}/webhook/infinitepay` : '', redirectUrl: settings.redirectUrl || '', customer: null, options: settings.paymentMethodsEnabled ? { payment_methods_enabled: settings.paymentMethodsEnabled } : undefined, fetchImpl: context?.fetchImpl });
+    const created = await createInfinitePayLink({ handle: settings.handle, apiKey: settings.apiKey, items: [{ quantity: qty, price: Math.round(amountCents), description }], orderNsu: context?.actor === 'client' ? undefined : args.orderNsu, webhookUrl: baseUrl ? `${baseUrl}/webhook/infinitepay` : '', redirectUrl: settings.redirectUrl || '', customer: null, options: settings.paymentMethodsEnabled ? { payment_methods_enabled: settings.paymentMethodsEnabled } : undefined, fetchImpl: context?.fetchImpl });
     const targetPhone = String(context?.targetPhone || context?.phone || '').replace(/@.*$/, '').replace(/\D/g, '');
     let paymentUrl = created.checkoutUrl;
     if (settings.pixKey) {
