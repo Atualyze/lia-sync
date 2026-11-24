@@ -355,6 +355,33 @@ export async function handleClientMessage({
       // Ações e confirmações devem vir da mensagem/caption original do cliente,
       // nunca de texto extraído de uma imagem ou documento.
       const actionText = clean;
+      const normalizedActionText = normalizedClientText(actionText);
+      const paymentChoiceForNewRequest = resolvePaymentChoice(actionText);
+      const actionWords = normalizedActionText.split(' ');
+      const explicitNewPixRequestWithoutAmount = (!mediaType || mediaType === 'audio')
+        && actionWords.some(word => ['quero', 'preciso', 'gera', 'gerar', 'gere', 'cria', 'criar', 'crie', 'envia', 'enviar', 'mande', 'mandar', 'fazer', 'faz', 'pagar', 'informa', 'informar'].includes(word))
+        && actionWords.includes('pix')
+        && amountFromText(actionText) <= 0
+        && paymentChoiceForNewRequest !== 'key'
+        && (
+          paymentChoiceForNewRequest === 'pix'
+          || s.pendingClientPayment?.choice === 'pix'
+          || actionWords.some(word => ['novo', 'nova', 'outro', 'outra', 'novamente'].includes(word))
+        );
+      if (explicitNewPixRequestWithoutAmount) {
+        const question = 'Qual é o valor para eu gerar o código copia e cola?';
+        s.pendingClientPayment = {
+          args: {},
+          choice: 'pix',
+          createdAt: new Date(now()).toISOString(),
+          lastQuestion: question
+        };
+        s.history.push({ role: 'assistant', content: question, createdAt: new Date(now()).toISOString() });
+        s.lastBotAt = new Date(now()).toISOString();
+        s.awaitingReply = true;
+        store.markDirty();
+        return question;
+      }
       let mediaAnalyzedForAI = false;
 
       // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
@@ -655,6 +682,12 @@ export async function handleClientMessage({
       const explicitPaymentAmount = /\b(?:pix|copia e cola|checkout|cobranca|pagamento)\b.{0,45}(?:r\$\s*)?\d{1,6}(?:[.,]\d{1,2})?/i
         .test(normalize(actionText));
       const paymentChoice = resolvePaymentChoice(actionText);
+      // Um pedido explícito de novo Pix não pode herdar o valor de uma cobrança anterior.
+      const startsNewPixRequestWithoutAmount = explicitPaymentAction
+        && normalizedClientText(actionText).split(' ').includes('pix')
+        && amountFromText(actionText) <= 0
+        && paymentChoice !== 'key'
+        && (paymentChoice === 'pix' || s.pendingClientPayment?.choice === 'pix');
       const hasConfiguredPix = isPixConfigured(botConfig);
       const hasConfiguredCheckout = isCheckoutConfigured(botConfig);
       const asksForBarePixKey = /\b(?:me\s+)?(?:envia|enviar|manda|mandar|passa|passar)\s+(?:o\s+)?pix\b/i.test(normalizedClientText(actionText));
@@ -662,7 +695,7 @@ export async function handleClientMessage({
         && (Boolean(s.pendingClientPayment) || Boolean(paymentChoice) || explicitPaymentAction || explicitPaymentAmount || barePaymentAmount || asksForBarePixKey);
       const pendingPaymentQuestion = String(s.pendingClientPayment?.lastQuestion || '');
       const pendingPaymentPaused = Boolean(s.pendingClientPayment?.pausedAt);
-      const pendingPaymentAnswer = Boolean(s.pendingClientPayment && (
+      const pendingPaymentAnswer = Boolean(s.pendingClientPayment && !startsNewPixRequestWithoutAmount && (
         explicitPaymentAction
         || explicitPaymentAmount
         || (!pendingPaymentPaused && paymentChoice
@@ -1168,6 +1201,7 @@ export async function handleClientMessage({
             s.pendingClientPayment
             && s.pendingClientPayment.choice === 'pix'
             && !s.pendingClientPayment.pausedAt
+            && !startsNewPixRequestWithoutAmount
           );
           const needsAdminPixDecision = Boolean(
             isPriceViolation
@@ -1239,9 +1273,22 @@ export async function handleClientMessage({
       const isClient = !isOwnerSender(phone) && origin !== 'owner';
       let syntheticToolCalls = [];
       const currentPaymentChoice = resolvePaymentChoice(actionText);
-      const pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
+      let pendingPayment = isClient && s.pendingClientPayment && typeof s.pendingClientPayment === 'object'
         ? s.pendingClientPayment
         : null;
+      let needsFreshPaymentAmount = false;
+      if (startsNewPixRequestWithoutAmount) {
+        const question = 'Qual é o valor para eu gerar o código copia e cola?';
+        pendingPayment = {
+          args: {},
+          choice: 'pix',
+          createdAt: new Date(now()).toISOString(),
+          lastQuestion: question
+        };
+        s.pendingClientPayment = pendingPayment;
+        needsFreshPaymentAmount = true;
+        toolReplyOverride = question;
+      }
       if (pendingPayment?.choice === 'checkout' && !isCheckoutConfigured(botConfig)) {
         pendingPayment.choice = null;
       }
@@ -1298,7 +1345,9 @@ export async function handleClientMessage({
         }
       }
 
-      let toolCalls = [...modelToolCalls];
+      let toolCalls = needsFreshPaymentAmount
+        ? modelToolCalls.filter(tc => tc?.name !== 'gerenciar_cobranca_pagamento')
+        : [...modelToolCalls];
       if (syntheticToolCalls.length > 0) {
         // Evita que uma tool_call repetida pela IA gere duas cobranças/agendamentos.
         toolCalls = toolCalls.filter(tc => !['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento', 'gerenciar_agenda_google'].includes(tc?.name));
