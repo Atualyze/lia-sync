@@ -389,7 +389,7 @@ export const toolGerenciarCobrancaPagamento = {
     const settings = settingsFor(context);
     const requestedAction = String(args.acao || 'criar_pix').trim().toLowerCase();
     const action = requestedAction === 'criar_link' ? 'criar_checkout' : requestedAction;
-    const orderStore = context?.infinitePayOrders || infinitePayOrders;
+    const orderStore = context?.infinitePayOrders || context?.store?.paymentOrderStore || infinitePayOrders;
     if (action === 'verificar_pagamento') {
       const requesterPhone = String(context?.targetPhone || context?.phone || context?.session?.phone || '').replace(/\D/g, '');
       let stored = null;
