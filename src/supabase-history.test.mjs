@@ -103,6 +103,7 @@ test('SupabaseSessionStore persiste e restaura uma decisão administrativa de Pi
   const pending = {
     type: 'pix_generation',
     status: 'pending',
+    requestId: '7b32ce21-6f63-4f36-b4ac-93b5a319fd65',
     amount: 5,
     description: 'Pagamento via Pix',
     paymentMethod: 'pix_copy_paste',
