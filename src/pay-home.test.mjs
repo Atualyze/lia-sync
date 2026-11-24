@@ -76,8 +76,8 @@ test('link Pix curto renderiza a cobrança no próprio caminho /p/:code', async 
   const response = responseCapture();
   await router({ method: 'GET', url: `/p/${shortCode}`, headers: { host: 'pay.atualyze.com.br' } }, response);
   assert.equal(response.status, 200);
-  assert.match(response.headers['content-type'], /text\\/html/);
-  assert.match(response.body, /R\\$ 30,00/);
+  assert.match(response.headers['content-type'], /text\/html/);
+  assert.match(response.body, /R\$ 30,00/);
   assert.match(response.body, /Atualyze/);
   assert.equal(response.headers.location, undefined);
 });
