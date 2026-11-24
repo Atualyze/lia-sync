@@ -89,8 +89,6 @@ const CLIENT_ALLOWED_TOOL_NAMES = new Set([
   'gerenciar_agenda_google',
   'consultar_base_conhecimento',
   'consultar_web',
-  'consultar_planilha_google',
-  'gerenciar_drive_google',
   'consultar_dados_brasil',
   'gerenciar_cobranca_pagamento',
   'gerenciar_memoria'

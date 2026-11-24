@@ -65,10 +65,10 @@ export const toolGerenciarDriveGoogle = {
 
   async execute(args = {}, context = {}) {
     const acao = String(args.acao || '').trim();
+    if (context.actor === 'client') {
+      return { success: false, error: 'forbidden_for_client', message: 'O Google Drive interno só pode ser consultado pelo responsável autenticado.' };
+    }
     if (acao === 'atualizar_documento') {
-      if (context.actor === 'client') {
-        return { success: false, error: 'forbidden_for_client', message: 'Apenas o responsável pode editar documentos no Google Docs.' };
-      }
       const docId = String(args.fileId || '').trim();
       if (!docId) {
         return { success: false, error: 'missing_file_id', message: 'Informe o fileId do Google Doc para atualizar.' };

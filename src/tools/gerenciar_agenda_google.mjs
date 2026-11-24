@@ -281,6 +281,9 @@ export const toolGerenciarAgendaGoogle = {
     required: ['action']
   },
   async execute({ action, date, startTime, time: altTime, start: altStart, days, durationMinutes, summary, attendeeEmail, attendeePhone }, context = {}) {
+    if (context.actor === 'client' && !['consultar_livres', 'sugerir_horarios', 'criar_evento'].includes(action)) {
+      return { success: false, error: 'forbidden_for_client', message: 'A consulta de eventos internos e o cancelamento da agenda são operações restritas ao responsável.' };
+    }
     if (!['consultar_livres', 'sugerir_horarios', 'criar_evento', 'listar_eventos', 'cancelar_evento'].includes(action)) {
       return { success: false, error: 'invalid_action', message: 'Ação de agenda inválida.' };
     }
