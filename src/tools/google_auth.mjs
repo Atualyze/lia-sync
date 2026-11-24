@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
+import { config } from '../config.mjs';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const tokenCache = new Map();
 
-import { config } from '../config.mjs';
 
 export function readGoogleCredentials(envPrefix = 'GOOGLE') {
   const prefixMap = {
