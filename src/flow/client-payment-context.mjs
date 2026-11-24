@@ -47,7 +47,7 @@ export function paymentChoiceReply({ hasCheckout = false, hasPix = true } = {}) 
 
 export function paymentUnavailableReply({ hasCheckout = false, hasPix = false } = {}) {
   if (!hasPix && !hasCheckout) {
-    return 'No momento a chave Pix e o checkout ainda não estão configurados neste atendimento. Ainda não gerei o Pix nem outra cobrança; a equipe precisa configurar os dados de pagamento antes de prosseguir.';
+    return 'A chave Pix ainda não está configurada e o checkout também não está ativo neste atendimento. Ainda não gerei o Pix nem outra cobrança; os dados de pagamento precisam ser configurados antes de prosseguir.';
   }
   if (!hasPix) return 'A chave Pix ainda não está configurada neste atendimento. Posso gerar um link de checkout com valor fixo, se você preferir.';
   return 'No momento não consegui disponibilizar essa opção de pagamento. A equipe precisa verificar a configuração antes de prosseguir.';
