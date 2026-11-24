@@ -1204,9 +1204,7 @@ export async function handleClientMessage({
               title: 'Confirmar informação de preço com responsável',
               category: 'financeiro'
             });
-            safeReplyText = consult.commitmentId && consult.ownerNotified
-              ? 'Para te passar o valor correto, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
-              : 'Preciso confirmar essa informação com a equipe antes de informar o preço; ainda não registrei a consulta e nenhuma cobrança foi gerada.';
+            safeReplyText = 'Para te passar o valor correto, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.';
           } else {
             safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'
