@@ -199,7 +199,7 @@ test('Google Sheets: bloqueia adicionar_linha no fluxo de cliente e lê/filtra n
       { actor: 'client', botConfig: {} }
     );
     assert.equal(blocked.success, false);
-    assert.equal(blocked.error, 'forbidden_in_client_flow');
+    assert.equal(blocked.error, 'Ferramenta indisponível neste fluxo.');
 
     const found = await toolConsultarPlanilhaGoogle.execute(
       { acao: 'buscar_linhas', busca: 'Pro' },
