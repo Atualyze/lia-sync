@@ -657,7 +657,7 @@ export async function handleClientMessage({
       const paymentChoice = resolvePaymentChoice(actionText);
       // Um pedido explícito de novo Pix não pode herdar o valor de uma cobrança anterior.
       const startsNewPixRequestWithoutAmount = explicitPaymentAction
-        && /\\bpix\\b/i.test(normalize(actionText))
+        && normalizedClientText(actionText).split(' ').includes('pix')
         && amountFromText(actionText) <= 0
         && paymentChoice !== 'key'
         && (paymentChoice === 'pix' || s.pendingClientPayment?.choice === 'pix');
