@@ -52,11 +52,11 @@ export const toolConsultarPlanilhaGoogle = {
 
   async execute(args = {}, context = {}) {
     const acao = String(args.acao || '').trim();
-    if (acao === 'adicionar_linha' && context?.actor === 'client') {
+    if (context?.actor === 'client') {
       return {
         success: false,
         error: 'forbidden_in_client_flow',
-        message: 'Gravação em planilha é permitida apenas para o operador/proprietário.'
+        message: 'O Google Planilhas interno só pode ser consultado pelo responsável autenticado.'
       };
     }
     const toolSettings = context?.botConfig?.tools?.settings?.consultar_planilha_google || {};
