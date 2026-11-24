@@ -201,7 +201,7 @@ test('cliente: lastBotAt mantém continuidade mesmo quando o histórico ativo co
   const { store, file } = await makeStore(nowMs);
   const phone = '5588998340090';
   const session = store.get(phone);
-  session.history = [{ role: 'user', content: 'quem é você', createdAt: at('2026-11-23T21:59:00-03:00') }];
+  session.history = [];
   session.lastBotAt = at('2026-11-23T21:59:10-03:00');
 
   const aiRequests = [];
