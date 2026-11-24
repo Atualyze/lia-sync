@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions, classifyClientSecurityRisk } from '../safety.mjs';
 import { formatMessageContextForAI } from '../channels/message-context.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
@@ -1042,15 +1043,21 @@ export async function handleClientMessage({
         const requestedAt = sameDecision
           ? existingDecision.requestedAt
           : new Date(now()).toISOString();
+        const requestId = sameDecision && existingDecision.requestId
+          ? existingDecision.requestId
+          : crypto.randomUUID();
         if (!sameDecision) {
           s.pendingAdminDecision = {
             type: 'pix_generation',
             status: 'pending',
+            requestId,
             amount: Number(numericAmount.toFixed(2)),
             description: String(description || s.pendingClientPayment?.args?.descricao || 'Pagamento via Pix').slice(0, 80),
             paymentMethod: 'pix_copy_paste',
             requestedAt
           };
+        } else if (!existingDecision.requestId) {
+          existingDecision.requestId = requestId;
         }
         const handoffReason = 'aguardando decisão do responsável para gerar cobrança Pix';
         if (!isHumanHandoffActive(s)) {
@@ -1094,7 +1101,8 @@ export async function handleClientMessage({
           notify: async message => notify(buildAdminPixDecisionNotice({
             clientName: s.clientName || pushName || 'Cliente',
             phone: s.phone,
-            amount: Number(s.pendingAdminDecision.amount)
+            amount: Number(s.pendingAdminDecision.amount),
+            requestId: s.pendingAdminDecision.requestId
           }) + `\n\n` + message),
           forceNotify: !sameDecision,
           identity
