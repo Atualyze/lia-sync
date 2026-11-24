@@ -176,7 +176,7 @@ test('ViaCEP + BrasilAPI: consulta CEP, CNPJ e feriados nacionais com mocks', as
   }
 });
 
-test('Google Sheets: bloqueia adicionar_linha no fluxo de cliente e lê/filtra no mock', async () => {
+test('Google Sheets: bloqueia chamadas de cliente e mantém leitura para o responsável', async () => {
   const prevToken = process.env.GOOGLE_SHEETS_ACCESS_TOKEN;
   const prevSheet = process.env.GOOGLE_SHEETS_DEFAULT_ID;
   process.env.GOOGLE_SHEETS_ACCESS_TOKEN = 'fake-token';
