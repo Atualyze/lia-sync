@@ -25,6 +25,28 @@ export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
 const CLIENT_HANDOFF_CATEGORIES = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia']);
 
+function buildIdentityClarificationReply(text = '', { alreadyIntroduced = false, owner = 'Tauan' } = {}) {
+  if (!alreadyIntroduced) return null;
+  const normalized = normalize(text);
+  const asksWho = /^(?:quem e voce|quem esta falando|quem ta falando|quem fala|qual e seu nome)\b/.test(normalized);
+  const asksIfNewHire = /^(?:(?:e|voce e) )?a nova contratada\b/.test(normalized)
+    || /^voce e (?:uma )?nova contratada\b/.test(normalized)
+    || /^(?:(?:e|voce e) )?a nova funcionaria\b/.test(normalized);
+  const saysDoesNotRemember = /^(?:nao lembro(?: de)? (?:voce|vc)|nao me lembro de voce|nao te conheco)\b/.test(normalized);
+  const responsible = String(owner || 'Tauan').trim() || 'Tauan';
+
+  if (asksIfNewHire) {
+    return 'Não sou uma nova contratada humana; atuo como assistente virtual do ' + responsible + '. Posso continuar seu atendimento por aqui.';
+  }
+  if (saysDoesNotRemember) {
+    return 'Sem problema. Sou a assistente virtual do ' + responsible + ' e posso ajudar com o atendimento por aqui.';
+  }
+  if (asksWho) {
+    return 'Sou a assistente virtual do ' + responsible + ', preparada para ajudar com dúvidas, informações e agendamentos.';
+  }
+  return null;
+}
+
 export async function buildAIUnavailableReply({ ai, session = {}, currentText = '', botConfig = {}, assistant = 'assistente', now = () => Date.now() } = {}) {
   const history = (Array.isArray(session.history) ? session.history : [])
     .slice(-8)
@@ -686,6 +708,21 @@ export async function handleClientMessage({
           ? { contextSummary: null, conversationState: null, subject: null, sentiment: null, sectorName: null }
           : {})
       };
+      const identityClarificationReply = buildIdentityClarificationReply(clean, {
+        alreadyIntroduced: Boolean(promptSession.hasPriorConversation),
+        owner
+      });
+      if (identityClarificationReply) {
+        const createdAt = new Date(now()).toISOString();
+        s.history.push({ role: 'assistant', content: identityClarificationReply, createdAt });
+        const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
+        if (s.history.length > maxStoredHistory) s.history = s.history.slice(-maxStoredHistory);
+        s.lastBotAt = createdAt;
+        s.awaitingReply = true;
+        store.markDirty();
+        return identityClarificationReply;
+      }
+
       const systemPrompt = buildSystemPrompt({
         session: promptSession,
         faq: items,
