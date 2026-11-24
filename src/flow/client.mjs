@@ -355,6 +355,32 @@ export async function handleClientMessage({
       // Ações e confirmações devem vir da mensagem/caption original do cliente,
       // nunca de texto extraído de uma imagem ou documento.
       const actionText = clean;
+      const normalizedActionText = normalizedClientText(actionText);
+      const paymentChoiceForNewRequest = resolvePaymentChoice(actionText);
+      const explicitNewPixRequestWithoutAmount = (!mediaType || mediaType === 'audio')
+        && /\\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|fazer|faz|pagar|informa|informar)\\b.{0,70}\\b(?:pix|copia e cola|codigo|cobranca|pagamento)\\b/i.test(normalize(actionText))
+        && normalizedActionText.split(' ').includes('pix')
+        && amountFromText(actionText) <= 0
+        && paymentChoiceForNewRequest !== 'key'
+        && (
+          paymentChoiceForNewRequest === 'pix'
+          || s.pendingClientPayment?.choice === 'pix'
+          || /\\b(?:novo|nova|outro|outra|novamente)\\b/.test(normalizedActionText)
+        );
+      if (explicitNewPixRequestWithoutAmount) {
+        const question = 'Qual é o valor para eu gerar o código copia e cola?';
+        s.pendingClientPayment = {
+          args: {},
+          choice: 'pix',
+          createdAt: new Date(now()).toISOString(),
+          lastQuestion: question
+        };
+        s.history.push({ role: 'assistant', content: question, createdAt: new Date(now()).toISOString() });
+        s.lastBotAt = new Date(now()).toISOString();
+        s.awaitingReply = true;
+        store.markDirty();
+        return question;
+      }
       let mediaAnalyzedForAI = false;
 
       // 2.2 TRATAMENTO DE FOTO / VÍDEO (COM VISÃO MULTIMODAL PARA IMAGENS QUANDO DISPONÍVEL)
