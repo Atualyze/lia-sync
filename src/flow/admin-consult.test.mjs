@@ -122,6 +122,7 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
 
     assert.doesNotMatch(replyToClient, /drive|só um instante/i, 'não deve mentir que vai buscar no Drive');
     assert.match(replyToClient, /registrei a verificação com a equipe/i);
+    assert.doesNotMatch(replyToClient, /previs[aã]o de retorno|retorno desta verifica[cç][aã]o|01:19/i, 'não promete horário ao cliente');
     assert.equal(sentToOwner.length, 1, 'deve chamar o admin no chat interno');
     assert.match(sentToOwner[0], /Consulta da Lia/i);
     assert.match(sentToOwner[0], /modelo de contrato/i);
