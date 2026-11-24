@@ -904,6 +904,20 @@ export async function handleOwnerSession({
         }
 
         if (adminPixChoice) {
+          // O botão do Telegram pode ser clicado em outra réplica ou depois de uma
+          // atualização do cache local. Recarrega a fila autoritativa antes de
+          // escolher a cobrança; sem confirmação do Supabase, falha fechado.
+          if (store.client?.enabled && typeof store.refresh === 'function') {
+            try {
+              await store.refresh({ force: true, requireRemote: true });
+            } catch (error) {
+              logger.warn?.('[admin-pix] não foi possível atualizar a fila de aprovações:', error?.name || 'Error');
+              return recordSelfTurn(filterReply(
+                'Não consegui confirmar a fila de cobranças Pix no banco agora. Não gerei nem enviei nenhum Pix. Verifique a conexão e tente novamente quando a fila estiver disponível.',
+                { isCopilot: true }
+              ).text);
+            }
+          }
           const pendingPixDecisions = adminPixChoice.action === 'assume'
             ? listAdminPixDecisionsForAssumption(store.sessions || {})
             : listPendingAdminPixDecisions(store.sessions || {}, { nowMs: now() });
