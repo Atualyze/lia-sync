@@ -42,6 +42,9 @@ const normalizePendingAdminDecision = value => {
     description: String(value.description || 'Pagamento via Pix').trim().slice(0, 80),
     paymentMethod: 'pix_copy_paste',
     requestedAt,
+    ...(typeof value.requestId === 'string' && /^[0-9a-f-]{36}$/i.test(value.requestId.trim())
+      ? { requestId: value.requestId.trim() }
+      : {}),
     ...(optionalIso('decidedAt') ? { decidedAt: optionalIso('decidedAt') } : {}),
     ...(optionalIso('completedAt') ? { completedAt: optionalIso('completedAt') } : {}),
     ...(typeof value.decidedBy === 'string' && value.decidedBy.trim() ? { decidedBy: value.decidedBy.trim().slice(0, 80) } : {}),
@@ -662,12 +665,21 @@ export class SupabaseSessionStore extends SessionStore {
     return this.sessions;
   }
 
-  async refresh() {
-    if (!this.client?.enabled || this.refreshing) return this.refreshing;
-    if (this.lastRefreshAt && this.now() - this.lastRefreshAt < 1500 && Object.keys(this.sessions || {}).length > 0) {
+  async refresh({ force = false, requireRemote = false } = {}) {
+    if (!this.client?.enabled) return this.sessions;
+    if (this.refreshing) {
+      const result = await this.refreshing;
+      if (requireRemote && this.remoteError) throw new Error(this.remoteError);
+      return result;
+    }
+    if (!force && this.lastRefreshAt && this.now() - this.lastRefreshAt < 1500 && Object.keys(this.sessions || {}).length > 0) {
+      if (requireRemote && this.remoteError) throw new Error(this.remoteError);
       return this.sessions;
     }
-    this.refreshing = this.load({ isRefresh: true }).finally(() => {
+    this.refreshing = this.load({ isRefresh: true }).then(result => {
+      if (requireRemote && this.remoteError) throw new Error(this.remoteError);
+      return result;
+    }).finally(() => {
       this.lastRefreshAt = this.now();
       this.refreshing = null;
     });
@@ -819,7 +831,7 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingCopilotTask || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
+        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingCopilotTask || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingAdminDecision || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
         if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
         const externalId = isSimulation ? key : key.replace(/^sim:/, '');
