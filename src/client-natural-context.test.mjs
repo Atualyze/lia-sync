@@ -196,6 +196,45 @@ test('troca de modelo ou fallback em conversa ativa preserva contexto e remove r
   }
 });
 
+test('cliente: lastBotAt mantém continuidade mesmo quando o histórico ativo contém apenas a mensagem atual', async () => {
+  let nowMs = Date.parse('2026-11-23T22:00:00-03:00');
+  const { store, file } = await makeStore(nowMs);
+  const phone = '5588998340090';
+  const session = store.get(phone);
+  session.history = [{ role: 'user', content: 'quem é você', createdAt: at('2026-11-23T21:59:00-03:00') }];
+  session.lastBotAt = at('2026-11-23T21:59:10-03:00');
+
+  const aiRequests = [];
+  const flow = createFlow({
+    store,
+    now: () => nowMs,
+    faq: async () => [],
+    humanPhone: '5588999999999',
+    getBotConfig: () => botConfig,
+    ai: {
+      askAI: async request => {
+        aiRequests.push(request);
+        return {
+          reply: 'Oi! Sou a Lia, sua assistente pessoal. Posso ajudar com isso.',
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  try {
+    const reply = await flow.process({ phone, text: 'é a nova contratada?', origin: 'real' });
+    assert.equal(aiRequests.length, 1);
+    assert.match(aiRequests[0].system, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
+    assert.doesNotMatch(reply, /Sou a Lia|Como posso te ajudar hoje/i);
+  } finally {
+    await store.flush();
+    await fs.rm(file, { force: true });
+  }
+});
+
+
 test('normalizeHistory nunca apaga turno da assistente quando a janela começa com fala da assistente', () => {
   const sliced = normalizeHistory([
     { role: 'assistant', content: 'Qual é o valor da cobrança Pix?' },
