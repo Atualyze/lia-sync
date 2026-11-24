@@ -82,8 +82,13 @@ test('pagamento: usa o mesmo valor em centavos no Pix e no retorno', async () =>
 });
 
 test('página Pix ignora metadados adulterados e não reflete script executável', async () => {
-  const result = await toolGerenciarCobrancaPagamento.execute({ acao: 'criar_pix', valor: 10, enviarWhatsApp: false }, { actor: 'owner', botConfig });
-  const url = new URL(result.paymentUrl);
+  let recordedOrder = null;
+  const orderStore = { recordOrder(order) { recordedOrder = order; return order; } };
+  const result = await toolGerenciarCobrancaPagamento.execute(
+    { acao: 'criar_pix', valor: 10, enviarWhatsApp: false },
+    { actor: 'owner', botConfig, infinitePayOrders: orderStore }
+  );
+  const url = new URL(recordedOrder.paymentUrl);
   url.searchParams.set('v', '999.99');
   url.searchParams.set('n', 'Atacante');
   url.searchParams.set('k', 'attacker@example.com');
@@ -93,7 +98,7 @@ test('página Pix ignora metadados adulterados e não reflete script executável
   assert.match(html, /R\$ 10,00/);
   assert.doesNotMatch(html, /R\$ 999,99|Atacante|attacker@example\.com/);
 
-  const malicious = new URL(result.paymentUrl);
+  const malicious = new URL(recordedOrder.paymentUrl);
   const payload = Buffer.from(result.pixCopiaECola + '</script><img src=x onerror=alert(1)>').toString('base64url');
   malicious.searchParams.set('p', payload);
   html = '';
