@@ -66,7 +66,15 @@ test('API settings migra credenciais legadas para a projeção Supabase criptogr
     async select() { return [{ key: 'api_runtime_settings', payload: { overrides: {} }, updated_at: null }]; },
     async upsert(table, rows, conflict) { writes.push({ table, rows, conflict }); return rows; }
   };
-  const targetConfig = { groqKey: 'gskEnvLegacySupabaseMigration' };
+  const targetConfig = {
+    groqKey: 'gskEnvLegacySupabaseMigration',
+    googleCalendarApiKey: 'googleCalendarLegacyKey',
+    googleCalendarAccessToken: 'googleCalendarLegacyToken',
+    googleDriveAccessToken: 'googleDriveLegacyToken',
+    googleSheetsAccessToken: 'googleSheetsLegacyToken',
+    googleGmailAccessToken: 'googleGmailLegacyToken',
+    googleServiceAccountJson: '{"type":"service_account","private_key":"legacy"}'
+  };
   const store = new ApiSettingsStore({
     client,
     targetConfig,
@@ -77,7 +85,9 @@ test('API settings migra credenciais legadas para a projeção Supabase criptogr
   assert.equal(targetConfig.groqKey, 'gskEnvLegacySupabaseMigration');
   assert.equal(writes.length, 1);
   assert.equal(writes[0].table, 'runtime_projections');
-  const stored = writes[0].rows[0].payload.overrides.groqKey;
-  assert.ok(isEncryptedSecret(stored));
-  assert.equal(stored.includes('gskEnvLegacySupabaseMigration'), false);
+  const stored = writes[0].rows[0].payload.overrides;
+  for (const key of ['groqKey', 'googleCalendarApiKey', 'googleCalendarAccessToken', 'googleDriveAccessToken', 'googleSheetsAccessToken', 'googleGmailAccessToken', 'googleServiceAccountJson']) {
+    assert.ok(isEncryptedSecret(stored[key]), `${key} deve ser criptografado`);
+    assert.equal(stored[key].includes('Legacy'), false);
+  }
 });
