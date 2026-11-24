@@ -39,7 +39,7 @@ test('sem credenciais Google, ferramentas Drive/Sheets/Agenda não são expostas
     });
     assert.doesNotMatch(prompt, /"gerenciar_drive_google"/);
     assert.doesNotMatch(prompt, /"consultar_planilha_google"/);
-    assert.match(prompt, /SERVIÇOS GOOGLE NÃO CONECTADOS/);
+    assert.match(prompt, /ACESSO A ARQUIVOS INTERNOS/);
     assert.match(prompt, /REGRA ANTI-MENTIRA/);
     assert.match(prompt, /Esta conversa está autenticada como CLIENTE/);
   } finally {
