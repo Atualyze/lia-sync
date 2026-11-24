@@ -131,6 +131,8 @@ test('guarda anti-mentira bloqueia promessa falsa de Drive, consulta o admin no 
     assert.equal(clientSession.pendingAdminConsult?.status, 'pending');
     assert.equal(clientSession.pendingAdminConsult?.commitmentId, 'commit-admin-1');
     assert.equal(commitments.get('commit-admin-1')?.status, 'pending');
+    assert.equal(commitments.get('commit-admin-1')?.recipientType, 'owner', 'o prazo de duas horas é apenas acompanhamento interno');
+    assert.equal(clientSession.activeCommitments?.length || 0, 0, 'consulta administrativa não cria promessa de retorno ao cliente');
 
     // 2. Admin responde no chat interno com a orientação
     const ownerConfirmation = await flow.process({
@@ -384,6 +386,44 @@ test('tentativa de se passar pelo responsável bloqueia a IA e gera alerta sem e
     assert.equal(alerts.length, 1, 'o responsável recebe um alerta de segurança');
     assert.doesNotMatch(alerts.join(' '), /API key do Supabase|senha do painel|dados de todos os clientes/i, 'a mensagem original não é retransmitida no alerta');
     assert.match(alerts.join(' '), /solicitação bloqueada/i);
+  } finally {
+    await store.flush();
+    await rm(file, { force: true }).catch(() => {});
+  }
+});
+
+
+test('pedido natural de chave Pix responde diretamente sem depender do texto do modelo', async () => {
+  const file = path.join(os.tmpdir(), 'client-direct-pix-' + Date.now() + '.json');
+  const store = new SessionStore(file);
+  await store.load();
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    faq: async () => [],
+    isOwnerSender: () => false,
+    getBotConfig: () => ({
+      identity: { assistantName: 'Lia', ownerName: 'Tauan' },
+      ai: { agentMode: 'super_agente', enableToolCalling: true },
+      tools: {
+        enabled: { gerenciar_cobranca_pagamento: true },
+        settings: { gerenciar_cobranca_pagamento: { pixKey: '11999999999', pixKeyType: 'telefone' } }
+      }
+    }),
+    whatsapp: { sendText: async () => {} },
+    ai: { askAI: async () => { aiCalls += 1; return { reply: 'Não posso enviar a chave Pix.', tool_calls: [] }; } }
+  });
+  try {
+    const reply = await flow.process({
+      phone: '5588998340085',
+      text: 'Me envie o Pix, por favor',
+      origin: 'real'
+    });
+    assert.match(reply, /11999999999/);
+    assert.match(reply, /Chave Pix para pagamento/i);
+    assert.equal(aiCalls, 0, 'pedido claro de chave simples não deve depender de interpretação do modelo');
+    assert.equal(store.get('5588998340085').pendingClientPayment, null);
+    assert.equal(store.get('5588998340085').pendingAdminDecision, undefined, 'chave simples não cria cobrança nem pede aprovação');
   } finally {
     await store.flush();
     await rm(file, { force: true }).catch(() => {});
