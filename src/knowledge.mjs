@@ -67,15 +67,13 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const owner = responsible || 'nossa equipe';
   const webSearchAvailable = Boolean(config.geminiKey);
   const hasGoogleCredentials = Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-    || process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    config.googleServiceAccountJson
+    || config.googleServiceAccountKey
     || (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey)
-    || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
-    || process.env.GOOGLE_DRIVE_ACCESS_TOKEN
-    || process.env.GOOGLE_SHEETS_ACCESS_TOKEN
-    || process.env.GOOGLE_CALENDAR_ACCESS_TOKEN
+    || config.googleDriveAccessToken
+    || config.googleSheetsAccessToken
+    || config.googleCalendarAccessToken
     || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
-    || (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
   );
   const googleDriveAvailable = hasGoogleCredentials && botConfig?.tools?.enabled?.gerenciar_drive_google !== false;
   const googleSheetsAvailable = hasGoogleCredentials && botConfig?.tools?.enabled?.consultar_planilha_google !== false;
