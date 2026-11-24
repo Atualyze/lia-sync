@@ -97,6 +97,60 @@ test('cliente: resposta normal da IA não libera Pix; valor informado exige deci
   assert.equal(sent.some(item => item.phone === CLIENT_PHONE), false);
 });
 
+test('cliente: novo Pix copia e cola pergunta o valor novamente em vez de reutilizar o anterior', async () => {
+  const sent = [];
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-new-amount-${Date.now()}.json`));
+  const customer = store.get(CLIENT_PHONE);
+  customer.pendingClientPayment = {
+    args: { valor: 5, descricao: 'Cobrança anterior' },
+    choice: 'pix',
+    createdAt: new Date(Date.now() - 60_000).toISOString(),
+    lastQuestion: 'Qual é o valor para eu gerar o código copia e cola?'
+  };
+  customer.history.push({
+    role: 'assistant',
+    content: 'Qual é o valor para eu gerar o código copia e cola?',
+    createdAt: new Date(Date.now() - 60_000).toISOString()
+  });
+
+  let aiCalls = 0;
+  const flow = createFlow({
+    store,
+    getBotConfig: createBotConfig,
+    getHumanPhone: () => ADMIN_PHONE,
+    whatsapp: {
+      sendText: async (phone, text) => { sent.push({ phone, text }); }
+    },
+    ai: {
+      askAI: async () => {
+        aiCalls += 1;
+        return aiCalls === 1
+          ? { reply: 'Entendi, você quer um novo Pix copia e cola.', tool_calls: [] }
+          : {
+              reply: 'Vou gerar o Pix no valor anterior.',
+              tool_calls: [{
+                name: 'gerenciar_cobranca_pagamento',
+                args: { acao: 'criar_pix', valor: 5, descricao: 'Cobrança anterior' }
+              }]
+            };
+      }
+    },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  const reply = await flow.process({
+    phone: CLIENT_PHONE,
+    text: 'Quero um novo Pix copia e cola',
+    origin: 'client'
+  });
+
+  assert.match(reply, /qual é o valor/i);
+  assert.equal(customer.pendingClientPayment.choice, 'pix');
+  assert.equal(Object.hasOwn(customer.pendingClientPayment.args, 'valor'), false);
+  assert.equal(customer.pendingAdminDecision?.status, undefined);
+  assert.equal(sent.some(item => item.phone === ADMIN_PHONE), false);
+});
+
 test('Copiloto: GERAR PIX explícito envia o código ao cliente e retoma a Lia', async () => {
   const sentTexts = [];
   const sentImages = [];
