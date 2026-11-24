@@ -56,7 +56,7 @@ test('Pix: entende pedidos naturais e coloquiais de chave simples', () => {
     'Me envie o Pix',
     'Me manda o pix',
     'Manda o pix pra mim',
-    'Pode enviar a chave?',
+    'Pode enviar a chave Pix?',
     'Me passa os dados do Pix',
     'Compartilha a chave pra eu pagar'
   ]) {
