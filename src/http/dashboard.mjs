@@ -431,10 +431,10 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     }
     const calEnabled = activeCfg.integrations?.googleCalendar?.enabled !== false;
     const calConfigured = Boolean(
-      process.env.GOOGLE_CALENDAR_ACCESS_TOKEN ||
-      (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) ||
-      (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) ||
-      process.env.GOOGLE_CALENDAR_API_KEY
+      config.googleCalendarAccessToken ||
+      (config.googleClientId && config.googleClientSecret && config.googleRefreshToken) ||
+      (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey) ||
+      config.googleCalendarApiKey
     );
     if (!checks.some(item => item.name === 'calendar')) {
       checks.push({
