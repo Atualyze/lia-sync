@@ -87,6 +87,11 @@ export function matchPendingAdminPixDecision(candidates = [], target = '') {
   if (!target) return items.length === 1 ? items[0] : null;
   const query = cleanDecisionText(target);
   const digits = query.replace(/\D/g, '');
+  const requestMatches = items.filter(item =>
+    String(item.decision?.requestId || item.session?.pendingAdminDecision?.requestId || '').toLowerCase() === query
+  );
+  if (requestMatches.length === 1) return requestMatches[0];
+  if (requestMatches.length > 1) return null;
 
   const matches = items.filter(item => {
     const phone = phoneDigits(item.session);
@@ -112,7 +117,7 @@ export function describePendingAdminPixDecision(item = {}) {
   };
 }
 
-export function buildAdminPixDecisionNotice({ clientName = 'Cliente', phone = '', amount = 0 } = {}) {
+export function buildAdminPixDecisionNotice({ clientName = 'Cliente', phone = '', amount = 0, requestId = '' } = {}) {
   const digits = String(phone || '').replace(/@.*$/, '').replace(/\D/g, '');
   const suffix = digits ? digits.slice(-4) : 'não informado';
   const numericAmount = Number(amount);
@@ -125,10 +130,15 @@ export function buildAdminPixDecisionNotice({ clientName = 'Cliente', phone = ''
     `Cliente: ${clientName}`,
     `WhatsApp final: ${suffix}`,
     `Valor informado: ${amountLabel}`,
+    ...(requestId ? [`ID da solicitação: ${requestId}`] : []),
     'Pedido: Pix copia e cola.',
     '',
-    'Responda *GERAR PIX* para autorizar a Lia a gerar e enviar a cobrança.',
-    'Responda *ASSUMIR ATENDIMENTO* para assumir o contato pessoalmente.',
+    requestId
+      ? `Use os botões abaixo ou responda *GERAR PIX ${requestId}* para autorizar esta cobrança.`
+      : 'Responda *GERAR PIX* para autorizar a Lia a gerar e enviar a cobrança.',
+    requestId
+      ? `Para assumir esta solicitação, responda *ASSUMIR ATENDIMENTO ${requestId}*.`
+      : 'Responda *ASSUMIR ATENDIMENTO* para assumir o contato pessoalmente.',
     'A cobrança não será gerada até uma dessas decisões explícitas.'
   ].join('\n');
 }
