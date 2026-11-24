@@ -49,12 +49,17 @@ const APPROVAL_KEYBOARD = Object.freeze({
   ]]
 });
 
-const PIX_APPROVAL_KEYBOARD = Object.freeze({
-  inline_keyboard: [[
-    { text: '💳 Gerar e enviar Pix', callback_data: 'pix:approve' },
-    { text: '👤 Assumir atendimento', callback_data: 'pix:assume' }
-  ]]
-});
+function buildPixApprovalKeyboard(requestId = '') {
+  const suffix = /^[0-9a-f-]{36}$/i.test(String(requestId || '').trim())
+    ? ':' + String(requestId).trim()
+    : '';
+  return {
+    inline_keyboard: [[
+      { text: '💳 Gerar e enviar Pix', callback_data: 'pix:approve' + suffix },
+      { text: '👤 Assumir atendimento', callback_data: 'pix:assume' + suffix }
+    ]]
+  };
+}
 
 const CONSULT_ACTION_KEYBOARD = Object.freeze({
   inline_keyboard: [[
@@ -67,7 +72,8 @@ function inferNotificationKeyboard(text = '', { withApprovalButtons = false } = 
   if (withApprovalButtons) return APPROVAL_KEYBOARD;
   const raw = String(text || '');
   if (/decis[aã]o\s+necess[aá]ria.*pix|responda\s+\*?gerar\s+pix\*?|pode gerar o pix|aprova[cç][aã]o.*pix|autoriza[cç][aã]o.*pix|gerar\s+e\s+enviar\s+o?\s*pix/i.test(raw)) {
-    return PIX_APPROVAL_KEYBOARD;
+    const requestId = raw.match(/ID\s+da\s+solicita[cç][aã]o\s*:\s*([0-9a-f-]{36})/i)?.[1] || '';
+    return buildPixApprovalKeyboard(requestId);
   }
   if (/Consulta da .*Atendimento em andamento|responda \*assumir\*.*\*cancelar\*/i.test(raw)) {
     return CONSULT_ACTION_KEYBOARD;
@@ -545,7 +551,17 @@ export function createTelegramCopilot({
       'consult:cancel': { toast: 'Ignorando consulta...', command: 'cancelar' }
     };
 
-    const action = CALLBACK_ACTIONS[data];
+    const pixDecisionCallback = data.match(/^pix:(approve|assume):([0-9a-f-]{36})$/i);
+    const action = CALLBACK_ACTIONS[data] || (pixDecisionCallback
+      ? {
+          toast: pixDecisionCallback[1].toLowerCase() === 'approve'
+            ? 'Autorizando esta cobrança Pix...'
+            : 'Assumindo este atendimento...',
+          command: pixDecisionCallback[1].toLowerCase() === 'approve'
+            ? 'gerar pix ' + pixDecisionCallback[2]
+            : 'assumir atendimento ' + pixDecisionCallback[2]
+        }
+      : null);
     if (action) {
       await apiCall('answerCallbackQuery', { callback_query_id: callbackId, text: action.toast }).catch(() => {});
       if (query.message?.message_id) {

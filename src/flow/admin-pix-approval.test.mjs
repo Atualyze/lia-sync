@@ -89,13 +89,28 @@ test('seleção de decisão Pix evita escolher contato errado quando há mais de
   assert.equal(matchPendingAdminPixDecision(candidates, '9999'), null);
 });
 
+test('ID da solicitação seleciona exatamente a cobrança vinculada ao botão', () => {
+  const ana = candidate('ana', 'Ana Silva', '5588999991111');
+  const bruna = candidate('bruna', 'Bruna Costa', '5588999992222');
+  ana.decision.requestId = '11111111-1111-4111-8111-111111111111';
+  ana.session.pendingAdminDecision.requestId = ana.decision.requestId;
+  bruna.decision.requestId = '22222222-2222-4222-8222-222222222222';
+  bruna.session.pendingAdminDecision.requestId = bruna.decision.requestId;
+
+  assert.equal(matchPendingAdminPixDecision([ana, bruna], bruna.decision.requestId), bruna);
+  assert.equal(matchPendingAdminPixDecision([ana, bruna], '33333333-3333-4333-8333-333333333333'), null);
+});
+
 test('notificação interna oferece exatamente as duas decisões sem alegar Pix gerado', () => {
   const message = buildAdminPixDecisionNotice({
     clientName: 'Ana',
     phone: '5588999991111',
-    amount: 5
+    amount: 5,
+    requestId: '11111111-1111-4111-8111-111111111111'
   });
   assert.match(message, /R\$ 5,00/);
+  assert.match(message, /ID da solicitação: 11111111-1111-4111-8111-111111111111/);
+  assert.match(message, /GERAR PIX 11111111-1111-4111-8111-111111111111/);
   assert.match(message, /GERAR PIX/);
   assert.match(message, /ASSUMIR ATENDIMENTO/);
   assert.match(message, /não será gerada/i);

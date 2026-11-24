@@ -72,6 +72,25 @@ test('SupabaseSessionStore não tenta buscar histórico remoto sem cliente ou co
 });
 
 
+test('refresh autoritativo de Pix falha fechado quando o Supabase não responde', async () => {
+  const store = new SupabaseSessionStore(
+    path.join(os.tmpdir(), `lia-pix-refresh-failure-${Date.now()}.json`),
+    {
+      client: {
+        enabled: true,
+        async select() { throw new Error('supabase_unavailable'); }
+      },
+      logger: { warn() {} }
+    }
+  );
+
+  await assert.rejects(
+    store.refresh({ force: true, requireRemote: true }),
+    /supabase_unavailable/
+  );
+  assert.match(store.remoteError, /supabase_unavailable/);
+});
+
 test('SupabaseSessionStore persiste e restaura uma decisão administrativa de Pix', async () => {
   let conversationRow = null;
   const client = {
@@ -103,6 +122,7 @@ test('SupabaseSessionStore persiste e restaura uma decisão administrativa de Pi
   const pending = {
     type: 'pix_generation',
     status: 'pending',
+    requestId: '7b32ce21-6f63-4f36-b4ac-93b5a319fd65',
     amount: 5,
     description: 'Pagamento via Pix',
     paymentMethod: 'pix_copy_paste',

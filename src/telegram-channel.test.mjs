@@ -244,6 +244,53 @@ test('notifyAdmin espelha alertas e faz fallback para texto puro se HTML retorna
   assert.equal(apiCalls[1].body.parse_mode, undefined);
 });
 
+test('botão Pix carrega o ID exato da solicitação até o comando do Copiloto', async () => {
+  const apiCalls = [];
+  const processed = [];
+  const cfg = { telegramBotToken: '123456:AAHtestToken_123456789012345', telegramAdminChatId: '999888' };
+  const fetchImpl = async (url, init) => {
+    const method = url.split('/').pop();
+    const body = init?.body ? JSON.parse(init.body) : {};
+    apiCalls.push({ method, body });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 109 } }) };
+  };
+  const bot = createTelegramCopilot({
+    getConfig: () => cfg,
+    flow: { process: async payload => { processed.push(payload.text); return 'Conferido.'; } },
+    fetchImpl,
+    logger: { log() {}, warn() {}, error() {} }
+  });
+  const requestId = '9a1c2d3e-4f50-4a61-8b72-123456789abc';
+
+  await bot.notifyAdmin([
+    '*DECISÃO NECESSÁRIA — COBRANÇA PIX*',
+    'Cliente: Ana',
+    'ID da solicitação: ' + requestId,
+    'Responda *GERAR PIX ' + requestId + '*.'
+  ].join('\n'));
+
+  const sent = apiCalls.find(call => call.method === 'sendMessage');
+  assert.equal(sent.body.reply_markup.inline_keyboard[0][0].callback_data, 'pix:approve:' + requestId);
+  assert.equal(sent.body.reply_markup.inline_keyboard[0][1].callback_data, 'pix:assume:' + requestId);
+
+  await bot.handleUpdate({
+    callback_query: {
+      id: 'cb_pix_bound',
+      data: 'pix:approve:' + requestId,
+      from: { first_name: 'Tauan' },
+      message: {
+        message_id: 109,
+        chat: { id: 999888 },
+        text: 'DECISÃO NECESSÁRIA — COBRANÇA PIX\nID da solicitação: ' + requestId,
+        reply_markup: sent.body.reply_markup
+      }
+    }
+  });
+
+  assert.deepEqual(processed, ['gerar pix ' + requestId]);
+  assert.ok(apiCalls.some(call => call.method === 'answerCallbackQuery'));
+});
+
 test('notifyAdmin anexa botões inline de Pix e Consulta e callbacks acionam Copiloto', async () => {
   const apiCalls = [];
   const processed = [];
