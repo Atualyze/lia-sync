@@ -106,7 +106,7 @@
       <!-- NAVEGAÇÃO COM GRUPOS RECOLHÍVEIS SEM QUEBRA -->
       <nav class="nav" aria-label="Navegação principal">
         <details class="nav-group" open>
-          <summary class="nav-group-label"><span>Operação</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <summary class="nav-group-label"><span>Atendimento</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
             <button class="nav-item active" data-view="overview" title="Saúde & Operação">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.8"/></svg>
@@ -127,7 +127,7 @@
         </details>
 
         <details class="nav-group" open>
-          <summary class="nav-group-label"><span>Inteligência &amp; Bot</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <summary class="nav-group-label"><span>Assistente</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
             <button class="nav-item" data-view="ai-hub" data-role="admin" title="Motor de IA, Modelos, Fallbacks, Provedores & Chaves de API">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
@@ -150,7 +150,7 @@
         </details>
 
         <details class="nav-group" open>
-          <summary class="nav-group-label"><span>Sistema</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <summary class="nav-group-label"><span>Plataforma</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
             <button class="nav-item" data-view="integrations" title="WhatsApp Baileys, Ponte & Webhooks">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -231,7 +231,7 @@
           <button type="button" class="icon-btn" id="sound-toggle-btn" title="Ativar/desativar som de clique" aria-label="Som de clique">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
           </button>
-          <button class="icon-btn" id="refresh" title="Sincronizar dados agora">
+          <button type="button" class="icon-btn" id="refresh" title="Sincronizar dados agora" aria-label="Sincronizar dados agora">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           </button>
 
@@ -253,13 +253,11 @@
               <p>Integrações, consumo mensal, provedores de IA e atendimentos ativos.</p>
             </div>
             <div class="hero-actions">
-              <button class="icon-btn" id="overview-go-config" data-role="admin" title="Ajustes do Motor" aria-label="Ajustes do Motor">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
-              <button class="icon-btn action-btn-ping" id="refresh-overview" title="Atualizar Visão" aria-label="Atualizar Visão">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              </button>
-            </div>
+  <button type="button" class="btn-secondary overview-config-action" id="overview-go-config" data-role="admin" title="Abrir configurações da assistente">
+    <svg class="svg-icon sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+    <span>Configurar Lia</span>
+  </button>
+</div>
           </div>
 
           <!-- KPI CARDS EM TEMPO REAL -->
@@ -272,7 +270,7 @@
                 </span>
               </div>
               <strong class="kpi-val" id="ov-kpi-wa">Verificando…</strong>
-              <small class="kpi-sub" id="ov-kpi-wa-sub">Evolution API</small>
+              <small class="kpi-sub" id="ov-kpi-wa-sub">Conexão da instância</small>
             </article>
             <article class="kpi-tile panel">
               <div class="kpi-head">
@@ -350,17 +348,14 @@
                   <span>Status das conexões e contingência</span>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center">
-                  <button type="button" class="btn-secondary btn-sm" id="overview-providers-toggle" data-role="admin" title="Cadastrar provedor ou configurar chaves de API">⚙ Provedores &amp; API</button>
+                  <button type="button" class="btn-secondary btn-sm" id="overview-providers-toggle" data-role="admin" title="Gerenciar provedores, modelos e credenciais" aria-label="Gerenciar provedores, modelos e credenciais">Gerenciar provedores</button>
                   <button class="icon-btn btn-sm" id="overview-ping-quick" data-role="operator" title="Testar Ping IA" aria-label="Testar Ping IA">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                   </button>
                 </div>
               </div>
               <div id="overview-models" class="ops-list"></div>
-              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,rgba(255,255,255,.1));display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap" data-role="admin">
-                <span class="muted" style="font-size:12px">Provedores, modelos, reservas e chaves de API estão centralizados na tela dedicada.</span>
-                <button type="button" class="btn-secondary btn-sm" id="overview-go-api-settings">Abrir Motor de IA &amp; APIs</button>
-              </div>
+              
             </section>
           </div>
 
