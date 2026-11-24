@@ -88,7 +88,7 @@ export function formatPixSuccessReply(toolRes, { owner, pixKey = '', includeKey 
     '• *Valor:* ' + valorFmt,
     '• *Favorecido:* ' + (toolRes.favorecido || owner),
     showKey ? '• *Chave Pix:* `' + displayKey + '`' : '',
-    (includePaymentUrl && toolRes.paymentUrl && toolRes.paymentMethod !== 'pix_copy_paste') ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
+    (includePaymentUrl && toolRes.paymentUrl) ? '• *Link de pagamento:* ' + toolRes.paymentUrl : '',
     toolRes.pixCopiaECola ? '• *Copia e Cola:*\n```' + toolRes.pixCopiaECola + '```' : ''
   ].filter(Boolean).join('\n\n');
 }
