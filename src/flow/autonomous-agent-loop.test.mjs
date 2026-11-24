@@ -66,35 +66,20 @@ test('Copiloto: promessa vazia ("vou verificar") aciona correção automática, 
   }
 });
 
-test('Cliente ReAct multi-etapa: buscar_arquivo -> ler_documento -> resposta completa em 1 único turno', async () => {
+test('Cliente ReAct: tentativa de ler documento do Drive é ignorada no atendimento', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'lia-react-client-'));
   const store = new SessionStore(path.join(dir, 'sessions.json'));
   await store.load();
   const prevToken = process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
   const prevFetch = globalThis.fetch;
   let aiCallCount = 0;
+  let driveRequests = 0;
 
   try {
     process.env.GOOGLE_DRIVE_ACCESS_TOKEN = 'ya29.test-drive';
-    globalThis.fetch = async (url) => {
-      const sUrl = String(url);
-      if (sUrl.includes('drive/v3/files?')) {
-        return new Response(JSON.stringify({
-          files: [{ id: 'doc-contrato-1', name: 'Modelo de Contrato', mimeType: 'application/vnd.google-apps.document' }]
-        }), { status: 200 });
-      }
-      if (sUrl.includes('doc-contrato-1?fields=')) {
-        return new Response(JSON.stringify({
-          id: 'doc-contrato-1',
-          name: 'Modelo de Contrato',
-          mimeType: 'application/vnd.google-apps.document',
-          size: '512'
-        }), { status: 200 });
-      }
-      if (sUrl.includes('doc-contrato-1/export?mimeType=text/plain')) {
-        return new Response('CLÁUSULA 3: Sem multa de cancelamento com aviso prévio de 15 dias.', { status: 200 });
-      }
-      return new Response('{}', { status: 404 });
+    globalThis.fetch = async url => {
+      if (String(url).includes('drive/v3/files')) driveRequests += 1;
+      return new Response('{}', { status: 200 });
     };
 
     const flow = createFlow({
@@ -102,31 +87,16 @@ test('Cliente ReAct multi-etapa: buscar_arquivo -> ler_documento -> resposta com
       faq: async () => [],
       getBotConfig: () => ({
         identity: { assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
+        tools: { enabled: { gerenciar_drive_google: true } },
         ai: { agentMode: 'super_agente', enableToolCalling: true }
       }),
       ai: {
-        askAI: async ({ system }) => {
+        askAI: async () => {
           aiCallCount += 1;
-          if (aiCallCount === 1) {
-            return {
-              reply: '',
-              intent: 'duvida',
-              tool_calls: [{ name: 'gerenciar_drive_google', args: { acao: 'buscar_arquivo', busca: 'contrato' } }]
-            };
-          }
-          if (aiCallCount === 2) {
-            assert.match(system, /doc-contrato-1/);
-            return {
-              reply: '',
-              intent: 'duvida',
-              tool_calls: [{ name: 'gerenciar_drive_google', args: { acao: 'ler_documento', fileId: 'doc-contrato-1' } }]
-            };
-          }
-          assert.match(system, /Sem multa de cancelamento com aviso prévio de 15 dias/);
           return {
-            reply: 'Consultei nosso modelo de contrato: na Cláusula 3, não há multa de cancelamento, apenas aviso prévio de 15 dias!',
+            reply: 'Não consigo consultar arquivos internos pelo atendimento ao cliente. Posso orientar com informações publicadas ou confirmar o conteúdo com a equipe.',
             intent: 'duvida',
-            tool_calls: []
+            tool_calls: [{ name: 'gerenciar_drive_google', args: { acao: 'ler_documento', fileId: 'doc-contrato-1' } }]
           };
         }
       }
@@ -138,9 +108,9 @@ test('Cliente ReAct multi-etapa: buscar_arquivo -> ler_documento -> resposta com
       origin: 'real'
     });
 
-    assert.equal(aiCallCount, 3);
-    assert.match(reply, /Cláusula 3/i);
-    assert.match(reply, /15 dias/i);
+    assert.equal(aiCallCount, 1);
+    assert.match(reply, /Não consigo consultar arquivos internos/i);
+    assert.equal(driveRequests, 0, 'a chamada de leitura do Drive deve ser descartada antes de qualquer acesso externo');
   } finally {
     if (prevToken === undefined) delete process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
     else process.env.GOOGLE_DRIVE_ACCESS_TOKEN = prevToken;
