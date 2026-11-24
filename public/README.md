@@ -1,6 +1,6 @@
 # Console Operacional Lia Sync (`public/`)
 
-Versão do motor e interface: **2.5.1**. A arquitetura completa do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+Versão do motor e interface: **3.3.0**. A arquitetura completa do backend está descrita em [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 Acesse em `/dashboard` (ex.: `https://liasync.atualyze.com.br/dashboard`). O console opera como um **Web App reativo 100% integrado**, servido pelo próprio processo da Lia Sync com autenticação Supabase JWT + Turnstile e controle de acesso por papéis (`admin`, `operator`, `viewer`).
 
@@ -9,7 +9,7 @@ Acesse em `/dashboard` (ex.: `https://liasync.atualyze.com.br/dashboard`). O con
 ## ✨ Recursos do Console App v2.5.1
 
 1. **Zero Dados Fixos / 100% Tempo Real:**
-   - O cartão lateral de conexão reflete o estado real da instância **Evolution API** (status, nome da instância, latência em ms e janela de expediente ativa).
+   - Os indicadores refletem a conexão WhatsApp ativa (**Baileys nativo** ou Evolution API opcional), o estado do runtime, a revisão publicada e a ponte Chatwoot.
    - O rodapé da barra lateral exibe o nome, e-mail e papel (`Administrador`, `Operador` ou `Visualizador`) do usuário autenticado no Supabase.
    - As sondas de `web_search` e `calendar` em `/api/dashboard/health-summary` verificam as credenciais e flags reais publicadas.
 2. **Configurações com Menus Recolhíveis (Accordions) & Controle Total:**

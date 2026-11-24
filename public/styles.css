@@ -4569,3 +4569,236 @@ button.danger:hover:not(:disabled) {
   font-size: 12px;
   cursor: pointer;
 }
+
+
+/* ==========================================================================
+   Dashboard Visual Refresh — hierarchy, rhythm, responsive spacing
+   ========================================================================== */
+:root {
+  --text-base: 14px;
+  --text-sm: 12.5px;
+  --text-md: 15.5px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+}
+
+.sidebar {
+  width: 260px;
+  padding: 0 14px 16px;
+  background: #191b1e;
+}
+
+.sidebar-header {
+  height: 64px;
+  padding: 0 16px;
+}
+
+.nav {
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.nav-group-label {
+  padding: 10px 11px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.nav .nav-item {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13.25px;
+}
+
+.sidebar-foot {
+  padding-top: 14px;
+}
+
+.topbar {
+  height: 64px;
+  padding: 0 28px;
+  gap: 16px;
+  background: #181a1d;
+}
+
+.topbar h1 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -.025em;
+}
+
+.top-actions {
+  gap: 9px;
+}
+
+.view {
+  padding: 28px 30px;
+}
+
+.ops-container,
+.admin-container {
+  max-width: 1560px;
+  gap: 20px;
+  padding-bottom: 48px;
+}
+
+.ops-grid {
+  gap: 18px;
+}
+
+.kpi-strip,
+.metrics-kpi-grid {
+  gap: 16px;
+}
+
+#overview-kpi-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.panel,
+.card {
+  background: #202226;
+  border-color: #2d3036;
+  border-radius: 14px;
+  padding: 21px 23px;
+}
+
+.ops-hero {
+  border-color: #34434a;
+  background: linear-gradient(115deg, #20262b 0%, #20272a 58%, #1f2927 100%);
+  min-height: 112px;
+}
+
+.ops-hero h2,
+.admin-hero h2 {
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -.03em;
+}
+
+.ops-hero p,
+.admin-hero p {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.overview-config-action {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.kpi-tile {
+  min-height: 126px;
+  padding: 18px 19px !important;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.kpi-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.kpi-val {
+  font-size: clamp(18px, 1.45vw, 22px);
+  line-height: 1.25;
+}
+
+.kpi-sub {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.overview-charts-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: 18px;
+  margin-bottom: 0;
+}
+
+.overview-chart-card .overview-chart-body {
+  min-height: 190px;
+}
+
+.panel-head {
+  margin-bottom: 16px;
+}
+
+.panel-head strong {
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.panel-head > div > span {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ops-list {
+  gap: 9px;
+}
+
+.ops-row {
+  padding: 11px 14px;
+  border-radius: 10px;
+  gap: 14px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1280px) {
+  .sidebar { width: 248px; }
+  .view { padding: 24px 22px; }
+  #overview-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1120px) {
+  .overview-charts-grid { grid-template-columns: 1fr; }
+  .topbar { padding: 0 20px; }
+}
+
+@media (max-width: 820px) {
+  .topbar { height: 58px; padding: 0 14px; }
+  .view { padding: 18px 16px calc(82px + env(safe-area-inset-bottom, 0px)); }
+  .ops-container,
+  .admin-container { gap: 16px; padding-bottom: 28px; }
+  .panel,
+  .card { padding: 18px; }
+  .ops-hero { min-height: 0; }
+}
+
+@media (max-width: 640px) {
+  #overview-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .view { padding: 14px 12px calc(82px + env(safe-area-inset-bottom, 0px)); }
+  .panel,
+  .card { padding: 15px; }
+  .ops-hero { align-items: flex-start; gap: 12px; }
+  .ops-hero h2 { font-size: 19px; }
+  .kpi-tile { min-height: 116px; padding: 14px !important; }
+  .kpi-val { font-size: 17px; white-space: normal; overflow-wrap: anywhere; }
+  .kpi-sub { font-size: 11px; }
+  .overview-config-action { width: 100%; justify-content: center; }
+  .hero-actions { width: 100%; }
+  .topbar { gap: 8px; }
+  .topbar h1 { font-size: 15px; }
+  .top-actions { gap: 5px; }
+}

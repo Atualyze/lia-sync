@@ -3849,7 +3849,6 @@ function startDashboard() {
   };
 
   $('#refresh')?.addEventListener('click', () => triggerRefreshWithIcon($('#refresh')));
-  $('#refresh-overview')?.addEventListener('click', () => withIconSpin($('#refresh-overview'), renderOverview));
   $('#overview-go-config')?.addEventListener('click', () => showView('admin'));
   $('#overview-ping-quick')?.addEventListener('click', () => {
     showView('metrics');
@@ -5743,10 +5742,6 @@ async function loadApiIntegrationsPanel() {
     showView('ai-hub');
   });
 
-  $('#overview-go-api-settings')?.addEventListener('click', () => {
-    showView('ai-hub');
-    setTimeout(() => document.getElementById('api-settings-panel')?.scrollIntoView({ behavior: 'smooth' }), 150);
-  });
 
   $('#admin-go-ai-hub')?.addEventListener('click', () => {
     showView('ai-hub');
