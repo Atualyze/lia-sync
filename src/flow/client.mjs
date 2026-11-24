@@ -1174,6 +1174,7 @@ export async function handleClientMessage({
             s.pendingClientPayment
             && s.pendingClientPayment.choice === 'pix'
             && !s.pendingClientPayment.pausedAt
+            && !startsNewPixRequestWithoutAmount
           );
           const needsAdminPixDecision = Boolean(
             isPriceViolation
