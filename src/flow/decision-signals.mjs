@@ -45,6 +45,8 @@ export function resolvePaymentChoice(value = '') {
   if (/(?:copia(?:r)?(?:\s+e\s+cola)?|copia\s+e\s+cola|qr\s*code|qrcode|codigo\s+pix|br\s*code)/.test(text)) return 'pix';
   if (/(?:checkout|link\s+(?:de\s+)?pagamento|cartao|infinitepay)/.test(text)) return 'checkout';
   if (/(?:so|apenas|somente)\s+(?:a\s+)?chave|chave\s+pix|qual\s+(?:e\s+)?a\s+chave|dados\s+(?:do|para)\s+pix/.test(text)) return 'key';
+  const asksToSendKeyForPayment = /\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|fornece(?:r)?|compartilha(?:r)?|informa(?:r)?|me\s+da)\b.{0,45}\b(?:a\s+)?chave\b.{0,45}\b(?:pix|pagar|pagamento)\b/.test(text);
+  if (asksToSendKeyForPayment) return 'key';
 
   const asksToSendPix = /\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|me\s+da|me\s+fornece(?:r)?|compartilha(?:r)?|informa(?:r)?|envie|mande|passa|me\s+manda|me\s+envia)\b.{0,55}\b(?:o\s+)?pix\b|\b(?:pix|chave)\b.{0,45}\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|fornece(?:r)?|compartilha(?:r)?|informa(?:r)?)\b/.test(text);
   const hasAmount = /(?:r\$\s*)?\b\d{1,6}(?:[.,]\d{1,2})?\s*(?:reais?|conto|contos)?\b/.test(text);
