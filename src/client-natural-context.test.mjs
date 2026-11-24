@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createFlow } from './flow.mjs';
 import { SessionStore } from './sessions.mjs';
 import { normalizeHistory } from './ai/parsing.mjs';
+import { filterReply } from './safety.mjs';
 
 const at = value => new Date(value).toISOString();
 const botConfig = {
@@ -234,6 +235,55 @@ test('cliente: lastBotAt mantém continuidade mesmo quando o histórico ativo co
   }
 });
 
+
+test('cliente: perguntas sobre a identidade depois da apresentação não repetem a saudação inicial', async () => {
+  let nowMs = Date.parse('2026-11-23T22:25:00-03:00');
+  const { store, file } = await makeStore(nowMs);
+  const phone = '5588998340091';
+  const aiRequests = [];
+  const flow = createFlow({
+    store,
+    now: () => nowMs,
+    faq: async () => [],
+    humanPhone: '5588999999999',
+    getBotConfig: () => botConfig,
+    ai: {
+      askAI: async request => {
+        aiRequests.push(request);
+        return {
+          reply: 'Oi! Sou a Lia, a assistente pessoal do Tauan. Estou aqui para ajudar com qualquer dúvida, agendamento ou informação.',
+          handoff: false,
+          tool_calls: []
+        };
+      }
+    }
+  });
+
+  try {
+    const firstReply = await flow.process({ phone, text: 'Quem é você?', origin: 'real' });
+    assert.match(firstReply, /Sou a Lia, a assistente pessoal do Tauan/i);
+
+    nowMs += 30_000;
+    const newHireReply = await flow.process({ phone, text: 'É a nova contratada?', origin: 'real' });
+    assert.match(newHireReply, /Não sou uma nova contratada humana/i);
+    assert.doesNotMatch(newHireReply, /Oi!|Sou a Lia|Como posso te ajudar hoje/i);
+
+    nowMs += 30_000;
+    const memoryReply = await flow.process({ phone, text: 'Não lembro de vc', origin: 'real' });
+    assert.match(memoryReply, /Sem problema\. Sou a assistente virtual do Tauan/i);
+    assert.doesNotMatch(memoryReply, /Oi!|Sou a Lia|Como posso te ajudar hoje/i);
+    assert.equal(aiRequests.length, 1, 'perguntas de esclarecimento de identidade não devem chamar novamente a IA');
+
+    const filteredIntro = filterReply(
+      'Oi! Sou a Lia, a assistente pessoal do Tauan. Estou aqui para ajudar com qualquer dúvida.',
+      { alreadyIntroduced: true, botName: 'Lia' }
+    );
+    assert.equal(filteredIntro.text, 'Estou aqui para ajudar com qualquer dúvida.');
+  } finally {
+    await store.flush();
+    await fs.rm(file, { force: true });
+  }
+});
 
 test('normalizeHistory nunca apaga turno da assistente quando a janela começa com fala da assistente', () => {
   const sliced = normalizeHistory([
