@@ -132,6 +132,25 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       }
       return renderPayHomePage(res);
     }
+    const shortPixMatch = u.pathname.match(/^\/p\/([A-Za-z0-9_-]{16})$/);
+    if (req.method === 'GET' && shortPixMatch) {
+      if (!paymentPageEnabled) return renderPaymentPageDisabled();
+      const order = await store?.paymentOrderStore?.findByShortCode?.(shortPixMatch[1]);
+      let paymentPageUrl = null;
+      try {
+        const candidate = new URL(order?.paymentUrl || '');
+        if (candidate.protocol === 'https:' && candidate.pathname === '/pix' && candidate.searchParams.has('p')) {
+          paymentPageUrl = candidate;
+        }
+      } catch {
+        // Código inexistente, cobrança antiga ou URL armazenada inválida.
+      }
+      if (!paymentPageUrl) {
+        res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link Pix indisponível</title></head><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#07131a;color:#f5fbff;font:500 16px system-ui,sans-serif"><main style="max-width:420px;padding:28px;text-align:center"><h1>Link Pix indisponível</h1><p>Este link não existe ou não está mais disponível. Solicite uma nova cobrança pelo WhatsApp.</p></main></body></html>');
+      }
+      return renderPixPaymentPage(res, paymentPageUrl);
+    }
     if (req.method === 'GET' && u.pathname === '/pix') {
       if (!paymentPageEnabled) return renderPaymentPageDisabled();
       return renderPixPaymentPage(res, u);
