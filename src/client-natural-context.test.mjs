@@ -10,7 +10,7 @@ import { filterReply } from './safety.mjs';
 
 const at = value => new Date(value).toISOString();
 const botConfig = {
-  identity: { assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
+  identity: { botName: 'Lia', responsible: 'Tauan', companyName: 'Atualyze', assistantName: 'Lia', ownerName: 'Tauan', businessName: 'Atualyze' },
   ai: { agentMode: 'super_agente', enableToolCalling: true, contextTurns: 24 }
 };
 
@@ -225,7 +225,7 @@ test('cliente: lastBotAt mantém continuidade mesmo quando o histórico ativo co
   });
 
   try {
-    const reply = await flow.process({ phone, text: 'é a nova contratada?', origin: 'real' });
+    const reply = await flow.process({ phone, text: 'Pode me explicar o atendimento?', origin: 'real' });
     assert.equal(aiRequests.length, 1);
     assert.match(aiRequests[0].system, /\[CONTINUIDADE_ENTRE_MODELOS_E_TURNOS\]/);
     assert.doesNotMatch(reply, /Sou a Lia|Como posso te ajudar hoje/i);
