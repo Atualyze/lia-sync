@@ -110,11 +110,11 @@ test('client payment context: inclui link curto junto do Pix Copia e Cola', () =
   const reply = formatPixSuccessReply({
     valor: 30,
     favorecido: 'Atualyze',
-    paymentUrl: 'https://pay.atualyze.com.br/p/AbCdEf0123456789',
+  assert.match(reply, /https:\/\/pay\.atualyze\.com\.br\/p\/[A-Za-z0-9_-]{16}/);
     paymentMethod: 'pix_copy_paste',
-    pixCopiaECola: '000201BR.CODE.TESTE'
+  assert.match(reply, /000201BR\.CODE\.TESTE/);
   }, { owner: 'Responsável' });
 
   assert.match(reply, /https:\\/\\/pay\\.atualyze\\.com\\.br\\/p\\/[A-Za-z0-9_-]{16}/);
-  assert.match(reply, /000201BR\\.CODE\\.TESTE/);
+  assert.match(reply, /000201BR\.CODE\.TESTE/);
 });
