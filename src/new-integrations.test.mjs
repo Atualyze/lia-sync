@@ -5,6 +5,7 @@ import { buildPixPayload, normalizePixKey, InfinitePayOrderStore, toolGerenciarC
 import { toolConsultarDadosBrasil } from './tools/consultar_dados_brasil.mjs';
 import { toolConsultarPlanilhaGoogle } from './tools/consultar_planilha_google.mjs';
 import { toolGerenciarDriveGoogle } from './tools/gerenciar_drive_google.mjs';
+import { toolGerenciarAgendaGoogle } from './tools/gerenciar_agenda_google.mjs';
 import { ALL_TOOLS, executeToolCall, isClientToolAllowed } from './tools/index.mjs';
 import { processInfinitePayWebhook } from './http/infinitepay-webhook.mjs';
 import { classificarSetorPorTexto } from './triage-router.mjs';
@@ -22,17 +23,69 @@ import { askAI } from './ai.mjs';
 import { responseSchema, buildOpenRouterBody } from './ai/parsing.mjs';
 import { config } from './config.mjs';
 
-test('ALL_TOOLS registra todas as novas integrações e permissões de cliente', () => {
-  for (const name of [
-    'consultar_planilha_google',
-    'gerenciar_drive_google',
-    'consultar_dados_brasil',
-    'gerenciar_cobranca_pagamento'
-  ]) {
+test('ALL_TOOLS registra integrações e separa ferramentas internas das permissões de cliente', () => {
+  for (const name of ['consultar_planilha_google', 'gerenciar_drive_google', 'consultar_dados_brasil', 'gerenciar_cobranca_pagamento']) {
     assert.equal(ALL_TOOLS.some(t => t.name === name), true, `${name} deve estar em ALL_TOOLS`);
-    assert.equal(isClientToolAllowed(name), true, `${name} deve ser permitida no fluxo de cliente quando habilitada`);
+  }
+  for (const name of ['consultar_dados_brasil', 'gerenciar_cobranca_pagamento']) {
+    assert.equal(isClientToolAllowed(name), true, `${name} deve ser permitida no fluxo de cliente`);
+  }
+  for (const name of ['consultar_planilha_google', 'gerenciar_drive_google']) {
+    assert.equal(isClientToolAllowed(name), false, `${name} é ferramenta interna e deve ser restrita ao responsável`);
   }
 });
+
+test('ferramentas internas bloqueiam cliente também quando chamadas diretamente', async () => {
+  const drive = await toolGerenciarDriveGoogle.execute(
+    { acao: 'ler_documento', fileId: 'internal-doc-id' },
+    { actor: 'client' }
+  );
+  assert.equal(drive.success, false);
+  assert.equal(drive.error, 'forbidden_for_client');
+
+  const sheets = await toolConsultarPlanilhaGoogle.execute(
+    { acao: 'ler_intervalo', spreadsheetId: 'internal-sheet-id', range: 'A1:Z100' },
+    { actor: 'client' }
+  );
+  assert.equal(sheets.success, false);
+  assert.equal(sheets.error, 'forbidden_in_client_flow');
+
+  const events = await toolGerenciarAgendaGoogle.execute(
+    { action: 'listar_eventos', date: '2026-11-25' },
+    { actor: 'client' }
+  );
+  assert.equal(events.success, false);
+  assert.equal(events.error, 'forbidden_for_client');
+});
+
+test('cliente não consegue consultar status de pedido que pertence a outro telefone', async () => {
+  let providerChecks = 0;
+  const orderStore = {
+    getOrder: async orderNsu => ({
+      orderNsu,
+      phone: '5588111111111',
+      status: 'pending',
+      handle: 'lojainterna'
+    }),
+    findLatestByPhone: async () => null
+  };
+  const result = await toolGerenciarCobrancaPagamento.execute(
+    { acao: 'verificar_pagamento', orderNsu: 'LIA-OUTRO-CLIENTE' },
+    {
+      actor: 'client',
+      phone: '5588998340085',
+      infinitePayOrders: orderStore,
+      fetchImpl: async () => {
+        providerChecks += 1;
+        return new Response(JSON.stringify({ paid: true, amount: 120 }), { status: 200 });
+      }
+    }
+  );
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'order_nsu_not_found');
+  assert.equal(providerChecks, 0, 'não deve consultar o provedor com NSU de outro contato');
+});
+
 
 test('Pix: gera payload EMV BR Code válido com CRC16 e envia QR Code via WhatsApp', async () => {
   const payload = buildPixPayload({
