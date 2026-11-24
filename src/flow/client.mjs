@@ -678,7 +678,7 @@ export async function handleClientMessage({
       const promptSession = {
         ...s,
         history: activeContext.history,
-        hasPriorConversation: activeContext.history.length > 1,
+        hasPriorConversation: activeContext.history.length > 1 || Boolean(s.lastBotAt),
         historyRecallRequested,
         historyRecallMatched: historyRecall.matched,
         recalledHistory: historyRecall.messages,
