@@ -270,16 +270,27 @@ export async function handleClientMessage({
         const consultId = 'consult-' + Date.now().toString(36);
         const requestedAt = new Date(now()).toISOString();
         const dueAt = new Date(now() + ADMIN_CONSULT_TTL_MS).toISOString();
-        const commitment = await createTrackedClientCommitment({
-          title,
-          description: String(reason || clean).slice(0, 500),
-          dueAt,
-          recipientType: 'client',
-          ownerType: 'owner',
-          category,
-          metadata: { kind: 'admin_consult', consultId, description: String(reason || clean).slice(0, 500) },
-          deduplicationKey: 'admin-consult:' + String(s.phone || phone) + ':' + String(messageId || s.lastUserAt || requestedAt) + ':' + String(category)
-        });
+        let commitment = null;
+        // O prazo de acompanhamento pertence à fila interna; nunca é uma promessa
+        // de retorno ao cliente. Mantém-se o SLA de duas horas apenas para a equipe.
+        if (typeof liaRuntime?.commitments?.create === 'function') {
+          try {
+            commitment = await liaRuntime.commitments.create({
+              title,
+              description: String(reason || clean).slice(0, 500),
+              subject: s.clientName || pushName || s.phone,
+              dueAt,
+              conversationId: String(s.phone || phone),
+              recipientType: 'owner',
+              ownerType: 'owner',
+              category,
+              metadata: { kind: 'admin_consult', consultId, clientPhone: s.phone },
+              deduplicationKey: 'admin-consult:' + String(s.phone || phone) + ':' + String(messageId || s.lastUserAt || requestedAt) + ':' + String(category)
+            });
+          } catch (error) {
+            logger.warn?.('[admin-consult] falha ao criar acompanhamento interno:', error?.code || error?.name || 'commitment_create_failed');
+          }
+        }
         const record = {
           id: consultId,
           commitmentId: commitment?.id || null,
@@ -590,6 +601,23 @@ export async function handleClientMessage({
         }
         store.markDirty();
         return securityReply;
+      }
+
+      // Pedido de chave Pix simples é informacional: responde diretamente com
+      // a chave configurada, sem LLM, filtro de preços ou criação de cobrança.
+      const earlyPaymentChoice = resolvePaymentChoice(actionText);
+      if (!isOwnerSender(phone) && origin !== 'owner' && earlyPaymentChoice === 'key') {
+        const configuredKey = isPixConfigured(botConfig) ? resolveConfiguredPixKey(botConfig) : '';
+        const directReply = configuredKey
+          ? directPixKeyReply({ key: configuredKey, owner })
+          : paymentUnavailableReply({ hasPix: false, hasCheckout: isCheckoutConfigured(botConfig) });
+        const sentAt = new Date(now()).toISOString();
+        s.history.push({ role: 'assistant', content: directReply, createdAt: sentAt });
+        s.lastBotAt = sentAt;
+        s.awaitingReply = true;
+        s.pendingClientPayment = null;
+        store.markDirty();
+        return directReply;
       }
 
       // 2.5.2 SINAL AUXILIAR DE TRIAGEM (OBSERVABILIDADE)
@@ -1176,9 +1204,7 @@ export async function handleClientMessage({
               title: 'Confirmar informação de preço com responsável',
               category: 'financeiro'
             });
-            safeReplyText = consult.commitmentId && consult.ownerNotified
-              ? 'Para informar o valor corretamente, preciso confirmar com a equipe. A previsão de retorno desta verificação é até ' + new Date(consult.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Ainda não gerei nenhuma cobrança.'
-              : 'Preciso confirmar essa informação com a equipe antes de informar o preço; ainda não registrei a consulta e nenhuma cobrança foi gerada.';
+            safeReplyText = 'Para te passar o valor correto, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.';
           } else {
             safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'

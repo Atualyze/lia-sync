@@ -25,7 +25,7 @@ export function isNaturalNegative(value = '') {
 }
 
 
-/** Resolve an explicit payment choice without treating questions or rejected options as selections. */
+/** Resolve payment intent from natural phrasing, including colloquial verbs and short replies. */
 export function resolvePaymentChoice(value = '') {
   let text = normalized(value);
   if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) return null;
@@ -41,20 +41,27 @@ export function resolvePaymentChoice(value = '') {
     text = text.slice(marker.index + marker.value.length).trim();
   }
 
-  if (/(?:so|apenas)\s+(?:a\s+)?chave|chave\s+pix|qual\s+(?:e\s+)?a\s+chave/.test(text)) return 'key';
-  if (/(?:copia|copia e cola|copiar|qr code|qrcode|codigo|br code)/.test(text)) return 'pix';
-  if (/(?:checkout|link|cartao|infinitepay)/.test(text)) return 'checkout';
+  // Modalidade explícita sempre prevalece sobre a palavra genérica "Pix".
+  if (/(?:copia(?:r)?(?:\s+e\s+cola)?|copia\s+e\s+cola|qr\s*code|qrcode|codigo\s+pix|br\s*code)/.test(text)) return 'pix';
+  if (/(?:checkout|link\s+(?:de\s+)?pagamento|cartao|infinitepay)/.test(text)) return 'checkout';
+  if (/(?:so|apenas|somente)\s+(?:a\s+)?chave|chave\s+pix|qual\s+(?:e\s+)?a\s+chave|dados\s+(?:do|para)\s+pix/.test(text)) return 'key';
+  const asksToSendKeyForPayment = /\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|fornece(?:r)?|compartilha(?:r)?|informa(?:r)?|me\s+da)\b.{0,45}\b(?:a\s+)?chave\b.{0,45}\b(?:pix|pagar|pagamento)\b/.test(text);
+  if (asksToSendKeyForPayment) return 'key';
+
+  const asksToSendPix = /\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|me\s+da|me\s+fornece(?:r)?|compartilha(?:r)?|informa(?:r)?|envie|mande|passa|me\s+manda|me\s+envia)\b.{0,55}\b(?:o\s+)?pix\b|\b(?:pix|chave)\b.{0,45}\b(?:manda(?:r)?|envia(?:r)?|passa(?:r)?|fornece(?:r)?|compartilha(?:r)?|informa(?:r)?)\b/.test(text);
+  const hasAmount = /(?:r\$\s*)?\b\d{1,6}(?:[.,]\d{1,2})?\s*(?:reais?|conto|contos)?\b/.test(text);
+  if (asksToSendPix && !hasAmount) return 'key';
+  if (asksToSendPix && hasAmount) return 'pix';
+  if (/^(?:pix|a chave|chave)$/i.test(text)) return null;
   return null;
 }
 
-/** A payment topic alone is not an action request; require an action verb or concrete choice. */
+/** Broad action recognition; exact intent is resolved separately from conversational context. */
 export function isPixActionRequest(value = '') {
   const text = normalized(value);
-  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) {
-    return false;
-  }
-  const action = /\b(?:quero|preciso|me passa|passa|envia|enviar|manda|mandar|gera|gerar|cria|criar|faz|fazer|cobrar|cobranca|pagar|pagamento|informa|informar)\b/;
-  const paymentTerm = /\b(?:pix|chave|copia|qr code|checkout|infinitepay)\b/;
-  return (action.test(text) && paymentTerm.test(text))
-    || /\b(?:so a chave|apenas a chave|chave pix|copia e cola|qr code|qrcode|checkout infinitepay)\b/.test(text);
+  if (!text || /\b(?:o que e|como funciona|me explica|explica|entender|duvida|qual a diferenca|aceita|aceitam|recebe|recebem)\b/.test(text)) return false;
+  const paymentTerm = /\b(?:pix|chave|copia|qr\s*code|qrcode|checkout|infinitepay|pagamento|cobranca|dados\s+de\s+pagamento)\b/;
+  const action = /\b(?:quero|preciso|me\s+passa|passa|passe|envia|envie|enviar|manda|mande|mandar|gera|gere|gerar|cria|crie|criar|faz|faca|fazer|cobrar|cobranca|pagar|pagamento|informa|informe|informar|fornece|fornecer|compartilha|compartilhar|receber|obter)\b/;
+  return (paymentTerm.test(text) && action.test(text))
+    || /\b(?:so|apenas|somente)\s+(?:a\s+)?chave\b|\bchave\s+pix\b|\bcopia\s+e\s+cola\b|\bqr\s*code\b|\bqrcode\b|\bdados\s+(?:do|para)\s+pix\b/.test(text);
 }

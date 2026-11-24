@@ -34,7 +34,7 @@ export function buildAdminConsultNotice({
     `• *Pedido do cliente:* "${String(question || '').trim().slice(0, 320)}"`,
     reason ? `• *Motivo:* ${reason}` : '',
     '',
-    `_Responda aqui com a resposta, orientação ou confirmação. A consulta permanece rastreada até ser resolvida ou cancelada; se o prazo vencer, o cliente e você serão avisados._`,
+    `_Responda aqui com a orientação ou confirmação. A consulta fica registrada para acompanhamento interno até ser resolvida ou cancelada._`,
     `_(Se preferir assumir o atendimento direto, responda *assumir*; para ignorar, responda *cancelar*.)_`
   ].filter(Boolean).join('\n');
 }
