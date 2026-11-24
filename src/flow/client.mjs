@@ -357,15 +357,16 @@ export async function handleClientMessage({
       const actionText = clean;
       const normalizedActionText = normalizedClientText(actionText);
       const paymentChoiceForNewRequest = resolvePaymentChoice(actionText);
+      const actionWords = normalizedActionText.split(' ');
       const explicitNewPixRequestWithoutAmount = (!mediaType || mediaType === 'audio')
-        && /\\b(?:quero|preciso|gera|gerar|gere|cria|criar|crie|envia|enviar|mande|mandar|fazer|faz|pagar|informa|informar)\\b.{0,70}\\b(?:pix|copia e cola|codigo|cobranca|pagamento)\\b/i.test(normalize(actionText))
-        && normalizedActionText.split(' ').includes('pix')
+        && actionWords.some(word => ['quero', 'preciso', 'gera', 'gerar', 'gere', 'cria', 'criar', 'crie', 'envia', 'enviar', 'mande', 'mandar', 'fazer', 'faz', 'pagar', 'informa', 'informar'].includes(word))
+        && actionWords.includes('pix')
         && amountFromText(actionText) <= 0
         && paymentChoiceForNewRequest !== 'key'
         && (
           paymentChoiceForNewRequest === 'pix'
           || s.pendingClientPayment?.choice === 'pix'
-          || /\\b(?:novo|nova|outro|outra|novamente)\\b/.test(normalizedActionText)
+          || actionWords.some(word => ['novo', 'nova', 'outro', 'outra', 'novamente'].includes(word))
         );
       if (explicitNewPixRequestWithoutAmount) {
         const question = 'Qual é o valor para eu gerar o código copia e cola?';
