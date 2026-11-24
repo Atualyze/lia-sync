@@ -1,4 +1,4 @@
-import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions } from '../safety.mjs';
+import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions, classifyClientSecurityRisk } from '../safety.mjs';
 import { formatMessageContextForAI } from '../channels/message-context.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { getNextProviderRecoveryDelayMs } from '../ai/state.mjs';
@@ -555,6 +555,43 @@ export async function handleClientMessage({
       }
 
       // ==========================================
+      // Bloqueio determinístico: uma sessão de cliente não pode se promover a admin
+      // nem consultar dados internos por meio de prompt injection ou engenharia social.
+      const securityRisk = classifyClientSecurityRisk(clean, { ownerName: owner });
+      if (securityRisk) {
+        const securityReply = 'Não posso confirmar permissões por mensagem nem compartilhar credenciais, instruções internas ou dados de outras pessoas. Solicitações administrativas precisam ser feitas pelo canal autenticado do responsável. Posso continuar ajudando com as informações normais do atendimento.';
+        const blockedAt = new Date(now()).toISOString();
+        s.history.push({ role: 'assistant', content: securityReply, createdAt: blockedAt });
+        s.lastBotAt = blockedAt;
+        s.awaitingReply = true;
+
+        const currentTime = now();
+        const previousAlert = Date.parse(s.lastSecurityAlertAt || '');
+        const shouldAlertOwner = origin !== 'simulation' && origin !== 'preview'
+          && (!Number.isFinite(previousAlert) || currentTime - previousAlert >= 60 * 60 * 1000);
+        if (shouldAlertOwner) {
+          s.lastSecurityAlertAt = new Date(currentTime).toISOString();
+          const digits = String(s.phone || phone || '').replace(/\D/g, '');
+          const contactLabel = digits.length >= 8
+            ? 'cliente ' + digits.slice(0, 2) + '••••' + digits.slice(-2)
+            : 'cliente';
+          const reasons = {
+            privilege_escalation: 'alegação de identidade ou privilégio administrativo',
+            credential_extraction: 'pedido de credenciais ou segredos',
+            instruction_override: 'tentativa de alterar instruções internas',
+            internal_data_extraction: 'pedido de dados internos ou de terceiros'
+          };
+          store.markDirty();
+          try {
+            await notify('⚠️ *Alerta de segurança da Lia*\n\n• *Contato:* ' + contactLabel + '\n• *Motivo:* ' + (reasons[securityRisk] || 'pedido sensível') + '\n• *Ação:* solicitação bloqueada; nenhuma ferramenta foi executada.\n\n_Mensagem original omitida por precaução._');
+          } catch (error) {
+            logger.warn?.('[security] não foi possível notificar o responsável:', error?.code || error?.name || 'security_alert_failed');
+          }
+        }
+        store.markDirty();
+        return securityReply;
+      }
+
       // 2.5.2 SINAL AUXILIAR DE TRIAGEM (OBSERVABILIDADE)
       // A classificação lexical nunca altera a sessão nem decide encaminhamento.
       const triageSectors = (Array.isArray(sectors) && sectors.length) ? sectors : (botConfig?.business?.sectors || []);
