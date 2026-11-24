@@ -1,18 +1,28 @@
 import crypto from 'node:crypto';
+import { config } from '../config.mjs';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const tokenCache = new Map();
 
+
 export function readGoogleCredentials(envPrefix = 'GOOGLE') {
-  const rawPrivateKey = process.env[`${envPrefix}_SERVICE_ACCOUNT_PRIVATE_KEY`] || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '';
+  const prefixMap = {
+    GOOGLE_CALENDAR: { accessToken: 'googleCalendarAccessToken', apiKey: 'googleCalendarApiKey' },
+    GOOGLE_DRIVE: { accessToken: 'googleDriveAccessToken' },
+    GOOGLE_SHEETS: { accessToken: 'googleSheetsAccessToken' },
+    GOOGLE_GMAIL: { accessToken: 'googleGmailAccessToken' }
+  };
+  const mapped = prefixMap[envPrefix] || {};
+  const legacy = (name, fallback = '') => process.env[`${envPrefix}_${name}`] || process.env[`GOOGLE_${name}`] || fallback;
+  const rawPrivateKey = legacy('SERVICE_ACCOUNT_PRIVATE_KEY', config.googleServiceAccountPrivateKey);
   return {
-    accessToken: process.env[`${envPrefix}_ACCESS_TOKEN`] || process.env.GOOGLE_ACCESS_TOKEN || '',
-    apiKey: process.env[`${envPrefix}_API_KEY`] || process.env.GOOGLE_API_KEY || '',
-    clientId: process.env[`${envPrefix}_CLIENT_ID`] || process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env[`${envPrefix}_CLIENT_SECRET`] || process.env.GOOGLE_CLIENT_SECRET || '',
-    refreshToken: process.env[`${envPrefix}_REFRESH_TOKEN`] || process.env.GOOGLE_REFRESH_TOKEN || '',
-    serviceAccountEmail: process.env[`${envPrefix}_SERVICE_ACCOUNT_EMAIL`] || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '',
-    serviceAccountPrivateKey: String(rawPrivateKey).replace(/\\n/g, '\n')
+    accessToken: mapped.accessToken ? (config[mapped.accessToken] || legacy('ACCESS_TOKEN')) : legacy('ACCESS_TOKEN'),
+    apiKey: mapped.apiKey ? (config[mapped.apiKey] || legacy('API_KEY')) : legacy('API_KEY'),
+    clientId: config.googleClientId || legacy('CLIENT_ID'),
+    clientSecret: config.googleClientSecret || legacy('CLIENT_SECRET'),
+    refreshToken: config.googleRefreshToken || legacy('REFRESH_TOKEN'),
+    serviceAccountEmail: config.googleServiceAccountEmail || legacy('SERVICE_ACCOUNT_EMAIL'),
+    serviceAccountPrivateKey: String(rawPrivateKey || '').replace(/\\n/g, '\n')
   };
 }
 
