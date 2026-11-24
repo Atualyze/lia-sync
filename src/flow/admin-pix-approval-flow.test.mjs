@@ -34,10 +34,11 @@ function createBotConfig() {
   };
 }
 
-function pendingDecision(amount = 5) {
+function pendingDecision(amount = 5, requestId = undefined) {
   return {
     type: 'pix_generation',
     status: 'pending',
+    ...(requestId ? { requestId } : {}),
     amount,
     description: 'Pagamento via Pix',
     paymentMethod: 'pix_copy_paste',
@@ -86,11 +87,13 @@ test('cliente: resposta normal da IA não libera Pix; valor informado exige deci
   assert.match(second, /ainda não gerei o Pix/i);
   assert.equal(customer.pendingAdminDecision.status, 'pending');
   assert.equal(customer.pendingAdminDecision.amount, 5);
+  assert.match(customer.pendingAdminDecision.requestId, /^[0-9a-f-]{36}$/i);
   assert.equal(customer.human, true);
   assert.ok(ownerNotice);
   assert.match(ownerNotice.text, /DECISÃO NECESSÁRIA/i);
   assert.match(ownerNotice.text, /GERAR PIX/);
   assert.match(ownerNotice.text, /ASSUMIR ATENDIMENTO/);
+  assert.ok(ownerNotice.text.includes(customer.pendingAdminDecision.requestId));
   assert.equal(sent.some(item => item.phone === CLIENT_PHONE), false);
 });
 
@@ -202,6 +205,50 @@ test('Copiloto: mais de uma cobrança pendente exige identificar o cliente', asy
   assert.equal(bruna.pendingAdminDecision.status, 'pending');
 });
 
+
+test('Copiloto: ID do botão escolhe o cliente exato mesmo com várias cobranças pendentes', async () => {
+  const sentTexts = [];
+  const sentImages = [];
+  const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-bound-${Date.now()}.json`));
+  const ana = store.get(CLIENT_PHONE);
+  ana.clientName = 'Ana';
+  ana.human = true;
+  ana.pendingClientPayment = { args: {}, choice: 'pix', createdAt: new Date().toISOString() };
+  ana.pendingAdminDecision = pendingDecision(5, '11111111-1111-4111-8111-111111111111');
+
+  const brunaPhone = '5588999992222';
+  const bruna = store.get(brunaPhone);
+  bruna.clientName = 'Bruna';
+  bruna.human = true;
+  bruna.pendingClientPayment = { args: {}, choice: 'pix', createdAt: new Date().toISOString() };
+  bruna.pendingAdminDecision = pendingDecision(10, '22222222-2222-4222-8222-222222222222');
+
+  const flow = createFlow({
+    store,
+    getBotConfig: createBotConfig,
+    whatsapp: {
+      sendText: async (phone, text) => { sentTexts.push({ phone, text }); },
+      sendImage: async (phone, image) => { sentImages.push({ phone, image }); }
+    },
+    ai: { askAI: async () => ({ reply: 'Não deveria precisar consultar a IA.', tool_calls: [] }) },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+
+  const reply = await flow.process({
+    phone: OWNER_SELF_KEY,
+    text: 'GERAR PIX 22222222-2222-4222-8222-222222222222',
+    origin: 'telegram'
+  });
+
+  assert.match(reply, /gerei e enviei o Pix copia e cola/i);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(sentTexts[0].phone, brunaPhone);
+  assert.match(sentTexts[0].text, /R\$ 10,00/);
+  assert.equal(bruna.pendingAdminDecision.status, 'completed');
+  assert.equal(ana.pendingAdminDecision.status, 'pending');
+  assert.equal(sentImages.length, 1);
+  assert.equal(sentImages[0].phone, brunaPhone);
+});
 
 test('Copiloto: GERAR PIX sem decisão pendente falha fechado e não consulta a IA', async () => {
   const store = new SessionStore(path.join(os.tmpdir(), `lia-admin-pix-no-pending-${Date.now()}.json`));
