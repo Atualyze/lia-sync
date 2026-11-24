@@ -16,7 +16,7 @@ import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { createApiV1Handler } from './api-v1.mjs';
 import { renderPayHomePage } from './pay-home.mjs';
-import { toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
+import { infinitePayOrders, toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -131,6 +131,26 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
         // Se a chave ainda não estiver configurada, mantém a página pública informativa.
       }
       return renderPayHomePage(res);
+    }
+    const shortPixMatch = u.pathname.match(/^\/p\/([A-Za-z0-9_-]{16})$/);
+    if (req.method === 'GET' && shortPixMatch) {
+      if (!paymentPageEnabled) return renderPaymentPageDisabled();
+      const paymentOrderStore = store?.paymentOrderStore || infinitePayOrders;
+      const order = await paymentOrderStore.findByShortCode(shortPixMatch[1]);
+      let paymentPageUrl = null;
+      try {
+        const candidate = new URL(order?.paymentUrl || '');
+        if (candidate.protocol === 'https:' && candidate.pathname === '/pix' && candidate.searchParams.has('p')) {
+          paymentPageUrl = candidate;
+        }
+      } catch {
+        // Código inexistente, cobrança antiga ou URL armazenada inválida.
+      }
+      if (!paymentPageUrl) {
+        res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link Pix indisponível</title></head><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#07131a;color:#f5fbff;font:500 16px system-ui,sans-serif"><main style="max-width:420px;padding:28px;text-align:center"><h1>Link Pix indisponível</h1><p>Este link não existe ou não está mais disponível. Solicite uma nova cobrança pelo WhatsApp.</p></main></body></html>');
+      }
+      return renderPixPaymentPage(res, paymentPageUrl);
     }
     if (req.method === 'GET' && u.pathname === '/pix') {
       if (!paymentPageEnabled) return renderPaymentPageDisabled();

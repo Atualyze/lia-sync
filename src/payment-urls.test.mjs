@@ -18,14 +18,18 @@ test('valida checkout InfinitePay por HTTPS e hostname exato', () => {
 });
 
 test('Pix aceita somente URL InfinitePay permitida no paymentUrl unificado', async () => {
+  let recordedOrder = null;
+  const orderStore = { recordOrder(order) { recordedOrder = order; return order; } };
   const result = await toolGerenciarCobrancaPagamento.execute({ acao: 'criar_pix',
     valor: 25,
     chavePix: 'pix-test@atualyze.com.br',
     checkoutUrl: 'https://checkout.infinitepay.io.attacker.example/pay',
     enviarWhatsApp: false
-  }, { actor: 'owner', botConfig: { identity: { companyName: 'Atualyze' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Fortaleza', paymentBaseUrl: 'https://pay.example.test' } } } } });
+  }, { actor: 'owner', botConfig: { identity: { companyName: 'Atualyze' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Fortaleza', paymentBaseUrl: 'https://pay.example.test' } } } }, infinitePayOrders: orderStore });
   assert.equal(result.success, true);
-  const paymentUrl = new URL(result.paymentUrl);
+  const shortUrl = new URL(result.paymentUrl);
+  assert.match(shortUrl.pathname, /^\/p\/[A-Za-z0-9_-]{16}$/);
+  const paymentUrl = new URL(recordedOrder.paymentUrl);
   assert.equal(paymentUrl.pathname, '/pix');
   assert.ok(paymentUrl.searchParams.has('p'));
   assert.equal(paymentUrl.searchParams.get('v'), '25.00');
@@ -33,14 +37,18 @@ test('Pix aceita somente URL InfinitePay permitida no paymentUrl unificado', asy
 });
 
 test('Pix de valor livre não carrega checkout InfinitePay mesmo com URL permitida', async () => {
+  let recordedOrder = null;
+  const orderStore = { recordOrder(order) { recordedOrder = order; return order; } };
   const result = await toolGerenciarCobrancaPagamento.execute({
     valor: 0,
     valorLivre: true,
     chavePix: 'pix-test@atualyze.com.br',
     checkoutUrl: 'https://checkout.infinitepay.io/atualyze/abc',
     enviarWhatsApp: false
-  }, { actor: 'owner', botConfig: { identity: { companyName: 'Atualyze' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Fortaleza', paymentBaseUrl: 'https://pay.example.test' } } } } });
-  const paymentUrl = new URL(result.paymentUrl);
+  }, { actor: 'owner', botConfig: { identity: { companyName: 'Atualyze' }, tools: { settings: { gerenciar_cobranca_pagamento: { pixKey: 'pix-test@atualyze.com.br', merchantName: 'Atualyze', merchantCity: 'Fortaleza', paymentBaseUrl: 'https://pay.example.test' } } } }, infinitePayOrders: orderStore });
+  const shortUrl = new URL(result.paymentUrl);
+  assert.match(shortUrl.pathname, /^\/p\/[A-Za-z0-9_-]{16}$/);
+  const paymentUrl = new URL(recordedOrder.paymentUrl);
   assert.equal(paymentUrl.searchParams.has('v'), false);
   assert.equal(paymentUrl.searchParams.has('c'), false);
 });
