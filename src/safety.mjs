@@ -165,7 +165,7 @@ export function stripRedundantSelfIntroduction(reply = '', { alreadyIntroduced =
     `^(?:(?:ol[aá]|oi|bom\\s+dia|boa\\s+tarde|boa\\s+noite|opa|e\\s+a[ií])[,!\\s.]+)?` +
     `(?:tudo\\s+(?:bem|bom|certo)(?:\\s+com\\s+voc[eê]|\\s+por\\s+a[ií])?[?!.\\s]+)?` +
     `(?:eu\\s+sou|sou|aqui\\s+[eé]|me\\s+chamo)\\s+(?:a\\s+|o\\s+)?\\*?${escapedBot}\\*?` +
-    `(?:[,\\s]+(?:sua\\s+)?(?:assistente|copiloto|atendente)[^.!?\n]*[.!?]+|[.!?\n]+)\\s*` +
+    `(?:[,\\s]+(?:(?:a|o|sua|seu)\\s+)?(?:assistente|copiloto|atendente)[^.!?\n]*[.!?]+|[.!?\n]+)\\s*` +
     `(?:(?:como|em\\s+que)\\s+posso\\s+(?:te\\s+)?ajudar(?:\\s+hoje|\\s+agora)?[?!.\\s]*)?`,
     'i'
   );
