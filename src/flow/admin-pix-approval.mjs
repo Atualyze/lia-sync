@@ -87,11 +87,16 @@ export function matchPendingAdminPixDecision(candidates = [], target = '') {
   if (!target) return items.length === 1 ? items[0] : null;
   const query = cleanDecisionText(target);
   const digits = query.replace(/\D/g, '');
+  // normalize() removes hyphens, so compare opaque request IDs by their
+  // alphanumeric characters rather than the display form.
+  const compactRequestId = query.replace(/[^a-f0-9]/gi, '').toLowerCase();
+  const looksLikeRequestId = /^[a-f0-9]{32}$/i.test(compactRequestId);
   const requestMatches = items.filter(item =>
-    String(item.decision?.requestId || item.session?.pendingAdminDecision?.requestId || '').toLowerCase() === query
+    String(item.decision?.requestId || item.session?.pendingAdminDecision?.requestId || '')
+      .replace(/[^a-f0-9]/gi, '').toLowerCase() === compactRequestId
   );
   if (requestMatches.length === 1) return requestMatches[0];
-  if (requestMatches.length > 1) return null;
+  if (requestMatches.length > 1 || looksLikeRequestId) return null;
 
   const matches = items.filter(item => {
     const phone = phoneDigits(item.session);
