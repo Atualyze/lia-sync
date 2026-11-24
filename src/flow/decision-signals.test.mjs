@@ -49,3 +49,27 @@ test('Pix: não aceita uma opção rejeitada como se fosse escolha', () => {
   assert.equal(resolvePaymentChoice('Não quero checkout, prefiro Pix copia e cola'), 'pix');
   assert.equal(resolvePaymentChoice('Não quero Pix nem checkout'), null);
 });
+
+
+test('Pix: entende pedidos naturais e coloquiais de chave simples', () => {
+  for (const phrase of [
+    'Me envie o Pix',
+    'Me manda o pix',
+    'Manda o pix pra mim',
+    'Pode enviar a chave?',
+    'Me passa os dados do Pix',
+    'Compartilha a chave pra eu pagar'
+  ]) {
+    assert.equal(isPixActionRequest(phrase), true, phrase);
+    assert.equal(resolvePaymentChoice(phrase), 'key', phrase);
+  }
+});
+
+test('Pix: diferencia chave simples de cobrança e modalidades digitais', () => {
+  assert.equal(resolvePaymentChoice('Gera um Pix copia e cola de R$ 10'), 'pix');
+  assert.equal(resolvePaymentChoice('Quero um QR Code Pix'), 'pix');
+  assert.equal(resolvePaymentChoice('Me manda o Pix de 10 reais'), 'pix');
+  assert.equal(resolvePaymentChoice('Me envie o link de pagamento'), 'checkout');
+  assert.equal(resolvePaymentChoice('O que é a chave Pix?'), null);
+  assert.equal(resolvePaymentChoice('Não quero Pix'), null);
+});
