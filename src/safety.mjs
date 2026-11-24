@@ -1,5 +1,48 @@
 const tokens = (text = '') => normalize(text).split(/\s+/).filter(Boolean);
 
+const ADMIN_AUTHORITY_CLAIM_RE = /\b(?:sou|aqui e|estou falando como|falo em nome de|represento|tenho autorizacao de)\s+(?:(?:o|a)\s+)?(?:admin(?:istrador)?|dono|proprietario|responsavel|gestor|diretor|administracao)\b/;
+const SECRET_TERMS_RE = /\b(?:senha|password|api key|chave de api|token|credenciais?|segredo|secret|webhook secret|service role|chave privada|supabase secret key|github token)\b/;
+const SECRET_REQUEST_RE = /\b(?:me passe|me manda|me envie|envie|mande|mostre|revele|informe|diga|forneca|compartilhe|extraia|qual e|onde esta|me de|me da|quero|preciso|acesse|copie)\b/;
+const INSTRUCTION_OVERRIDE_RE = /\b(?:ignore|desconsidere|esqueca|apague|anule|substitua|sobrescreva|contorne)\b.{0,90}\b(?:instrucoes|regras|prompt|sistema|restricoes|politica|seguranca)\b/;
+const INTERNAL_DATA_RE = [
+  /\b(?:dados|informacoes|historico|conversas|contatos|telefones|cadastros|fichas)\b.{0,70}\b(?:de todos os clientes|dos clientes|de outros clientes|de clientes|de leads|do crm|de funcionarios)\b/,
+  /\b(?:lista|base|cadastro)\b.{0,55}\b(?:completa\s+)?(?:de\s+)?(?:clientes|leads|contatos)\b/,
+  /\b(?:drive|planilhas?|crm|banco de dados|agenda|logs?|configuracoes|arquivos|documentos)\b.{0,65}\b(?:intern[oa]s?|privad[oa]s?|administrativ[oa]s?|do admin|do responsavel|da equipe|do sistema|do servidor)\b/,
+  /\b(?:revele|mostre|envie|compartilhe|liste|extraia|acesse|leia)\b.{0,65}\b(?:drive|planilhas?|crm|banco de dados|agenda|arquivos|documentos|dados de clientes)\b/
+];
+
+/**
+ * Detecta tentativa de assumir privilégios ou extrair dados internos em uma
+ * conversa autenticada como cliente. A classificação é determinística e não
+ * concede poderes com base em alegações feitas no texto.
+ */
+export function classifyClientSecurityRisk(text = '', { ownerName = '' } = {}) {
+  const value = normalize(text);
+  if (!value) return null;
+
+  const normalizedOwner = normalize(ownerName);
+  const namedOwnerClaim = normalizedOwner && [
+    'sou ' + normalizedOwner,
+    'sou o ' + normalizedOwner,
+    'aqui e ' + normalizedOwner,
+    'aqui e o ' + normalizedOwner,
+    'estou falando como ' + normalizedOwner,
+    'falo em nome de ' + normalizedOwner
+  ].some(claim => value.includes(claim));
+  const claimsAuthority = ADMIN_AUTHORITY_CLAIM_RE.test(value) || Boolean(namedOwnerClaim);
+  const asksForSecrets = SECRET_TERMS_RE.test(value) && SECRET_REQUEST_RE.test(value);
+  const asksForSensitiveCredential = /\b(?:senha\s+(?:do|da)\s+(?:admin|administrador|painel|servidor|banco|sistema)|api key|chave de api|token\s+(?:de acesso|admin|administrativo|secreto)|credenciais?\s+(?:internas?|do admin|da empresa|do servidor)|chave privada|webhook secret|service role|supabase secret key|github token)\b/.test(value);
+  const overridesInstructions = INSTRUCTION_OVERRIDE_RE.test(value)
+    || /\b(?:revele|mostre|imprima|repita|copie|exponha)\b.{0,70}\b(?:prompt do sistema|instrucoes internas|regras internas|mensagem de sistema)\b/.test(value);
+  const extractsInternalData = INTERNAL_DATA_RE.some(pattern => pattern.test(value));
+
+  if (claimsAuthority) return 'privilege_escalation';
+  if (asksForSensitiveCredential || asksForSecrets) return 'credential_extraction';
+  if (overridesInstructions) return 'instruction_override';
+  if (extractsInternalData) return 'internal_data_extraction';
+  return null;
+}
+
 export function normalize(text = '') {
   return String(text)
     .normalize('NFD')
