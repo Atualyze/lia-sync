@@ -46,9 +46,9 @@ export async function handleRuntimeDashboardRoutes({
     const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000').split(',')[0].trim();
     const defaultRedirectUri = `${proto}://${host}/api/oauth/google/callback`;
-    const clientConfigured = Boolean((config.googleClientId || process.env.GOOGLE_CLIENT_ID) && (config.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET));
-    const connected = Boolean(config.googleRefreshToken || process.env.GOOGLE_REFRESH_TOKEN);
-    const serviceAccountConfigured = Boolean((config.googleServiceAccountEmail || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) && (config.googleServiceAccountPrivateKey || process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY));
+    const clientConfigured = Boolean(config.googleClientId && config.googleClientSecret);
+    const connected = Boolean(config.googleRefreshToken);
+    const serviceAccountConfigured = Boolean(config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey);
 
     if (req.method === 'GET' && pathname === '/api/dashboard/oauth/google/status') {
       return json(res, 200, {
