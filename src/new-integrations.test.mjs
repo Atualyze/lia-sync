@@ -326,7 +326,7 @@ test('Copiloto Pix: executa gerenciar_cobranca_pagamento no turno seguinte ("Pix
   });
   assert.match(turn2, /Cobrança Pix gerada!/i);
   assert.match(turn2, /R\$ 10,00/);
-  assert.match(turn2, /https:\/\/liasync\.atualyze\.com\.br\/pix\?/);
+  assert.match(turn2, /https:\/\/liasync\.atualyze\.com\.br\/p\/[A-Za-z0-9_-]{16}/);
   assert.match(turn2, /000201/);
   assert.equal(sentImages.length, 1);
   assert.equal(sentImages[0].phone, '5588998340085');
@@ -923,11 +923,15 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(created.success, true);
   assert.equal(created.handle, 'tauanpires');
   assert.equal(created.checkoutUrl, 'https://checkout.infinitepay.io/tauanpires/abc123');
-  const unifiedPaymentUrl = new URL(created.paymentUrl);
-  assert.equal(unifiedPaymentUrl.pathname, '/pix');
-  assert.equal(unifiedPaymentUrl.searchParams.get('v'), '10.00');
-  assert.equal(unifiedPaymentUrl.searchParams.get('c'), created.checkoutUrl);
-  assert.ok(unifiedPaymentUrl.searchParams.has('p'));
+  const shortPaymentUrl = new URL(created.paymentUrl);
+  assert.match(shortPaymentUrl.pathname, /^\/p\/[A-Za-z0-9_-]{16}$/);
+  const storedOrder = orderStore.getOrder(created.orderNsu);
+  assert.equal(storedOrder.shortCode, shortPaymentUrl.pathname.split('/').at(-1));
+  const canonicalPaymentUrl = new URL(storedOrder.paymentUrl);
+  assert.equal(canonicalPaymentUrl.pathname, '/pix');
+  assert.equal(canonicalPaymentUrl.searchParams.get('v'), '10.00');
+  assert.equal(canonicalPaymentUrl.searchParams.get('c'), created.checkoutUrl);
+  assert.ok(canonicalPaymentUrl.searchParams.has('p'));
   assert.equal(fetchCalls[0].body.items[0].price, 1000);
   assert.equal(fetchCalls[0].body.webhook_url, 'https://liasync.atualyze.com.br/webhook/infinitepay');
 
