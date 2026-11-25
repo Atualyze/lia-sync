@@ -1,4 +1,4 @@
-import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction } from '../safety.mjs';
+import { filterReply, normalize, isGreeting, detectPriceMentions, stripRedundantSelfIntroduction, splitReply } from '../safety.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { getAllowedPrices } from '../faq.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
@@ -1072,7 +1072,11 @@ export async function handleOwnerSession({
 
             try {
               if (typeof whatsapp?.sendText !== 'function') throw new Error('Envio de mensagem WhatsApp indisponível');
-              await whatsapp.sendText(targetAddress, clientPaymentMessage);
+              const clientPaymentMessages = splitReply(formatOutgoingMessage(clientPaymentMessage));
+              for (let index = 0; index < clientPaymentMessages.length; index += 1) {
+                if (index > 0) await new Promise(resolve => setTimeout(resolve, 400));
+                await whatsapp.sendText(targetAddress, clientPaymentMessages[index]);
+              }
             } catch (error) {
               decision.status = 'uncertain';
               decision.error = String(error?.message || 'O provedor não confirmou a entrega da mensagem.').replace(/[\r\n]+/g, ' ').slice(0, 180);
