@@ -22,7 +22,7 @@ export const toolSalvarContato = {
     required: ['nome', 'telefone']
   },
   async execute({ nome, telefone }, context = {}) {
-    if (context.actor === 'client' || context.isOwner === false) {
+    if (context.actor !== 'owner' && context.isOwner !== true) {
       return { success: false, code: 'forbidden_for_client', error: 'O cadastro de contatos é exclusivo do responsável.' };
     }
 
@@ -49,8 +49,8 @@ export const toolSalvarContato = {
       phone,
       display_name: name,
       push_name: name,
-      source: 'copilot',
       active: true,
+      metadata: { source: 'copilot' },
       last_seen_at: new Date().toISOString()
     };
 
@@ -81,7 +81,7 @@ export const toolSalvarContato = {
         id: contactId,
         name,
         phone,
-        message: \`Contato \${name} salvo com sucesso.\`
+        message: `Contato \${name} salvo com sucesso.`
       };
     } catch (error) {
       return { success: false, code: 'contact_save_failed', error: 'Não consegui salvar o contato agora: ' + error.message };
