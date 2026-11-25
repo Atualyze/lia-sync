@@ -1,8 +1,8 @@
 import { normalize } from '../safety.mjs';
 
-const REMINDER_NOUN = /\b(?:lembretes?|tarefas?|retornos?|agendamentos?|afendamentos?|compromissos?|eventos?)\b/;
+const REMINDER_NOUN = /\b(?:lembretes?|tarefas?|retornos?|agendamentos?|afendamentos?|compromissos?)\b/;
 const COUNT_REQUEST = /\b(?:quantos?|quantas?|quantidade|contagem|conte)\b/;
-const LIST_REQUEST = /\b(?:liste|listar|lista|listagem|listar|mostre|mostrar|ver|veja|consultar|consulta|quais|quais sao|meus|minhas)\b/;
+const LIST_REQUEST = /\b(?:liste|listar|lista|listagem|mostre|mostrar|ver|veja|consultar|consulta|quais|quais sao|meus|minhas)\b/;
 const SCHEDULED_STATUS_QUESTION = /\b(?:o que|que)\s+(?:eu\s+)?(?:tem|ha|esta|ta|ficou)\s+(?:agendad[oa]s?|marcad[oa]s?|reservad[oa]s?)\b|\btem\s+(?:algo|algum|alguma|o que)\s+(?:agendad[oa]|marcad[oa]|reservad[oa])\b/;
 const CONFIRM_REQUEST = /\b(?:poderia|pode|consegue|me ajuda a|quero|preciso)?\s*(?:me\s+)?confirmar\b|\bconfirma\s+(?:pra|para)\s+mim\b/;
 const PRIOR_REMINDER_SUCCESS = /\b(?:lembrete|retorno|agendamento|compromisso)\b.{0,120}\b(?:agendad[oa]|registrad[oa]|criad[oa]|marcad[oa])\b|\b(?:agendad[oa]|registrad[oa]|criad[oa]|marcad[oa])\b.{0,120}\b(?:lembrete|retorno|agendamento|compromisso)\b/;
@@ -33,7 +33,7 @@ export function detectClientReminderQuery(message = '', history = []) {
   if (REMINDER_NOUN.test(text) && (
     LIST_REQUEST.test(text)
     || /\b(?:o que|quais|tem|ha|existe|me mostra|me diga)\b/.test(text)
-    || /^(?:lembretes?|agendamentos?|afendamentos?|compromissos?|eventos?)$/.test(text)
+    || /^(?:lembretes?|agendamentos?|afendamentos?|compromissos?)$/.test(text)
   )) return 'listar';
 
   return null;
