@@ -142,7 +142,7 @@ export const toolAgendarRetorno = {
         reminderId: reminder.id,
         message: 'Lembrete de retorno registrado para ' + dueLabel
           + ', associado a este contato: "' + reasonText
-          + '". O responsável receberá um aviso pelo sistema de lembretes no horário programado. Este registro não é um evento do Google Agenda.'
+          + '". O sistema tentará avisar o responsável no horário programado. Este registro não é um evento do Google Agenda.'
       };
     } catch (err) {
       return { success: false, error: err.message };
