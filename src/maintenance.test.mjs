@@ -184,3 +184,38 @@ test('Maintenance: não retoma automaticamente uma sessão humana mesmo com conf
   assert.equal(stagedCustomerMessages, 0, 'não deve preparar follow-up nem recuperação de checkout');
   assert.equal(paymentChecks, 0, 'não deve consultar checkout de sessão em atendimento humano');
 });
+
+
+test('Maintenance: registra lembrete como enviado somente depois da notificação', async () => {
+  const events = [];
+  const store = createMockStore();
+  const reminderStore = {
+    getPendingDue: () => [{ id: 'rem-1', text: 'Retornar para Tauan', phone: '5588999999999', dueAt: new Date(Date.now() - 1000).toISOString() }],
+    async markSent(id) { events.push('sent:' + id); }
+  };
+  await processMaintenance({
+    store,
+    reminderStore,
+    notify: async () => { events.push('notified'); },
+    disableInactivityPings: true,
+    logger: { warn() {}, error() {} }
+  });
+  assert.deepEqual(events, ['notified', 'sent:rem-1']);
+});
+
+test('Maintenance: falha na notificação não marca lembrete como enviado', async () => {
+  const store = createMockStore();
+  let markCalls = 0;
+  const reminderStore = {
+    getPendingDue: () => [{ id: 'rem-2', text: 'Retornar para Tauan', dueAt: new Date(Date.now() - 1000).toISOString() }],
+    async markSent() { markCalls += 1; }
+  };
+  await processMaintenance({
+    store,
+    reminderStore,
+    notify: async () => { throw new Error('Canal de notificação indisponível'); },
+    disableInactivityPings: true,
+    logger: { warn() {}, error() {} }
+  });
+  assert.equal(markCalls, 0);
+});
