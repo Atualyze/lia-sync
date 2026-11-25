@@ -14,6 +14,7 @@ import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerenciarCobrancaPagamento } from './gerenciar_cobranca_pagamento.mjs';
 import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
+import { toolSalvarContato } from './salvar_contato.mjs';
 import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
 import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs';
@@ -60,6 +61,7 @@ export const ALL_TOOLS = [
   toolConsultarDadosBrasil,
   toolGerenciarCobrancaPagamento,
   toolGerenciarMemoria,
+  toolSalvarContato,
   toolGerenciarCodigo,
   toolGerenciarConfiguracao,
   toolGerenciarTarefasAutonomas,
@@ -223,7 +225,8 @@ export {
   toolGerenciarDriveGoogle,
   toolGerenciarGmailGoogle,
   toolConsultarDadosBrasil,
-  toolGerenciarCobrancaPagamento
+  toolGerenciarCobrancaPagamento,
+  toolSalvarContato
 };
 
 /**
