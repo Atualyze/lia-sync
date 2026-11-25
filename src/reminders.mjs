@@ -192,55 +192,59 @@ export class ReminderStore {
    * Números são comparados completos; IDs @lid só correspondem ao mesmo @lid.
    * Não usa sufixos/últimos dígitos, para impedir colisões entre contatos.
    */
+  async _listActiveFromSupabase(phoneKey = '') {
+    const pageSize = 1000;
+    const maxPages = 100;
+    const rows = [];
+    let offset = 0;
+    let pageCount = 0;
+    while (true) {
+      const filters = [
+        'select=id,text,due_at,phone,client_name,created_by,status,created_at',
+        'status=eq.pending',
+        'order=created_at.asc,id.asc',
+        'limit=' + pageSize,
+        'offset=' + offset
+      ];
+      if (phoneKey) filters.splice(1, 0, 'phone=eq.' + encodeURIComponent(phoneKey));
+      const page = await this.client.select('reminders', filters.join('&'));
+      if (!Array.isArray(page)) {
+        throw new Error('Resposta inválida ao consultar lembretes no Supabase');
+      }
+      rows.push(...page.filter(row =>
+        String(row?.status || 'pending') === 'pending'
+        && (!phoneKey || normalizeReminderPhone(row?.phone) === phoneKey)
+      ));
+      pageCount += 1;
+      if (page.length < pageSize) break;
+      if (pageCount >= maxPages) {
+        throw new Error('A consulta excedeu o limite seguro de páginas; não é possível informar uma contagem completa');
+      }
+      offset += page.length;
+    }
+    return rows.map(row => ({
+      id: row.id,
+      text: row.text,
+      dueAt: row.due_at,
+      phone: row.phone || '',
+      clientName: row.client_name || '',
+      createdBy: row.created_by || 'contato',
+      status: row.status || 'pending',
+      createdAt: row.created_at || new Date(this.now()).toISOString()
+    }));
+  }
+
+  async listAllActive() {
+    if (this.client?.enabled) return this._listActiveFromSupabase();
+    return this.listActive();
+  }
+
   async listActiveForPhone(phone) {
     const phoneKey = normalizeReminderPhone(phone);
     if (!phoneKey) return [];
-
-    // Com Supabase, consulta a fonte remota pelo telefone completo e pagina
-    // todos os registros pendentes desse contato. Não usa a amostra global
-    // limitada carregada no bootstrap, nem retorna contagem parcial em falhas.
-    if (this.client?.enabled) {
-      const pageSize = 1000;
-      const maxPages = 100;
-      const rows = [];
-      let offset = 0;
-      let pageCount = 0;
-      while (true) {
-        const query = [
-          'select=id,text,due_at,phone,client_name,created_by,status,created_at',
-          'phone=eq.' + encodeURIComponent(phoneKey),
-          'status=eq.pending',
-          'order=created_at.asc,id.asc',
-          'limit=' + pageSize,
-          'offset=' + offset
-        ].join('&');
-        const page = await this.client.select('reminders', query);
-        if (!Array.isArray(page)) {
-          throw new Error('Resposta inválida ao consultar lembretes no Supabase');
-        }
-        rows.push(...page.filter(row =>
-          normalizeReminderPhone(row?.phone) === phoneKey
-          && String(row?.status || 'pending') === 'pending'
-        ));
-        pageCount += 1;
-        if (page.length < pageSize) break;
-        if (pageCount >= maxPages) {
-          throw new Error('A consulta excedeu o limite seguro de páginas; não é possível informar uma contagem completa');
-        }
-        offset += page.length;
-      }
-      return rows.map(row => ({
-        id: row.id,
-        text: row.text,
-        dueAt: row.due_at,
-        phone: row.phone || '',
-        clientName: row.client_name || '',
-        createdBy: row.created_by || 'contato',
-        status: row.status || 'pending',
-        createdAt: row.created_at || new Date(this.now()).toISOString()
-      }));
-    }
-
+    // A lista remota por telefone é independente da amostra global carregada
+    // no bootstrap. Falhas propagam para que a contagem não seja parcial.
+    if (this.client?.enabled) return this._listActiveFromSupabase(phoneKey);
     return this.listActive().filter(item => normalizeReminderPhone(item.phone) === phoneKey);
   }
 }
