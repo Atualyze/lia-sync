@@ -74,6 +74,53 @@ test('falha da agenda também gera resposta e não deixa o cliente sem retorno',
   assert.doesNotMatch(reply, /vou verificar sua agenda/i);
 });
 
+test('cliente: pedido vago para guardar recado não executa tool_call nem reminder', async () => {
+  const nowMs = Date.parse('2026-11-25T16:38:00.000Z');
+  const store = await makeStore('generic-note-no-reminder');
+  let reminderWrites = 0;
+  const reminderStore = {
+    add: async () => {
+      reminderWrites += 1;
+      return { id: 'unexpected-reminder' };
+    }
+  };
+  const modelResponses = [
+    {
+      reply: '',
+      intent: 'lembrete',
+      tool_calls: [{
+        name: 'agendar_retorno_ou_followup',
+        args: { reason: 'Recado de Nauat', when: '2026-11-25T14:00:00-03:00' }
+      }],
+      reminder: { text: 'Recado de Nauat', dueAt: '2026-11-25T14:00:00-03:00' }
+    },
+    {
+      reply: 'Claro, vou guardar o recado.',
+      intent: 'lembrete',
+      reminder: { text: 'Recado de Nauat', dueAt: '2026-11-25T14:00:00-03:00' }
+    }
+  ];
+
+  for (let index = 0; index < modelResponses.length; index += 1) {
+    const flow = createFlow({
+      store,
+      now: () => nowMs,
+      reminderStore,
+      getBotConfig: () => baseConfig,
+      faq: async () => [],
+      ai: { askAI: async () => modelResponses[index] }
+    });
+    const reply = await flow.process({
+      phone: `551199999000${index}`,
+      text: 'poderia guardar um recado?',
+      origin: 'real'
+    });
+    assert.match(reply, /Qual recado você gostaria que eu guardasse/i);
+  }
+
+  assert.equal(reminderWrites, 0, 'nenhuma sugestão fabricada pela IA pode criar lembrete sem pedido explícito');
+});
+
 test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a pendência', async (t) => {
 
 

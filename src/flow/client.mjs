@@ -8,7 +8,7 @@ import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../co
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
-import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
+import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled, resolveToolName } from '../tools/index.mjs';
 import { toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
 import { syncLeadToGoogleSheet } from '../tools/sheets_lead_sync.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
@@ -21,6 +21,7 @@ import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { normalizedClientText, amountFromText, hasActivePriceContext, isUsablePaymentCredential, paymentChoiceReply, paymentUnavailableReply, formatPixKeyForDisplay, directPixKeyReply, resolveConfiguredPixKey, formatPixSuccessReply } from './client-payment-context.mjs';
+import { validateClientReminderRequest } from './client-reminder-guard.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
@@ -1415,6 +1416,21 @@ export async function handleClientMessage({
               tc.name = 'gerenciar_cobranca_pagamento';
               tc.args = { acao: 'criar_checkout', ...(tc.args || {}) };
             }
+            const canonicalToolName = resolveToolName(tc.name);
+            if (canonicalToolName === 'agendar_retorno_ou_followup' && isClient) {
+              tc.name = canonicalToolName;
+              const reminderGate = validateClientReminderRequest({
+                message: clean,
+                reason: tc.args?.reason,
+                when: tc.args?.when,
+                now: now()
+              });
+              if (!reminderGate.allowed) {
+                reminderHandledByTool = true;
+                toolReplyOverride = reminderGate.reply;
+                continue;
+              }
+            }
             if (tc.name === 'agendar_retorno_ou_followup' && reminderHandledByTool) continue;
             if (tc.name === 'gerenciar_cobranca_pagamento' && pixHandledByTool) continue;
 
@@ -1805,12 +1821,19 @@ export async function handleClientMessage({
         safeReplyText = finalReply;
       }
 
-      // Se o cliente pediu para agendar um lembrete/recado
+      // Uma sugestão da IA não autoriza, por si só, criar um lembrete.
+      // Exigimos pedido explícito, assunto presente na mensagem e data/hora informadas.
       if (!filtered.blocked && result?.reminder && !reminderHandledByTool) {
         const remText = String(result.reminder.text || '').trim();
-        const isPlaceholder = remText.length < 5 || /^(?:recado|lembrete|descri[cç][aã]o|anota[cç][aã]o|exemplo|\.\.\.)/i.test(remText);
-        const askedReminder = /(?:lembr|agend|recado|anot|avis|hor[aá]rio)\b/i.test(clean) || result.intent === 'lembrete';
-        if (!isPlaceholder && askedReminder) {
+        const reminderGate = validateClientReminderRequest({
+          message: clean,
+          reason: remText,
+          when: result.reminder.dueAt,
+          now: now()
+        });
+        if (!reminderGate.allowed) {
+          toolReplyOverride = reminderGate.reply;
+        } else {
           const reminderResult = await executeToolCall('agendar_retorno_ou_followup', {
             reason: remText,
             when: result.reminder.dueAt
