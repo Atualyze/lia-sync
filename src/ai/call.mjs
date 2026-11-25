@@ -401,6 +401,9 @@ export async function call(provider, {
     const caps = getModelCapabilities(provider, candidateModel);
     const effectiveMaxTokens = caps.isReasoning ? Math.max(3072, config.aiMaxOutputTokens) : config.aiMaxOutputTokens;
     const sendNativeTools = caps.supportsNativeTools && nativeTools.length > 0;
+    // GPT-OSS no Groq pode tentar emitir tool calls mesmo após remover o schema nativo.
+    // Não faça downgrade para prompt-only: deixe o fallback de outro provedor agir.
+    const skipToollessFallback = provider === 'groq' && /gpt-oss/i.test(candidateModel) && nativeTools.length > 0;
     const systemForAttempt = (!sendNativeTools && nativeTools.length > 0)
       ? `${effectiveSystem}${buildCompactToolPrompt(nativeTools)}`
       : effectiveSystem;
@@ -431,7 +434,7 @@ export async function call(provider, {
       let usedPlainBody = !body.tools && !body.response_format;
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
       // Se um modelo gratuito/customizado no OpenRouter, Groq, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, aprende e re-tenta sem 'tools' usando o catálogo compacto
-      if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools) {
+      if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools && !skipToollessFallback) {
         const errSnippet = await response.clone().text().catch(() => '');
         if (/tool|function/i.test(errSnippet) || response.status === 404 || response.status === 422) {
           learnModelCapability(provider, candidateModel, { supportsNativeTools: false });
@@ -445,7 +448,7 @@ export async function call(provider, {
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(fallbackBody) });
       }
       // Alguns modelos Groq (gpt-oss), NIM ou OpenAI-compatible rejeitam response_format, reasoning_effort ou chat_template_kwargs (400/422); aprende e degrada graciosamente
-      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools || body.reasoning_effort || body.reasoning || body.chat_template_kwargs)) {
+      if (!response.ok && (response.status === 400 || response.status === 422) && (body.response_format || body.tools || body.reasoning_effort || body.reasoning || body.chat_template_kwargs) && !skipToollessFallback) {
         const errSnippet = await response.clone().text().catch(() => '');
         if (/response_format|json_validate_failed|json_object/i.test(errSnippet)) {
           learnModelCapability(provider, candidateModel, { supportsResponseFormat: false });
@@ -539,8 +542,12 @@ export async function call(provider, {
       }
       const raw = functionCalls.length ? rawWithToolCalls(contentText || extractMessageContent(message), functionCalls) : (contentText || null);
       if (!raw) {
-        // Permite tentar o próximo modelo de contingência do mesmo provedor em vez de abortar com empty_reply
-        throw Error(`${provider} empty_reply`);
+        // Registra metadados não sensíveis para diferenciar resposta truncada, reasoning-only e conteúdo ausente.
+        const choice = data.choices?.[0] || {};
+        const finishReason = String(choice.finish_reason || 'unknown').replace(/[^a-z0-9_-]/gi, '').slice(0, 32);
+        const reasoning = message.reasoning || message.reasoning_content || '';
+        const reasoningChars = typeof reasoning === 'string' ? reasoning.length : 0;
+        throw Error(`${provider} empty_reply (finish_reason=${finishReason}; reasoning_chars=${reasoningChars})`);
       }
       const usage = data.usage;
       const promptTokens = usage?.prompt_tokens || Math.ceil(((system?.length || 0) + (userText?.length || 0)) / 4);
@@ -552,6 +559,9 @@ export async function call(provider, {
         await permit?.markUnknown?.({ provider, model: candidateModel });
         await recordAICall({ requestId: permit?.requestId || null, provider, model: candidateModel, latencyMs: Date.now() - attemptStartedAt, promptTokens: 0, completionTokens: 0, totalTokens: 0, intent: 'falha', success: false, error: error.message });
         error.budgetAttemptsLogged = true;
+      }
+      if (error && typeof error === 'object') {
+        try { error.attemptedModel = candidateModel; } catch {}
       }
       lastError = error;
       if (error.budgetDenied) continue;
