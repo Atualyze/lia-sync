@@ -218,6 +218,8 @@ function rowToSession(row, messages = []) {
         content: m.content,
         createdAt: m.created_at || null,
         ...(m.external_id ? { id: m.external_id } : {}),
+        deliveryStatus: m.delivery_status || null,
+        messageType: m.message_type || 'text',
         ...(mMeta.replyTo ? { replyTo: mMeta.replyTo } : {}),
         ...(mMeta.mediaType ? { mediaType: mMeta.mediaType } : {}),
         ...(mMeta.fileName ? { fileName: mMeta.fileName } : {}),
@@ -228,6 +230,8 @@ function rowToSession(row, messages = []) {
   return {
     phone: c.phone || key.replace(/^sim:/, ''),
     origin: row.origin,
+    _conversationId: row.id || null,
+    _contactId: row.contact_id || c.id || null,
     history: cleanMessages,
     human: row.mode === 'human',
     humanSource: row.human_source || null,
@@ -302,7 +306,7 @@ function sessionToConversation(key, session, contactId) {
   if (hSource && !validHumanSources.has(hSource)) hSource = 'admin';
 
   return {
-    contact_id: contactId,
+    contact_id: contactId ?? session._contactId ?? null,
     external_key: key,
     origin: session.origin === 'simulation' || key.startsWith('sim:') ? 'simulation' : 'real',
     status: session.status === 'closed' ? 'closed' : (session.archivedAt ? 'archived' : 'open'),
@@ -372,6 +376,80 @@ function sessionToConversation(key, session, contactId) {
   };
 }
 
+
+function contactRowForSession(key, session, lastSeenAt = null) {
+  const externalId = key.replace(/^sim:/, '');
+  const resolvedName = session.clientName || session.contactName || session.pushName || null;
+  return {
+    channel: 'whatsapp',
+    external_id: externalId,
+    phone: /^\\d{8,15}$/.test(externalId) ? externalId : null,
+    display_name: resolvedName,
+    push_name: session.pushName || resolvedName,
+    last_seen_at: session.lastUserAt || lastSeenAt || session.updatedAt || new Date().toISOString()
+  };
+}
+
+function messageRowForSession(key, conversationId, index, message) {
+  const createdAt = message.createdAt || message.created_at || new Date().toISOString();
+  if (!message.createdAt) message.createdAt = createdAt;
+  const metadata = message.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+  const replyTo = message.replyTo || metadata.replyTo;
+  const mediaType = message.mediaType || metadata.mediaType;
+  const fileName = message.fileName || metadata.fileName;
+  const fromCopilot = Boolean(message.fromCopilot || metadata.fromCopilot);
+  return {
+    conversation_id: conversationId,
+    external_id: externalIdFor(key, index, message),
+    role: message.role === 'assistant' ? 'assistant' : 'user',
+    content: String(message.content || ''),
+    message_type: message.messageType || 'text',
+    from_me: message.role === 'assistant',
+    delivery_status: message.deliveryStatus || (message.role === 'assistant' ? 'sent' : 'received'),
+    created_at: createdAt,
+    metadata: {
+      runtime: 'node',
+      ...(replyTo ? { replyTo } : {}),
+      ...(mediaType ? { mediaType } : {}),
+      ...(fileName ? { fileName } : {}),
+      ...(fromCopilot ? { fromCopilot: true } : {})
+    }
+  };
+}
+
+function remoteFlushStateForSession(key, row, session, messages = []) {
+  const state = {
+    conversationId: row.id || null,
+    contactId: row.contact_id || row.contacts?.id || session._contactId || null,
+    lastSeenAt: row.contacts?.last_seen_at || row.last_user_at || row.updated_at || null,
+    contactSignature: null,
+    conversationSignature: null,
+    messages: new Map()
+  };
+  if (state.contactId && !key.startsWith('sim:')) {
+    state.contactSignature = JSON.stringify(contactRowForSession(key, session, state.lastSeenAt));
+  }
+  if (state.conversationId) {
+    state.conversationSignature = JSON.stringify(sessionToConversation(key, session, state.contactId));
+  }
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message?.external_id) continue;
+    const normalized = {
+      id: message.external_id,
+      role: message.role,
+      content: message.content,
+      createdAt: message.created_at,
+      deliveryStatus: message.delivery_status,
+      messageType: message.message_type,
+      metadata: message.metadata || {}
+    };
+    const payload = messageRowForSession(key, state.conversationId, index, normalized);
+    state.messages.set(payload.external_id, JSON.stringify(payload));
+  }
+  return state;
+}
+
 export class SupabaseSessionStore extends SessionStore {
   constructor(file, { client, logger = console, ...options } = {}) {
     super(file, { logger, ...options });
@@ -384,6 +462,9 @@ export class SupabaseSessionStore extends SessionStore {
     this.initialSyncDone = false;
     this.lastRetentionSweepAt = 0;
     this.lidMap = new Map();
+    // Assinaturas de dados remotos: impedem regravar contatos, conversas e
+    // mensagens já persistidos a cada flush local.
+    this.remoteFlushState = new Map();
   }
 
   rememberLid(jid, phone) {
@@ -534,9 +615,9 @@ export class SupabaseSessionStore extends SessionStore {
     try {
       let rows;
       try {
-        rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&deleted_at=is.null&order=updated_at.desc&limit=500');
+        rows = await this.client.select('conversations', 'select=*,contacts(id,channel,external_id,display_name,push_name,phone,last_seen_at)&status=neq.closed&deleted_at=is.null&order=updated_at.desc&limit=500');
       } catch {
-        rows = await this.client.select('conversations', 'select=*,contacts(display_name,push_name,phone)&status=neq.closed&order=updated_at.desc&limit=500');
+        rows = await this.client.select('conversations', 'select=*,contacts(id,channel,external_id,display_name,push_name,phone,last_seen_at)&status=neq.closed&order=updated_at.desc&limit=500');
       }
       const ids = rows.map(row => row.id).filter(Boolean);
       const grouped = new Map();
@@ -572,7 +653,12 @@ export class SupabaseSessionStore extends SessionStore {
       const remote = {};
       for (const row of rows) {
         const key = row.external_key;
-        remote[key] = rowToSession(row, grouped.get(row.id) || []);
+        const messages = grouped.get(row.id) || [];
+        const remoteSession = rowToSession(row, messages);
+        remoteSession._conversationId = row.id || null;
+        remoteSession._contactId = row.contact_id || row.contacts?.id || null;
+        remote[key] = remoteSession;
+        this.remoteFlushState.set(key, remoteFlushStateForSession(key, row, remoteSession, messages));
       }
       const local = { ...(this.sessions || {}) };
       const nextSessions = {};
@@ -718,10 +804,13 @@ export class SupabaseSessionStore extends SessionStore {
       if (!existed || remoteTime > localTime) {
         const messages = await this.client.select(
           'conversation_messages',
-          `select=conversation_id,external_id,role,content,created_at&conversation_id=eq.${row.id}&order=created_at.desc&limit=60`
+          `select=conversation_id,external_id,role,content,message_type,from_me,delivery_status,created_at,metadata&conversation_id=eq.${row.id}&order=created_at.desc&limit=60`
         ).catch(() => []);
         const cleanMessages = Array.isArray(messages) ? [...messages].reverse() : [];
         const remoteSession = rowToSession(row, cleanMessages);
+        remoteSession._conversationId = row.id || null;
+        remoteSession._contactId = row.contact_id || row.contacts?.id || null;
+        this.remoteFlushState.set(key, remoteFlushStateForSession(key, row, remoteSession, cleanMessages));
 
         // Preserva flags voláteis locais se houver
         const localPixRequestedAt = Date.parse(s.pendingPixRequest?.requestedAt || '') || 0;
@@ -831,59 +920,85 @@ export class SupabaseSessionStore extends SessionStore {
   async _flushRemoteOnce() {
     try {
       for (const [key, session] of Object.entries(this.sessions)) {
-        const sig = `${session.updatedAt || ''}|${session.lastUserAt || ''}|${session.lastBotAt || ''}|${session.human ? 1 : 0}|${(session.history || []).length}|${session.contactNotes || ''}|${session.dealStage || ''}|${session.productInterest || ''}|${JSON.stringify(session.pendingPixRequest || null)}|${JSON.stringify(session.pendingCopilotTask || null)}|${JSON.stringify(session.pendingClientPayment || null)}|${JSON.stringify(session.pendingAdminDecision || null)}|${JSON.stringify(session.pendingOutboundDispatch || null)}`;
-        if (session._conversationId && session._flushedSig === sig) continue;
         const isSimulation = key.startsWith('sim:');
-        const externalId = isSimulation ? key : key.replace(/^sim:/, '');
-        const resolvedName = session.clientName || session.contactName || session.pushName || null;
-        // Sessões simuladas nunca tocam no cadastro real de contatos (namespace isolado).
-        let contactId = null;
+        let state = this.remoteFlushState.get(key);
+        if (!state) {
+          state = {
+            conversationId: session._conversationId || null,
+            contactId: session._contactId || null,
+            lastSeenAt: null,
+            contactSignature: null,
+            conversationSignature: null,
+            messages: new Map()
+          };
+          this.remoteFlushState.set(key, state);
+        }
+
+        // Contatos só são escritos quando identidade, nome ou last_seen_at muda.
+        let contactId = session._contactId || state.contactId || null;
         if (!isSimulation) {
-          const contacts = await this.client.upsert('contacts', [{
-            channel: 'whatsapp',
-            external_id: externalId,
-            phone: /^\d{8,15}$/.test(externalId) ? externalId : null,
-            display_name: resolvedName,
-            push_name: session.pushName || resolvedName,
-            last_seen_at: session.lastUserAt || new Date().toISOString()
-          }], 'channel,external_id');
-          contactId = contacts?.[0]?.id;
-        }
-        const conversations = await this.client.upsert('conversations', [sessionToConversation(key, session, contactId)], 'external_key');
-        const conversationId = conversations?.[0]?.id || session._conversationId;
-        if (!conversationId) continue;
-        session._conversationId = conversationId;
-        session.history = dedupeMessages(session.history || []);
-        const messages = [];
-        const seenExtIds = new Set();
-        for (let index = 0; index < session.history.length; index++) {
-          const message = session.history[index];
-          if (!message.createdAt) {
-            message.createdAt = session.lastBotAt || session.lastUserAt || session.updatedAt || new Date().toISOString();
+          const contactPayload = contactRowForSession(key, session, state.lastSeenAt);
+          const contactSignature = JSON.stringify(contactPayload);
+          if (!contactId || state.contactSignature !== contactSignature) {
+            const contacts = await this.client.upsert(
+              'contacts',
+              [contactPayload],
+              'channel,external_id',
+              { returnRepresentation: !contactId }
+            );
+            contactId = contacts?.[0]?.id || contactId;
+            state.contactId = contactId;
+            state.contactSignature = contactSignature;
+            state.lastSeenAt = contactPayload.last_seen_at;
+            session._contactId = contactId;
           }
-          const extId = externalIdFor(key, index, message);
-          if (seenExtIds.has(extId)) continue;
-          seenExtIds.add(extId);
-          messages.push({
-            conversation_id: conversationId,
-            external_id: extId,
-            role: message.role === 'assistant' ? 'assistant' : 'user',
-            content: String(message.content || ''),
-            message_type: 'text',
-            from_me: message.role === 'assistant',
-            delivery_status: message.role === 'assistant' ? 'sent' : 'received',
-            created_at: message.createdAt,
-            metadata: {
-              runtime: 'node',
-              ...(message.replyTo ? { replyTo: message.replyTo } : {}),
-              ...(message.mediaType ? { mediaType: message.mediaType } : {}),
-              ...(message.fileName ? { fileName: message.fileName } : {}),
-              ...(message.fromCopilot ? { fromCopilot: true } : {})
-            }
-          });
         }
-        if (messages.length) await this.client.upsert('conversation_messages', messages, 'conversation_id,external_id', { returnRepresentation: false });
-        session._flushedSig = sig;
+
+        // Conversas são atualizadas somente quando o payload persistido mudou.
+        const conversationPayload = sessionToConversation(key, session, contactId);
+        const conversationSignature = JSON.stringify(conversationPayload);
+        let conversationId = session._conversationId || state.conversationId || null;
+        if (!conversationId || state.conversationSignature !== conversationSignature) {
+          const conversations = await this.client.upsert(
+            'conversations',
+            [conversationPayload],
+            'external_key',
+            { returnRepresentation: !conversationId }
+          );
+          conversationId = conversations?.[0]?.id || conversationId;
+          if (!conversationId) continue;
+          state.conversationId = conversationId;
+          state.conversationSignature = conversationSignature;
+          session._conversationId = conversationId;
+        }
+
+        session.history = dedupeMessages(session.history || []);
+        const pendingMessages = [];
+        const pendingSignatures = new Map();
+        const seenExtIds = new Set();
+        for (let index = 0; index < session.history.length; index += 1) {
+          const message = session.history[index];
+          const row = messageRowForSession(key, conversationId, index, message);
+          if (seenExtIds.has(row.external_id)) continue;
+          seenExtIds.add(row.external_id);
+          const signature = JSON.stringify(row);
+          if (state.messages.get(row.external_id) === signature) continue;
+          pendingMessages.push(row);
+          pendingSignatures.set(row.external_id, signature);
+        }
+
+        // Só envia mensagens novas/alteradas, nunca todo o histórico a cada flush.
+        if (pendingMessages.length) {
+          await this.client.upsert(
+            'conversation_messages',
+            pendingMessages,
+            'conversation_id,external_id',
+            { returnRepresentation: false }
+          );
+          for (const [externalId, signature] of pendingSignatures) {
+            state.messages.set(externalId, signature);
+          }
+        }
       }
       this.persistence = 'supabase';
       this.remoteError = null;
@@ -893,7 +1008,6 @@ export class SupabaseSessionStore extends SessionStore {
       this.logger.warn?.(`[supabase] gravação remota indisponível; snapshot local atualizado (fallback ativo): ${error.message}`);
     }
   }
-
   async resolveConversationKey(key) {
     const raw = String(key || '').trim();
     if (!raw) return '';
