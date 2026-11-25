@@ -113,6 +113,7 @@ export function extractContactSaveArgs(text = '') {
   const telefone = phoneMatch[0].trim();
   let nome = source.slice(0, phoneMatch.index).trim();
   nome = nome
+    .replace(/(?:[,;]|\s+)\s*(?:telefone|celular|fone)\s*[:=-]\s*$/i, '')
     .replace(/[,;:|\-\s]+$/g, '')
     .replace(/^\s*(?:nome|contato)\s*[:=-]\s*/i, '')
     .trim()
