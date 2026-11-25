@@ -149,7 +149,7 @@ export function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {
   }
 
   let description = source;
-  if (rawAmount) description = description.replace(new RegExp(rawAmount.replace(/[.*+?^${}()|[\]\]/g, '\$&'), 'i'), ' ');
+  if (rawAmount) description = description.replace(new RegExp(rawAmount.replace(/[.*+?^${}()|[\]\\]/g, '\\rawAmount.replace(/[.*+?^${}()|[\]\]/g, '\$&')'), 'i'), ' ');
   description = description
     .replace(/\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/ig, ' ')
     .replace(/^\s*(?:lia[,!: -]*)?(?:(?:quero|preciso|pode|gostaria\s+de)\s+)?(?:cobrar|gerar|criar|fazer|emitir)\s+(?:uma?\s+)?(?:cobran[cç]a\s+)?/i, '')
