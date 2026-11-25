@@ -614,7 +614,7 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
 
   // Consulta geral determinística: reconhece contagem, lista e perguntas abertas
   // em linguagem natural, sem depender do LLM nem de uma frase exata.
-  const reminderNoun = /\b(?:lembretes?|tarefas?|retornos?|agendamentos?|afendamentos?|compromissos?|eventos?)\b/i;
+  const reminderNoun = /\b(?:lembretes?|retornos?|agendamentos?|afendamentos?|compromissos?|eventos?)\b/i;
   const countReminderQuery = reminderNoun.test(norm)
     && /\b(?:quantos?|quantas?|quantidade|contagem|conte|qtd|numero de)\b/i.test(norm);
   const listReminderQuery = (
