@@ -14,6 +14,14 @@ import path from 'node:path';
  *     erro é registrado e a lista anterior em memória permanece. Só ENOENT
  *     (arquivo inexistente) resulta em lista vazia.
  */
+function normalizeReminderPhone(value = '') {
+  const raw = String(value || '').trim().toLowerCase().replace(/^sim:/, '');
+  if (!raw) return '';
+  if (/^\\d+@lid$/.test(raw)) return raw;
+  const digits = raw.replace(/\\D/g, '');
+  return digits || raw;
+}
+
 export class ReminderStore {
   constructor(filePath = './data/reminders.json', { client = null, logger = console, now = () => Date.now() } = {}) {
     this.filePath = filePath;
@@ -177,5 +185,16 @@ export class ReminderStore {
 
   listActive() {
     return this.reminders.filter(r => r.status === 'pending').sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  }
+
+  /**
+   * Consulta somente lembretes vinculados ao identificador autenticado do contato.
+   * Números são comparados completos; IDs @lid só correspondem ao mesmo @lid.
+   * Não usa sufixos/últimos dígitos, para impedir colisões entre contatos.
+   */
+  listActiveForPhone(phone) {
+    const phoneKey = normalizeReminderPhone(phone);
+    if (!phoneKey) return [];
+    return this.listActive().filter(item => normalizeReminderPhone(item.phone) === phoneKey);
   }
 }
