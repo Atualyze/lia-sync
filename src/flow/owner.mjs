@@ -2808,6 +2808,23 @@ ${errMsg}`;
           'gerenciar_agenda_google',
           'gerenciar_tarefas_autonomas'
         ]);
+        // Confirmação de agenda exige evidência técnica do Google: sucesso
+        // acompanhado do ID real do evento. Texto produzido pelo modelo não basta.
+        const claimsScheduleCreation = /\b(?:lembrete|retorno|compromisso|evento|agendamento)\b.{0,90}\b(?:agendad[oa]|criad[oa]|salv[oa]|registrad[oa]|marcad[oa])\b.{0,40}\b(?:com sucesso|para|as|no google agenda|na agenda)\b|\b(?:agendei|agendamos|criei|salvei|registrei)\b.{0,80}\b(?:lembrete|retorno|compromisso|evento|agendamento)\b/i.test(rawReply)
+          && !/\b(?:nao|nunca|jamais)\b.{0,24}\b(?:agendei|agendamos|criei|salvei|registrei)\b/i.test(rawReply);
+        const verifiedCalendarCreation = toolOutputs.some(item =>
+          item.tool === 'gerenciar_agenda_google'
+          && item.args?.action === 'criar_evento'
+          && item.result?.success === true
+          && Boolean(item.result?.event?.id)
+        );
+        if (claimsScheduleCreation && !verifiedCalendarCreation) {
+          return recordSelfTurn(filterReply(
+            '⚠️ Não confirmei esse agendamento: não recebi do Google Agenda a confirmação com o ID do evento. Portanto, não posso dizer que foi criado.',
+            { isCopilot: true }
+          ).text, { preserveTask: Boolean(activeTask) });
+        }
+
         if (!toolOutputs.length && !suppressToolExecution && !isPureGreeting && claimsUnexecutedToolWork(rawReply)) {
           const retryPrompt = `${sys}\n\n[CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]\nVocê respondeu "${rawReply.slice(0, 220)}" prometendo consultar/verificar algo, mas deixou "tool_calls": []. É PROIBIDO prometer consulta sem executar a ferramenta AGORA. Emita "tool_calls" com a ferramenta adequada (ex.: "consultar_saude_infra", "consultar_web", "gerenciar_tarefas_autonomas", "gerenciar_drive_google") ou responda diretamente com os dados reais que já possui.\n[/CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]`;
           const forced = await ai?.askAI?.({
