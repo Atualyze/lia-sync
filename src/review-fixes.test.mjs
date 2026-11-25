@@ -119,3 +119,37 @@ test('retenção remota exclui apenas archives expirados sem legal hold', async 
   assert.match(deleted[0].query, /expired/);
   assert.match(deleted[0].query, /metadata-%3E%3Elegal_hold=not.is.true/);
 });
+
+
+test('retenção limita idempotency keys, telemetria de IA e ledger de webhook', async () => {
+  const deleted = [];
+  const uuid = '11111111-1111-4111-8111-111111111111';
+  const webhookKey = 'a'.repeat(64);
+  const client = {
+    enabled: true,
+    async select(table) {
+      if (table === 'idempotency_keys') return [{ id: uuid }];
+      if (table === 'ai_calls') return [{ id: uuid }];
+      if (table === 'webhook_events') return [{ event_key: webhookKey }];
+      return [];
+    },
+    async request(table, options) { deleted.push({ table, ...options }); }
+  };
+  const now = Date.UTC(2026, 10, 25, 12, 0, 0);
+  const store = new SupabaseSessionStore(
+    path.join(os.tmpdir(), `supabase-retention-telemetry-${Date.now()}.json`),
+    { client, now: () => now, ttlMs: 30 * 86400000, logger: quietLogger }
+  );
+
+  await store.purgeArchives();
+
+  assert.deepEqual(deleted.map(item => item.table).sort(), [
+    'ai_calls',
+    'idempotency_keys',
+    'webhook_events'
+  ]);
+  const aiDelete = deleted.find(item => item.table === 'ai_calls');
+  const webhookDelete = deleted.find(item => item.table === 'webhook_events');
+  assert.match(aiDelete.query, /id=in\./);
+  assert.match(webhookDelete.query, /event_key=in\./);
+});

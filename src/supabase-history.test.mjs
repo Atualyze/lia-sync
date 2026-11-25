@@ -144,3 +144,61 @@ test('SupabaseSessionStore persiste e restaura uma decisão administrativa de Pi
   const restored = await restoredStore.syncSession('5588999991111');
   assert.deepEqual(restored.pendingAdminDecision, pending);
 });
+
+
+test('flush remoto envia apenas mensagens novas e ignora payloads sem alteração', async () => {
+  const writes = [];
+  const client = {
+    enabled: true,
+    async upsert(table, rows, onConflict, options = {}) {
+      writes.push({ table, rows: structuredClone(rows), onConflict, options });
+      if (table === 'contacts') return [{ id: 'contact-write-optimization' }];
+      if (table === 'conversations') return [{ id: 'conversation-write-optimization' }];
+      return [];
+    },
+    async select() { return []; }
+  };
+  const store = new SupabaseSessionStore(
+    path.join(os.tmpdir(), `lia-write-optimization-${Date.now()}.json`),
+    { client, logger: { warn() {} } }
+  );
+  const session = store.get('5511999990000');
+  session.clientName = 'Ana';
+  session.lastUserAt = '2026-11-25T12:00:00.000Z';
+  session.updatedAt = session.lastUserAt;
+  session.history.push({
+    id: 'wa:message-1',
+    role: 'user',
+    content: 'Olá',
+    createdAt: session.lastUserAt
+  });
+  store.markDirty();
+  await store.flush();
+
+  assert.equal(writes.filter(item => item.table === 'contacts').length, 1);
+  assert.equal(writes.filter(item => item.table === 'conversations').length, 1);
+  assert.equal(writes.filter(item => item.table === 'conversation_messages').length, 1);
+  assert.equal(writes.find(item => item.table === 'conversation_messages').rows.length, 1);
+
+  writes.length = 0;
+  await store.flush();
+  assert.equal(writes.length, 0, 'flush sem alterações não deve fazer chamadas REST');
+
+  session.history.push({
+    id: 'wa:message-2',
+    role: 'assistant',
+    content: 'Olá, como posso ajudar?',
+    createdAt: '2026-11-25T12:00:05.000Z'
+  });
+  session.lastBotAt = '2026-11-25T12:00:05.000Z';
+  session.updatedAt = session.lastBotAt;
+  store.markDirty();
+  await store.flush();
+
+  const messageWrite = writes.find(item => item.table === 'conversation_messages');
+  assert.ok(messageWrite);
+  assert.equal(messageWrite.rows.length, 1, 'deve enviar apenas a mensagem nova');
+  assert.equal(messageWrite.rows[0].external_id, 'wa:message-2');
+  assert.equal(writes.filter(item => item.table === 'contacts').length, 0, 'last_seen_at não muda em resposta do bot');
+  assert.equal(writes.filter(item => item.table === 'conversations').length, 1, 'a conversa muda com a nova resposta');
+});
