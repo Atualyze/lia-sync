@@ -70,6 +70,72 @@ function toZonedIso(dateIso, time, timezone) {
   return new Date(guess).toISOString();
 }
 
+function localDateParts(now, timezone) {
+  return datePartsInTimezone(new Date(now), timezone);
+}
+
+function explicitDateFromMessage(message, now, timezone) {
+  const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const parts = localDateParts(now, timezone);
+  const base = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  const plusDays = days => new Date(base.getTime() + days * 86400000).toISOString().slice(0, 10);
+
+  if (/\bhoje\b/.test(text)) return plusDays(0);
+  if (/\bamanha\b/.test(text)) return plusDays(1);
+  if (/\bdepois\s+de\s+amanha\b/.test(text)) return plusDays(2);
+
+  const relative = text.match(/\b(?:daqui\s+a|em)\s+(\d{1,2})\s+dias?\b/);
+  if (relative) return plusDays(Number(relative[1]));
+
+  const iso = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const br = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (br) {
+    const year = br[3] ? (br[3].length === 2 ? `20${br[3]}` : br[3]) : parts.year;
+    const candidate = new Date(Date.UTC(Number(year), Number(br[2]) - 1, Number(br[1])));
+    if (candidate.getUTCFullYear() !== Number(year) || candidate.getUTCMonth() !== Number(br[2]) - 1 || candidate.getUTCDate() !== Number(br[1])) return '';
+    return candidate.toISOString().slice(0, 10);
+  }
+
+  const dayOnly = text.match(/\bdia\s+(\d{1,2})\b/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    let candidate = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, day));
+    if (candidate.getUTCDate() !== day) return '';
+    if (candidate < base) {
+      candidate = new Date(Date.UTC(Number(parts.year), Number(parts.month), day));
+      if (candidate.getUTCDate() !== day) return '';
+    }
+    return candidate.toISOString().slice(0, 10);
+  }
+
+  const weekdays = {
+    domingo: 0, segunda: 1, 'segunda feira': 1, terca: 2, 'terca feira': 2,
+    quarta: 3, 'quarta feira': 3, quinta: 4, 'quinta feira': 4,
+    sexta: 5, 'sexta feira': 5, sabado: 6
+  };
+  for (const [label, target] of Object.entries(weekdays)) {
+    if (!new RegExp(`\\b${label.replace(/ /g, '\\\\s+')}\\b`).test(text)) continue;
+    const current = base.getUTCDay();
+    const offset = (target - current + 7) % 7;
+    return plusDays(offset);
+  }
+  return '';
+}
+
+function explicitTimeFromMessage(message) {
+  const text = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const match = text.match(/\b(?:as\s+)?([01]?\d|2[0-3])(?::([0-5]\d)|h([0-5]?\d)?|\s+horas?)\b|\bas\s+([01]?\d|2[0-3])\b/);
+  if (!match) return '';
+  let hour = Number(match[1] || match[4]);
+  const minute = Number(match[2] || match[3] || 0);
+  const suffix = text.slice(match.index + match[0].length, match.index + match[0].length + 18);
+  if (/\b(?:da\s+noite|da\s+tarde)\b/.test(suffix) && hour < 12) hour += 12;
+  if (/\bda\s+manha\b/.test(suffix) && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
 function dueAtFromCalendarCall(call, now, timezone) {
   const args = call?.args || {};
   const rawStart = String(args.start || '').trim();
@@ -140,6 +206,34 @@ export function prepareOwnerReminderCalendarCall({
   const timeParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
     timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   }).formatToParts(dueAt).map(part => [part.type, part.value]));
+  const actualDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+  const actualTime = `${timeParts.hour}:${timeParts.minute}`;
+  const requestedDate = explicitDateFromMessage(message, now, timezone);
+  const requestedTime = explicitTimeFromMessage(message);
+  if (!requestedDate || actualDate !== requestedDate) {
+    return {
+      state: 'clarification',
+      code: 'reminder_date_not_grounded',
+      reply: requestedDate
+        ? 'A data interpretada não corresponde ao dia que você informou. Confirme qual data devo usar.'
+        : 'Qual é a data exata que você deseja para esse lembrete?'
+      ,
+      reminder: null,
+      toolCalls: retainedCalls
+    };
+  }
+  if (!requestedTime || actualTime !== requestedTime) {
+    return {
+      state: 'clarification',
+      code: 'reminder_time_not_grounded',
+      reply: requestedTime
+        ? `Você informou ${requestedTime}, mas a interpretação veio como ${actualTime}. Confirme o horário correto, por favor.`
+        : 'Qual horário devo usar para esse lembrete?'
+      ,
+      reminder: null,
+      toolCalls: retainedCalls
+    };
+  }
 
   return {
     state: 'ready',
