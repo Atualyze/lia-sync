@@ -58,7 +58,11 @@ export const toolAgendarRetorno = {
 
       const ownReminders = context.reminderStore.listActiveForPhone(sessionPhone)
         .slice()
-        .sort((a, b) => Date.parse(b.createdAt || b.dueAt || 0) - Date.parse(a.createdAt || a.dueAt || 0));
+        .sort((a, b) => {
+          const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
+          if (Number.isFinite(createdDelta) && createdDelta !== 0) return createdDelta;
+          return Date.parse(b.dueAt || 0) - Date.parse(a.dueAt || 0);
+        });
       if (action === 'contar') {
         return {
           success: true,
