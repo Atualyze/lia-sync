@@ -59,6 +59,45 @@ test('Copiloto: cadastro de contato salva nome e telefone normalizado', async ()
   assert.equal(sessions['558899845787'].clientName, 'Nauat');
 });
 
+test('Copiloto: cadastro de contato exige ator responsável e respeita o schema do banco', async () => {
+  const writes = [];
+  const store = {
+    client: {
+      enabled: true,
+      async upsert(table, rows, conflict) {
+        writes.push({ table, rows, conflict });
+        return [{ id: 'contact-test' }];
+      }
+    }
+  };
+
+  const denied = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { actor: 'client', isOwner: false, store }
+  );
+  assert.equal(denied.success, false);
+  assert.equal(denied.code, 'forbidden_for_client');
+
+  const missingActor = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { store }
+  );
+  assert.equal(missingActor.success, false);
+  assert.equal(missingActor.code, 'forbidden_for_client');
+  assert.equal(writes.length, 0);
+
+  const saved = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { actor: 'owner', isOwner: true, store }
+  );
+  assert.equal(saved.success, true);
+  assert.deepEqual(Object.keys(writes[0].rows[0]).sort(), [
+    'active', 'channel', 'display_name', 'external_id', 'last_seen_at',
+    'metadata', 'phone', 'push_name'
+  ]);
+  assert.deepEqual(writes[0].rows[0].metadata, { source: 'copilot' });
+});
+
 test('Copiloto: continuação curta extrai nome e telefone do cadastro', () => {
   assert.deepEqual(
     extractContactSaveArgs('Nauat, 8899845787'),
