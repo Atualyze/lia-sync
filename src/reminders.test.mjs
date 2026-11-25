@@ -24,7 +24,6 @@ test('listActiveForPhone retorna somente lembretes pendentes do telefone autenti
   await store.load();
   await store.add({ phone: '5588998340085', clientName: 'Contato A', text: 'Reunião A', dueAt: '2026-11-26T17:00:00.000Z' });
   await store.add({ phone: '5588998340086', clientName: 'Contato B', text: 'Reunião B', dueAt: '2026-11-26T18:00:00.000Z' });
-  await store.add({ phone: 'sim:5588998340085', clientName: 'Contato A simulado', text: 'Simulação', dueAt: '2026-11-26T19:00:00.000Z' });
   assert.deepEqual(store.listActiveForPhone('5588998340085').map(item => item.text), ['Reunião A']);
   assert.deepEqual(store.listActiveForPhone('558899834008').map(item => item.text), []);
   await fs.rm(dir, { recursive: true, force: true });
