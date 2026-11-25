@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareOwnerReminderCalendarCall } from './owner-reminder-calendar.mjs';
+import { prepareOwnerReminderCalendarCall, claimsUnverifiedCalendarCreation } from './owner-reminder-calendar.mjs';
 
 test('pedido genérico para guardar recado nunca vira agendamento', () => {
   const prepared = prepareOwnerReminderCalendarCall({
@@ -136,4 +136,12 @@ test('horário calculado pela IA não pode divergir do horário que o responsáv
   assert.equal(prepared.code, 'reminder_time_not_grounded');
   assert.match(prepared.reply, /Você informou 20:00, mas a interpretação veio como 14:00/i);
   assert.equal(prepared.toolCalls.length, 0);
+});
+
+test('respostas que afirmam criação sem evidência são identificadas', () => {
+  assert.equal(claimsUnverifiedCalendarCreation('Lembrete de retorno agendado com sucesso para hoje às 14h.'), true);
+  assert.equal(claimsUnverifiedCalendarCreation('O agendamento foi criado no sistema de lembrete interno da Lia.'), true);
+  assert.equal(claimsUnverifiedCalendarCreation('Já agendei um lembrete para hoje.'), true);
+  assert.equal(claimsUnverifiedCalendarCreation('Não consegui agendar o lembrete.'), false);
+  assert.equal(claimsUnverifiedCalendarCreation('O Google Agenda não confirmou a criação.'), false);
 });
