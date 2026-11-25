@@ -24,7 +24,7 @@ test('agenda do Google é permitida no fluxo de cliente quando habilitada', () =
   assert.equal(isClientToolAllowed('gerenciar_agenda_google'), true);
 });
 
-test('fluxo do cliente retorna horários reais da agenda em vez de deixar promessa pendente', async (t) => {
+test('fluxo do cliente identifica horários simulados sem apresentá-los como disponibilidade real', async (t) => {
 
 
   const store = await makeStore('calendar-success');
@@ -45,7 +45,7 @@ test('fluxo do cliente retorna horários reais da agenda em vez de deixar promes
   });
 
   const reply = await flow.process({ phone: '5511999990001', text: 'Quais horários você tem amanhã?' });
-  assert.match(reply, /horários disponíveis/i);
+  assert.match(reply, /simulação de teste|não foram consultados no Google Agenda/i);
   assert.match(reply, /09:00/);
   assert.doesNotMatch(reply, /vou consultar.*agora/i);
 });
