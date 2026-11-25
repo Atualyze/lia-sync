@@ -9,8 +9,8 @@ function normalizeReply(value) {
   const reply = typeof value === 'string' ? value.trim() : '';
   const normalized = reply
     .normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '')
-    .replace(/\\s+/g, ' ')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
     .replace(/[.!?…]+$/g, '')
     .trim()
     .toLowerCase();
