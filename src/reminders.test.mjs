@@ -79,6 +79,13 @@ test('listActiveForPhone consulta Supabase por telefone exato e pagina todos os 
     assert.match(request.query, /status=eq\.pending/);
   }
   assert.match(queries[1].query, /offset=1000/);
+
+  const allActive = await store.listAllActive();
+  assert.equal(allActive.length, 1001);
+  assert.equal(queries.length, 4);
+  assert.doesNotMatch(queries[2].query, /phone=eq/);
+  assert.match(queries[2].query, /status=eq\.pending/);
+  assert.match(queries[3].query, /offset=1000/);
   await fs.rm(dir, { recursive: true, force: true });
 });
 
