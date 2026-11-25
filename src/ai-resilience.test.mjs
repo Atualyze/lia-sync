@@ -263,6 +263,26 @@ test('formatOutgoingMessage preserva Pix EMV Copia e Cola intacto sem quebrar ou
   assert.ok(!formatted.includes('br. gov.'));
 });
 
+test('Pix autorizado pela equipe é entregue em dois balões, mantendo aviso do QR Code no resumo', () => {
+  const payload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
+  const message = [
+    '💳 *Cobrança Pix autorizada e gerada pela equipe:*',
+    '• *Valor:* R$ 10,00',
+    '• *Favorecido:* Tauan Pires',
+    '• *Link de pagamento:* https://pay.atualyze.com.br/p/1234567890abcdef',
+    '• *Copia e Cola:*\\n```' + payload + '```',
+    '_O QR Code também foi enviado._'
+  ].join('\\n\\n');
+  const parts = splitReply(formatOutgoingMessage(message));
+  assert.equal(parts.length, 2);
+  assert.ok(parts[0].includes('Cobrança Pix autorizada e gerada pela equipe'));
+  assert.ok(parts[0].includes('Copia e Cola:* enviado na próxima mensagem'));
+  assert.ok(parts[0].includes('O QR Code também foi enviado'));
+  assert.ok(!parts[0].includes(payload));
+  assert.ok(parts[1].includes('toque e segure para copiar'));
+  assert.ok(parts[1].includes(payload));
+});
+
 test('filterReply bloqueia código Pix fictício (1234567890) e placeholders como [link_para_qr_code]', () => {
   const fake = filterReply('Código Pix: 1234567890\n\nPara facilitar, aqui está o QR Code: [link_para_qr_code]');
   assert.equal(fake.blocked, true);
