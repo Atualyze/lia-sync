@@ -183,12 +183,14 @@ test('Copiloto: GERAR PIX explícito envia o código ao cliente e retoma a Lia',
   assert.match(reply, /gerei e enviei o Pix copia e cola/i);
   assert.equal(sentImages.length, 1);
   assert.equal(sentImages[0].phone, CLIENT_PHONE);
-  assert.equal(sentTexts.length, 1);
+  assert.equal(sentTexts.length, 2);
   assert.equal(sentTexts[0].phone, CLIENT_PHONE);
   assert.match(sentTexts[0].text, /R\$ 5,00/);
-  assert.match(sentTexts[0].text, /Copia e Cola/);
-  assert.match(sentTexts[0].text, /000201/);
-  assert.equal(customer.pendingAdminDecision.status, 'completed');
+  assert.match(sentTexts[0].text, /Copia e Cola.*próxima mensagem/);
+  assert.doesNotMatch(sentTexts[0].text, /000201/);
+  assert.equal(sentTexts[1].phone, CLIENT_PHONE);
+  assert.match(sentTexts[1].text, /toque e segure para copiar/);
+  assert.match(sentTexts[1].text, /000201/);
   assert.equal(customer.pendingClientPayment, null);
   assert.equal(customer.human, false);
 });
@@ -295,9 +297,13 @@ test('Copiloto: ID do botão escolhe o cliente exato mesmo com várias cobrança
   });
 
   assert.match(reply, /gerei e enviei o Pix copia e cola/i);
-  assert.equal(sentTexts.length, 1);
+  assert.equal(sentTexts.length, 2);
   assert.equal(sentTexts[0].phone, brunaPhone);
   assert.match(sentTexts[0].text, /R\$ 10,00/);
+  assert.doesNotMatch(sentTexts[0].text, /000201/);
+  assert.equal(sentTexts[1].phone, brunaPhone);
+  assert.match(sentTexts[1].text, /toque e segure para copiar/);
+  assert.match(sentTexts[1].text, /000201/);
   assert.equal(bruna.pendingAdminDecision.status, 'completed');
   assert.equal(ana.pendingAdminDecision.status, 'pending');
   assert.equal(sentImages.length, 1);
