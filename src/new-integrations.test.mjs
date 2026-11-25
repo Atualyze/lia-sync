@@ -17,11 +17,98 @@ import { OWNER_SELF_KEY } from './core/identity.mjs';
 import { buildSystemPrompt } from './knowledge.mjs';
 import { listKnowledgeBasesSync } from './knowledge-bases.mjs';
 import { toolConsultarBaseConhecimento } from './tools/consultar_base_conhecimento.mjs';
+import { toolSalvarContato } from './tools/salvar_contato.mjs';
 import { synthesizeVoice } from './ai/voice.mjs';
 import { decidirModeloPorContexto } from './model-router.mjs';
 import { askAI } from './ai.mjs';
 import { responseSchema, buildOpenRouterBody } from './ai/parsing.mjs';
 import { config } from './config.mjs';
+import { extractContactSaveArgs } from './flow/owner-helpers.mjs';
+
+
+
+test('Copiloto: cadastro de contato salva nome e telefone normalizado', async () => {
+  const writes = [];
+  const sessions = {
+    '5588999845787': { phone: '5588999845787', clientName: 'Nome antigo' }
+  };
+  const store = {
+    sessions,
+    client: {
+      enabled: true,
+      async upsert(table, rows, conflict) {
+        writes.push({ table, rows, conflict });
+        return [{ id: 'contact-nauat' }];
+      }
+    },
+    markDirty() {}
+  };
+
+  const result = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { actor: 'owner', isOwner: true, store }
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(result.name, 'Nauat');
+  assert.equal(result.phone, '5588999845787');
+  assert.equal(writes[0].table, 'contacts');
+  assert.equal(writes[0].rows[0].display_name, 'Nauat');
+  assert.equal(writes[0].rows[0].phone, '5588999845787');
+  assert.equal(writes[0].conflict, 'channel,external_id');
+  assert.equal(sessions['5588999845787'].clientName, 'Nauat');
+});
+
+test('Copiloto: cadastro de contato exige ator responsável e respeita o schema do banco', async () => {
+  const writes = [];
+  const store = {
+    client: {
+      enabled: true,
+      async upsert(table, rows, conflict) {
+        writes.push({ table, rows, conflict });
+        return [{ id: 'contact-test' }];
+      }
+    }
+  };
+
+  const denied = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { actor: 'client', isOwner: false, store }
+  );
+  assert.equal(denied.success, false);
+  assert.equal(denied.code, 'forbidden_for_client');
+
+  const missingActor = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { store }
+  );
+  assert.equal(missingActor.success, false);
+  assert.equal(missingActor.code, 'forbidden_for_client');
+  assert.equal(writes.length, 0);
+
+  const saved = await toolSalvarContato.execute(
+    { nome: 'Nauat', telefone: '8899845787' },
+    { actor: 'owner', isOwner: true, store }
+  );
+  assert.equal(saved.success, true);
+  assert.deepEqual(Object.keys(writes[0].rows[0]).sort(), [
+    'active', 'channel', 'display_name', 'external_id', 'last_seen_at',
+    'metadata', 'phone', 'push_name'
+  ]);
+  assert.deepEqual(writes[0].rows[0].metadata, { source: 'copilot' });
+});
+
+test('Copiloto: continuação curta extrai nome e telefone do cadastro', () => {
+  assert.deepEqual(
+    extractContactSaveArgs('Nauat, 8899845787'),
+    { nome: 'Nauat', telefone: '8899845787' }
+  );
+  assert.deepEqual(
+    extractContactSaveArgs('nome: Nauat; telefone: 8899845787'),
+    { nome: 'Nauat', telefone: '8899845787' }
+  );
+  assert.equal(extractContactSaveArgs('guarde meu contato'), null);
+});
 
 test('ALL_TOOLS registra integrações e separa ferramentas internas das permissões de cliente', () => {
   for (const name of ['consultar_planilha_google', 'gerenciar_drive_google', 'consultar_dados_brasil', 'gerenciar_cobranca_pagamento']) {

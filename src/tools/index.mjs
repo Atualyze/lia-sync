@@ -14,6 +14,7 @@ import { toolGerenciarDriveGoogle } from './gerenciar_drive_google.mjs';
 import { toolConsultarDadosBrasil } from './consultar_dados_brasil.mjs';
 import { toolGerenciarCobrancaPagamento } from './gerenciar_cobranca_pagamento.mjs';
 import { toolGerenciarMemoria } from './gerenciar_memoria.mjs';
+import { toolSalvarContato } from './salvar_contato.mjs';
 import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
 import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs';
@@ -60,6 +61,7 @@ export const ALL_TOOLS = [
   toolConsultarDadosBrasil,
   toolGerenciarCobrancaPagamento,
   toolGerenciarMemoria,
+  toolSalvarContato,
   toolGerenciarCodigo,
   toolGerenciarConfiguracao,
   toolGerenciarTarefasAutonomas,
@@ -161,6 +163,7 @@ export const TOOL_EXECUTION_POLICIES = Object.freeze({
   consultar_dados_brasil: { mode: 'read_only', approval: 'none', retry: 'read_only_after_review', effects: 'public_data_read' },
   gerenciar_cobranca_pagamento: { mode: 'payment', approval: 'separate_payment_flow', retry: 'never', effects: 'pix_checkout_and_status' },
   gerenciar_memoria: { mode: 'memory_write', approval: 'explicit_intent', retry: 'never', effects: 'persistent_memory' },
+  salvar_contato: { mode: 'crm_write', approval: 'explicit_intent', retry: 'never', effects: 'contact_upsert' },
   gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
   gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' },
   gerenciar_tarefas_autonomas: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'runtime_commitment_or_goal' },
@@ -223,7 +226,8 @@ export {
   toolGerenciarDriveGoogle,
   toolGerenciarGmailGoogle,
   toolConsultarDadosBrasil,
-  toolGerenciarCobrancaPagamento
+  toolGerenciarCobrancaPagamento,
+  toolSalvarContato
 };
 
 /**

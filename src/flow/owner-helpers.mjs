@@ -26,12 +26,12 @@ const COPILOT_TASK_PATTERNS = [
 ];
 
 const TOOL_TASK_TYPES = Object.freeze({
-  gerenciar_cobranca_pagamento: 'payment', gerenciar_cobranca_pagamento: 'payment',
+  gerenciar_cobranca_pagamento: 'payment',
   enviar_mensagem_contato: 'dispatch', gerenciar_agenda_google: 'agenda',
   agendar_retorno_ou_followup: 'followup', gerar_documento_pdf: 'document',
   gerenciar_drive_google: 'drive', consultar_planilha_google: 'sheet',
   consultar_dados_brasil: 'public_data', consultar_contato_ou_lead: 'contact',
-  atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
+  atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory', salvar_contato: 'contact',
   consultar_saude_infra: 'infra', consultar_web: 'web',
   consultar_base_conhecimento: 'knowledge',
   gerenciar_codigo: 'self_maintenance', gerenciar_configuracao: 'self_maintenance',
@@ -103,6 +103,25 @@ export function similarClarification(a = '', b = '') {
   const overlap = common / Math.min(left.length, right.length);
   const union = common / new Set([...left, ...right]).size;
   return common >= 2 && (overlap >= 0.72 || union >= 0.62);
+}
+
+export function extractContactSaveArgs(text = '') {
+  const source = String(text || '').trim();
+  const phoneMatch = source.match(/(?:\+?55[\s().-]*)?\d(?:[\s().-]*\d){7,14}\s*$/);
+  if (!phoneMatch) return null;
+
+  const telefone = phoneMatch[0].trim();
+  let nome = source.slice(0, phoneMatch.index).trim();
+  nome = nome
+    .replace(/(?:[,;]|\s+)\s*(?:telefone|celular|fone)\s*[:=-]\s*$/i, '')
+    .replace(/[,;:|\-\s]+$/g, '')
+    .replace(/^\s*(?:nome|contato)\s*[:=-]\s*/i, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 100);
+
+  if (nome.length < 2) return null;
+  return { nome, telefone };
 }
 
 export function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {}) {
