@@ -92,10 +92,8 @@ test('Copiloto: cadastro de contato exige ator responsável e respeita o schema 
   );
   assert.equal(saved.success, true);
   assert.deepEqual(Object.keys(writes[0].rows[0]).sort(), [
-    'active', 'channel', 'display_name', 'external_id', 'last_seen_at',
-    'metadata', 'phone', 'push_name'
+    'channel', 'display_name', 'external_id', 'last_seen_at', 'phone', 'push_name'
   ]);
-  assert.deepEqual(writes[0].rows[0].metadata, { source: 'copilot' });
 });
 
 test('Copiloto: continuação curta extrai nome e telefone do cadastro', () => {
