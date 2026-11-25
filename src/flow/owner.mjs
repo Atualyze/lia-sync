@@ -6,7 +6,7 @@ import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
 import { executeToolCall as executeToolCallRaw, isToolEnabled } from '../tools/index.mjs';
-import { prepareOwnerReminderCalendarCall } from './owner-reminder-calendar.mjs';
+import { prepareOwnerReminderCalendarCall, claimsUnverifiedCalendarCreation } from './owner-reminder-calendar.mjs';
 import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import {
   cleanForSpeech, escapeText, stripBotMention, buildFriendlyAudioScript,
@@ -2810,8 +2810,7 @@ ${errMsg}`;
         ]);
         // Confirmação de agenda exige evidência técnica do Google: sucesso
         // acompanhado do ID real do evento. Texto produzido pelo modelo não basta.
-        const claimsScheduleCreation = /\b(?:lembrete|retorno|compromisso|evento|agendamento)\b.{0,90}\b(?:agendad[oa]|agendei|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b|\b(?:agendei|agendamos|criei|salvei|registrei)\b.{0,80}\b(?:lembrete|retorno|compromisso|evento|agendamento)\b/i.test(rawReply)
-          && !/\b(?:nao|nunca|jamais)\b.{0,80}\b(?:agendad[oa]|agendei|agendamos|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b/i.test(rawReply);
+        const claimsScheduleCreation = claimsUnverifiedCalendarCreation(rawReply);
         const verifiedCalendarCreation = toolOutputs.some(item =>
           item.tool === 'gerenciar_agenda_google'
           && item.args?.action === 'criar_evento'
