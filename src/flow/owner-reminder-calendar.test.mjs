@@ -65,3 +65,53 @@ test('assunto sem correspondência com a mensagem não é salvo nem agendado', (
   assert.match(prepared.reply, /qual assunto/i);
   assert.equal(prepared.toolCalls.length, 0);
 });
+
+test('chamada direta de criação também é bloqueada para pedido genérico de recado', () => {
+  const prepared = prepareOwnerReminderCalendarCall({
+    message: 'poderia guardar um recado?',
+    toolCalls: [{
+      name: 'gerenciar_agenda_google',
+      args: {
+        action: 'criar_evento',
+        date: 'hoje',
+        startTime: '14:00',
+        summary: 'Recado de Nauat'
+      }
+    }],
+    now: Date.parse('2026-11-25T17:00:00-03:00'),
+    timezone: 'America/Fortaleza'
+  });
+
+  assert.equal(prepared.state, 'clarification');
+  assert.match(prepared.reply, /Qual recado você gostaria que eu guardasse/i);
+  assert.equal(prepared.toolCalls.length, 0);
+});
+
+test('chamada direta com assunto, data e hora fundamentados é normalizada', () => {
+  const prepared = prepareOwnerReminderCalendarCall({
+    message: 'Nauat, lembrar de comprar a ração do gato, hoje às 20h',
+    toolCalls: [{
+      name: 'gerenciar_agenda_google',
+      args: {
+        action: 'criar_evento',
+        date: 'hoje',
+        startTime: '20h',
+        summary: 'Nauat — comprar a ração do gato'
+      }
+    }],
+    now: Date.parse('2026-11-25T17:00:00-03:00'),
+    timezone: 'America/Fortaleza'
+  });
+
+  assert.equal(prepared.state, 'ready');
+  assert.equal(prepared.toolCalls.length, 1);
+  assert.deepEqual(prepared.toolCalls[0], {
+    name: 'gerenciar_agenda_google',
+    args: {
+      action: 'criar_evento',
+      date: '2026-11-25',
+      startTime: '20:00',
+      summary: 'Nauat — comprar a ração do gato'
+    }
+  });
+});
