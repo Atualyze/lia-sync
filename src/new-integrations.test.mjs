@@ -30,7 +30,7 @@ import { extractContactSaveArgs } from './flow/owner-helpers.mjs';
 test('Copiloto: cadastro de contato salva nome e telefone normalizado', async () => {
   const writes = [];
   const sessions = {
-    '558899845787': { phone: '558899845787', clientName: 'Nome antigo' }
+    '5588999845787': { phone: '5588999845787', clientName: 'Nome antigo' }
   };
   const store = {
     sessions,
@@ -51,12 +51,12 @@ test('Copiloto: cadastro de contato salva nome e telefone normalizado', async ()
 
   assert.equal(result.success, true);
   assert.equal(result.name, 'Nauat');
-  assert.equal(result.phone, '558899845787');
+  assert.equal(result.phone, '5588999845787');
   assert.equal(writes[0].table, 'contacts');
   assert.equal(writes[0].rows[0].display_name, 'Nauat');
-  assert.equal(writes[0].rows[0].phone, '558899845787');
+  assert.equal(writes[0].rows[0].phone, '5588999845787');
   assert.equal(writes[0].conflict, 'channel,external_id');
-  assert.equal(sessions['558899845787'].clientName, 'Nauat');
+  assert.equal(sessions['5588999845787'].clientName, 'Nauat');
 });
 
 test('Copiloto: cadastro de contato exige ator responsável e respeita o schema do banco', async () => {
