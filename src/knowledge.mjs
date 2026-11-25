@@ -313,7 +313,7 @@ ${JSON.stringify(telemetry || { status: 'operacional', activeProvider: 'gemini',
 
 Contrato de saída JSON obrigatório:
 {
-  "reply": "sua resposta bem formatada com quebras de linha duplas, negritos e emojis",
+  "reply": "",
   "intent": "status|lembrete|comando|chat|envio_mensagem",
   "context_summary": "resumo em 1 frase do contexto e pendência atual",
   "red_flags": false,
@@ -397,7 +397,8 @@ ${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a we
    - Você é TERMINANTEMENTE PROIBIDA de inventar, supor ou chutar números de telefone (como 9999-8888, 99999-9999, ou qualquer número fictício).
    - Se o cliente perguntar um telefone que você não possui no FAQ oficial, NUNCA crie números. Mantenha a conversa neste canal; pedidos explícitos de atendimento humano devem ser classificados como pedido_pessoa.
 7. CONTRATO JSON:
-   Sempre retorne JSON válido: {"reply":"resposta natural pronta para WhatsApp","intent":"saudacao|atendimento|falar_com_responsavel|planos|politicas|pagamento|preco|agendar|servico|duvida|duvida_geral|sintoma|emergencia|humano|lembrete|status|comando|chat|envio_mensagem|outro","sector":"vendas|suporte|financeiro|reclamacao|responsavel|null","sentiment":"positivo|neutro|confuso|frustrado|urgente","context_summary":"resumo em 1 frase do contexto e pendência atual","conversation_state":{"objective":"","need":"","next_step":"","confirmed":[]},"red_flags":false,"needs_tool":false,"tool_calls":[],"handoff":false,"handoff_category":null,"handoff_reason":null,"reminder":null,"commitment_required":false,"commitment":null}.
+   Sempre retorne JSON válido: {"reply":"","intent":"saudacao|atendimento|falar_com_responsavel|planos|politicas|pagamento|preco|agendar|servico|duvida|duvida_geral|sintoma|emergencia|humano|lembrete|status|comando|chat|envio_mensagem|outro","sector":"vendas|suporte|financeiro|reclamacao|responsavel|null","sentiment":"positivo|neutro|confuso|frustrado|urgente","context_summary":"resumo em 1 frase do contexto e pendência atual","conversation_state":{"objective":"","need":"","next_step":"","confirmed":[]},"red_flags":false,"needs_tool":false,"tool_calls":[],"handoff":false,"handoff_category":null,"handoff_reason":null,"reminder":null,"commitment_required":false,"commitment":null}.
+   - O campo reply deve conter a resposta final, natural e específica para a mensagem atual; nunca copie exemplos, descrições de campos ou marcadores de modelo. Se não houver resposta textual porque uma ferramenta será executada, use string vazia.
    - needs_tool deve ser true exatamente quando houver uma ou mais chamadas válidas em tool_calls; caso contrário false e lista vazia.
    - sector é a classificação contextual da necessidade atual, incluindo reclamacao quando houver insatisfação. A lista lexical de palavras é apenas um sinal auxiliar.
    - handoff_category deve ser somente financeiro, reclamacao, pedido_pessoa, emergencia ou null; handoff é true somente quando uma das quatro categorias for escolhida. Frases como "vou encaminhar" não são decisão nem prova de encaminhamento.

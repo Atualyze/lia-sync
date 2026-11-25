@@ -1,5 +1,22 @@
 import { config } from '../config.mjs';
 
+const REPLY_PLACEHOLDERS = new Set([
+  'resposta natural pronta para whatsapp',
+  'sua resposta bem formatada com quebras de linha duplas, negritos e emojis'
+]);
+
+function normalizeReply(value) {
+  const reply = typeof value === 'string' ? value.trim() : '';
+  const normalized = reply
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?…]+$/g, '')
+    .trim()
+    .toLowerCase();
+  return REPLY_PLACEHOLDERS.has(normalized) ? '' : reply;
+}
+
 export const responseSchema = {
   type: 'OBJECT',
   properties: {
@@ -253,9 +270,9 @@ export function parseAIResponse(raw) {
     const source = String(raw || '').replace(/```json|```/gi, '').trim();
     if (/^\s*\{|"reply"\s*:/.test(source)) {
       const recovered = extractTruncatedReply(source);
-      return { reply: recovered.trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
+      return { reply: normalizeReply(recovered), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
     }
-    return { reply: String(raw || '').trim(), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
+    return { reply: normalizeReply(raw), intent: 'outro', red_flags: false, handoff: false, handoff_category: null, handoff_reason: null, commitment_required: false, commitment: null, needs_tool: false, collected: {} };
   }
   const intents = new Set(['saudacao', 'atendimento', 'falar_com_responsavel', 'planos', 'politicas', 'pagamento', 'preco', 'agendar', 'servico', 'duvida', 'duvida_geral', 'sintoma', 'emergencia', 'humano', 'lembrete', 'status', 'comando', 'chat', 'envio_mensagem', 'outro']);
   const c = o.collected && typeof o.collected === 'object' ? o.collected : {};
@@ -306,7 +323,7 @@ export function parseAIResponse(raw) {
       : []
   } : null;
   return {
-    reply: typeof o.reply === 'string' ? o.reply : '',
+    reply: normalizeReply(o.reply),
     intent: intents.has(o.intent) ? o.intent : (handoffCategory ? 'falar_com_responsavel' : 'outro'),
     red_flags: o.red_flags === true,
     handoff: Boolean(handoffCategory),
