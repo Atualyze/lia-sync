@@ -61,9 +61,9 @@ export function buildClientReminderQueryReply({
 
   if (query === 'contar') {
     const count = Number.isInteger(result.count) ? result.count : 0;
-    return count
-      ? `Há *${count} lembrete(s) pendente(s)* registrado(s) neste contato.`
-      : 'Não há lembretes pendentes registrados neste contato no momento.';
+    if (count === 0) return 'Não há lembretes pendentes registrados neste contato no momento.';
+    const noun = count === 1 ? 'lembrete pendente' : 'lembretes pendentes';
+    return `Há *${count} ${noun}* registrado(s) neste contato.`;
   }
 
   if (query === 'ultimo') {
@@ -78,8 +78,9 @@ export function buildClientReminderQueryReply({
   const lines = items.slice(0, 15).map((item, index) =>
     `${index + 1}. *${item.text || 'Lembrete sem título'}* — ${formatDueAt(item.dueAt, timezone)}`
   );
-  const remaining = items.length > lines.length
-    ? `\n\nMostrando ${lines.length} de ${items.length} lembretes pendentes.`
+  const totalCount = Number.isInteger(result.count) ? result.count : items.length;
+  const remaining = totalCount > lines.length
+    ? `\n\nMostrando ${lines.length} de ${totalCount} lembretes pendentes.`
     : '';
   return `📋 *Lembretes pendentes deste contato (${Number.isInteger(result.count) ? result.count : items.length}):*\n\n${lines.join('\n')}${remaining}\n\n_Esses registros pertencem ao sistema de lembretes; não são eventos do Google Agenda._`;
 }
