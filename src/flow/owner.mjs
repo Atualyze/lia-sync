@@ -2107,7 +2107,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               // Uma tarefa específica pode autorizar a continuação sem exigir a mesma
               // formulação textual. Tarefas genéricas, porém, não são persistidas e portanto
               // nunca chegam aqui como autorização implícita.
+              const contactDataContinuation = tc.name === 'salvar_contato'
+                && liveTask?.type === 'contact'
+                && Boolean(extractContactSaveArgs(cleanCommand));
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || contactDataContinuation
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
