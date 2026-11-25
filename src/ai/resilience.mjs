@@ -6,7 +6,6 @@ const JSON_FRAGILE_REASONING_RE = /(?:gpt-oss|qwen3|deepseek|(?:\b|[-_\/])r1(?:\
 const THINKING_TEMPLATE_RE = /(?:nemotron|qwen3|deepseek|thinking)/i;
 
 const PROVIDER_SAFETY_FALLBACKS = Object.freeze({
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   nvidia: ['meta/llama-3.3-70b-instruct'],
   qwen: ['qwen-plus', 'qwen-turbo'],
   openai: ['gpt-4o-mini']

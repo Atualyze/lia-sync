@@ -10,6 +10,7 @@ import {
   buildProviderCandidateModels,
   computeAttemptTimeoutMs
 } from './ai/resilience.mjs';
+import { resolveAIConfig, providerDefaultModel } from './ai/config.mjs';
 import { call } from './ai/call.mjs';
 import { config } from './config.mjs';
 import { opened, failures } from './ai/state.mjs';
@@ -62,7 +63,7 @@ test('applyReasoningControls aplica parâmetro correto por família de provedor'
 
 test('buildProviderCandidateModels inclui rede de segurança sem duplicatas e respeita openrouterFreeOnly', () => {
   const groqModels = buildProviderCandidateModels({ provider: 'groq', primaryModel: 'openai/gpt-oss-20b' });
-  assert.deepEqual(groqModels, ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+  assert.deepEqual(groqModels, ['openai/gpt-oss-20b'], 'não deve tentar IDs Groq removidos para contas developer');
 
   const nimModels = buildProviderCandidateModels({ provider: 'nvidia', primaryModel: 'nvidia/nemotron-3.5-lightning-30b-a3b' });
   assert.deepEqual(nimModels, ['nvidia/nemotron-3.5-lightning-30b-a3b', 'meta/llama-3.3-70b-instruct']);
@@ -81,7 +82,28 @@ test('computeAttemptTimeoutMs limita tentativa intermediária a 15s e preserva t
   assert.equal(computeAttemptTimeoutMs({ remainingMs: 25000, providerTimeoutMs: 30000, hasMoreCandidates: false }), 25000);
 });
 
-test('call("groq") faz fallback automático intra-provedor em empty_reply para llama-3.3-70b-versatile', async () => {
+test('providerDefaultModel respeita o modelo de reserva OpenRouter quando Groq é o principal', () => {
+  const aiConfig = resolveAIConfig({
+    ai: {
+      activeProvider: 'groq',
+      activeModel: 'openai/gpt-oss-20b',
+      fallbackModels: [
+        'openrouter:google/gemma-4-26b-a4b-it:free',
+        'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b',
+        'openrouter:google/gemma-4-31b-it:free'
+      ],
+      openrouterFreeOnly: true
+    }
+  });
+
+  assert.equal(
+    providerDefaultModel('openrouter', aiConfig, aiConfig.model),
+    'google/gemma-4-26b-a4b-it:free'
+  );
+  assert.equal(providerDefaultModel('groq', aiConfig, aiConfig.model), 'openai/gpt-oss-20b');
+});
+
+test('call("groq") repete apenas o GPT-OSS e não tenta modelos Groq descontinuados', async () => {
   clearModelCapabilities();
   opened.clear();
   failures.clear();
@@ -93,7 +115,7 @@ test('call("groq") faz fallback automático intra-provedor em empty_reply para l
   globalThis.fetch = async (_url, init) => {
     const body = JSON.parse(init.body);
     calledModels.push(body.model);
-    if (body.model === 'openai/gpt-oss-20b') {
+    if (calledModels.length === 1) {
       return {
         ok: true,
         status: 200,
@@ -105,7 +127,7 @@ test('call("groq") faz fallback automático intra-provedor em empty_reply para l
       status: 200,
       json: async () => ({
         model: body.model,
-        choices: [{ message: { content: '{"reply":"Respondido pelo fallback intra-provedor!","intent":"outro"}' } }],
+        choices: [{ message: { content: '{"reply":"Respondido pelo modelo principal!","intent":"outro"}' } }],
         usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 }
       })
     };
@@ -120,10 +142,58 @@ test('call("groq") faz fallback automático intra-provedor em empty_reply para l
       deadline: Date.now() + 20000
     });
     assert.ok(res);
-    assert.equal(res.model, 'llama-3.3-70b-versatile');
-    assert.ok(res.raw.includes('Respondido pelo fallback intra-provedor!'));
-    assert.ok(calledModels.includes('openai/gpt-oss-20b'));
-    assert.ok(calledModels.includes('llama-3.3-70b-versatile'));
+    assert.equal(res.model, 'openai/gpt-oss-20b');
+    assert.ok(res.raw.includes('Respondido pelo modelo principal!'));
+    assert.deepEqual(calledModels, ['openai/gpt-oss-20b', 'openai/gpt-oss-20b']);
+  } finally {
+    config.groqKey = prevKey;
+    globalThis.fetch = prevFetch;
+  }
+});
+
+test('call("groq") propaga tool_use_failed do GPT-OSS sem retry textual que perde a ferramenta', async () => {
+  clearModelCapabilities();
+  opened.clear();
+  failures.clear();
+  const prevKey = config.groqKey;
+  const prevFetch = globalThis.fetch;
+  config.groqKey = 'gsk_test_fake_key_1234567890';
+  const calledBodies = [];
+
+  globalThis.fetch = async (_url, init) => {
+    calledBodies.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({
+      error: { message: 'tool_use_failed: Tool choice is none, but model called a tool' }
+    }), { status: 400, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    await assert.rejects(
+      call('groq', {
+        system: 'Você é a Lia.',
+        history: [],
+        userText: 'Guarde meu contato.',
+        toolDeclarations: [{
+          name: 'salvar_contato',
+          description: 'Salva um contato autorizado.',
+          parameters: {
+            type: 'object',
+            properties: { nome: { type: 'string' } },
+            required: ['nome']
+          }
+        }],
+        fixedModel: 'openai/gpt-oss-20b',
+        deadline: Date.now() + 20000
+      }),
+      error => {
+        assert.match(error.message, /400/);
+        assert.equal(error.attemptedModel, 'openai/gpt-oss-20b');
+        return true;
+      }
+    );
+    assert.equal(calledBodies.length, 1, 'não deve refazer a chamada sem ferramentas');
+    assert.equal(calledBodies[0].tool_choice, 'auto');
+    assert.equal(calledBodies[0].tools?.[0]?.function?.name, 'salvar_contato');
   } finally {
     config.groqKey = prevKey;
     globalThis.fetch = prevFetch;
