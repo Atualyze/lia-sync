@@ -49,8 +49,6 @@ export const toolSalvarContato = {
       phone,
       display_name: name,
       push_name: name,
-      active: true,
-      metadata: { source: 'copilot' },
       last_seen_at: new Date().toISOString()
     };
 
