@@ -419,7 +419,7 @@ export function splitReply(text = '') {
   if (!value) return [];
   // Isola o BR Code Pix em um balão próprio. Aceita o payload puro, cercado
   // por crases na mesma linha ou em bloco multilinha (formato usado pelo Copiloto).
-  const pixCodeMatch = value.match(/(?:^|\n)[ \t]*(?:```[ \t]*(?:\r?\n)?)?(000201[^\s`]{40,})(?:\r?\n[ \t]*```|```)?(?=\r?\n|$)/i);
+  const pixCodeMatch = value.match(/(?:^|\n)[ \t]*(?:```[ \t]*(?:\r?\n)?)?(000201[^\r\n`]{40,})(?:\r?\n[ \t]*```|```)?(?=\r?\n|$)/i);
   if (pixCodeMatch) {
     const code = pixCodeMatch[1].trim();
     const idx = value.indexOf(pixCodeMatch[0]);
