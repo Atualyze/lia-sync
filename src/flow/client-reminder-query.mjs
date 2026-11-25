@@ -14,16 +14,20 @@ const PRIOR_REMINDER_SUCCESS = /\b(?:lembrete|retorno|agendamento|compromisso)\b
  */
 export function detectClientReminderQuery(message = '', history = []) {
   const text = normalize(message);
-  if (!text || !REMINDER_NOUN.test(text) && !SCHEDULED_STATUS_QUESTION.test(text)) return null;
+  const asksToConfirm = CONFIRM_REQUEST.test(text);
+  const previousAssistant = [...(Array.isArray(history) ? history : [])]
+    .reverse()
+    .find(entry => entry?.role === 'assistant')?.content || '';
+  const hasPreviousReminderClaim = PRIOR_REMINDER_SUCCESS.test(normalize(previousAssistant));
+  if (!text || (
+    !REMINDER_NOUN.test(text)
+    && !SCHEDULED_STATUS_QUESTION.test(text)
+    && !(asksToConfirm && hasPreviousReminderClaim)
+  )) return null;
 
   if (COUNT_REQUEST.test(text) && REMINDER_NOUN.test(text)) return 'contar';
 
-  if (CONFIRM_REQUEST.test(text)) {
-    const previousAssistant = [...(Array.isArray(history) ? history : [])]
-      .reverse()
-      .find(entry => entry?.role === 'assistant')?.content || '';
-    if (PRIOR_REMINDER_SUCCESS.test(normalize(previousAssistant))) return 'ultimo';
-  }
+  if (asksToConfirm && hasPreviousReminderClaim) return 'ultimo';
 
   if (SCHEDULED_STATUS_QUESTION.test(text)) return 'listar';
   if (REMINDER_NOUN.test(text) && (
