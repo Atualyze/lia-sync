@@ -425,10 +425,13 @@ export function splitReply(text = '') {
     const idx = value.indexOf(pixCodeMatch[0]);
     const before = value.slice(0, idx).trim();
     const after = value.slice(idx + pixCodeMatch[0].length).trim();
-    let head = [before, after].filter(Boolean).join('\n\n').trim();
-    head = head.replace(/((?:Copia e Cola|Código Pix)\s*:\*?)(?=\s*(?:\n|$))/i, '$1 enviado na próxima mensagem');
+    const summary = [before, after].filter(Boolean).join('\n\n').trim();
+    const copyLabelPattern = /^[ \t]*(?:[•*-][ \t]*)?\*?(?:Copia e Cola|Código Pix)\s*:\*?[ \t]*$/gim;
+    const summaryWithoutCopyLabel = summary.replace(copyLabelPattern, '').trim();
+    const copyTitle = '📋 *Pix Copia e Cola — toque e segure para copiar:*';
+    const head = [summaryWithoutCopyLabel, copyTitle].filter(Boolean).join('\n\n');
     const headParts = head ? splitReply(head) : [];
-    return [...headParts, '📋 *Pix Copia e Cola — toque e segure para copiar:*\n```' + code + '```'];
+    return [...headParts, '```' + code + '```'];
   }
   if (value.length <= 700) return [value];
   const paragraphs = value.split(/\n{2,}/).filter(Boolean);
