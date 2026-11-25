@@ -4,7 +4,7 @@
  */
 export const toolAgendarRetorno = {
   name: 'agendar_retorno_ou_followup',
-  description: 'Programa um lembrete de retorno ou follow-up para entrar em contato com o cliente em data ou horário específico.',
+  description: 'Agenda um retorno futuro somente quando o cliente pedir explicitamente o agendamento e informar o assunto, o dia e o horário. Não use para um pedido genérico de guardar/deixar recado; nunca invente dados.',
   parameters: {
     type: 'OBJECT',
     properties: {
@@ -14,11 +14,11 @@ export const toolAgendarRetorno = {
       },
       reason: {
         type: 'STRING',
-        description: 'Motivo do retorno ou resumo do assunto a ser tratado.'
+        description: 'Assunto concreto informado pelo cliente para o retorno. Não invente conteúdo nem use apenas o nome do cliente.'
       },
       when: {
         type: 'STRING',
-        description: 'Data e hora futuras em ISO 8601 com fuso horário (ex: 2026-11-10T16:00:00-03:00). Não use expressões relativas.'
+        description: 'Data e hora futuras em ISO 8601 com fuso horário, convertidas somente de dia e horário expressamente informados pelo cliente. Não use horário padrão nem invente data.'
       }
     },
     required: ['reason', 'when']
