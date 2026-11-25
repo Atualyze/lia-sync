@@ -2810,8 +2810,8 @@ ${errMsg}`;
         ]);
         // Confirmação de agenda exige evidência técnica do Google: sucesso
         // acompanhado do ID real do evento. Texto produzido pelo modelo não basta.
-        const claimsScheduleCreation = /\b(?:lembrete|retorno|compromisso|evento|agendamento)\b.{0,90}\b(?:agendad[oa]|criad[oa]|salv[oa]|registrad[oa]|marcad[oa])\b.{0,40}\b(?:com sucesso|para|as|no google agenda|na agenda)\b|\b(?:agendei|agendamos|criei|salvei|registrei)\b.{0,80}\b(?:lembrete|retorno|compromisso|evento|agendamento)\b/i.test(rawReply)
-          && !/\b(?:nao|nunca|jamais)\b.{0,24}\b(?:agendei|agendamos|criei|salvei|registrei)\b/i.test(rawReply);
+        const claimsScheduleCreation = /\b(?:lembrete|retorno|compromisso|evento|agendamento)\b.{0,90}\b(?:agendad[oa]|agendei|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b|\b(?:agendei|agendamos|criei|salvei|registrei)\b.{0,80}\b(?:lembrete|retorno|compromisso|evento|agendamento)\b/i.test(rawReply)
+          && !/\b(?:nao|nunca|jamais)\b.{0,80}\b(?:agendad[oa]|agendei|agendamos|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b/i.test(rawReply);
         const verifiedCalendarCreation = toolOutputs.some(item =>
           item.tool === 'gerenciar_agenda_google'
           && item.args?.action === 'criar_evento'
