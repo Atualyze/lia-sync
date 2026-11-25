@@ -1,6 +1,6 @@
 import { normalize } from '../safety.mjs';
 
-const REMINDER_NOUN = /\b(?:lembretes?|tarefas?|retornos?|agendamentos?|afendamentos?|compromissos?)\b/;
+const REMINDER_NOUN = /\b(?:lembretes?|retornos?|agendamentos?|afendamentos?|compromissos?)\b/;
 const COUNT_REQUEST = /\b(?:quantos?|quantas?|quantidade|contagem|conte)\b/;
 const LIST_REQUEST = /\b(?:liste|listar|lista|listagem|mostre|mostrar|ver|veja|consultar|consulta|quais|quais sao|meus|minhas)\b/;
 const SCHEDULED_STATUS_QUESTION = /\b(?:o que|que)\s+(?:eu\s+)?(?:tem|ha|esta|ta|ficou)\s+(?:agendad[oa]s?|marcad[oa]s?|reservad[oa]s?)\b|\btem\s+(?:algo|algum|alguma|o que)\s+(?:agendad[oa]|marcad[oa]|reservad[oa])\b/;
