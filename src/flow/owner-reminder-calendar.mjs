@@ -2,7 +2,7 @@ import { validateClientReminderRequest } from './client-reminder-guard.mjs';
 
 const isScheduleToolCall = call => {
   const name = String(call?.name || '').trim();
-  return name === 'agendar_retorno_ou_followup'
+  return ['agendar_retorno_ou_followup', 'agendar_retorno'].includes(name)
     || (name === 'gerenciar_agenda_google' && call?.args?.action === 'criar_evento');
 };
 
@@ -20,7 +20,7 @@ export function prepareOwnerReminderCalendarCall({
   timezone = 'America/Sao_Paulo'
 } = {}) {
   const calls = Array.isArray(toolCalls) ? [...toolCalls] : [];
-  const legacyReminderCall = calls.find(call => call?.name === 'agendar_retorno_ou_followup');
+  const legacyReminderCall = calls.find(call => ['agendar_retorno_ou_followup', 'agendar_retorno'].includes(String(call?.name || '').trim()));
   const candidate = reminder || (legacyReminderCall
     ? { text: legacyReminderCall.args?.reason, dueAt: legacyReminderCall.args?.when }
     : null);
