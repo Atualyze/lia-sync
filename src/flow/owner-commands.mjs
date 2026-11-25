@@ -145,9 +145,12 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
       action: 'consultar_livres',
       ...(dateHintMatch ? { date: dateHintMatch[1] } : {})
     }, { clientName: owner, botConfig });
-    const calStatus = calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
+    const calStatus = calRes?.mocked
+      ? '🟡 Simulação — agenda real não consultada'
+      : calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
     const slots = calRes?.success && Array.isArray(calRes.availableSlots) ? calRes.availableSlots.join(', ') : 'Nenhum horário confirmado';
-    const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *Horários Livres Confirmados:* ${slots}`;
+    const slotsLabel = calRes?.mocked ? 'Horários Simulados (não confirmados)' : 'Horários Livres Confirmados';
+    const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *${slotsLabel}:* ${slots}`;
     return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
   }
 
