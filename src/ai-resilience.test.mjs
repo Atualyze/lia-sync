@@ -277,8 +277,8 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
 
   const variants = [
     `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`,
-    `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n``` ${realPayload} ````,
-    `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n```\n${realPayload}\n```
+    '• *Valor:* R$ 10,00\n• *Copia e Cola:*\n``` ' + realPayload + ' ```',
+    '• *Valor:* R$ 10,00\n• *Copia e Cola:*\n```\n' + realPayload + '\n```'
   ];
   for (const variant of variants) {
     const directParts = splitReply(variant);
