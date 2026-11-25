@@ -27,6 +27,46 @@ function formatCalendarEvent(event, timezone) {
   return `${event?.summary || 'Compromisso'} — ${formatted}`;
 }
 
+function findRecentOwnerReminderConfirmation(history = [], currentText = '') {
+  const entries = Array.isArray(history) ? history : [];
+  const current = normalize(currentText);
+  let currentIndex = entries.length;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    if (entries[i]?.role !== 'user') continue;
+    if (normalize(entries[i]?.content || '') === current) currentIndex = i;
+    break;
+  }
+  const asksConfirmation = /\b(?:poderia|pode|consegue|me ajuda a|quero|preciso)?\s*(?:me\s+)?confirmar\b|\bconfirma\s+(?:pra|para)\s+mim\b/.test(current);
+  if (!asksConfirmation) return null;
+
+  let assistantIndex = -1;
+  for (let i = currentIndex - 1; i >= 0; i -= 1) {
+    if (entries[i]?.role === 'assistant') { assistantIndex = i; break; }
+  }
+  if (assistantIndex < 0) return null;
+  const assistantText = String(entries[assistantIndex]?.content || '');
+  const claimedSuccess = /\b(?:lembrete|retorno|agendamento|compromisso)\b.{0,180}\b(?:agendad[oa]|registrad[oa]|criad[oa]|marcad[oa])\b|\b(?:agendad[oa]|registrad[oa]|criad[oa]|marcad[oa])\b.{0,180}\b(?:lembrete|retorno|agendamento|compromisso)\b/i.test(normalize(assistantText));
+  if (!claimedSuccess) return null;
+
+  let priorUserText = '';
+  for (let i = assistantIndex - 1; i >= 0; i -= 1) {
+    if (entries[i]?.role === 'user') {
+      priorUserText = String(entries[i]?.content || '');
+      break;
+    }
+  }
+  const subjectMatch = assistantText.match(/(?:assunto|foco em)\s*:\s*["“]?(.+?)["”]?\s*(?:\n|$)/i);
+  let subject = String(subjectMatch?.[1] || priorUserText).trim();
+  subject = subject
+    .replace(/^(?:me\s+)?(?:lembrar|lembre|lembra|agendar|agende|marcar|marque|criar|crie|anotar|anote)\s+/i, '')
+    .replace(/[,.]?\s*(?:para\s+)?(?:hoje|amanh[aã]|depois\s+de\s+amanh[aã]|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|s[aá]bado|domingo|dia\s+\d{1,2}|daqui\s+a?\s+\d+\s+dias?)[\s\S]*$/i, '')
+    .replace(/[,.]?\s+as?\s+\d{1,2}(?::\d{2}|h(?:\d{2})?)?[\s\S]*$/i, '')
+    .replace(/^["“]|["”]$/g, '')
+    .trim();
+  if (!subject) return null;
+  return { subject, sourceText: priorUserText, assistantText };
+}
+
 /**
  * Executa comandos determinísticos rápidos do Copiloto (1.0.5 a 1.7).
  * Retorna a resposta final gravada ou `null` quando a mensagem deve seguir
@@ -134,6 +174,56 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
           return `${index + 1}. ${item.text} — ${when}`;
         }).join('\n')
       : 'Nenhum lembrete interno pendente corresponde a esse nome.');
+    return recordSelfTurn(filterReply(output.join('\n'), { isCopilot: true }).text);
+  }
+
+  // Confirmação curta após uma alegação de agendamento: valida as duas fontes reais
+  // e nunca repete como fato uma confirmação apenas redigida pela IA.
+  const reminderConfirmation = findRecentOwnerReminderConfirmation(sSelf?.history, norm);
+  if (reminderConfirmation) {
+    const timezone = botConfig?.integrations?.googleCalendar?.timezone
+      || botConfig?.business?.hoursConfig?.timezone
+      || botConfig?.business?.timezone
+      || 'America/Sao_Paulo';
+    const today = todayInTimezone(now(), timezone);
+    const calendarRes = await executeToolCall('gerenciar_agenda_google', {
+      action: 'listar_eventos',
+      date: today,
+      query: reminderConfirmation.subject
+    }, { clientName: owner, botConfig });
+    const subjectTokens = normalize(reminderConfirmation.subject)
+      .split(' ')
+      .filter(token => token.length >= 4 && !['lembrete', 'retorno', 'agendar', 'agendado', 'amanha', 'hoje'].includes(token));
+    const internalMatches = (reminderStore?.listActive?.() || []).filter(item => {
+      const text = normalize(item.text || '');
+      const matches = subjectTokens.filter(token => text.includes(token)).length;
+      return subjectTokens.length > 0 && matches >= Math.min(2, subjectTokens.length);
+    });
+    const output = ['🔎 *Confirmação do agendamento:*'];
+    if (calendarRes?.success) {
+      const events = Array.isArray(calendarRes.events) ? calendarRes.events : [];
+      output.push('', '*Google Agenda:*');
+      output.push(events.length
+        ? events.slice(0, 8).map((event, index) => `${index + 1}. ${formatCalendarEvent(event, timezone)}`).join('\n')
+        : 'Não encontrei esse assunto na Google Agenda a partir de hoje.');
+    } else {
+      output.push('', `*Google Agenda:* Não consegui verificar agora (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Ainda não posso confirmar o evento.`);
+    }
+    output.push('', '*Lembretes internos:*');
+    output.push(internalMatches.length
+      ? internalMatches.slice(0, 8).map((item, index) => {
+          const due = new Date(item.dueAt);
+          const when = Number.isFinite(due.getTime())
+            ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
+            : 'data não informada';
+          return `${index + 1}. ${item.text} — ${when}`;
+        }).join('\n')
+      : 'Nenhum registro interno pendente corresponde ao assunto.');
+    if ((!calendarRes?.success || !(calendarRes.events || []).length) && internalMatches.length) {
+      output.push('', '_Encontrei um registro interno, mas isso não comprova que exista um evento na Google Agenda._');
+    } else if (calendarRes?.success && !(calendarRes.events || []).length && !internalMatches.length) {
+      output.push('', '_Não encontrei um registro nas fontes consultadas; portanto, não vou afirmar que o agendamento está confirmado._');
+    }
     return recordSelfTurn(filterReply(output.join('\n'), { isCopilot: true }).text);
   }
 
