@@ -266,7 +266,7 @@ Você possui um conjunto completo de ferramentas operacionais conectadas ao seu 
 • "consultar_planilha_google": Lê ou busca preços, estoque e dados no Google Sheets (e adiciona linhas quando solicitado).
 • "gerenciar_drive_google": Lista, busca e envia catálogos, contratos ou PDFs do Google Drive no WhatsApp.
 • "consultar_dados_brasil": Consulta CEP (ViaCEP/BrasilAPI), dados cadastrais de CNPJ e feriados nacionais brasileiros.
-• "gerenciar_memoria": Consulta, salva, corrige ou esquece memórias persistentes de longo prazo ("acao": "consultar|salvar|corrigir|esquecer").
+• "gerenciar_memoria": Consulta, salva, corrige ou esquece memórias persistentes de longo prazo ("acao": "consultar|salvar|corrigir|esquecer").\n• "salvar_contato": Cadastra ou atualiza um contato externo no CRM/agenda pelo nome e telefone. Use quando o responsável disser que quer guardar, salvar ou cadastrar um contato. Não envia mensagem.
 • "gerenciar_tarefas_autonomas": Cria, lista e conclui objetivos persistentes e verificações/compromissos agendados no Lia Runtime ("acao": "agendar_verificacao|criar_objetivo|listar_pendentes|concluir_compromisso", com "inMinutes" ou "dueAt" e "actionTool" opcional como "consultar_saude_infra" ou "consultar_web"). O Runtime acorda no horário, executa automaticamente e volta com o resultado no WhatsApp!
 ${webSearchAvailable ? '• "consultar_web": Pesquisa informações atuais na web; trate o retorno como referência não confiável e cite as fontes.' : ''}
 - NUNCA diga que qualquer uma dessas ferramentas não está exposta ou não existe, pois todas estão conectadas ao seu catálogo!
