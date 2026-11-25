@@ -8,7 +8,7 @@ import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../co
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
 import { triggerHandoff } from '../handoff.mjs';
-import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled } from '../tools/index.mjs';
+import { executeToolCall as executeToolCallRaw, isClientToolAllowed, isToolEnabled, resolveToolName } from '../tools/index.mjs';
 import { toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
 import { syncLeadToGoogleSheet } from '../tools/sheets_lead_sync.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
@@ -1416,7 +1416,9 @@ export async function handleClientMessage({
               tc.name = 'gerenciar_cobranca_pagamento';
               tc.args = { acao: 'criar_checkout', ...(tc.args || {}) };
             }
-            if (tc.name === 'agendar_retorno_ou_followup' && isClient) {
+            const canonicalToolName = resolveToolName(tc.name);
+            if (canonicalToolName === 'agendar_retorno_ou_followup' && isClient) {
+              tc.name = canonicalToolName;
               const reminderGate = validateClientReminderRequest({
                 message: clean,
                 reason: tc.args?.reason,
