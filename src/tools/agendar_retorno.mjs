@@ -56,7 +56,7 @@ export const toolAgendarRetorno = {
         return { success: false, error: 'reminder_query_unavailable', message: 'Não consegui consultar os lembretes deste contato agora.' };
       }
 
-      const ownReminders = context.reminderStore.listActiveForPhone(sessionPhone)
+      const ownReminders = (await context.reminderStore.listActiveForPhone(sessionPhone))
         .slice()
         .sort((a, b) => {
           const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
