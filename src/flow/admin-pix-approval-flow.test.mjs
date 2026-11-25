@@ -191,6 +191,7 @@ test('Copiloto: GERAR PIX explícito envia o código ao cliente e retoma a Lia',
   assert.equal(sentTexts[1].phone, CLIENT_PHONE);
   assert.match(sentTexts[1].text, /toque e segure para copiar/);
   assert.match(sentTexts[1].text, /000201/);
+  assert.equal(customer.pendingAdminDecision.status, 'completed');
   assert.equal(customer.pendingClientPayment, null);
   assert.equal(customer.human, false);
 });
