@@ -8,7 +8,7 @@ import {
 test('classifica consultas naturais de quantidade como contagem', () => {
   for (const phrase of [
     'quantos lembretes tem no meu contato',
-    'quantas tarefas agendadas eu tenho?',
+    'quantos retornos pendentes eu tenho?',
     'qual a quantidade de agendamentos?',
     'conte os compromissos'
   ]) {
