@@ -115,3 +115,25 @@ test('chamada direta com assunto, data e hora fundamentados é normalizada', () 
     }
   });
 });
+
+test('horário calculado pela IA não pode divergir do horário que o responsável informou', () => {
+  const prepared = prepareOwnerReminderCalendarCall({
+    message: 'Nauat, lembrar de comprar a ração do gato, hoje às 20h',
+    toolCalls: [{
+      name: 'gerenciar_agenda_google',
+      args: {
+        action: 'criar_evento',
+        date: 'hoje',
+        startTime: '14:00',
+        summary: 'Nauat — comprar a ração do gato'
+      }
+    }],
+    now: Date.parse('2026-11-25T12:00:00-03:00'),
+    timezone: 'America/Fortaleza'
+  });
+
+  assert.equal(prepared.state, 'clarification');
+  assert.equal(prepared.code, 'reminder_time_not_grounded');
+  assert.match(prepared.reply, /Você informou 20:00, mas a interpretação veio como 14:00/i);
+  assert.equal(prepared.toolCalls.length, 0);
+});
