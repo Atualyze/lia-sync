@@ -15,7 +15,7 @@ import path from 'node:path';
  *     (arquivo inexistente) resulta em lista vazia.
  */
 function normalizeReminderPhone(value = '') {
-  const raw = String(value || '').trim().toLowerCase().replace(/^sim:/, '');
+  const raw = String(value || '').trim().toLowerCase();
   if (!raw) return '';
   if (/^\d+@lid$/.test(raw)) return raw;
   const digits = raw.replace(/\D/g, '');
