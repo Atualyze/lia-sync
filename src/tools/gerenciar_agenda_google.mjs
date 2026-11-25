@@ -292,9 +292,6 @@ export const toolGerenciarAgendaGoogle = {
     if (!settings.enabled) {
       return { success: false, error: 'google_calendar_disabled', message: 'A integração com o Google Calendar está desativada no painel.' };
     }
-    if (!settings.calendarId) {
-      return { success: false, error: 'google_calendar_id_missing', message: 'O ID da agenda Google não está configurado. Nenhum evento foi criado.' };
-    }
     const startDateTimePart = String(altStart || '').match(/T(\d{2}:\d{2})/)?.[1] || '';
     const rawTime = String(startTime || altTime || startDateTimePart || '').trim();
     const hasExplicitDate = Boolean(String(date || altStart || '').trim());
@@ -364,6 +361,9 @@ export const toolGerenciarAgendaGoogle = {
       (settings.serviceAccountEmail && settings.serviceAccountPrivateKey)
     );
     if (!hasCredentials) return unavailable();
+    if (!settings.calendarId) {
+      return { success: false, error: 'google_calendar_id_missing', message: 'O ID da agenda Google não está configurado. Nenhum evento foi criado.' };
+    }
 
     try {
       if (action === 'sugerir_horarios') {
