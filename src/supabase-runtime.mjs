@@ -521,12 +521,12 @@ export class SupabaseSessionStore extends SessionStore {
     try {
       messages = await this.client.select(
         'conversation_messages',
-        `select=conversation_id,external_id,role,content,created_at,deleted_at&conversation_id=in.(${ids})&deleted_at=is.null&order=created_at.desc&limit=${maxMessages}`
+        `select=conversation_id,external_id,role,content,message_type,from_me,delivery_status,created_at,metadata,deleted_at&conversation_id=in.(${ids})&deleted_at=is.null&order=created_at.desc&limit=${maxMessages}`
       );
     } catch {
       messages = await this.client.select(
         'conversation_messages',
-        `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${ids})&order=created_at.desc&limit=${maxMessages}`
+        `select=conversation_id,external_id,role,content,message_type,from_me,delivery_status,created_at,metadata&conversation_id=in.(${ids})&order=created_at.desc&limit=${maxMessages}`
       ).catch(error => {
         this.logger.warn?.(`[supabase] falha ao recuperar histórico anterior do contato: ${error?.name || 'Error'}`);
         return [];
@@ -628,11 +628,11 @@ export class SupabaseSessionStore extends SessionStore {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
         const batch = await this.client.select(
           'conversation_messages',
-          `select=conversation_id,external_id,role,content,created_at,deleted_at&conversation_id=in.(${chunk.join(',')})&deleted_at=is.null&order=created_at.desc&limit=${chunk.length * 60}`
+          `select=conversation_id,external_id,role,content,message_type,from_me,delivery_status,created_at,metadata,deleted_at&conversation_id=in.(${chunk.join(',')})&deleted_at=is.null&order=created_at.desc&limit=${chunk.length * 60}`
         ).catch(() =>
           this.client.select(
             'conversation_messages',
-            `select=conversation_id,external_id,role,content,created_at&conversation_id=in.(${chunk.join(',')})&order=created_at.desc&limit=${chunk.length * 60}`
+            `select=conversation_id,external_id,role,content,message_type,from_me,delivery_status,created_at,metadata&conversation_id=in.(${chunk.join(',')})&order=created_at.desc&limit=${chunk.length * 60}`
           )
         ).catch(err => {
           this.logger.warn?.(`[supabase] falha ao buscar mensagens em lote: ${err.message}`);
@@ -785,7 +785,7 @@ export class SupabaseSessionStore extends SessionStore {
     if (existed && (this.saveTimer || this.saving)) return s;
 
     try {
-      const rows = await this.client.select('conversations', `select=*,contacts(display_name,push_name,phone)&external_key=eq.${encodeURIComponent(key)}&limit=1`);
+      const rows = await this.client.select('conversations', `select=*,contacts(id,channel,external_id,display_name,push_name,phone,last_seen_at)&external_key=eq.${encodeURIComponent(key)}&limit=1`);
       const row = rows?.[0];
       if (!row) return s;
 
