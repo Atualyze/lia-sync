@@ -63,7 +63,8 @@ export function buildClientReminderQueryReply({
     const count = Number.isInteger(result.count) ? result.count : 0;
     if (count === 0) return 'Não há lembretes pendentes registrados neste contato no momento.';
     const noun = count === 1 ? 'lembrete pendente' : 'lembretes pendentes';
-    return `Há *${count} ${noun}* registrado(s) neste contato.`;
+    const verb = count === 1 ? 'registrado' : 'registrados';
+    return `Há *${count} ${noun}* ${verb} neste contato.`;
   }
 
   if (query === 'ultimo') {
