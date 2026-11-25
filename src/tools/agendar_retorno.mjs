@@ -104,7 +104,7 @@ export const toolAgendarRetorno = {
     const clientName = context.clientName || 'Cliente';
     const reasonText = String(reason || '').trim();
     const whenText = String(when || '').trim();
-    const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i;
+    const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i;
     const dueDate = new Date(whenText);
     if (context.actor === 'client' && !clientPhoneValid) {
       return { success: false, error: 'Invalid session phone for reminder.' };
