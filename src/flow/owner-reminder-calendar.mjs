@@ -1,5 +1,12 @@
 import { validateClientReminderRequest } from './client-reminder-guard.mjs';
 
+export function claimsUnverifiedCalendarCreation(reply = '') {
+  const text = String(reply || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const claim = /\b(?:lembrete|retorno|compromisso|evento|agendamento)\b.{0,90}\b(?:agendad[oa]|agendei|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b|\b(?:agendei|agendamos|criei|salvei|registrei)\b.{0,80}\b(?:lembrete|retorno|compromisso|evento|agendamento)\b/.test(text);
+  const explicitFailure = /\b(?:nao|nunca|jamais)\b.{0,80}\b(?:agendad[oa]|agendei|agendamos|criad[oa]|criei|salv[oa]|salvei|registrad[oa]|registrei|marcad[oa])\b/.test(text);
+  return claim && !explicitFailure;
+}
+
 function isCalendarCreateCall(call) {
   return ['gerenciar_agenda_google', 'google_agenda'].includes(String(call?.name || '').trim())
     && call?.args?.action === 'criar_evento';
