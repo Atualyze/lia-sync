@@ -62,6 +62,7 @@ function findRecentOwnerReminderConfirmation(history = [], currentText = '') {
     .replace(/[,.]?\s*(?:para\s+)?(?:hoje|amanh[aã]|depois\s+de\s+amanh[aã]|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|s[aá]bado|domingo|dia\s+\d{1,2}|daqui\s+a?\s+\d+\s+dias?)[\s\S]*$/i, '')
     .replace(/[,.]?\s+as?\s+\d{1,2}(?::\d{2}|h(?:\d{2})?)?[\s\S]*$/i, '')
     .replace(/^["“]|["”]$/g, '')
+    .replace(/[.!?]+$/g, '')
     .trim();
   if (!subject) return null;
   return { subject, sourceText: priorUserText, assistantText };
