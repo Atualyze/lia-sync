@@ -12,6 +12,19 @@ function todayInTimezone(nowMs, timezone) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+async function readActiveReminders(reminderStore) {
+  if (!reminderStore) return { items: [], error: null };
+  try {
+    const items = typeof reminderStore.listAllActive === 'function'
+      ? await reminderStore.listAllActive()
+      : reminderStore.listActive?.() || [];
+    if (!Array.isArray(items)) throw new Error('Resposta inválida do sistema de lembretes');
+    return { items, error: null };
+  } catch (error) {
+    return { items: [], error };
+  }
+}
+
 function formatCalendarEvent(event, timezone) {
   const start = event?.start?.dateTime || event?.start?.date;
   if (!start) return `${event?.summary || 'Compromisso'} — data não informada`;
@@ -151,7 +164,8 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
       query: targetName
     }, { clientName: owner, botConfig });
     const targetNormalized = normalize(targetName);
-    const internalMatches = (reminderStore?.listActive?.() || []).filter(item =>
+    const reminderRead = await readActiveReminders(reminderStore);
+    const internalMatches = reminderRead.items.filter(item =>
       normalize([item.clientName, item.text].filter(Boolean).join(' ')).includes(targetNormalized)
     );
 
@@ -166,15 +180,19 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
       output.push('', `*Google Agenda:* Não consegui consultar a agenda (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Não posso afirmar que não há compromisso.`);
     }
     output.push('', '*Lembretes internos pendentes:*');
-    output.push(internalMatches.length
-      ? internalMatches.slice(0, 12).map((item, index) => {
-          const due = new Date(item.dueAt);
-          const when = Number.isFinite(due.getTime())
-            ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
-            : 'data não informada';
-          return `${index + 1}. ${item.text} — ${when}`;
-        }).join('\n')
-      : 'Nenhum lembrete interno pendente corresponde a esse nome.');
+    if (reminderRead.error) {
+      output.push('Não consegui consultar os registros internos agora; não vou afirmar que não há lembretes.');
+    } else {
+      output.push(internalMatches.length
+        ? internalMatches.slice(0, 12).map((item, index) => {
+            const due = new Date(item.dueAt);
+            const when = Number.isFinite(due.getTime())
+              ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
+              : 'data não informada';
+            return `${index + 1}. ${item.text} — ${when}`;
+          }).join('\n')
+        : 'Nenhum lembrete interno pendente corresponde a esse nome.');
+    }
     return recordSelfTurn(filterReply(output.join('\n'), { isCopilot: true }).text);
   }
 
@@ -195,7 +213,8 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
     const subjectTokens = normalize(reminderConfirmation.subject)
       .split(' ')
       .filter(token => token.length >= 4 && !['lembrete', 'retorno', 'agendar', 'agendado', 'amanha', 'hoje'].includes(token));
-    const internalMatches = (reminderStore?.listActive?.() || []).filter(item => {
+    const reminderRead = await readActiveReminders(reminderStore);
+    const internalMatches = reminderRead.items.filter(item => {
       const text = normalize(item.text || '');
       const matches = subjectTokens.filter(token => text.includes(token)).length;
       return subjectTokens.length > 0 && matches >= Math.min(2, subjectTokens.length);
@@ -211,15 +230,19 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
       output.push('', `*Google Agenda:* Não consegui verificar agora (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Ainda não posso confirmar o evento.`);
     }
     output.push('', '*Lembretes internos:*');
-    output.push(internalMatches.length
-      ? internalMatches.slice(0, 8).map((item, index) => {
-          const due = new Date(item.dueAt);
-          const when = Number.isFinite(due.getTime())
-            ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
-            : 'data não informada';
-          return `${index + 1}. ${item.text} — ${when}`;
-        }).join('\n')
-      : 'Nenhum registro interno pendente corresponde ao assunto.');
+    if (reminderRead.error) {
+      output.push('Não consegui consultar os registros internos agora; não vou afirmar que não há lembretes.');
+    } else {
+      output.push(internalMatches.length
+        ? internalMatches.slice(0, 8).map((item, index) => {
+            const due = new Date(item.dueAt);
+            const when = Number.isFinite(due.getTime())
+              ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
+              : 'data não informada';
+            return `${index + 1}. ${item.text} — ${when}`;
+          }).join('\n')
+        : 'Nenhum registro interno pendente corresponde ao assunto.');
+    }
     if ((!calendarRes?.success || !(calendarRes.events || []).length) && internalMatches.length) {
       output.push('', '_Encontrei um registro interno, mas isso não comprova que exista um evento na Google Agenda._');
     } else if (calendarRes?.success && !(calendarRes.events || []).length && !internalMatches.length) {
@@ -464,7 +487,8 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
     const sessionsArr = Object.values(store.sessions);
     const activeCount = sessionsArr.filter(s => !s.inactivityClosed && (s.history?.length || 0) > 0).length;
     const humanWaiting = sessionsArr.filter(s => isHumanHandoffActive(s) && !s.inactivityClosed && s.phone);
-    const remList = reminderStore ? reminderStore.listActive() : [];
+    const reminderRead = await readActiveReminders(reminderStore);
+    const remList = reminderRead.items;
 
     const provider = telemetry?.activeProvider || botConfig.ai?.activeProvider || 'gemini';
     const model = telemetry?.activeModel || botConfig.ai?.activeModel || 'gemini-3.8-flash';
@@ -487,7 +511,7 @@ _Tempo ativo: ${Math.round((m.uptimeSeconds || 0) / 3600)} horas_`;
 • *Em espera humana:* ${humanWaiting.length} ${humanWaiting.length > 0 ? '⚠️ (digite *fila* para ver)' : '✨'}
 
 ⏰ *Lembretes:*
-• *Pendentes:* ${remList.length} ${remList.length > 0 ? '(digite *lembretes* para ver)' : ''}
+• *Pendentes:* ${reminderRead.error ? 'não foi possível consultar' : `${remList.length} ${remList.length > 0 ? '(digite *lembretes* para ver)' : ''}`}
 
 _Dica: digite *ajuda* para ver todos os comandos disponíveis._`;
     return recordSelfTurn(filterReply(statusMsg, { isCopilot: true }).text);
@@ -631,7 +655,8 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
       action: 'listar_eventos',
       date: today
     }, { clientName: owner, botConfig });
-    const list = reminderStore?.listActive?.() || [];
+    const reminderRead = await readActiveReminders(reminderStore);
+    const list = reminderRead.items;
     if (countReminderQuery) {
       const sections = ['🔢 *Contagem de compromissos e lembretes pendentes:*'];
       if (calendarRes?.success) {
@@ -640,7 +665,9 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
       } else {
         sections.push(`• *Google Agenda:* não foi possível consultar (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Não vou estimar essa quantidade.`);
       }
-      sections.push(`• *Lembretes internos:* ${list.length} pendente(s).`);
+      sections.push(reminderRead.error
+        ? '• *Lembretes internos:* não foi possível consultar; contagem indisponível.'
+        : `• *Lembretes internos:* ${list.length} pendente(s).`);
       return recordSelfTurn(filterReply(sections.join('\n'), { isCopilot: true }).text);
     }
 
@@ -653,8 +680,12 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     } else {
       sections.push(`Não consegui consultar o Google Agenda: ${calendarRes?.message || calendarRes?.error || 'integração indisponível'}. Não posso confirmar que a agenda está vazia.`);
     }
-    sections.push('', `*Lembretes internos pendentes (${list.length}):*`);
-    if (list.length) {
+    sections.push('', reminderRead.error
+      ? '*Lembretes internos pendentes:*'
+      : `*Lembretes internos pendentes (${list.length}):*`);
+    if (reminderRead.error) {
+      sections.push('Não consegui consultar os lembretes internos agora; não vou afirmar que a lista está vazia.');
+    } else if (list.length) {
       sections.push(list.slice(0, 15).map((item, index) => {
         const due = new Date(item.dueAt);
         const dueText = Number.isFinite(due.getTime())
