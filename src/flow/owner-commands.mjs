@@ -521,9 +521,16 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     return recordSelfTurn(filterReply(`⚠️ *Confirmação necessária*\n\nVocê quer realmente limpar o histórico e o estado de *${targetName}*? Essa ação não pode ser desfeita.\n\nResponda *sim* para confirmar ou *não* para cancelar.`, { isCopilot: true }).text);
   }
 
-  // 1.7 Consulta unificada: eventos do Google Agenda e lembretes internos
-  // aparecem em blocos distintos para não misturar fontes nem inventar sucesso.
-  if (/(?:quais|ver|listar|lista|meus)?\s*(?:lembretes|agendamentos)\b/i.test(norm)) {
+  // Consulta geral determinística: reconhece contagem, lista e perguntas abertas
+  // em linguagem natural, sem depender do LLM nem de uma frase exata.
+  const reminderNoun = /\b(?:lembretes?|tarefas?|retornos?|agendamentos?|afendamentos?|compromissos?|eventos?)\b/i;
+  const countReminderQuery = reminderNoun.test(norm)
+    && /\b(?:quantos?|quantas?|quantidade|contagem|conte|qtd|numero de)\b/i.test(norm);
+  const listReminderQuery = (
+    reminderNoun.test(norm) && /\b(?:liste|listar|lista|listagem|mostre|mostrar|ver|veja|consultar|consulta|quais|meus|minhas|tem|ha|existe)\b/i.test(norm)
+  ) || /\b(?:o que|que)\s+(?:eu\s+)?(?:tem|ha|esta|ta|ficou)\s+(?:agendad[oa]s?|marcad[oa]s?|reservad[oa]s?)\b/i.test(norm)
+    || /\btem\s+(?:algo|algum|alguma|o que)\s+(?:agendad[oa]|marcad[oa]|reservad[oa])\b/i.test(norm);
+  if (countReminderQuery || listReminderQuery) {
     const tz = botConfig?.integrations?.googleCalendar?.timezone
       || botConfig?.business?.hoursConfig?.timezone
       || botConfig?.business?.timezone
@@ -534,6 +541,18 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
       date: today
     }, { clientName: owner, botConfig });
     const list = reminderStore?.listActive?.() || [];
+    if (countReminderQuery) {
+      const sections = ['🔢 *Contagem de compromissos e lembretes pendentes:*'];
+      if (calendarRes?.success) {
+        const events = Array.isArray(calendarRes.events) ? calendarRes.events : [];
+        sections.push(`• *Google Agenda:* ${events.length} evento(s) a partir de hoje.`);
+      } else {
+        sections.push(`• *Google Agenda:* não foi possível consultar (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Não vou estimar essa quantidade.`);
+      }
+      sections.push(`• *Lembretes internos:* ${list.length} pendente(s).`);
+      return recordSelfTurn(filterReply(sections.join('\n'), { isCopilot: true }).text);
+    }
+
     const sections = ['📋 *Agenda e lembretes pendentes:*', '', '*Google Agenda:*'];
     if (calendarRes?.success) {
       const events = Array.isArray(calendarRes.events) ? calendarRes.events : [];
@@ -543,7 +562,7 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     } else {
       sections.push(`Não consegui consultar o Google Agenda: ${calendarRes?.message || calendarRes?.error || 'integração indisponível'}. Não posso confirmar que a agenda está vazia.`);
     }
-    sections.push('', '*Lembretes internos pendentes:*');
+    sections.push('', `*Lembretes internos pendentes (${list.length}):*`);
     if (list.length) {
       sections.push(list.slice(0, 15).map((item, index) => {
         const due = new Date(item.dueAt);
