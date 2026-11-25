@@ -16,7 +16,7 @@ import path from 'node:path';
  */
 function normalizeReminderPhone(value = '') {
   const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return '';
+  if (!raw || raw.startsWith('sim:')) return '';
   if (/^\d+@lid$/.test(raw)) return raw;
   const digits = raw.replace(/\D/g, '');
   return digits || raw;
