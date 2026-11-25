@@ -5,8 +5,8 @@ import { getRecentAIErrorSummary } from '../ai.mjs';
 import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
-import { executeToolCall as executeToolCallRaw, isToolEnabled, resolveToolName } from '../tools/index.mjs';
-import { validateClientReminderRequest } from './client-reminder-guard.mjs';
+import { executeToolCall as executeToolCallRaw, isToolEnabled } from '../tools/index.mjs';
+import { prepareOwnerReminderCalendarCall } from './owner-reminder-calendar.mjs';
 import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import {
   cleanForSpeech, escapeText, stripBotMention, buildFriendlyAudioScript,
@@ -1794,66 +1794,27 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               : []
           };
         }
-        // Lembretes solicitados pelo responsável são validados no código e
-        // convertidos em criação real no Google Calendar. A intenção ou o
-        // campo "reminder" gerado pelo modelo nunca grava diretamente no store.
+        // O código é a autoridade para lembretes do responsável: valida os
+        // dados e converte a proposta em uma única escrita no Google Calendar.
         const proposedToolCalls = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
-        const legacyReminderCall = proposedToolCalls.find(call =>
-          resolveToolName(call?.name) === 'agendar_retorno_ou_followup'
-        );
-        const reminderCandidate = result?.reminder || (legacyReminderCall
-          ? { text: legacyReminderCall.args?.reason, dueAt: legacyReminderCall.args?.when }
-          : null);
-
-        if (reminderCandidate && !suppressToolExecution) {
-          const remText = String(reminderCandidate.text || '').trim();
-          const reminderGate = validateClientReminderRequest({
-            message: cleanCommand,
-            reason: remText,
-            when: reminderCandidate.dueAt,
-            now: now()
-          });
-          const removeScheduleCalls = call => {
-            const name = resolveToolName(call?.name);
-            return name !== 'agendar_retorno_ou_followup'
-              && !(name === 'gerenciar_agenda_google' && call?.args?.action === 'criar_evento');
-          };
-
+        const reminderPreparation = prepareOwnerReminderCalendarCall({
+          message: cleanCommand,
+          reminder: result?.reminder || null,
+          toolCalls: proposedToolCalls,
+          now: now(),
+          timezone: botConfig?.integrations?.googleCalendar?.timezone
+            || botConfig?.business?.hoursConfig?.timezone
+            || botConfig?.business?.timezone
+            || 'America/Sao_Paulo'
+        });
+        if (reminderPreparation.state !== 'none') {
           result.reminder = null;
-          if (!reminderGate.allowed) {
-            result.tool_calls = proposedToolCalls.filter(removeScheduleCalls);
-            result.reply = reminderGate.reply;
-          } else {
-            const dueAt = new Date(reminderCandidate.dueAt);
-            const timezone = botConfig?.integrations?.googleCalendar?.timezone
-              || botConfig?.business?.hoursConfig?.timezone
-              || botConfig?.business?.timezone
-              || 'America/Sao_Paulo';
-            const dateParts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-              timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
-            }).formatToParts(dueAt).map(part => [part.type, part.value]));
-            const timeParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-              timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-            }).formatToParts(dueAt).map(part => [part.type, part.value]));
-            const calendarDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
-            const calendarTime = `${timeParts.hour}:${timeParts.minute}`;
-            result.tool_calls = [
-              ...proposedToolCalls.filter(removeScheduleCalls),
-              {
-                name: 'gerenciar_agenda_google',
-                args: {
-                  action: 'criar_evento',
-                  date: calendarDate,
-                  startTime: calendarTime,
-                  summary: remText
-                }
-              }
-            ];
-            result.reply = '';
-          }
-        } else if (reminderCandidate) {
-          result.reminder = null;
-          result.reply = 'Não executei o agendamento nesta etapa. Para criar um evento, envie o pedido novamente no chat autenticado do responsável.';
+          result.tool_calls = reminderPreparation.toolCalls;
+          result.reply = reminderPreparation.state === 'clarification'
+            ? reminderPreparation.reply
+            : suppressToolExecution
+              ? 'Não executei o agendamento nesta etapa. Para criar um evento, envie o pedido novamente no chat autenticado do responsável.'
+              : '';
         }
 
         currentToolSuggestions = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
