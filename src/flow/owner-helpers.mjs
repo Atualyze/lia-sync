@@ -107,16 +107,16 @@ export function similarClarification(a = '', b = '') {
 
 export function extractContactSaveArgs(text = '') {
   const source = String(text || '').trim();
-  const phoneMatch = source.match(/(?:\\+?55[\\s().-]*)?\\d(?:[\\s().-]*\\d){7,14}\\s*$/);
+  const phoneMatch = source.match(/(?:\+?55[\s().-]*)?\d(?:[\s().-]*\d){7,14}\s*$/);
   if (!phoneMatch) return null;
 
   const telefone = phoneMatch[0].trim();
   let nome = source.slice(0, phoneMatch.index).trim();
   nome = nome
-    .replace(/[,;:|\\-\\s]+$/g, '')
-    .replace(/^\\s*(?:nome|contato)\\s*[:=-]\\s*/i, '')
+    .replace(/[,;:|\-\s]+$/g, '')
+    .replace(/^\s*(?:nome|contato)\s*[:=-]\s*/i, '')
     .trim()
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .slice(0, 100);
 
   if (nome.length < 2) return null;
@@ -149,7 +149,7 @@ export function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {
   }
 
   let description = source;
-  if (rawAmount) description = description.replace(new RegExp(rawAmount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ');
+  if (rawAmount) description = description.replace(new RegExp(rawAmount.replace(/[.*+?^${}()|[\]\]/g, '\$&'), 'i'), ' ');
   description = description
     .replace(/\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/ig, ' ')
     .replace(/^\s*(?:lia[,!: -]*)?(?:(?:quero|preciso|pode|gostaria\s+de)\s+)?(?:cobrar|gerar|criar|fazer|emitir)\s+(?:uma?\s+)?(?:cobran[cç]a\s+)?/i, '')
