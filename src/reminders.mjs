@@ -55,22 +55,11 @@ export class ReminderStore {
 
     if (this.client?.enabled) {
       try {
-        const rows = await this.client.select('reminders', 'select=*&status=eq.pending&order=due_at.asc&limit=200');
+        const rows = await this._listActiveFromSupabase();
         if (Array.isArray(rows)) {
           const map = new Map();
-          for (const r of this.reminders) map.set(r.id, r);
-          for (const row of rows) {
-            map.set(row.id, {
-              id: row.id,
-              text: row.text,
-              dueAt: row.due_at,
-              phone: row.phone || '',
-              clientName: row.client_name || '',
-              createdBy: row.created_by || 'contato',
-              status: row.status || 'pending',
-              createdAt: row.created_at || new Date(this.now()).toISOString()
-            });
-          }
+          for (const item of this.reminders) map.set(item.id, item);
+          for (const item of rows) map.set(item.id, item);
           this.reminders = Array.from(map.values());
         }
       } catch (err) {
