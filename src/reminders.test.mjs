@@ -24,9 +24,9 @@ test('listActiveForPhone retorna somente lembretes pendentes do telefone autenti
   await store.load();
   await store.add({ phone: '5588998340085', clientName: 'Contato A', text: 'Reunião A', dueAt: '2026-11-26T17:00:00.000Z' });
   await store.add({ phone: '5588998340086', clientName: 'Contato B', text: 'Reunião B', dueAt: '2026-11-26T18:00:00.000Z' });
-  assert.deepEqual(store.listActiveForPhone('5588998340085').map(item => item.text), ['Reunião A']);
-  assert.deepEqual(store.listActiveForPhone('558899834008').map(item => item.text), []);
-  assert.deepEqual(store.listActiveForPhone('sim:5588998340085'), []);
+  assert.deepEqual((await store.listActiveForPhone('5588998340085')).map(item => item.text), ['Reunião A']);
+  assert.deepEqual((await store.listActiveForPhone('558899834008')).map(item => item.text), []);
+  assert.deepEqual((await store.listActiveForPhone('sim:5588998340085')), []);
   await fs.rm(dir, { recursive: true, force: true });
 });
 
@@ -36,6 +36,65 @@ test('listActiveForPhone compara identificadores @lid integralmente', async () =
   await store.load();
   await store.add({ phone: '123456789@lid', text: 'LID A', dueAt: '2026-11-26T17:00:00.000Z' });
   await store.add({ phone: '123456780@lid', text: 'LID B', dueAt: '2026-11-26T18:00:00.000Z' });
-  assert.deepEqual(store.listActiveForPhone('123456789@lid').map(item => item.text), ['LID A']);
+  assert.deepEqual((await store.listActiveForPhone('123456789@lid')).map(item => item.text), ['LID A']);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+
+test('listActiveForPhone consulta Supabase por telefone exato e pagina todos os resultados', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-reminders-supabase-pages-'));
+  const queries = [];
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: 'remote-' + index,
+    text: 'Lembrete ' + index,
+    due_at: '2026-11-26T17:00:00.000Z',
+    phone: '5588998340085',
+    status: 'pending',
+    created_at: new Date(Date.UTC(2026, 10, 25, 12, 0, index % 60)).toISOString()
+  }));
+  const secondPage = [{
+    id: 'remote-last',
+    text: 'Último lembrete',
+    due_at: '2026-11-27T17:00:00.000Z',
+    phone: '5588998340085',
+    status: 'pending',
+    created_at: '2026-11-25T13:00:00.000Z'
+  }];
+  const client = {
+    enabled: true,
+    async select(table, query) {
+      queries.push({ table, query });
+      return query.includes('offset=1000') ? secondPage : firstPage;
+    }
+  };
+  const store = new ReminderStore(path.join(dir, 'reminders.json'), { client });
+  await store.load();
+  const result = await store.listActiveForPhone('5588998340085');
+  assert.equal(result.length, 1001);
+  assert.equal(result.at(-1).text, 'Último lembrete');
+  assert.equal(queries.length, 2);
+  for (const request of queries) {
+    assert.equal(request.table, 'reminders');
+    assert.match(request.query, /phone=eq\.5588998340085/);
+    assert.match(request.query, /status=eq\.pending/);
+  }
+  assert.match(queries[1].query, /offset=1000/);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('listActiveForPhone não devolve contagem parcial se consulta Supabase falhar', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lia-reminders-supabase-fail-'));
+  const client = {
+    enabled: true,
+    async select() { throw new Error('Supabase indisponível'); }
+  };
+  const store = new ReminderStore(path.join(dir, 'reminders.json'), { client });
+  await store.load();
+  await store.add({
+    phone: '5588998340085',
+    text: 'Registro local',
+    dueAt: '2026-11-26T17:00:00.000Z'
+  });
+  await assert.rejects(() => store.listActiveForPhone('5588998340085'), /Supabase indisponível/);
   await fs.rm(dir, { recursive: true, force: true });
 });
