@@ -586,6 +586,47 @@ export class SupabaseSessionStore extends SessionStore {
         });
         await this.client.request('conversations', { method: 'DELETE', query: filters.toString() });
       }
+      // 3) Chaves idempotentes já expiradas não precisam ocupar espaço indefinidamente.
+      const expiredIdempotency = await this.client.select(
+        'idempotency_keys',
+        `select=id&expires_at=lt.${encodeURIComponent(new Date(this.now()).toISOString())}&limit=500`
+      );
+      const idempotencyIds = (expiredIdempotency || [])
+        .map(row => String(row.id || ''))
+        .filter(id => /^[0-9a-f-]{36}$/i.test(id));
+      if (idempotencyIds.length) {
+        const filters = new URLSearchParams({ id: `in.(${idempotencyIds.join(',')})` });
+        await this.client.request('idempotency_keys', { method: 'DELETE', query: filters.toString() });
+      }
+
+      // 4) Telemetria de IA: conservar 90 dias; não contém prompts nem telefones.
+      const aiCutoff = new Date(this.now() - 90 * 86400000).toISOString();
+      const oldAiCalls = await this.client.select(
+        'ai_calls',
+        `select=id&created_at=lt.${encodeURIComponent(aiCutoff)}&limit=500`
+      );
+      const aiCallIds = (oldAiCalls || [])
+        .map(row => String(row.id || ''))
+        .filter(id => /^[0-9a-f-]{36}$/i.test(id));
+      if (aiCallIds.length) {
+        const filters = new URLSearchParams({ id: `in.(${aiCallIds.join(',')})` });
+        await this.client.request('ai_calls', { method: 'DELETE', query: filters.toString() });
+      }
+
+      // 5) Ledger de webhook sanitizado: conservar 30 dias.
+      const webhookCutoff = new Date(this.now() - 30 * 86400000).toISOString();
+      const oldWebhookEvents = await this.client.select(
+        'webhook_events',
+        `select=event_key&received_at=lt.${encodeURIComponent(webhookCutoff)}&limit=500`
+      );
+      const webhookKeys = (oldWebhookEvents || [])
+        .map(row => String(row.event_key || ''))
+        .filter(key => /^[0-9a-f]{64}$/i.test(key));
+      if (webhookKeys.length) {
+        const filters = new URLSearchParams({ event_key: `in.(${webhookKeys.join(',')})` });
+        await this.client.request('webhook_events', { method: 'DELETE', query: filters.toString() });
+      }
+
       this.remoteError = null;
     } catch (error) {
       this.remoteError = error.message;
