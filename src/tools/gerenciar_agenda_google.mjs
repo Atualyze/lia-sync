@@ -292,6 +292,9 @@ export const toolGerenciarAgendaGoogle = {
     if (!settings.enabled) {
       return { success: false, error: 'google_calendar_disabled', message: 'A integração com o Google Calendar está desativada no painel.' };
     }
+    if (!settings.calendarId) {
+      return { success: false, error: 'google_calendar_id_missing', message: 'O ID da agenda Google não está configurado. Nenhum evento foi criado.' };
+    }
     const startDateTimePart = String(altStart || '').match(/T(\d{2}:\d{2})/)?.[1] || '';
     const rawTime = String(startTime || altTime || startDateTimePart || '').trim();
     const hasExplicitDate = Boolean(String(date || altStart || '').trim());
@@ -345,11 +348,11 @@ export const toolGerenciarAgendaGoogle = {
     }
 
     if (settings.showMockSlotsWhenUnavailable) {
-      if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
+      if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `SIMULAÇÃO DE TESTE — estes horários não foram consultados no Google Agenda: ${MOCK_SLOTS.join(', ')}.` };
       if (action === 'sugerir_horarios') {
         const dur = Number(durationMinutes) || settings.defaultEventDurationMinutes;
         const suggested = MOCK_SLOTS.slice(0, 4).map(slot => ({ date: dateFormatted, isoDate, startTime: slot, endTime: formatMinutesToHHMM(parseHHMMToMinutes(slot) + dur), durationMinutes: dur }));
-        return { success: true, mocked: true, date: dateFormatted, suggestions: suggested, availableSlots: MOCK_SLOTS.slice(0, 4), message: `Sugestões de horários livres a partir de ${dateFormatted}: ${suggested.map(s => `${s.date} às ${s.startTime}`).join(', ')}.` };
+        return { success: true, mocked: true, date: dateFormatted, suggestions: suggested, availableSlots: MOCK_SLOTS.slice(0, 4), message: `SIMULAÇÃO DE TESTE — sugestões não verificadas no Google Agenda a partir de ${dateFormatted}: ${suggested.map(s => `${s.date} às ${s.startTime}`).join(', ')}.` };
       }
       if (action === 'criar_evento') return { success: false, mocked: true, error: 'mock_calendar_write_disabled', message: 'Este ambiente está usando horários simulados. Nenhum evento foi criado no Google Agenda.' };
     }
