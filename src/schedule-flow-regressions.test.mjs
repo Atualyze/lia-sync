@@ -121,7 +121,7 @@ test('cliente: pedido vago para guardar recado não executa tool_call nem remind
   assert.equal(reminderWrites, 0, 'nenhuma sugestão fabricada pela IA pode criar lembrete sem pedido explícito');
 });
 
-test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a pendência', async (t) => {
+test('cliente precisa confirmar antes da criação; ambiente simulado nunca confirma evento real', async () => {
 
 
   const store = await makeStore('calendar-confirmation');
@@ -146,6 +146,7 @@ test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a
   assert.ok(store.get('5511999990003').pendingClientAgenda);
 
   const second = await flow.process({ phone: '5511999990003', text: 'Pode sim' });
-  assert.match(second, /sucesso/i);
+  assert.match(second, /nenhum evento foi criado|não foi criado|não consigo confirmar/i);
+  assert.doesNotMatch(second, /agendado com sucesso/i);
   assert.equal(store.get('5511999990003').pendingClientAgenda, null);
 });
