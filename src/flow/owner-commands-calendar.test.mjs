@@ -143,3 +143,67 @@ test('falha no Google Calendar preserva contagem interna e não inventa contagem
   assert.match(reply, /Não vou estimar essa quantidade/i);
   assert.match(reply, /Lembretes internos:\* 1 pendente/);
 });
+
+
+test('Copiloto confirma lembrete consultando Google Agenda e separando registro interno', async () => {
+  let invocation;
+  const reply = await handleOwnerQuickCommands(baseArgs({
+    norm: 'poderia me confirmar?',
+    strippedCmd: 'poderia me confirmar?',
+    sSelf: {
+      history: [
+        { role: 'user', content: 'Lembrar o Tauan sobre a reunião com o gato Buchudo, amanhã às 14h' },
+        { role: 'assistant', content: 'Lembrete de retorno agendado com sucesso para 26/11/2026 às 14:00 com foco em: "lembrar o Tauan sobre a reunião com o gato Buchudo, amanhã às 14h".' },
+        { role: 'user', content: 'poderia me confirmar?' }
+      ]
+    },
+    executeToolCall: async (name, args) => {
+      invocation = { name, args };
+      return {
+        success: true,
+        events: [{
+          id: 'event-buchudo',
+          summary: 'Lembrar o Tauan sobre a reunião com o gato Buchudo',
+          start: { dateTime: '2026-11-26T17:00:00.000Z' }
+        }]
+      };
+    },
+    reminderStore: {
+      listActive: () => [{
+        text: 'Lembrar o Tauan sobre a reunião com o gato Buchudo',
+        dueAt: '2026-11-26T17:00:00.000Z'
+      }]
+    }
+  }));
+
+  assert.equal(invocation.name, 'gerenciar_agenda_google');
+  assert.equal(invocation.args.action, 'listar_eventos');
+  assert.match(invocation.args.query, /Tauan|Buchudo/i);
+  assert.match(reply, /Confirmação do agendamento/);
+  assert.match(reply, /Google Agenda/);
+  assert.match(reply, /Lembretes internos/);
+  assert.match(reply, /reunião com o gato Buchudo/i);
+});
+
+test('Copiloto não confirma evento ausente no Calendar só porque existe um lembrete interno', async () => {
+  const reply = await handleOwnerQuickCommands(baseArgs({
+    norm: 'poderia me confirmar?',
+    strippedCmd: 'poderia me confirmar?',
+    sSelf: {
+      history: [
+        { role: 'user', content: 'Lembrar o Tauan sobre a reunião com o gato Buchudo, amanhã às 14h' },
+        { role: 'assistant', content: 'Lembrete de retorno agendado com sucesso para 26/11/2026 às 14:00 com foco em: "lembrar o Tauan sobre a reunião com o gato Buchudo, amanhã às 14h".' },
+        { role: 'user', content: 'poderia me confirmar?' }
+      ]
+    },
+    executeToolCall: async () => ({ success: true, events: [] }),
+    reminderStore: {
+      listActive: () => [{
+        text: 'Lembrar o Tauan sobre a reunião com o gato Buchudo',
+        dueAt: '2026-11-26T17:00:00.000Z'
+      }]
+    }
+  }));
+  assert.match(reply, /registro interno/i);
+  assert.match(reply, /não comprova que exista um evento na Google Agenda/i);
+});
