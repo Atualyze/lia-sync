@@ -11,7 +11,7 @@ const COPILOT_TASK_PATTERNS = [
   ['payment', /\b(?:pix|cobranc\w*|cobr(?:ar|e|o)\w*|pagament\w*|infinitepay|qr\s*code|copia\s+e\s+cola)\b/i],
   ['dispatch', /\b(?:mensagem|recado|dispar\w*|envi\w*|mand\w*|avise?\w*|audio|áudio|voz)\b/i],
   ['followup', /\b(?:lembre\w*|lembrete\w*|retorno\w*|follow[- ]?up)\b/i],
-  ['agenda', /\b(?:agenda|agend\w*|reuni\w*|compromisso\w*|hor[aá]rios?\s+livres|marc\w*)\b/i],
+  ['agenda', /\b(?:agenda|agend\w*|reuni\w*|compromisso\w*|hor[aá]rios?\s+livres|marc\w*|lembre\w*|lembrete\w*)\b/i],
   ['document', /\b(?:pdf|or[cç]amento|proposta|recibo|declara[cç][aã]o|relat[oó]rio)\b/i],
   ['drive', /\b(?:drive|cat[aá]logo|contrato|arquivo|documento)\b/i],
   ['sheet', /\b(?:planilha|sheets|estoque|tabela)\b/i],
