@@ -30,6 +30,7 @@ import {
   COPILOT_PIX_CONTEXT_TTL_MS,
   COPILOT_CONTEXT_LIMIT,
   normalizePixAmount,
+  extractContactSaveArgs,
   inferCopilotTaskTypes,
   copilotToolTaskType,
   activeCopilotTask,
@@ -1835,6 +1836,19 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           toolCallsToRun = toolCallsToRun.filter(tc => tc?.name !== 'enviar_mensagem_contato');
         }
 
+        // Continuação determinística de cadastro: depois de "guarde meu contato",
+        // uma resposta curta com nome + telefone deve executar o cadastro sem depender
+        // de uma nova interpretação livre do modelo.
+        if (toolCallsToRun.length === 0 && !suppressToolExecution && activeTask?.type === 'contact') {
+          const contactArgs = extractContactSaveArgs(cleanCommand);
+          if (contactArgs) {
+            toolCallsToRun.push({
+              name: 'salvar_contato',
+              args: contactArgs
+            });
+          }
+        }
+
         // Fallback anti-alucinação ou quando dispatchIntent é de áudio/assunto e o modelo não preencheu tool_calls
         if (toolCallsToRun.length === 0 && !suppressToolExecution) {
           const rawRep = result?.reply || '';
@@ -1985,7 +1999,11 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               const currentTaskTypes = inferCopilotTaskTypes(cleanCommand);
               const negatedAction = /\b(?:nao|nunca|jamais)\b.{0,45}\b(?:gera|gerar|gere|cria|criar|crie|emite|emitir|faz|fazer|cobrar|cobre|manda|mandar|mande|envia|enviar|envie|avisa|avisar|dispara|disparar|agenda|agendar|marca|marcar|consulta|consultar|busca|buscar|atualiza|atualizar|transfere|transferir|encaminha|encaminhar)\b/i.test(normalizedTurn);
               const directPaymentContinuation = directPixChoice && tc.name === 'gerenciar_cobranca_pagamento';
+              const contactDataContinuation = tc.name === 'salvar_contato'
+                && liveTask?.type === 'contact'
+                && Boolean(extractContactSaveArgs(cleanCommand));
               const currentRequestMatches = hasExplicitToolIntent(cleanCommand, tc.name)
+                || contactDataContinuation
                 || Boolean(toolTaskType && currentTaskTypes.includes(toolTaskType) && !isCopilotMetaQuestion && !negatedAction);
               const activeTaskContinuation = Boolean(liveTask && toolTaskType && liveTask.type === toolTaskType
                 && !isCopilotMetaQuestion && !negatedAction
