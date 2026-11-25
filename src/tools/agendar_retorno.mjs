@@ -34,7 +34,13 @@ export const toolAgendarRetorno = {
       return { success: false, error: 'invalid_reminder_action', message: 'Ação de lembrete inválida.' };
     }
 
-    const sessionPhone = String(context.phone || '').replace(/^sim:/i, '');
+    const rawSessionPhone = String(context.phone || '').trim();
+    const isSandboxSession = ['simulation', 'preview'].includes(String(context.origin || '').toLowerCase())
+      || /^sim:/i.test(rawSessionPhone);
+    if (isSandboxSession) {
+      return { success: false, error: 'reminder_sandbox_session', message: 'Consultas e gravações de lembretes não são executadas em sessões de simulação.' };
+    }
+    const sessionPhone = rawSessionPhone;
     const clientPhoneValid = /^\d{8,15}$/.test(sessionPhone) || /^\d+@lid$/i.test(sessionPhone);
 
     // Consultas de lembretes são estritamente autoatendimento: o telefone vem
