@@ -26,12 +26,12 @@ const COPILOT_TASK_PATTERNS = [
 ];
 
 const TOOL_TASK_TYPES = Object.freeze({
-  gerenciar_cobranca_pagamento: 'payment', gerenciar_cobranca_pagamento: 'payment',
+  gerenciar_cobranca_pagamento: 'payment',
   enviar_mensagem_contato: 'dispatch', gerenciar_agenda_google: 'agenda',
   agendar_retorno_ou_followup: 'followup', gerar_documento_pdf: 'document',
   gerenciar_drive_google: 'drive', consultar_planilha_google: 'sheet',
   consultar_dados_brasil: 'public_data', consultar_contato_ou_lead: 'contact',
-  atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory',
+  atualizar_dados_crm: 'crm', gerenciar_memoria: 'memory', salvar_contato: 'contact',
   consultar_saude_infra: 'infra', consultar_web: 'web',
   consultar_base_conhecimento: 'knowledge',
   gerenciar_codigo: 'self_maintenance', gerenciar_configuracao: 'self_maintenance',
