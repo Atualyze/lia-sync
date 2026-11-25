@@ -194,3 +194,30 @@ test('consultas de lembrete listam, contam e confirmam apenas registros do telef
 
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+
+test('lembretes não consultam nem gravam registros em sessões de simulação', async () => {
+  const calls = [];
+  const reminderStore = {
+    async add(item) { calls.push({ type: 'add', item }); return { id: 'reminder-1' }; },
+    listActiveForPhone(phone) { calls.push({ type: 'list', phone }); return []; }
+  };
+  const query = await toolAgendarRetorno.execute({ action: 'listar' }, {
+    actor: 'client',
+    phone: 'sim:5588998340085',
+    origin: 'simulation',
+    reminderStore
+  });
+  const create = await toolAgendarRetorno.execute({
+    reason: 'Teste',
+    when: new Date(Date.now() + 86400000).toISOString()
+  }, {
+    actor: 'client',
+    phone: 'sim:5588998340085',
+    origin: 'simulation',
+    reminderStore
+  });
+  assert.equal(query.success, false);
+  assert.equal(create.success, false);
+  assert.deepEqual(calls, []);
+});
