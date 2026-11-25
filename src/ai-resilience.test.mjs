@@ -275,7 +275,23 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
   const real = filterReply(`• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`, { allowedPrices: new Set(['10.00', '10,00']), strictPrices: true });
   assert.equal(real.blocked, false);
 
-  const parts = splitReply(real.text);
-  assert.equal(parts.length, 2);
-  assert.equal(parts[1], `\`\`\`${realPayload}\`\`\``);
+  const variants = [
+    `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n${realPayload}`,
+    `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n``` ${realPayload} ````,
+    `• *Valor:* R$ 10,00\n• *Copia e Cola:*\n```\n${realPayload}\n``` `
+  ];
+  for (const variant of variants) {
+    const directParts = splitReply(variant);
+    assert.equal(directParts.length, 2, 'Pix deve virar um segundo balão, inclusive com crases');
+    assert.ok(!directParts[0].includes(realPayload));
+    assert.ok(directParts[1].includes(realPayload));
+
+    const filtered = filterReply(variant, { allowedPrices: new Set(['10.00', '10,00']), strictPrices: true });
+    assert.equal(filtered.blocked, false);
+    const parts = splitReply(formatOutgoingMessage(filtered.text));
+    assert.equal(parts.length, 2, 'o fluxo real de saída deve manter o Pix em mensagem separada');
+    assert.match(parts[0], /Copia e Cola:\\* enviado na próxima mensagem/);
+    assert.match(parts[1], /toque e segure para copiar/);
+    assert.ok(parts[1].includes(realPayload));
+  }
 });
