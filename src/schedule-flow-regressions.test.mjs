@@ -95,7 +95,7 @@ test('cliente: pedido vago para guardar recado não executa tool_call nem remind
       reminder: { text: 'Recado de Nauat', dueAt: '2026-11-25T14:00:00-03:00' }
     },
     {
-      reply: '',
+      reply: 'Claro, vou guardar o recado.',
       intent: 'lembrete',
       reminder: { text: 'Recado de Nauat', dueAt: '2026-11-25T14:00:00-03:00' }
     }
