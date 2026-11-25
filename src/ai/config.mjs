@@ -267,7 +267,8 @@ export const OPENROUTER_FREE_MODELS = [
  */
 export function providerDefaultModel(provider, aiConfig, fixedModel) {
   if (provider === 'openrouter' && aiConfig.openrouterFreeOnly) {
-    const candidate = fixedModel || (provider === aiConfig.provider ? aiConfig.model : fallbackModelsForProvider(aiConfig, provider)[0] || '');
+    const candidate = (provider === aiConfig.provider && fixedModel)
+      || (provider === aiConfig.provider ? aiConfig.model : fallbackModelsForProvider(aiConfig, provider)[0] || '');
     return candidate === 'openrouter/free' || candidate.endsWith(':free') ? candidate : 'openrouter/free';
   }
   if (fixedModel && provider === aiConfig.provider) return fixedModel;
