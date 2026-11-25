@@ -149,7 +149,7 @@ function getIsoDateInZone(dateObj, timezone = 'America/Sao_Paulo') {
 function normalizeTimeStr(rawTime) {
   const s = String(rawTime || '').trim();
   const m = s.match(/(\d{1,2})(?::(\d{2})|h(\d{2})?)?/i);
-  if (!m) return '14:00';
+  if (!m) return '';
   const hh = String(Math.min(23, Math.max(0, Number(m[1])))).padStart(2, '0');
   const mm = String(Math.min(59, Math.max(0, Number(m[2] || m[3] || 0)))).padStart(2, '0');
   return `${hh}:${mm}`;
@@ -272,6 +272,7 @@ export const toolGerenciarAgendaGoogle = {
       date: { type: 'STRING' },
       startTime: { type: 'STRING' },
       time: { type: 'STRING' },
+      query: { type: 'STRING', description: 'Texto para localizar eventos por nome, assunto ou descrição em listar_eventos.' },
       days: { type: 'INTEGER', description: 'Quantos dias pesquisar em sugerir_horarios (padrão 3, máximo 14).' },
       durationMinutes: { type: 'INTEGER', description: 'Duração desejada em minutos para sugerir_horarios (padrão 30).' },
       summary: { type: 'STRING' },
@@ -280,7 +281,7 @@ export const toolGerenciarAgendaGoogle = {
     },
     required: ['action']
   },
-  async execute({ action, date, startTime, time: altTime, start: altStart, days, durationMinutes, summary, attendeeEmail, attendeePhone }, context = {}) {
+  async execute({ action, date, startTime, time: altTime, start: altStart, query, days, durationMinutes, summary, attendeeEmail, attendeePhone }, context = {}) {
     if (context.actor === 'client' && !['consultar_livres', 'sugerir_horarios', 'criar_evento'].includes(action)) {
       return { success: false, error: 'forbidden_for_client', message: 'A consulta de eventos internos e o cancelamento da agenda são operações restritas ao responsável.' };
     }
@@ -291,12 +292,21 @@ export const toolGerenciarAgendaGoogle = {
     if (!settings.enabled) {
       return { success: false, error: 'google_calendar_disabled', message: 'A integração com o Google Calendar está desativada no painel.' };
     }
+    const startDateTimePart = String(altStart || '').match(/T(\d{2}:\d{2})/)?.[1] || '';
+    const rawTime = String(startTime || altTime || startDateTimePart || '').trim();
+    const hasExplicitDate = Boolean(String(date || altStart || '').trim());
+    const hasExplicitTime = /^(?:[01]?\d|2[0-3])(?:(?::[0-5]\d)|(?:h[0-5]?\d?))?$/i.test(rawTime);
+    if (action === 'criar_evento') {
+      if (!hasExplicitDate) return { success: false, error: 'event_date_required', message: 'Para criar o evento, preciso da data informada explicitamente.' };
+      if (!hasExplicitTime) return { success: false, error: 'event_time_required', message: 'Para criar o evento, preciso do horário informado explicitamente.' };
+      if (!String(summary || '').trim()) return { success: false, error: 'event_summary_required', message: 'Para criar o evento, preciso do assunto ou título informado.' };
+    }
     const targetDate = parseCalendarDate(date || altStart, settings.timezone);
     if (!targetDate) return { success: false, error: 'invalid_date', message: 'Data inválida para a agenda.' };
     const dateFormatted = targetDate.toLocaleDateString('pt-BR', { timeZone: settings.timezone });
     const weekday = getWeekdayInZone(targetDate, settings.timezone);
     const isoDate = getIsoDateInZone(targetDate, settings.timezone);
-    const chosenTime = normalizeTimeStr(startTime || altTime || (altStart && String(altStart).includes('T') ? String(altStart).split('T')[1] : '') || '14:00');
+    const chosenTime = normalizeTimeStr(rawTime) || '14:00';
     const isClosedDay = Boolean(
       settings.businessHoursEnforced
       && Array.isArray(settings.allowedWeekdays)
@@ -335,13 +345,13 @@ export const toolGerenciarAgendaGoogle = {
     }
 
     if (settings.showMockSlotsWhenUnavailable) {
-      if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `Para a data ${dateFormatted}, os horários disponíveis na agenda são: ${MOCK_SLOTS.join(', ')}.` };
+      if (action === 'consultar_livres') return { success: true, mocked: true, date: dateFormatted, availableSlots: MOCK_SLOTS, message: `SIMULAÇÃO DE TESTE — estes horários não foram consultados no Google Agenda: ${MOCK_SLOTS.join(', ')}.` };
       if (action === 'sugerir_horarios') {
         const dur = Number(durationMinutes) || settings.defaultEventDurationMinutes;
         const suggested = MOCK_SLOTS.slice(0, 4).map(slot => ({ date: dateFormatted, isoDate, startTime: slot, endTime: formatMinutesToHHMM(parseHHMMToMinutes(slot) + dur), durationMinutes: dur }));
-        return { success: true, mocked: true, date: dateFormatted, suggestions: suggested, availableSlots: MOCK_SLOTS.slice(0, 4), message: `Sugestões de horários livres a partir de ${dateFormatted}: ${suggested.map(s => `${s.date} às ${s.startTime}`).join(', ')}.` };
+        return { success: true, mocked: true, date: dateFormatted, suggestions: suggested, availableSlots: MOCK_SLOTS.slice(0, 4), message: `SIMULAÇÃO DE TESTE — sugestões não verificadas no Google Agenda a partir de ${dateFormatted}: ${suggested.map(s => `${s.date} às ${s.startTime}`).join(', ')}.` };
       }
-      if (action === 'criar_evento') return { success: true, mocked: true, event: { title: summary || `Atendimento com ${context.clientName || 'Cliente'}`, date: dateFormatted, time: chosenTime, status: 'confirmed' }, message: `Compromisso simulado com sucesso para ${dateFormatted} às ${chosenTime}.` };
+      if (action === 'criar_evento') return { success: false, mocked: true, error: 'mock_calendar_write_disabled', message: 'Este ambiente está usando horários simulados. Nenhum evento foi criado no Google Agenda.' };
     }
 
     const hasCredentials = Boolean(
@@ -351,6 +361,9 @@ export const toolGerenciarAgendaGoogle = {
       (settings.serviceAccountEmail && settings.serviceAccountPrivateKey)
     );
     if (!hasCredentials) return unavailable();
+    if (!settings.calendarId) {
+      return { success: false, error: 'google_calendar_id_missing', message: 'O ID da agenda Google não está configurado. Nenhum evento foi criado.' };
+    }
 
     try {
       if (action === 'sugerir_horarios') {
@@ -433,27 +446,41 @@ export const toolGerenciarAgendaGoogle = {
         const token = await resolveAccessToken(settings);
         if (!token) return { success: false, error: 'google_calendar_write_unavailable', message: 'Token OAuth ou Service Account é necessário para criar eventos no Google Calendar.' };
         const start = toZonedIsoTimestamp(isoDate, chosenTime, settings.timezone);
+        if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) {
+          return { success: false, error: 'event_datetime_not_future', message: 'A data e o horário do evento precisam estar no futuro. Nenhum evento foi criado.' };
+        }
         const end = new Date(new Date(start).getTime() + settings.defaultEventDurationMinutes * 60000).toISOString();
         const event = await googleRequest('/events', {
           method: 'POST',
           body: JSON.stringify({
-            summary: summary || `Atendimento com ${context.clientName || 'Cliente'}`,
+            summary: String(summary).trim(),
             start: { dateTime: start, timeZone: settings.timezone },
             end: { dateTime: end, timeZone: settings.timezone },
             attendees: attendeeEmail ? [{ email: attendeeEmail }] : undefined,
             description: attendeePhone ? `Telefone: ${attendeePhone}` : undefined
           })
         }, settings);
+        if (!event?.id) {
+          return { success: false, error: 'google_calendar_event_unverified', message: 'O Google Calendar não confirmou a criação com um identificador de evento. Não posso informar que foi agendado.' };
+        }
         return {
           success: true,
-          event: { id: event.id, title: event.summary, date: dateFormatted, time: chosenTime, status: event.status || 'confirmed' },
-          message: `Compromisso agendado com sucesso para ${dateFormatted} às ${chosenTime}.`
+          provider: 'google_calendar',
+          event: { id: event.id, htmlLink: event.htmlLink || '', title: event.summary || String(summary).trim(), date: dateFormatted, time: chosenTime, status: event.status || 'confirmed' },
+          message: `Compromisso criado no Google Agenda para ${dateFormatted} às ${chosenTime}.`
         };
       }
       if (action === 'listar_eventos') {
         const dayStartIso = toZonedIsoTimestamp(isoDate, '00:00', settings.timezone);
-        const body = await googleRequest(`/events?timeMin=${encodeURIComponent(dayStartIso)}&singleEvents=true&orderBy=startTime`, {}, settings);
-        return { success: true, date: dateFormatted, events: body.items || [] };
+        const params = new URLSearchParams({
+          timeMin: dayStartIso,
+          singleEvents: 'true',
+          orderBy: 'startTime',
+          maxResults: '100'
+        });
+        if (String(query || '').trim()) params.set('q', String(query).trim());
+        const body = await googleRequest(`/events?${params.toString()}`, {}, settings);
+        return { success: true, provider: 'google_calendar', date: dateFormatted, query: String(query || '').trim(), events: body.items || [] };
       }
       return { success: false, error: 'unsupported_action', message: 'Cancelamento requer o identificador do evento.' };
     } catch (error) {

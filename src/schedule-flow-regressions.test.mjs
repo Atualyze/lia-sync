@@ -24,7 +24,7 @@ test('agenda do Google é permitida no fluxo de cliente quando habilitada', () =
   assert.equal(isClientToolAllowed('gerenciar_agenda_google'), true);
 });
 
-test('fluxo do cliente retorna horários reais da agenda em vez de deixar promessa pendente', async (t) => {
+test('fluxo do cliente identifica horários simulados sem apresentá-los como disponibilidade real', async (t) => {
 
 
   const store = await makeStore('calendar-success');
@@ -45,7 +45,7 @@ test('fluxo do cliente retorna horários reais da agenda em vez de deixar promes
   });
 
   const reply = await flow.process({ phone: '5511999990001', text: 'Quais horários você tem amanhã?' });
-  assert.match(reply, /horários disponíveis/i);
+  assert.match(reply, /simulação de teste|não foram consultados no Google Agenda/i);
   assert.match(reply, /09:00/);
   assert.doesNotMatch(reply, /vou consultar.*agora/i);
 });
@@ -121,7 +121,7 @@ test('cliente: pedido vago para guardar recado não executa tool_call nem remind
   assert.equal(reminderWrites, 0, 'nenhuma sugestão fabricada pela IA pode criar lembrete sem pedido explícito');
 });
 
-test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a pendência', async (t) => {
+test('cliente precisa confirmar antes da criação; ambiente simulado nunca confirma evento real', async () => {
 
 
   const store = await makeStore('calendar-confirmation');
@@ -146,6 +146,7 @@ test('cliente precisa confirmar antes de criar evento e "pode agendar" executa a
   assert.ok(store.get('5511999990003').pendingClientAgenda);
 
   const second = await flow.process({ phone: '5511999990003', text: 'Pode sim' });
-  assert.match(second, /sucesso/i);
+  assert.match(second, /nenhum evento foi criado|não foi criado|não consigo confirmar/i);
+  assert.doesNotMatch(second, /agendado com sucesso/i);
   assert.equal(store.get('5511999990003').pendingClientAgenda, null);
 });

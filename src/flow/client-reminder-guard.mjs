@@ -42,7 +42,7 @@ function asksToLeaveGenericNote(message) {
  */
 export function validateClientReminderRequest({ message = '', reason = '', when = '', now = Date.now() } = {}) {
   const text = normalizeReminderText(message);
-  const scheduleRequested = /\b(?:agendar|agende|agenda|marcar|marque|programar|programe|lembrete|lembrar|lembre|retorno|retornar|retorne|follow[- ]?up|me liga|me ligue|ligue para mim|me avisa|me avise|avise|avisar|entrar em contato|voltar a falar)\b/.test(text);
+  const scheduleRequested = /\b(?:agendar|agende|agenda|marcar|marque|programar|programe|lembrete|lembr\w*|retorno|retornar|retorne|follow[- ]?up|me liga|me ligue|ligue para mim|me avisa|me avise|avise|avisar|entrar em contato|voltar a falar)\b/.test(text);
 
   if (!scheduleRequested) {
     return {

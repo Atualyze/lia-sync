@@ -1,9 +1,31 @@
-import { filterReply } from '../safety.mjs';
+import { filterReply, normalize } from '../safety.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from './human-handoff-state.mjs';
+
+function todayInTimezone(nowMs, timezone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date(nowMs)).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function formatCalendarEvent(event, timezone) {
+  const start = event?.start?.dateTime || event?.start?.date;
+  if (!start) return `${event?.summary || 'Compromisso'} — data não informada`;
+  if (event?.start?.date && !event?.start?.dateTime) {
+    const [year, month, day] = String(event.start.date).split('-');
+    return `${event?.summary || 'Compromisso'} — dia todo em ${day}/${month}/${year}`;
+  }
+  const date = new Date(start);
+  if (!Number.isFinite(date.getTime())) return `${event?.summary || 'Compromisso'} — ${start}`;
+  const formatted = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: timezone, dateStyle: 'short', timeStyle: 'short'
+  }).format(date);
+  return `${event?.summary || 'Compromisso'} — ${formatted}`;
+}
 
 /**
  * Executa comandos determinísticos rápidos do Copiloto (1.0.5 a 1.7).
@@ -70,6 +92,51 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
     return recordSelfTurn(filterReply(infraMsg, { isCopilot: true }).text);
   }
 
+  // Consulta nominal de compromissos: consulta o Google Calendar e cruza,
+  // separadamente, lembretes internos pendentes. Falha na agenda nunca vira
+  // uma resposta falsa de "não há compromisso".
+  const calendarLookupText = String(norm || '').trim().replace(/[?!.]+$/g, '');
+  const calendarPersonMatch = calendarLookupText.match(/^(?:o\s+que|quais?|liste|listar|ver|consultar|consulta)\s+(?:(?:voce|vc)\s+)?(?:(?:ja\s+)?(?:agendou|marcou|reservou)|(?:tem|esta|ta)\s+(?:agendado|marcado|reservado))\s+(?:para|pro|pra)\s+(.+)$/i);
+  if (calendarPersonMatch) {
+    const targetName = calendarPersonMatch[1].trim();
+    const timezone = botConfig?.integrations?.googleCalendar?.timezone
+      || botConfig?.business?.hoursConfig?.timezone
+      || botConfig?.business?.timezone
+      || 'America/Sao_Paulo';
+    const today = todayInTimezone(now(), timezone);
+    const calendarRes = await executeToolCall('gerenciar_agenda_google', {
+      action: 'listar_eventos',
+      date: today,
+      query: targetName
+    }, { clientName: owner, botConfig });
+    const targetNormalized = normalize(targetName);
+    const internalMatches = (reminderStore?.listActive?.() || []).filter(item =>
+      normalize([item.clientName, item.text].filter(Boolean).join(' ')).includes(targetNormalized)
+    );
+
+    const output = [`🔎 *Consulta de agendamentos para ${targetName}:*`];
+    if (calendarRes?.success) {
+      const events = Array.isArray(calendarRes.events) ? calendarRes.events : [];
+      output.push('', '*Google Agenda:*');
+      output.push(events.length
+        ? events.slice(0, 12).map((event, index) => `${index + 1}. ${formatCalendarEvent(event, timezone)}`).join('\n')
+        : 'Não encontrei eventos com esse nome a partir de hoje.');
+    } else {
+      output.push('', `*Google Agenda:* Não consegui consultar a agenda (${calendarRes?.message || calendarRes?.error || 'integração indisponível'}). Não posso afirmar que não há compromisso.`);
+    }
+    output.push('', '*Lembretes internos pendentes:*');
+    output.push(internalMatches.length
+      ? internalMatches.slice(0, 12).map((item, index) => {
+          const due = new Date(item.dueAt);
+          const when = Number.isFinite(due.getTime())
+            ? new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(due)
+            : 'data não informada';
+          return `${index + 1}. ${item.text} — ${when}`;
+        }).join('\n')
+      : 'Nenhum lembrete interno pendente corresponde a esse nome.');
+    return recordSelfTurn(filterReply(output.join('\n'), { isCopilot: true }).text);
+  }
+
   // 1.0.7 Atalho Direto: Teste e Consulta Rápida do Google Agenda (apenas se não for pedido de agendar/criar/cancelar evento)
   const isCalendarCreateOrEdit = /(?:marcar|marque|agendar|agende|criar|crie|adicionar|adicione|cancelar|cancele|remarcar|remarque)\b/i.test(norm);
   if (!isCalendarCreateOrEdit && /(?:google agenda|minha agenda|horarios livres|horários livres|test(?:e)? da agenda|teste.*agenda|comunica[cç][aã]o com.*agenda|^agenda$)\b/i.test(norm)) {
@@ -78,9 +145,12 @@ _Sempre que precisar, é só me pedir em linguagem natural!_ 🚀`;
       action: 'consultar_livres',
       ...(dateHintMatch ? { date: dateHintMatch[1] } : {})
     }, { clientName: owner, botConfig });
-    const calStatus = calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
+    const calStatus = calRes?.mocked
+      ? '🟡 Simulação — agenda real não consultada'
+      : calRes?.success ? '🟢 Integrada e consultada' : '🔴 Indisponível';
     const slots = calRes?.success && Array.isArray(calRes.availableSlots) ? calRes.availableSlots.join(', ') : 'Nenhum horário confirmado';
-    const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *Horários Livres Confirmados:* ${slots}`;
+    const slotsLabel = calRes?.mocked ? 'Horários Simulados (não confirmados)' : 'Horários Livres Confirmados';
+    const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${calRes?.message || 'Não foi possível consultar o Google Calendar.'}\n• *Status:* ${calStatus}\n• *${slotsLabel}:* ${slots}`;
     return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
   }
 
@@ -451,17 +521,41 @@ ${owner}, não há nenhum contato aguardando retorno no momento! Todos os atendi
     return recordSelfTurn(filterReply(`⚠️ *Confirmação necessária*\n\nVocê quer realmente limpar o histórico e o estado de *${targetName}*? Essa ação não pode ser desfeita.\n\nResponda *sim* para confirmar ou *não* para cancelar.`, { isCopilot: true }).text);
   }
 
-  // 1.7 Consulta de Lembretes do responsável
+  // 1.7 Consulta unificada: eventos do Google Agenda e lembretes internos
+  // aparecem em blocos distintos para não misturar fontes nem inventar sucesso.
   if (/(?:quais|ver|listar|lista|meus)?\s*(?:lembretes|agendamentos)\b/i.test(norm)) {
-    if (!reminderStore) return recordSelfTurn(filterReply('Módulo de lembretes não inicializado no momento.', { isCopilot: true }).text);
-    const list = reminderStore.listActive();
-    if (!list.length) return recordSelfTurn(filterReply(`${owner}, você não tem nenhum lembrete pendente no momento! Tudo em dia por aqui. ✨`, { isCopilot: true }).text);
-    const tz = botConfig?.business?.hoursConfig?.timezone || botConfig?.business?.timezone || 'America/Sao_Paulo';
-    const lines = list.map((r, i) => {
-      const dataStr = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: tz }).format(new Date(r.dueAt));
-      return `${i + 1}. *${r.text}*\n   📅 *Data/Hora:* ${dataStr}${r.clientName ? `\n   👤 *Contato:* ${r.clientName}` : ''}`;
-    }).join('\n\n');
-    return recordSelfTurn(filterReply(`📋 *Seus lembretes pendentes:*\n\n${lines}`, { isCopilot: true }).text);
+    const tz = botConfig?.integrations?.googleCalendar?.timezone
+      || botConfig?.business?.hoursConfig?.timezone
+      || botConfig?.business?.timezone
+      || 'America/Sao_Paulo';
+    const today = todayInTimezone(now(), tz);
+    const calendarRes = await executeToolCall('gerenciar_agenda_google', {
+      action: 'listar_eventos',
+      date: today
+    }, { clientName: owner, botConfig });
+    const list = reminderStore?.listActive?.() || [];
+    const sections = ['📋 *Agenda e lembretes pendentes:*', '', '*Google Agenda:*'];
+    if (calendarRes?.success) {
+      const events = Array.isArray(calendarRes.events) ? calendarRes.events : [];
+      sections.push(events.length
+        ? events.slice(0, 15).map((event, index) => `${index + 1}. ${formatCalendarEvent(event, tz)}`).join('\n')
+        : 'Nenhum evento encontrado a partir de hoje.');
+    } else {
+      sections.push(`Não consegui consultar o Google Agenda: ${calendarRes?.message || calendarRes?.error || 'integração indisponível'}. Não posso confirmar que a agenda está vazia.`);
+    }
+    sections.push('', '*Lembretes internos pendentes:*');
+    if (list.length) {
+      sections.push(list.slice(0, 15).map((item, index) => {
+        const due = new Date(item.dueAt);
+        const dueText = Number.isFinite(due.getTime())
+          ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: tz }).format(due)
+          : 'data não informada';
+        return `${index + 1}. *${item.text}* — ${dueText}${item.clientName ? ` (Contato: ${item.clientName})` : ''}`;
+      }).join('\n'));
+    } else {
+      sections.push('Nenhum lembrete interno pendente.');
+    }
+    return recordSelfTurn(filterReply(sections.join('\n'), { isCopilot: true }).text);
   }
 
   return null;

@@ -6,6 +6,7 @@ import { buildSystemPrompt } from '../knowledge.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { formatPhoneNumber } from '../sessions.mjs';
 import { executeToolCall as executeToolCallRaw, isToolEnabled } from '../tools/index.mjs';
+import { prepareOwnerReminderCalendarCall, claimsUnverifiedCalendarCreation } from './owner-reminder-calendar.mjs';
 import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import {
   cleanForSpeech, escapeText, stripBotMention, buildFriendlyAudioScript,
@@ -1793,25 +1794,32 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
               : []
           };
         }
+        // O código é a autoridade para lembretes do responsável: valida os
+        // dados e converte a proposta em uma única escrita no Google Calendar.
+        const proposedToolCalls = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
+        const reminderPreparation = prepareOwnerReminderCalendarCall({
+          message: cleanCommand,
+          reminder: result?.reminder || null,
+          toolCalls: proposedToolCalls,
+          now: now(),
+          timezone: botConfig?.integrations?.googleCalendar?.timezone
+            || botConfig?.business?.hoursConfig?.timezone
+            || botConfig?.business?.timezone
+            || 'America/Sao_Paulo'
+        });
+        if (reminderPreparation.state !== 'none') {
+          result.reminder = null;
+          result.tool_calls = reminderPreparation.toolCalls;
+          result.reply = reminderPreparation.state === 'clarification'
+            ? reminderPreparation.reply
+            : suppressToolExecution
+              ? 'Não executei o agendamento nesta etapa. Para criar um evento, envie o pedido novamente no chat autenticado do responsável.'
+              : '';
+        }
+
         currentToolSuggestions = suppressToolExecution ? [] : (Array.isArray(result?.tool_calls) ? result.tool_calls : [])
           .map(call => String(call?.name || '').trim())
           .filter(Boolean);
-
-        // Se pediu para agendar um lembrete
-        if (result?.reminder && reminderStore) {
-          const remText = String(result.reminder.text || '').trim();
-          const isPlaceholder = remText.length < 5 || /^(?:recado|lembrete|descri[cç][aã]o|anota[cç][aã]o|exemplo|\.\.\.)/i.test(remText);
-          const askedReminder = /(?:lembr|agend|compromisso|anot|tarefa|marcar)\b/i.test(cleanCommand) || result.intent === 'lembrete';
-          if (!isPlaceholder && askedReminder) {
-            await reminderStore.add({
-              text: remText,
-              dueAt: result.reminder.dueAt,
-              phone: OWNER_SELF_KEY,
-              clientName: owner,
-              createdBy: 'owner'
-            });
-          }
-        }
 
         // Execução de Ferramentas Ativas para o Copiloto (responsável)
         const hasExternalTarget = Boolean(
@@ -2800,6 +2808,22 @@ ${errMsg}`;
           'gerenciar_agenda_google',
           'gerenciar_tarefas_autonomas'
         ]);
+        // Confirmação de agenda exige evidência técnica do Google: sucesso
+        // acompanhado do ID real do evento. Texto produzido pelo modelo não basta.
+        const claimsScheduleCreation = claimsUnverifiedCalendarCreation(rawReply);
+        const verifiedCalendarCreation = toolOutputs.some(item =>
+          item.tool === 'gerenciar_agenda_google'
+          && item.args?.action === 'criar_evento'
+          && item.result?.success === true
+          && Boolean(item.result?.event?.id)
+        );
+        if (claimsScheduleCreation && !verifiedCalendarCreation) {
+          return recordSelfTurn(filterReply(
+            '⚠️ Não confirmei esse agendamento: não recebi do Google Agenda a confirmação com o ID do evento. Portanto, não posso dizer que foi criado.',
+            { isCopilot: true }
+          ).text, { preserveTask: Boolean(activeTask) });
+        }
+
         if (!toolOutputs.length && !suppressToolExecution && !isPureGreeting && claimsUnexecutedToolWork(rawReply)) {
           const retryPrompt = `${sys}\n\n[CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]\nVocê respondeu "${rawReply.slice(0, 220)}" prometendo consultar/verificar algo, mas deixou "tool_calls": []. É PROIBIDO prometer consulta sem executar a ferramenta AGORA. Emita "tool_calls" com a ferramenta adequada (ex.: "consultar_saude_infra", "consultar_web", "gerenciar_tarefas_autonomas", "gerenciar_drive_google") ou responda diretamente com os dados reais que já possui.\n[/CORREÇÃO_OBRIGATÓRIA_DE_FERRAMENTA]`;
           const forced = await ai?.askAI?.({

@@ -6,6 +6,7 @@ import { resolveIdentity } from './core/identity.mjs';
 import { buildPersonalityPrompt } from './core/personality.mjs';
 import { buildCognitionProtocol } from './core/cognition.mjs';
 import { memoryStore, buildMemoryScopeKey, buildMemoryPromptSection } from './core/memory.mjs';
+import { readGoogleCredentials } from './tools/google_auth.mjs';
 import {
   buildGreetingMessage,
   buildAtendimentoMessage,
@@ -66,18 +67,23 @@ export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], pl
   const { botName, responsible, companyName } = identity;
   const owner = responsible || 'nossa equipe';
   const webSearchAvailable = Boolean(config.geminiKey);
-  const hasGoogleCredentials = Boolean(
-    config.googleServiceAccountJson
-    || config.googleServiceAccountKey
-    || (config.googleServiceAccountEmail && config.googleServiceAccountPrivateKey)
-    || config.googleDriveAccessToken
-    || config.googleSheetsAccessToken
-    || config.googleCalendarAccessToken
-    || (config.googleClientId && config.googleClientSecret && config.googleRefreshToken)
-  );
-  const googleDriveAvailable = copilotMode && hasGoogleCredentials && botConfig?.tools?.enabled?.gerenciar_drive_google !== false;
-  const googleSheetsAvailable = copilotMode && hasGoogleCredentials && botConfig?.tools?.enabled?.consultar_planilha_google !== false;
-  const googleCalendarAvailable = (hasGoogleCredentials || botConfig?.integrations?.googleCalendar?.showMockSlotsWhenUnavailable === true)
+  const hasGoogleCredentials = envPrefix => {
+    const credentials = readGoogleCredentials(envPrefix);
+    return Boolean(
+      credentials.accessToken
+      || (credentials.clientId && credentials.clientSecret && credentials.refreshToken)
+      || (credentials.serviceAccountEmail && credentials.serviceAccountPrivateKey)
+    );
+  };
+  const googleDriveAvailable = copilotMode && hasGoogleCredentials('GOOGLE_DRIVE')
+    && botConfig?.tools?.enabled?.gerenciar_drive_google !== false;
+  const googleSheetsAvailable = copilotMode && hasGoogleCredentials('GOOGLE_SHEETS')
+    && botConfig?.tools?.enabled?.consultar_planilha_google !== false;
+  const googleCalendarId = botConfig?.tools?.settings?.gerenciar_agenda_google?.calendarId
+    || botConfig?.integrations?.googleCalendar?.calendarId;
+  const googleCalendarAvailable = hasGoogleCredentials('GOOGLE_CALENDAR')
+    && Boolean(googleCalendarId)
+    && botConfig?.integrations?.googleCalendar?.enabled !== false
     && botConfig?.tools?.enabled?.gerenciar_agenda_google !== false;
   const unavailableGoogleServices = [
     !googleDriveAvailable ? 'Google Drive' : '',
@@ -243,17 +249,24 @@ ${buildEmojiGuideline(botConfig, true)}
 
 CAPACIDADES DO COPILOTO:
 1. STATUS DO SISTEMA: Quando ele perguntar por status, resumo, saúde da API, modelos, erros ou latência, monte um resumo estruturado, elegante e claro usando a telemetria abaixo.
-2. LEMBRETES: Se ele pedir para lembrá-lo de qualquer compromisso ou tarefa (ex: "me lembra de...", "cria um lembrete para amanhã às 10h"), extraia no campo "reminder": {"text": "descrição exata da tarefa dita pelo responsável", "dueAt": "ISO_8601_TIMESTAMP calculada com base no horário local abaixo"}. NUNCA invente números fictícios. Se não houver pedido explícito de lembrete, retorne "reminder": null.
+2. RECADOS E AGENDAMENTOS:
+   - Se ele apenas perguntar se pode guardar um recado, ou pedir para guardar/deixar um recado sem informar o conteúdo, pergunte qual recado deseja guardar. NÃO crie lembrete nem agenda.
+   - Para um lembrete/compromisso, exija intenção explícita, assunto concreto, dia e horário informados pelo responsável. Se faltar qualquer dado, faça somente a pergunta necessária e mantenha "reminder": null.
+   - Somente quando todos esses dados estiverem presentes, preencha "reminder": {"text": "descrição fiel do assunto informado", "dueAt": "ISO_8601_TIMESTAMP futuro calculado no fuso local abaixo"}.
+   - O código valida esse pedido e cria um evento real no Google Calendar. Nunca grave diretamente no lembrete interno, não use horário/data padrão e nunca confirme antes do Google retornar o ID do evento.
+   - Se a integração não estiver disponível, informe que o evento não foi criado. Nunca transforme uma anotação simples em compromisso.
 3. FILA E ATENDIMENTOS: Se ele perguntar quem está aguardando ou o que há pendente, informe com clareza.
 4. COPILOTO INTELIGENTE: Ajude a rascunhar mensagens para clientes, analisar situações e resolver demandas com agilidade.
 5. FERRAMENTAS E CAPACIDADES ATIVAS CONECTADAS:
 Você possui um conjunto completo de ferramentas operacionais conectadas ao seu runtime:
-• "gerenciar_agenda_google": Consulta disponibilidade, lista horários livres e agenda reuniões/compromissos na sua agenda do Google Calendar.
-  - Exemplo: Quando o responsável pedir "faça um teste de comunicação com o google agenda" ou "verifique horários livres", emita em "tool_calls": [{"name": "gerenciar_agenda_google", "args": {"action": "consultar_livres", "date": "hoje ou data informada"}}]
+• "gerenciar_agenda_google": Consulta e cria eventos reais no Google Calendar; é a fonte oficial de compromissos e lembretes pessoais do responsável.
+  - Para consultas, emita "tool_calls" com "action": "consultar_livres" ou "listar_eventos".
+  - Para lembretes pessoais, use o campo "reminder" somente depois de validar assunto, data e horário explícitos; o sistema converte esse campo em uma chamada de criação do Google Calendar e verifica o ID retornado.
+  - Nunca gere sucesso com horários simulados nem diga que agendou quando a ferramenta falhar.
 • "consultar_saude_infra": Diagnóstico ativo de saúde dos servidores, VPS, memória, containers, Dokku e serviços conectados.
   - Exemplo: Quando o responsável pedir "diagnóstico de infraestrutura", "saúde dos servidores" ou "como está o dokku", emita em "tool_calls": [{"name": "consultar_saude_infra", "args": {"target": "geral"}}]
 • "enviar_mensagem_contato": Disparo e envio ativo de mensagens de texto ou áudio para contatos no WhatsApp.
-• "agendar_retorno_ou_followup": Agendamento de retornos e lembretes com clientes.
+• "agendar_retorno_ou_followup": Ferramenta legada para follow-up interno de clientes. Não use para compromissos ou lembretes pessoais do responsável; esses devem ir ao Google Calendar.
 • "consultar_contato_ou_lead" e "atualizar_dados_crm": Consulta e atualização cadastral no CRM.
 • "consultar_base_conhecimento": Consulta dossiês e manuais operacionais das empresas.
 • "gerenciar_cobranca_pagamento": Gera cobrança Pix Copia e Cola, QR Code PNG e link de pagamento (/pix) para envio no WhatsApp. REGRAS OBRIGATÓRIAS:
