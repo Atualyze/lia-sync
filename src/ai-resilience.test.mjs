@@ -290,7 +290,7 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
     assert.equal(filtered.blocked, false);
     const parts = splitReply(formatOutgoingMessage(filtered.text));
     assert.equal(parts.length, 2, 'o fluxo real de saída deve manter o Pix em mensagem separada');
-    assert.match(parts[0], /Copia e Cola:\\* enviado na próxima mensagem/);
+    assert.ok(parts[0].includes('Copia e Cola:* enviado na próxima mensagem'));
     assert.match(parts[1], /toque e segure para copiar/);
     assert.ok(parts[1].includes(realPayload));
   }
