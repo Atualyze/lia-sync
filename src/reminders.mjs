@@ -14,6 +14,14 @@ import path from 'node:path';
  *     erro é registrado e a lista anterior em memória permanece. Só ENOENT
  *     (arquivo inexistente) resulta em lista vazia.
  */
+function normalizeReminderPhone(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw || raw.startsWith('sim:')) return '';
+  if (/^\d+@lid$/.test(raw)) return raw;
+  const digits = raw.replace(/\D/g, '');
+  return digits || raw;
+}
+
 export class ReminderStore {
   constructor(filePath = './data/reminders.json', { client = null, logger = console, now = () => Date.now() } = {}) {
     this.filePath = filePath;
@@ -47,22 +55,11 @@ export class ReminderStore {
 
     if (this.client?.enabled) {
       try {
-        const rows = await this.client.select('reminders', 'select=*&status=eq.pending&order=due_at.asc&limit=200');
+        const rows = await this._listActiveFromSupabase();
         if (Array.isArray(rows)) {
           const map = new Map();
-          for (const r of this.reminders) map.set(r.id, r);
-          for (const row of rows) {
-            map.set(row.id, {
-              id: row.id,
-              text: row.text,
-              dueAt: row.due_at,
-              phone: row.phone || '',
-              clientName: row.client_name || '',
-              createdBy: row.created_by || 'contato',
-              status: row.status || 'pending',
-              createdAt: row.created_at || new Date(this.now()).toISOString()
-            });
-          }
+          for (const item of this.reminders) map.set(item.id, item);
+          for (const item of rows) map.set(item.id, item);
           this.reminders = Array.from(map.values());
         }
       } catch (err) {
@@ -177,5 +174,66 @@ export class ReminderStore {
 
   listActive() {
     return this.reminders.filter(r => r.status === 'pending').sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  }
+
+  /**
+   * Consulta somente lembretes vinculados ao identificador autenticado do contato.
+   * Números são comparados completos; IDs @lid só correspondem ao mesmo @lid.
+   * Não usa sufixos/últimos dígitos, para impedir colisões entre contatos.
+   */
+  async _listActiveFromSupabase(phoneKey = '') {
+    const pageSize = 1000;
+    const maxPages = 100;
+    const rows = [];
+    let offset = 0;
+    let pageCount = 0;
+    while (true) {
+      const filters = [
+        'select=id,text,due_at,phone,client_name,created_by,status,created_at',
+        'status=eq.pending',
+        'order=created_at.asc,id.asc',
+        'limit=' + pageSize,
+        'offset=' + offset
+      ];
+      if (phoneKey) filters.splice(1, 0, 'phone=eq.' + encodeURIComponent(phoneKey));
+      const page = await this.client.select('reminders', filters.join('&'));
+      if (!Array.isArray(page)) {
+        throw new Error('Resposta inválida ao consultar lembretes no Supabase');
+      }
+      rows.push(...page.filter(row =>
+        String(row?.status || 'pending') === 'pending'
+        && (!phoneKey || normalizeReminderPhone(row?.phone) === phoneKey)
+      ));
+      pageCount += 1;
+      if (page.length < pageSize) break;
+      if (pageCount >= maxPages) {
+        throw new Error('A consulta excedeu o limite seguro de páginas; não é possível informar uma contagem completa');
+      }
+      offset += page.length;
+    }
+    return rows.map(row => ({
+      id: row.id,
+      text: row.text,
+      dueAt: row.due_at,
+      phone: row.phone || '',
+      clientName: row.client_name || '',
+      createdBy: row.created_by || 'contato',
+      status: row.status || 'pending',
+      createdAt: row.created_at || new Date(this.now()).toISOString()
+    }));
+  }
+
+  async listAllActive() {
+    if (this.client?.enabled) return this._listActiveFromSupabase();
+    return this.listActive();
+  }
+
+  async listActiveForPhone(phone) {
+    const phoneKey = normalizeReminderPhone(phone);
+    if (!phoneKey) return [];
+    // A lista remota por telefone é independente da amostra global carregada
+    // no bootstrap. Falhas propagam para que a contagem não seja parcial.
+    if (this.client?.enabled) return this._listActiveFromSupabase(phoneKey);
+    return this.listActive().filter(item => normalizeReminderPhone(item.phone) === phoneKey);
   }
 }

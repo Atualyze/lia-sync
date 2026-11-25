@@ -22,6 +22,7 @@ import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPr
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff, captureHumanHandoffSnapshot, restoreHumanHandoffSnapshot } from './human-handoff-state.mjs';
 import { normalizedClientText, amountFromText, hasActivePriceContext, isUsablePaymentCredential, paymentChoiceReply, paymentUnavailableReply, formatPixKeyForDisplay, directPixKeyReply, resolveConfiguredPixKey, formatPixSuccessReply } from './client-payment-context.mjs';
 import { validateClientReminderRequest } from './client-reminder-guard.mjs';
+import { detectClientReminderQuery, buildClientReminderQueryReply } from './client-reminder-query.mjs';
 
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
@@ -545,6 +546,41 @@ export async function handleClientMessage({
         s.history.push({ role: 'assistant', content: reply, createdAt: new Date(now()).toISOString() });
         store.markDirty();
         return reply;
+      }
+
+      // Consulta de lembretes do próprio contato: caminho determinístico,
+      // antes da IA, com escopo pelo telefone autenticado da sessão.
+      const reminderQuery = detectClientReminderQuery(actionText, s.history);
+      if (reminderQuery) {
+        const reminderResult = await executeToolCall('agendar_retorno_ou_followup', {
+          action: reminderQuery
+        }, {
+          actor: 'client',
+          phone: s.phone,
+          origin,
+          clientName: s.clientName || pushName || 'Contato',
+          reminderStore,
+          store,
+          session: s,
+          botConfig
+        }).catch(error => ({
+          success: false,
+          error: error?.message || 'reminder_query_failed'
+        }));
+        const timezone = botConfig?.business?.hoursConfig?.timezone
+          || botConfig?.business?.timezone
+          || 'America/Sao_Paulo';
+        const reminderReply = buildClientReminderQueryReply({
+          query: reminderQuery,
+          result: reminderResult,
+          timezone
+        });
+        const sentAt = new Date(now()).toISOString();
+        s.history.push({ role: 'assistant', content: reminderReply, createdAt: sentAt });
+        s.lastBotAt = sentAt;
+        s.awaitingReply = true;
+        store.markDirty();
+        return reminderReply;
       }
 
       // 2.5 DETECÇÃO DE PREFERÊNCIA DE FORMATO (ÁUDIO vs TEXTO) PELO CLIENTE
@@ -1493,6 +1529,7 @@ export async function handleClientMessage({
               const toolContext = {
                 actor: 'client',
                 phone: s.phone,
+                origin,
                 clientName: s.clientName || pushName || 'Cliente',
                 store,
                 infinitePayOrders: store?.paymentOrderStore,
@@ -1840,6 +1877,7 @@ export async function handleClientMessage({
           }, {
             actor: 'client',
             phone: s.phone,
+            origin,
             clientName: s.clientName || pushName || 'Contato',
             reminderStore
           });

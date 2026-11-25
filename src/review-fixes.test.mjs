@@ -153,3 +153,71 @@ test('retenção limita idempotency keys, telemetria de IA e ledger de webhook',
   assert.match(aiDelete.query, /id=in\./);
   assert.match(webhookDelete.query, /event_key=in\./);
 });
+
+
+test('consultas de lembrete listam, contam e confirmam apenas registros do telefone autenticado', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reminder-self-query-'));
+  const store = new ReminderStore(path.join(dir, 'reminders.json'), { logger: quietLogger });
+  await store.load();
+  const dueA = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  const dueB = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
+  await store.add({ phone: '5588998340085', text: 'Reunião com Tauan', dueAt: dueA, clientName: 'Contato A' });
+  await store.add({ phone: '5588998340085', text: 'Comprar ração', dueAt: dueB, clientName: 'Contato A' });
+  await store.add({ phone: '5588998340086', text: 'Informação privada de outro contato', dueAt: dueA, clientName: 'Contato B' });
+
+  const context = { actor: 'client', phone: '5588998340085', reminderStore: store };
+  const count = await toolAgendarRetorno.execute({ action: 'contar' }, context);
+  assert.equal(count.success, true);
+  assert.equal(count.count, 2);
+
+  const list = await toolAgendarRetorno.execute({ action: 'listar', phone: '5588998340086' }, context);
+  assert.equal(list.success, true);
+  assert.equal(list.count, 2);
+  assert.deepEqual(list.reminders.map(item => item.text).sort(), ['Comprar ração', 'Reunião com Tauan']);
+  assert.doesNotMatch(JSON.stringify(list), /Informação privada de outro contato|5588998340086/);
+
+  const latest = await toolAgendarRetorno.execute({ action: 'ultimo' }, context);
+  assert.equal(latest.success, true);
+  assert.equal(latest.reminder.text, 'Comprar ração');
+
+  const denied = await toolAgendarRetorno.execute({ action: 'listar' }, {
+    actor: 'owner', phone: '5588998340085', reminderStore: store
+  });
+  assert.equal(denied.success, false);
+  assert.equal(denied.error, 'reminder_query_client_scope_only');
+
+  const invalidSession = await toolAgendarRetorno.execute({ action: 'listar' }, {
+    actor: 'client', phone: '', reminderStore: store
+  });
+  assert.equal(invalidSession.success, false);
+  assert.equal(invalidSession.error, 'invalid_authenticated_contact');
+
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+
+test('lembretes não consultam nem gravam registros em sessões de simulação', async () => {
+  const calls = [];
+  const reminderStore = {
+    async add(item) { calls.push({ type: 'add', item }); return { id: 'reminder-1' }; },
+    listActiveForPhone(phone) { calls.push({ type: 'list', phone }); return []; }
+  };
+  const query = await toolAgendarRetorno.execute({ action: 'listar' }, {
+    actor: 'client',
+    phone: 'sim:5588998340085',
+    origin: 'simulation',
+    reminderStore
+  });
+  const create = await toolAgendarRetorno.execute({
+    reason: 'Teste',
+    when: new Date(Date.now() + 86400000).toISOString()
+  }, {
+    actor: 'client',
+    phone: 'sim:5588998340085',
+    origin: 'simulation',
+    reminderStore
+  });
+  assert.equal(query.success, false);
+  assert.equal(create.success, false);
+  assert.deepEqual(calls, []);
+});
