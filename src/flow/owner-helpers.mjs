@@ -105,6 +105,24 @@ export function similarClarification(a = '', b = '') {
   return common >= 2 && (overlap >= 0.72 || union >= 0.62);
 }
 
+export function extractContactSaveArgs(text = '') {
+  const source = String(text || '').trim();
+  const phoneMatch = source.match(/(?:\\+?55[\\s().-]*)?\\d(?:[\\s().-]*\\d){7,14}\\s*$/);
+  if (!phoneMatch) return null;
+
+  const telefone = phoneMatch[0].trim();
+  let nome = source.slice(0, phoneMatch.index).trim();
+  nome = nome
+    .replace(/[,;:|\\-\\s]+$/g, '')
+    .replace(/^\\s*(?:nome|contato)\\s*[:=-]\\s*/i, '')
+    .trim()
+    .replace(/\\s+/g, ' ')
+    .slice(0, 100);
+
+  if (nome.length < 2) return null;
+  return { nome, telefone };
+}
+
 export function extractCurrentPixArgs(text = '', { allowBareNumber = false } = {}) {
   const source = String(text || '');
   const free = /\b(?:valor\s+livre|livre|sem\s+valor|qualquer\s+valor)\b/i.test(source);
