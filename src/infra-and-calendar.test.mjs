@@ -10,16 +10,26 @@ test('Habilidade 4: Diagnóstico Ativo de Infraestrutura reporta integridade e m
   assert.ok(res.checks.some(c => c.name.includes('Lia Bot Runtime')));
 });
 
-test('Habilidade 5: Integração Google Calendar consulta horários livres e confirma agendamento', async () => {
+test('Google Calendar permite horários simulados em teste, mas nunca simula a criação de eventos', async () => {
   const botConfig = { integrations: { googleCalendar: { enabled: true, showMockSlotsWhenUnavailable: true } }, tools: { settings: { gerenciar_agenda_google: { calendarId: 'test-calendar' } } } };
-  const livres = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, { botConfig });
+  const livres = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-26' }, { botConfig });
   assert.equal(livres.success, true);
+  assert.equal(livres.mocked, true);
   assert.ok(Array.isArray(livres.availableSlots));
   assert.ok(livres.availableSlots.length > 0);
-  const agendamento = await toolGerenciarAgendaGoogle.execute({ action: 'criar_evento', date: '2026-11-12', startTime: '14:30', summary: 'Alinhamento de Proposta com Cliente' }, { clientName: 'Lucas', botConfig });
-  assert.equal(agendamento.success, true);
-  assert.equal(agendamento.event.status, 'confirmed');
-  assert.match(agendamento.message, /14:30/);
+
+  const semHorario = await toolGerenciarAgendaGoogle.execute({
+    action: 'criar_evento', date: '2026-11-26', summary: 'Alinhamento de Proposta'
+  }, { botConfig });
+  assert.equal(semHorario.success, false);
+  assert.equal(semHorario.error, 'event_time_required');
+
+  const agendamento = await toolGerenciarAgendaGoogle.execute({
+    action: 'criar_evento', date: '2026-11-26', startTime: '14:30', summary: 'Alinhamento de Proposta com Cliente'
+  }, { clientName: 'Lucas', botConfig });
+  assert.equal(agendamento.success, false);
+  assert.equal(agendamento.error, 'mock_calendar_write_disabled');
+  assert.match(agendamento.message, /Nenhum evento foi criado/i);
 });
 
 test('Google Calendar não retorna sucesso sem integração real ou mock explícito', async () => {
