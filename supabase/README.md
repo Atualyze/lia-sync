@@ -30,8 +30,9 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 18. `migrations/20261122100000_tracked_lia_commitments.sql` — compromissos do Lia Runtime com vínculo a metas
 19. `migrations/20261122120000_copilot_task_reconciliation.sql` — campos de reconciliação auditada da fila Copilot, RLS backend-only
 20. `migrations/20261123180000_payment_orders.sql` — pedidos financeiros backend-only
-21. `migrations/20261125120000_harden_backend_privileges.sql` — restringe Data API em tabelas internas, reforça funções e remove índice duplicado
-22. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
+21. `migrations/20261125124934_harden_backend_privileges.sql` — restringe Data API em tabelas internas, reforça funções e remove índice duplicado
+22. `migrations/20261125130000_private_staff_helper_and_fk_indexes.sql` — isola o helper privilegiado do painel e indexa as chaves estrangeiras
+23. `seed.sql` — opcional, somente para ambiente de desenvolvimento/teste
 
 As três migrations de follow-up/orçamento foram aplicadas e verificadas no projeto Supabase conectado durante a release 2.3.0. Em outros ambientes, confirme o histórico de migrations antes de aplicar. Não use `seed.sql` com preços de teste ativos em produção.
 
