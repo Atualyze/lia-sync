@@ -49,8 +49,8 @@ export async function processMaintenance({
       try {
         const clientInfo = rem.clientName ? `\n👤 *Contato:* ${rem.clientName} (${rem.phone})` : '';
         const alertMsg = `⏰ *Lembrete Agendado!*\n\n📋 *Tarefa:* ${rem.text}${clientInfo}`;
-        reminderStore.markSent(rem.id);
         await notify?.(alertMsg);
+        await reminderStore.markSent(rem.id);
       } catch (e) {
         logger.error?.('[maintenance] Erro ao disparar lembrete agendado:', e.message);
       }
