@@ -263,7 +263,7 @@ test('formatOutgoingMessage preserva Pix EMV Copia e Cola intacto sem quebrar ou
   assert.ok(!formatted.includes('br. gov.'));
 });
 
-test('Pix autorizado pela equipe é entregue em dois balões, mantendo aviso do QR Code no resumo', () => {
+test('Pix autorizado pela equipe deixa a instrução no fim do resumo e envia o código sozinho', () => {
   const payload = '00020126570014br.gov.bcb.pix0114+55889983400850217Pagamento via Pix520400005303986540510.005802BR5911Tauan Pires6009Sao Paulo62070503***6304ABCD';
   const message = [
     '💳 *Cobrança Pix autorizada e gerada pela equipe:*',
@@ -276,11 +276,11 @@ test('Pix autorizado pela equipe é entregue em dois balões, mantendo aviso do 
   const parts = splitReply(formatOutgoingMessage(message));
   assert.equal(parts.length, 2);
   assert.ok(parts[0].includes('Cobrança Pix autorizada e gerada pela equipe'));
-  assert.ok(parts[0].includes('Copia e Cola:* enviado na próxima mensagem'));
   assert.ok(parts[0].includes('O QR Code também foi enviado'));
+  assert.ok(parts[0].trimEnd().endsWith('📋 *Pix Copia e Cola — toque e segure para copiar:*'));
   assert.ok(!parts[0].includes(payload));
-  assert.ok(parts[1].includes('toque e segure para copiar'));
-  assert.ok(parts[1].includes(payload));
+  assert.ok(!parts[1].includes('toque e segure para copiar'));
+  assert.equal(parts[1], '```' + payload + '```');
 });
 
 test('filterReply bloqueia código Pix fictício (1234567890) e placeholders como [link_para_qr_code]', () => {
@@ -310,8 +310,8 @@ test('filterReply bloqueia código Pix fictício (1234567890) e placeholders com
     assert.equal(filtered.blocked, false);
     const parts = splitReply(formatOutgoingMessage(filtered.text));
     assert.equal(parts.length, 2, 'o fluxo real de saída deve manter o Pix em mensagem separada');
-    assert.ok(parts[0].includes('Copia e Cola:* enviado na próxima mensagem'));
-    assert.match(parts[1], /toque e segure para copiar/);
-    assert.ok(parts[1].includes(realPayload));
+    assert.ok(parts[0].trimEnd().endsWith('📋 *Pix Copia e Cola — toque e segure para copiar:*'));
+    assert.doesNotMatch(parts[1], /toque e segure para copiar/);
+    assert.equal(parts[1], '```' + realPayload + '```');
   }
 });
