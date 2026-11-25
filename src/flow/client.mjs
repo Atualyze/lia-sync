@@ -557,6 +557,7 @@ export async function handleClientMessage({
         }, {
           actor: 'client',
           phone: s.phone,
+          origin,
           clientName: s.clientName || pushName || 'Contato',
           reminderStore,
           store,
@@ -1528,6 +1529,7 @@ export async function handleClientMessage({
               const toolContext = {
                 actor: 'client',
                 phone: s.phone,
+                origin,
                 clientName: s.clientName || pushName || 'Cliente',
                 store,
                 infinitePayOrders: store?.paymentOrderStore,
