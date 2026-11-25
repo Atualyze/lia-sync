@@ -81,7 +81,7 @@ export const toolSalvarContato = {
         id: contactId,
         name,
         phone,
-        message: `Contato \${name} salvo com sucesso.`
+        message: 'Contato ' + name + ' salvo com sucesso.'
       };
     } catch (error) {
       return { success: false, code: 'contact_save_failed', error: 'Não consegui salvar o contato agora: ' + error.message };
