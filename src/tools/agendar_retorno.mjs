@@ -35,7 +35,7 @@ export const toolAgendarRetorno = {
     }
 
     const sessionPhone = String(context.phone || '').replace(/^sim:/i, '');
-    const clientPhoneValid = /^\\d{8,15}$/.test(sessionPhone) || /^\\d+@lid$/i.test(sessionPhone);
+    const clientPhoneValid = /^\d{8,15}$/.test(sessionPhone) || /^\d+@lid$/i.test(sessionPhone);
 
     // Consultas de lembretes são estritamente autoatendimento: o telefone vem
     // da sessão autenticada, nunca de um argumento fornecido pelo usuário.
@@ -100,11 +100,11 @@ export const toolAgendarRetorno = {
     const clientPhone = clientPhoneValid ? sessionPhone : '';
     const targetPhone = context.actor === 'client'
       ? clientPhone
-      : (phone ? String(phone).replace(/\\D/g, '') : context.phone);
+      : (phone ? String(phone).replace(/\D/g, '') : context.phone);
     const clientName = context.clientName || 'Cliente';
     const reasonText = String(reason || '').trim();
     const whenText = String(when || '').trim();
-    const isoDateTime = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,3})?)?(?:Z|[+-]\\d{2}:\\d{2})$/i;
+    const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i;
     const dueDate = new Date(whenText);
     if (context.actor === 'client' && !clientPhoneValid) {
       return { success: false, error: 'Invalid session phone for reminder.' };
