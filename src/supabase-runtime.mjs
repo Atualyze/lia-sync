@@ -247,6 +247,12 @@ function rowToSession(row, messages = []) {
     contactNotes: meta.contactNotes || meta.crmNotes || meta.notes || '',
     crmNotes: meta.crmNotes || meta.contactNotes || meta.notes || '',
     notes: meta.notes || meta.crmNotes || meta.contactNotes || '',
+    aiContext: meta.aiContext || '',
+    email: meta.email || '',
+    dealValue: Number(meta.dealValue || 0) || 0,
+    funnelStage: meta.funnelStage || '',
+    sectorId: meta.sectorId || '',
+    tags: Array.isArray(meta.tags) ? meta.tags : [],
     productInterest: meta.productInterest || '',
     dealStage: meta.dealStage || '',
     audioPreference: meta.audioPreference || undefined,
@@ -352,6 +358,12 @@ function sessionToConversation(key, session, contactId) {
       contactNotes: session.contactNotes || session.crmNotes || session.notes || '',
       crmNotes: session.crmNotes || session.contactNotes || session.notes || '',
       notes: session.notes || session.crmNotes || session.contactNotes || '',
+      aiContext: session.aiContext || '',
+      email: session.email || '',
+      dealValue: Number(session.dealValue || 0) || 0,
+      funnelStage: session.funnelStage || '',
+      sectorId: session.sectorId || '',
+      tags: Array.isArray(session.tags) ? session.tags : [],
       productInterest: session.productInterest || '',
       dealStage: session.dealStage || '',
       audioPreference: session.audioPreference || null,
@@ -739,6 +751,24 @@ export class SupabaseSessionStore extends SessionStore {
           }
           if (lSession.contactNotes && (!rSession.contactNotes || lTime >= rTime)) {
             rSession.contactNotes = lSession.contactNotes;
+          }
+          if (lSession.aiContext && (!rSession.aiContext || lTime >= rTime)) {
+            rSession.aiContext = lSession.aiContext;
+          }
+          if (lSession.email && (!rSession.email || lTime >= rTime)) {
+            rSession.email = lSession.email;
+          }
+          if (lSession.dealValue && (!rSession.dealValue || lTime >= rTime)) {
+            rSession.dealValue = lSession.dealValue;
+          }
+          if (lSession.funnelStage && (!rSession.funnelStage || lTime >= rTime)) {
+            rSession.funnelStage = lSession.funnelStage;
+          }
+          if (lSession.sectorId && (!rSession.sectorId || lTime >= rTime)) {
+            rSession.sectorId = lSession.sectorId;
+          }
+          if (Array.isArray(lSession.tags) && lSession.tags.length && (!Array.isArray(rSession.tags) || !rSession.tags.length || lTime >= rTime)) {
+            rSession.tags = lSession.tags;
           }
           if (lSession.clientName && (!rSession.clientName || lTime >= rTime)) {
             rSession.clientName = lSession.clientName;
