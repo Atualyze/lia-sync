@@ -42,7 +42,7 @@ test('raiz do Atualyze Pay é pública sem abrir os outros dashboards', async ()
   assert.equal(authCalls, 0);
 
   const otherResponse = responseCapture();
-  await router({ method: 'GET', url: '/', headers: { host: 'chat.atualyze.com.br' } }, otherResponse);
+  await router({ method: 'GET', url: '/', headers: { host: 'crm.atualyze.com.br' } }, otherResponse);
   assert.equal(otherResponse.status, 401);
   assert.deepEqual(JSON.parse(otherResponse.body), { error: 'dashboard_auth_required' });
   assert.equal(authCalls, 1);

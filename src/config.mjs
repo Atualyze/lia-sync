@@ -71,7 +71,7 @@ export const config = {
   inactivityStaleHours: num('INACTIVITY_STALE_HOURS', 12),
   inactivityCheckSeconds: num('INACTIVITY_CHECK_SECONDS', 30),
   dashboardOrigin: process.env.DASHBOARD_ORIGIN || '',
-  chatwootInternalUrl: process.env.CHATWOOT_INTERNAL_URL || 'http://chatwoot-lia:4000',
+  chatwootInternalUrl: process.env.CHATWOOT_INTERNAL_URL || '',
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramAdminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID || '',
   // Retained for compatibility with older clients; unauthenticated access is disabled.

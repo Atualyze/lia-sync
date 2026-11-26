@@ -39,7 +39,7 @@ export const TOOL_SETTINGS_SCHEMA = {
     { key: 'paymentBaseUrl', label: 'URL Pública da página de pagamento', type: 'text', placeholder: 'Ex.: https://seu-dominio.com' },
     { key: 'handle', label: 'InfiniteTag (Handle)', type: 'text', placeholder: 'Ex.: suaempresa (sem $)' },
     { key: 'apiKey', label: 'API Key (opcional)', type: 'password', placeholder: 'Chave para opções avançadas do Checkout' },
-    { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://liasync.atualyze.com.br' },
+    { key: 'publicBaseUrl', label: 'URL Pública (para webhook automático)', type: 'text', placeholder: 'Ex.: https://crm.atualyze.com.br' },
     { key: 'redirectUrl', label: 'URL de Redirecionamento (opcional)', type: 'text', placeholder: 'Ex.: https://seusite.com/obrigado' },
     { key: 'webhookSecret', label: 'Segredo do webhook', type: 'password', placeholder: 'Obrigatório para confirmação automática' }
   ]

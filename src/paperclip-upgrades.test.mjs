@@ -236,9 +236,9 @@ test('Package 2 - event-loop-monitor: detecta e classifica stalls', () => {
 
 test('Package 2 - safety: remove links inventados/localhost e reescreve rotas conhecidas', () => {
   const res1 = sanitizeInventedLinks('Acesse http://localhost:3000/pix/abc123 ou https://lia.local/teste e https://wa.me/5588999999999', {
-    ownOrigin: 'https://liasync.atualyze.com.br'
+    ownOrigin: 'https://crm.atualyze.com.br'
   });
-  assert.match(res1.text, /https:\/\/liasync\.atualyze\.com\.br\/pix\/abc123/);
+  assert.match(res1.text, /https:\/\/crm\.atualyze\.com\.br\/pix\/abc123/);
   assert.doesNotMatch(res1.text, /lia\.local/);
   assert.match(res1.text, /https:\/\/wa\.me\/5588999999999/);
   assert.equal(res1.rewrittenCount, 1);
@@ -619,7 +619,7 @@ test('Google OAuth2 (estilo n8n) - gera authUrl com escopos escolhidos, valida s
   const { buildGoogleOAuthStart, consumeGoogleOAuthState, exchangeGoogleOAuthCode } = await import('./tools/google_oauth.mjs');
   const started = buildGoogleOAuthStart({
     selectedIds: ['calendar', 'gmail'],
-    redirectUri: 'https://liasync.atualyze.com.br/api/oauth/google/callback',
+    redirectUri: 'https://crm.atualyze.com.br/api/oauth/google/callback',
     clientId: 'cid-123',
     clientSecret: 'csec-456'
   });

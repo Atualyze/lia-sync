@@ -4,7 +4,7 @@
 
 O dashboard usa o widget Turnstile existente com a site key pública configurada por `SUPABASE_CAPTCHA_SITE_KEY`. O token gerado no login é enviado ao Supabase; o secret não entra no código, no bundle ou no repositório.
 
-Em produção, o widget deve autorizar `liasync.atualyze.com.br` e `chat.atualyze.com.br`. O secret correspondente fica em **Supabase → Authentication → Bot and Abuse Protection**.
+Em produção, o widget deve autorizar `crm.atualyze.com.br` e `crm.atualyze.com.br`. O secret correspondente fica em **Supabase → Authentication → Bot and Abuse Protection**.
 
 Validação:
 

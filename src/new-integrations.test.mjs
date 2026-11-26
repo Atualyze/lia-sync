@@ -362,7 +362,7 @@ function createPixBotConfig(key = '88998340085') {
     ai: { agentMode: 'super_agente', enableToolCalling: true },
     tools: {
       enabled: { gerenciar_cobranca_pagamento: true },
-      settings: key ? { gerenciar_cobranca_pagamento: { pixKey: key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', paymentBaseUrl: 'https://liasync.atualyze.com.br' } } : {}
+      settings: key ? { gerenciar_cobranca_pagamento: { pixKey: key, merchantName: 'Tauan Pires', merchantCity: 'Sobral', paymentBaseUrl: 'https://crm.atualyze.com.br' } } : {}
     }
   };
 }
@@ -411,7 +411,7 @@ test('Copiloto Pix: executa gerenciar_cobranca_pagamento no turno seguinte ("Pix
   });
   assert.match(turn2, /Cobrança Pix gerada!/i);
   assert.match(turn2, /R\$ 10,00/);
-  assert.match(turn2, /https:\/\/liasync\.atualyze\.com\.br\/p\/[A-Za-z0-9_-]{16}/);
+  assert.match(turn2, /https:\/\/crm\.atualyze\.com\.br\/p\/[A-Za-z0-9_-]{16}/);
   assert.match(turn2, /000201/);
   assert.equal(sentImages.length, 1);
   assert.equal(sentImages[0].phone, '5588998340085');
@@ -984,8 +984,8 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
       settings: {
         gerenciar_cobranca_pagamento: {
           handle: '$tauanpires',
-          paymentBaseUrl: 'https://liasync.atualyze.com.br',
-          publicBaseUrl: 'https://liasync.atualyze.com.br',
+          paymentBaseUrl: 'https://crm.atualyze.com.br',
+          publicBaseUrl: 'https://crm.atualyze.com.br',
           pixKey: 'pix-test@atualyze.com.br',
           merchantName: 'Atualyze',
           merchantCity: 'Sobral'
@@ -1018,7 +1018,7 @@ test('InfinitePay Checkout: gera link com valor em centavos, registra order_nsu 
   assert.equal(canonicalPaymentUrl.searchParams.get('c'), created.checkoutUrl);
   assert.ok(canonicalPaymentUrl.searchParams.has('p'));
   assert.equal(fetchCalls[0].body.items[0].price, 1000);
-  assert.equal(fetchCalls[0].body.webhook_url, 'https://liasync.atualyze.com.br/webhook/infinitepay');
+  assert.equal(fetchCalls[0].body.webhook_url, 'https://crm.atualyze.com.br/webhook/infinitepay');
 
   // Webhook com order_nsu desconhecido é rejeitado
   const bad = await processInfinitePayWebhook({
