@@ -289,8 +289,12 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
     const outboundText = safeReplyTo
       ? `> _"${safeReplyTo.content.replace(/\s+/g, ' ').slice(0, 100)}"_\n\n${text}`
       : text;
+    const existingSess = store.get(phone);
+    const sendTarget = (existingSess?.jid && /@lid$/i.test(existingSess.jid) && !/^\d{10,13}$/.test(String(phone).replace(/\D/g, '')))
+      ? existingSess.jid
+      : phone;
     try {
-      await sendText(phone, outboundText);
+      await sendText(sendTarget, outboundText);
       sent = true;
     } catch (err) {
       sendError = err?.message || 'send_failed';

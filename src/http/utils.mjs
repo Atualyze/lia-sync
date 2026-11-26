@@ -49,5 +49,11 @@ export function deliveryTarget(job, defaultPhone = '') {
     return defaultPhone;
   }
   const jid = String(job?.jid || '');
-  return /@lid$/i.test(jid) ? String(job?.phone || jid) : (jid || String(job?.phone || ''));
+  const phone = String(job?.phone || '');
+  if (/@lid$/i.test(jid)) {
+    const cleanDigits = phone.replace(/\D/g, '');
+    const isRealPhone = !/@lid$/i.test(phone) && cleanDigits.length >= 10 && cleanDigits.length <= 13;
+    return isRealPhone ? cleanDigits : jid;
+  }
+  return jid || phone;
 }
