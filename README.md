@@ -2,7 +2,14 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.3.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.4.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.4.0 — Canais Oficiais, CRM Kanban, Cadências, Reputação, Ligação Perdida, Setores & Multi-tenant
+
+- **Canais Oficiais (`WHATSAPP_PROVIDER=manychat` / `ghl`):** além do Baileys Nativo, agora suporta **ManyChat** (`/webhook/manychat`) e **GoHighLevel** (`/webhook/ghl`) com API oficial, handoff por tags e atualização de oportunidades.
+- **Funil / Kanban & Cadências:** nova aba **Funil / Kanban** em 5 etapas, réguas configuráveis de follow-up por tempo sem resposta e painel **Ligação Perdida** (`/webhook/missed-call`).
+- **Pós-atendimento & Reputação:** pesquisa automática 1–5 ao concluir atendimentos com direcionamento de notas altas ao **Google Meu Negócio**.
+- **Setores & Multi-tenant:** menu **Setores** com 10 setores configuráveis ligados ao `triage-router` e suporte a subcontas (`/webhook/(manychat|ghl)/:tenantId`).
 
 ## Novidades da Versão 3.3.0 — Ciclo Operacional Autônomo, Revisão Humana & Idempotência
 

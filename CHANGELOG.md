@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.4.0 - Canais Oficiais (ManyChat & GoHighLevel), CRM Kanban, Cadências, Reputação, Ligação Perdida, Setores & Multi-tenant
+- **Canais Oficiais (`src/whatsapp/manychat-provider.mjs`, `src/whatsapp/ghl-provider.mjs`, `src/whatsapp/inbound-normalizer.mjs`, `src/http/webhook.mjs`):** suporte a `WHATSAPP_PROVIDER=manychat` (`/webhook/manychat`) e `WHATSAPP_PROVIDER=ghl` (`/webhook/ghl`) com autenticação fail-closed (`401`), suporte a texto/áudio/imagem, tag de handoff e atualização de estágio no pipeline do GoHighLevel.
+- **CRM Funil / Kanban (`src/http/dashboard.mjs`, `public/index.html`, `public/app.js`, `public/styles.css`):** nova aba **Funil / Kanban** com 5 etapas (*Novo → Em atendimento → Agendado → Transferido → Fechado*) e persistência via `POST /api/dashboard/funnel-stage`.
+- **Cadências de Follow-up (`src/flow/followup-cadence.mjs`):** régua automática configurável no painel (`GET/PUT /api/dashboard/cadence` e `POST /api/dashboard/cadence/run`) por minutos sem resposta e etapa do funil.
+- **Pós-atendimento & Reputação (`src/flow/reputation.mjs`):** disparo automático da pesquisa 1–5 ao fechar atendimento ou concluir transbordo, interceptação da nota antes da IA (`handleReputationReply`) e envio do link do Google Meu Negócio para notas altas.
+- **Ligação Perdida (`src/flow/missed-call.mjs`):** rota autenticada `POST /webhook/missed-call` com timer configurável (padrão 60s) e cancelamento automático se o contato já tiver interagido.
+- **Setores Customizáveis (`src/sectors/custom-sectors.mjs`, `src/triage-router.mjs`):** novo menu **Setores** com os 10 setores padrão (*Triagem, Vendas, Suporte, Financeiro, Ouvidoria, Diretoria, Agendamento, Follow-up, Pós-atendimento, Copiloto*) e triagem conectada às palavras-chave customizadas.
+- **Multi-tenant (`src/tenants/store.mjs`):** gerenciamento de subcontas (`data/tenants.json`) com webhooks isolados `/webhook/manychat/:tenantId` e `/webhook/ghl/:tenantId`.
+- **Refatoração & Testes:** centralização de `cleanJidPhone` em `src/sessions.mjs` e `buildInboundEvent` em `src/whatsapp/inbound-normalizer.mjs`; **283 módulos** validados no lint e **16/16** novos testes unitários passando.
+
 ## 3.3.0 - Ciclo Operacional Autônomo, Revisão Humana & Idempotência
 - **Revisão diária do Runtime (`src/server.mjs`, `src/autonomy/engine.mjs`):** integração do `runDailyReview` ao scheduler de 15s, uma vez por dia local em cada instância depois do horário configurado em `owner_preferences.digestHour` (padrão 9h), respeitando o fuso ativo. A análise cobre objetivos, compromissos e saúde operacional e dorme sem mensagem quando não há motivo real.
 - **Escalação segura (`src/runtime/index.mjs`):** pedidos de intervenção humana chegam ao administrador com tipo e motivo, sem o payload do evento; compromissos seguem com notificação específica e o destino `owner:*` resolve para o telefone cadastrado.

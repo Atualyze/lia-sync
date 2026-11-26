@@ -360,6 +360,12 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       if (baileysProvider.connectedPhone) {
         cachedInstanceOwner = baileysProvider.connectedPhone;
       }
+    } else if (config.whatsappProvider === 'manychat') {
+      evoState = (config.manychatToken && config.manychatReplyFieldId && config.manychatSendflowNs)
+        ? 'connected'
+        : 'not_configured';
+    } else if (config.whatsappProvider === 'ghl') {
+      evoState = config.ghlToken ? 'connected' : 'not_configured';
     } else if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) {
       evoState = 'not_configured';
     } else {

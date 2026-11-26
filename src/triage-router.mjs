@@ -92,6 +92,27 @@ export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
   const norm = normalizeText(text);
   const { sectorMap, ownerNames } = buildSectorMap(sectors, identity);
 
+  // Pontuação por palavras-chave customizadas dos setores configurados no painel
+  let bestCustomSector = null;
+  let bestCustomScore = 0;
+  for (const s of sectors) {
+    if (!s || s.isActive === false || !Array.isArray(s.keywords) || !s.keywords.length) continue;
+    let sScore = 0;
+    for (const kw of s.keywords) {
+      const kwNorm = normalizeText(kw);
+      if (!kwNorm) continue;
+      const isPhrase = kwNorm.includes(' ');
+      const matched = isPhrase
+        ? norm.includes(kwNorm)
+        : new RegExp(`(?:^|\\b)${kwNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\b|$)`, 'i').test(norm);
+      if (matched) sScore += isPhrase ? 3 : 1;
+    }
+    if (sScore > bestCustomScore) {
+      bestCustomScore = sScore;
+      bestCustomSector = s;
+    }
+  }
+
   // Pontuação por categoria
   const scores = { vendas: 0, suporte: 0, financeiro: 0, reclamacao: 0, responsavel: 0 };
 
@@ -122,6 +143,15 @@ export function classificarSetorPorTexto(text, sectors = [], identity = {}) {
       maxScore = score;
       bestCategory = cat;
     }
+  }
+
+  if (bestCustomSector && bestCustomScore >= maxScore && bestCustomScore >= 1) {
+    return {
+      sectorId: bestCustomSector.id,
+      sectorName: bestCustomSector.name,
+      category: bestCustomSector.id,
+      confidence: Math.min(1.0, bestCustomScore * 0.3)
+    };
   }
 
   if (bestCategory && maxScore >= 1) {

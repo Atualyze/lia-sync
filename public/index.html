@@ -123,6 +123,15 @@
               <span class="nav-label">Transbordos</span>
               <b id="handoff-count">0</b>
             </button>
+            <button class="nav-item" data-view="funnel" data-role="operator" title="Funil / Kanban de Leads">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="13" rx="1"/><rect x="17" y="3" width="5" height="9" rx="1"/></svg>
+              <span class="nav-label">Funil / Kanban</span>
+              <b id="funnel-count">0</b>
+            </button>
+            <button class="nav-item" data-view="sectors" data-role="admin" title="Configuração de Setores &amp; Triagem">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              <span class="nav-label">Setores</span>
+            </button>
           </div>
         </details>
 
@@ -2492,6 +2501,92 @@
             <div class="empty-state panel">
               <p>Nenhum transbordo pendente. A Lia está conduzindo os atendimentos normalmente.</p>
             </div>
+          </div>
+        </div>
+      </section>
+      <section id="sectors-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Setores &amp; Triagem Customizável</h2>
+              <p>Configure regras, palavras-chave, instruções de IA e responsável por cada setor.</p>
+            </div>
+          </div>
+          <div class="panel" style="padding:16px;margin-bottom:16px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:8px;">
+              <input type="text" id="sec-id" class="kanban-stage-select" placeholder="ID (ex: vendas)" />
+              <input type="text" id="sec-name" class="kanban-stage-select" placeholder="Nome (ex: Comercial / Vendas)" />
+              <input type="text" id="sec-phone" class="kanban-stage-select" placeholder="Telefone responsável (opcional)" />
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="sec-handoff" /> Transferir direto p/ humano</label>
+            </div>
+            <input type="text" id="sec-keywords" class="kanban-stage-select" style="width:100%;margin-bottom:8px;" placeholder="Palavras-chave separadas por vírgula (ex: preço, orçamento, plano)" />
+            <textarea id="sec-prompt" class="kanban-stage-select" style="width:100%;min-height:64px;margin-bottom:8px;" placeholder="Instruções da IA para este setor..."></textarea>
+            <button type="button" class="btn-handoff primary" id="sec-save-btn">Salvar Setor</button>
+          </div>
+          <div id="sectors-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </section>
+      <section id="funnel-view" class="view">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Funil de Leads (Kanban)</h2>
+              <p>Acompanhe e mova contatos pelas etapas do atendimento em tempo real.</p>
+            </div>
+            <button class="icon-btn action-btn-ping" id="refresh-funnel" title="Atualizar funil agora" aria-label="Atualizar funil agora">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+          </div>
+          <div id="funnel-board" class="kanban-board"></div>
+          <div id="cadence-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Cadências de Follow-up</strong><div class="ops-muted" style="font-size:12px;">Dispara mensagens automáticas quando o lead para de responder.</div></div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="btn-handoff" id="cadence-add-btn">+ Etapa</button>
+                <button type="button" class="btn-handoff primary" id="cadence-save-btn">Salvar Cadência</button>
+                <button type="button" class="btn-handoff" id="cadence-run-btn">Executar Agora</button>
+              </div>
+            </div>
+            <div id="cadence-steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+          <div id="reputation-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Pós-atendimento &amp; Reputação (Google Meu Negócio)</strong><div class="ops-muted" style="font-size:12px;">Ao mover para Fechado, envia pesquisa 1–5 e direciona notas altas ao Google.</div></div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="rep-enabled" /> Ativo</label>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input type="url" id="rep-google-url" class="kanban-stage-select" style="flex:1;min-width:220px;" placeholder="Link de avaliação do Google Meu Negócio (https://g.page/r/.../review)" />
+              <input type="text" id="rep-survey-msg" class="kanban-stage-select" style="flex:1;min-width:220px;" placeholder="Mensagem da pesquisa (1 a 5)..." />
+              <button type="button" class="btn-handoff primary" id="rep-save-btn">Salvar Reputação</button>
+            </div>
+          </div>
+          <div id="missed-call-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Ligação Perdida (Missed Call Text-Back)</strong><div class="ops-muted" style="font-size:12px;">Após uma ligação perdida (webhook /webhook/missed-call), aguarda o tempo abaixo e chama o cliente no WhatsApp.</div></div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="mc-enabled" /> Ativo</label>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input type="number" min="5" max="3600" id="mc-delay" class="kanban-stage-select" style="max-width:110px;" value="60" title="Atraso em segundos" />
+              <span class="ops-muted" style="font-size:12px;">seg</span>
+              <input type="text" id="mc-msg" class="kanban-stage-select" style="flex:1;min-width:240px;" placeholder="Mensagem após ligação perdida..." />
+              <button type="button" class="btn-handoff primary" id="mc-save-btn">Salvar Ligação Perdida</button>
+            </div>
+          </div>
+          <div id="tenants-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Subcontas (Multi-tenant)</strong><div class="ops-muted" style="font-size:12px;">Isole clientes com webhooks dedicados (/webhook/manychat/&lt;id&gt; ou /webhook/ghl/&lt;id&gt;).</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+              <input type="text" id="tenant-id-input" class="kanban-stage-select" style="max-width:150px;" placeholder="id (ex: clinica-a)" />
+              <input type="text" id="tenant-name-input" class="kanban-stage-select" style="flex:1;min-width:160px;" placeholder="Nome da empresa" />
+              <select id="tenant-provider-input" class="kanban-stage-select" style="max-width:150px;">
+                <option value="manychat">ManyChat</option>
+                <option value="ghl">GoHighLevel</option>
+                <option value="baileys">Baileys</option>
+              </select>
+              <button type="button" class="btn-handoff primary" id="tenant-add-btn">Salvar Subconta</button>
+            </div>
+            <div id="tenants-list" style="display:flex;flex-direction:column;gap:6px;"></div>
           </div>
         </div>
       </section>

@@ -14,6 +14,14 @@ export const config = {
   evolutionUrl: (process.env.EVOLUTION_API_URL || '').replace(/\/$/, ''),
   evolutionKey: process.env.EVOLUTION_API_KEY || '',
   evolutionInstance: process.env.EVOLUTION_INSTANCE || '',
+  manychatToken: process.env.MANYCHAT_TOKEN || '',
+  manychatReplyFieldId: num('MANYCHAT_REPLY_FIELD_ID', 0),
+  manychatSendflowNs: process.env.MANYCHAT_SENDFLOW_NS || '',
+  manychatTransferTag: process.env.MANYCHAT_TRANSFER_TAG || 'transferido-humano',
+  ghlToken: process.env.GHL_API_TOKEN || '',
+  ghlLocationId: process.env.GHL_LOCATION_ID || '',
+  ghlTransferTag: process.env.GHL_TRANSFER_TAG || 'transferido-humano',
+  ghlApiVersion: process.env.GHL_API_VERSION || '2021-04-15',
   webhookToken: process.env.WEBHOOK_TOKEN || '',
   allowInsecureWebhook: bool('ALLOW_INSECURE_WEBHOOK') && process.env.NODE_ENV !== 'production' && loopbackHost,
   aiMaxOutputTokens: Math.max(1024, num('AI_MAX_OUTPUT_TOKENS', 1024)),
@@ -84,12 +92,18 @@ export const config = {
 
 export function validateConfig({ strict = false } = {}) {
   const errors = [];
-  const supportedProviders = new Set(['baileys', 'evolution']);
+  const supportedProviders = new Set(['baileys', 'evolution', 'manychat', 'ghl']);
   if (!supportedProviders.has(config.whatsappProvider)) {
-    errors.push(`WHATSAPP_PROVIDER inválido: use "baileys" (padrão) ou "evolution" (legado)`);
+    errors.push(`WHATSAPP_PROVIDER inválido: use "baileys" (padrão), "manychat", "ghl" ou "evolution" (legado)`);
   }
   if (config.whatsappProvider === 'evolution' && !config.evolutionInstance) {
     errors.push('EVOLUTION_INSTANCE não configurada para o provedor legado Evolution');
+  }
+  if (strict && config.whatsappProvider === 'manychat' && (!config.manychatToken || !config.manychatReplyFieldId || !config.manychatSendflowNs)) {
+    errors.push('MANYCHAT_TOKEN, MANYCHAT_REPLY_FIELD_ID e MANYCHAT_SENDFLOW_NS são obrigatórios para WHATSAPP_PROVIDER=manychat');
+  }
+  if (strict && config.whatsappProvider === 'ghl' && !config.ghlToken) {
+    errors.push('GHL_API_TOKEN é obrigatório para WHATSAPP_PROVIDER=ghl');
   }
   if (process.env.NODE_ENV === 'production' && !hasSecretEncryptionKey()) {
     errors.push('API_SECRETS_ENCRYPTION_KEY não configurada ou inválida (gere 32 bytes aleatórios em Base64)');

@@ -118,7 +118,19 @@ export const DEFAULT_BOT_CONFIG = {
     maxDailyFollowUps: 30,
     followUpMinHours: 24,
     followUpMaxHours: 72,
-    followUpTemplate: 'Oi! Tudo bem? Passando para saber se você conseguiu ver a proposta que conversamos.'
+    followUpTemplate: 'Oi! Tudo bem? Passando para saber se você conseguiu ver a proposta que conversamos.',
+    followUpCadence: []
+  },
+  missedCall: {
+    enabled: false,
+    delaySeconds: 60,
+    message: 'Oi! Vi que você tentou ligar agora há pouco e não conseguimos atender. Como posso te ajudar por aqui?'
+  },
+  reputation: {
+    enabled: false,
+    googleReviewUrl: '',
+    minPositiveRating: 4,
+    surveyMessage: 'Obrigado pelo contato! De 1 a 5, como você avalia nosso atendimento hoje?'
   },
   voice: {
     voiceName: 'Aoede', // 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Puck' | 'Charon' | 'Fenrir'
@@ -205,6 +217,7 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!Number.isFinite(operationMin) || operationMin < 1 || operationMin > 719 || !Number.isFinite(operationMax) || operationMax <= operationMin || operationMax > 720) errors.push('A janela operacional do follow-up deve ter mínimo de 1 hora e máximo maior que o mínimo, até 720 horas.');
   if (!Number.isInteger(value.automation?.maxDailyFollowUps) || value.automation.maxDailyFollowUps < 0 || value.automation.maxDailyFollowUps > 10000) errors.push('O limite diário de follow-ups deve ser um inteiro entre 0 e 10000.');
   if (typeof value.automation?.followUpTemplate !== 'string' || value.automation.followUpTemplate.length > 2000) errors.push('O texto do follow-up deve ter até 2000 caracteres.');
+  if (value.automation?.followUpCadence !== undefined && !Array.isArray(value.automation.followUpCadence)) errors.push('A cadência de follow-up deve ser uma lista de etapas.');
   const supportedVoices = new Set([
     'Aoede',
     'Kore',

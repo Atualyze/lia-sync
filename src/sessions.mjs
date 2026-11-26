@@ -35,6 +35,14 @@ export function normalizePhone(raw = '') {
   return isSim ? `sim:${result}` : result;
 }
 
+/**
+ * Remove sufixos de JID (@s.whatsapp.net, etc.), limpa caracteres não-numéricos
+ * e aplica normalização canônica de telefone.
+ */
+export function cleanJidPhone(raw = '') {
+  return normalizePhone(String(raw || '').replace(/@.*$/, '').replace(/\D/g, ''));
+}
+
 export function isValidRealMobilePhone(raw = '') {
   if (!raw || typeof raw !== 'string') return false;
   const p = raw.trim();

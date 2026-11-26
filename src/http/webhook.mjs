@@ -1,3 +1,6 @@
+import { handleReputationReply } from '../flow/reputation.mjs';
+import { scheduleMissedCallTextBack } from '../flow/missed-call.mjs';
+import { resolveTenantFromRequest } from '../tenants/store.mjs';
 import crypto from 'node:crypto';
 import { json, readBody, authorized, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
@@ -6,6 +9,8 @@ import { resolveIdentity, isOwnerContact, escapeRegExp, OWNER_SELF_KEY } from '.
 import { broadcastBridgeEvent } from './bridge.mjs';
 import { handleInboundOptOut } from '../prospecting/optout.mjs';
 import { enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
+import { parseManyChatWebhookPayload } from '../whatsapp/manychat-provider.mjs';
+import { parseGhlWebhookPayload } from '../whatsapp/ghl-provider.mjs';
 
 export function stableIdlessEventKey(item, event) {
   const timestamp = item.eventTimestamp;
@@ -160,7 +165,25 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
           }
 
           if (isSelfChat || isCallingAssistantDirectly) {
-            broadcastBridgeEvent('whatsapp_message', {
+            if (item.text && item.phone) {
+      const sess = store.get?.(item.phone);
+      if (sess?.reputationAwaitingRating) {
+        const repRes = await handleReputationReply({
+          session: sess,
+          text: item.text,
+          phone: item.phone,
+          sendText,
+          reputationConfig: adminConfig?.active?.reputation || {},
+        });
+        if (repRes.handled) {
+          store.markDirty?.();
+          await store.flush?.().catch(() => {});
+          await finish('processed', 'reputation_rating');
+          return;
+        }
+      }
+    }
+    broadcastBridgeEvent('whatsapp_message', {
               id: messageId || undefined,
               phone: OWNER_SELF_KEY,
               jid: item.jid || item.phone,
@@ -312,12 +335,39 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
 }
 
 export async function handleWebhookRoutes({ req, res, u, store, f, adminConfig, webhookAuthorize, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, rateMessage, webhookEventStore, campaignStore = null, prospecting = null }) {
-  if (req.method !== 'POST' || !['/webhook', '/webhook/evolution'].includes(u.pathname)) return NOT_HANDLED;
+  const isManyChatPath = u.pathname === '/webhook/manychat' || u.pathname.startsWith('/webhook/manychat/');
+  const isGhlPath = u.pathname === '/webhook/ghl' || u.pathname.startsWith('/webhook/ghl/');
+  const isMissedCallPath = u.pathname === '/webhook/missed-call';
+  if (req.method !== 'POST' || (!['/webhook', '/webhook/evolution'].includes(u.pathname) && !isManyChatPath && !isGhlPath && !isMissedCallPath)) return NOT_HANDLED;
   if (!await isWebhookAuthorized(req, webhookAuthorize)) return json(res, 401, { error: 'unauthorized' });
 
   let payload;
   try { payload = await readBody(req); }
   catch (error) { return json(res, error.statusCode || 400, { error: error.message }); }
+
+  if (isMissedCallPath) {
+    const mcCfg = adminConfig?.active?.missedCall || {};
+    if (mcCfg.enabled === false && payload.force !== true) {
+      return json(res, 200, { ok: true, skipped: 'missed_call_disabled' });
+    }
+    const result = scheduleMissedCallTextBack({
+      phone: payload.phone || payload.caller || payload.from,
+      callerName: payload.callerName || payload.name || '',
+      delaySeconds: payload.delaySeconds ?? mcCfg.delaySeconds ?? 60,
+      message: payload.message || mcCfg.message,
+      store,
+      sendText,
+    });
+    return json(res, result.scheduled ? 202 : 400, result);
+  }
+  const tenantId = resolveTenantFromRequest(req, u);
+  if (isManyChatPath) {
+    payload = parseManyChatWebhookPayload(payload);
+    payload.tenantId = tenantId;
+  } else if (isGhlPath) {
+    payload = parseGhlWebhookPayload(payload);
+    payload.tenantId = tenantId;
+  }
 
   res.writeHead(202, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ accepted: true }));

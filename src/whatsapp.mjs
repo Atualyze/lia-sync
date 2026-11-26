@@ -4,6 +4,8 @@ import { normalizePhone } from './sessions.mjs';
 import { normalize } from './safety.mjs';
 import { formatOutgoingMessage } from './core/format.mjs';
 import { extractWhatsAppMessageContext } from './channels/message-context.mjs';
+import { sendManyChatText } from './whatsapp/manychat-provider.mjs';
+import { sendGhlText } from './whatsapp/ghl-provider.mjs';
 
 const sent = new Set();
 const recentSent = new Map();
@@ -264,6 +266,20 @@ export async function sendText(jid, text, { retry = 2, onSent } = {}) {
     j && remember(id);
     onSent?.(id);
     return j;
+  }
+  if (config.whatsappProvider === 'manychat') {
+    const res = await sendManyChatText(jid, formattedText);
+    const id = `mc_${Date.now()}`;
+    remember(id);
+    onSent?.(id);
+    return res;
+  }
+  if (config.whatsappProvider === 'ghl') {
+    const res = await sendGhlText(jid, formattedText);
+    const id = `ghl_${Date.now()}`;
+    remember(id);
+    onSent?.(id);
+    return res;
   }
   if (!config.evolutionUrl || !config.evolutionKey || !config.evolutionInstance) throw Error('Evolution não configurada');
   let last;

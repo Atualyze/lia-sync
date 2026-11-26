@@ -1,3 +1,7 @@
+import { CustomSectorStore } from '../sectors/custom-sectors.mjs';
+import { TenantStore } from '../tenants/store.mjs';
+import { sendReputationSurvey } from '../flow/reputation.mjs';
+import { runFollowUpCadence } from '../flow/followup-cadence.mjs';
 import { json, readBody, formatPhoneNumber, formatActivityTime, NOT_HANDLED } from './utils.mjs';
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
@@ -21,6 +25,19 @@ function sameInstancePhone(a, b) {
 }
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
+const defaultTenantStore = new TenantStore().load();
+const defaultSectorStore = new CustomSectorStore().load();
+const VALID_FUNNEL_STAGES = new Set(['novo', 'em_atendimento', 'agendado', 'transferido', 'fechado']);
+
+function resolveFunnelStage(s, history) {
+  if (VALID_FUNNEL_STAGES.has(s?.funnelStage)) return s.funnelStage;
+  if (isHumanHandoffActive(s)) return 'transferido';
+  if (s?.finished || s?.status === 'finished') return 'fechado';
+  if (s?.scheduled || s?.meetingScheduled) return 'agendado';
+  if (Array.isArray(history) && history.length > 0) return 'em_atendimento';
+  return 'novo';
+}
+
 export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/avatar') {
     const rawPhone = String(u.searchParams.get('phone') || '').trim();
@@ -155,6 +172,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           clientName,
           origin: s.origin || (key.startsWith('sim:') ? 'simulation' : 'real'),
           human: isHumanHandoffActive(s),
+          funnelStage: resolveFunnelStage(s, history),
           updatedAt: s.updatedAt,
           lastActivityIso,
           lastActivityTime,
@@ -337,6 +355,129 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     store.markDirty();
     await store.flush?.().catch(() => {});
     return json(res, 200, { ok: true, human: isHumanHandoffActive(session) });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/sectors-custom') {
+    return json(res, 200, { ok: true, sectors: defaultSectorStore.list() });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/sectors-custom') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    if (!body?.id && !body?.name) return json(res, 400, { error: 'missing_id_or_name' });
+    try {
+      const sector = defaultSectorStore.upsert(body);
+      return json(res, 200, { ok: true, sector });
+    } catch {
+      return json(res, 400, { error: 'invalid_sector' });
+    }
+  }
+  if (req.method === 'DELETE' && u.pathname === '/api/dashboard/sectors-custom') {
+    const id = u.searchParams.get('id') || '';
+    const removed = defaultSectorStore.remove(id);
+    if (!removed) return json(res, 400, { error: 'sector_not_found' });
+    return json(res, 200, { ok: true, removed: id });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/tenants') {
+    return json(res, 200, { ok: true, tenants: defaultTenantStore.list() });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/tenants') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    if (!body?.id && !body?.name) return json(res, 400, { error: 'missing_id_or_name' });
+    const tenant = defaultTenantStore.upsert(body);
+    return json(res, 200, { ok: true, tenant });
+  }
+  if (req.method === 'DELETE' && u.pathname === '/api/dashboard/tenants') {
+    const id = u.searchParams.get('id') || '';
+    const removed = defaultTenantStore.remove(id);
+    if (!removed) return json(res, 400, { error: 'cannot_remove_tenant' });
+    return json(res, 200, { ok: true, removed: id });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/missed-call') {
+    const missedCall = adminConfig?.active?.missedCall || { enabled: false, delaySeconds: 60, message: '' };
+    return json(res, 200, { ok: true, missedCall });
+  }
+  if (req.method === 'PUT' && u.pathname === '/api/dashboard/missed-call') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const next = {
+      enabled: Boolean(body.enabled),
+      delaySeconds: Math.min(3600, Math.max(5, Number(body.delaySeconds || 60))),
+      message: String(body.message || '').trim().slice(0, 1000) || 'Oi! Vi que você tentou ligar agora há pouco e não conseguimos atender. Como posso te ajudar por aqui?',
+    };
+    if (adminConfig?.active) {
+      adminConfig.active.missedCall = next;
+      await adminConfig.save?.().catch(() => {});
+    }
+    return json(res, 200, { ok: true, missedCall: next });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/reputation') {
+    const reputation = adminConfig?.active?.reputation || { enabled: false, googleReviewUrl: '', minPositiveRating: 4, surveyMessage: '' };
+    return json(res, 200, { ok: true, reputation });
+  }
+  if (req.method === 'PUT' && u.pathname === '/api/dashboard/reputation') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const next = {
+      enabled: Boolean(body.enabled),
+      googleReviewUrl: String(body.googleReviewUrl || '').trim().slice(0, 500),
+      minPositiveRating: Math.min(5, Math.max(1, Number(body.minPositiveRating || 4))),
+      surveyMessage: String(body.surveyMessage || '').trim().slice(0, 1000) || 'Obrigado pelo contato! De 1 a 5, como você avalia nosso atendimento hoje?',
+    };
+    if (adminConfig?.active) {
+      adminConfig.active.reputation = next;
+      await adminConfig.save?.().catch(() => {});
+    }
+    return json(res, 200, { ok: true, reputation: next });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/cadence') {
+    const cadence = adminConfig?.active?.automation?.followUpCadence || [];
+    return json(res, 200, { ok: true, cadence });
+  }
+  if (req.method === 'PUT' && u.pathname === '/api/dashboard/cadence') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const steps = Array.isArray(body.cadence) ? body.cadence : [];
+    const cleaned = steps.map((s, idx) => ({
+      id: String(s.id || `step_${idx + 1}`),
+      delayMinutes: Math.max(1, Number(s.delayMinutes || 60)),
+      stageFilter: String(s.stageFilter || 'all'),
+      message: String(s.message || '').trim().slice(0, 2000),
+    })).filter((s) => s.message);
+    if (adminConfig?.active?.automation) {
+      adminConfig.active.automation.followUpCadence = cleaned;
+      await adminConfig.save?.().catch(() => {});
+    }
+    return json(res, 200, { ok: true, cadence: cleaned });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/cadence/run') {
+    const cadence = adminConfig?.active?.automation?.followUpCadence || [];
+    const maxDaily = Number(adminConfig?.active?.automation?.maxDailyFollowUps ?? 30);
+    const result = await runFollowUpCadence({
+      sessions: store.sessions || {},
+      cadence,
+      maxDaily,
+      sendText,
+      onSent: () => store.markDirty(),
+    });
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, ...result });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/funnel-stage') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const stage = String(body.stage || '').trim();
+    if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
+    if (!VALID_FUNNEL_STAGES.has(stage)) return json(res, 400, { error: 'invalid_stage' });
+    const session = store.get(body.phone);
+    if (!session) return json(res, 404, { error: 'session_not_found' });
+    session.funnelStage = stage;
+    if (stage === 'fechado' && adminConfig?.active?.reputation?.enabled) {
+      void sendReputationSurvey({ session, phone: body.phone, sendText, reputationConfig: adminConfig.active.reputation }).catch(() => {});
+    }
+    session.updatedAt = new Date().toISOString();
+    store.markDirty();
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, phone: body.phone, stage });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/finish') {
     let body;

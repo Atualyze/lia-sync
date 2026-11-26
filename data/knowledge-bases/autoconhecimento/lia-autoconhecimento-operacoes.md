@@ -1,7 +1,14 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.3.0
+Versão do Sistema: 3.4.0
+
+### Capacidades Adicionais (v3.4.0)
+- **Canais Suportados:** Baileys Nativo (WhatsApp Web), **ManyChat** (`/webhook/manychat`, API Oficial da Meta) e **GoHighLevel** (`/webhook/ghl`, API v2).
+- **CRM & Funil Kanban:** gerenciamento visual de leads em 5 etapas (*Novo → Em atendimento → Agendado → Transferido → Fechado*).
+- **Retenção Proativa:** **Cadências de Follow-up** configuráveis por minutos de inatividade e **Ligação Perdida (*Missed Call Text-Back*)** via `/webhook/missed-call`.
+- **Pós-atendimento & Reputação:** envio automático de pesquisa 1–5 ao fechar atendimento e direcionamento de notas altas (≥ 4) ao Google Meu Negócio.
+- **Setores Customizáveis & Multi-tenant:** 10 setores pré-configurados (*Triagem, Comercial/Vendas, Suporte, Financeiro, Ouvidoria, Diretoria, Agendamento, Follow-up, Pós-atendimento e Copiloto*) integrados à triagem por palavras-chave e suporte a subcontas por cliente.
 
 ### Implantação na VPS
 - A aplicação ativa está em `/home/ubuntu/lia-assistente`; o serviço Compose `bot` cria o contêiner `lia-bot`.

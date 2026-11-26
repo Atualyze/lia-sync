@@ -848,7 +848,11 @@ function updateSidebarConnection({ integrations, health, adminConfig } = {}) {
     if (waMeta) {
       waMeta.textContent = ev.isBaileysNative
         ? `Baileys Nativo · ${ev.instance || '-'}`
-        : `Instância: ${ev.instance || '-'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
+        : ev.instance === 'manychat' || ev.provider === 'manychat'
+          ? 'ManyChat · API Oficial'
+          : ev.instance === 'ghl' || ev.provider === 'ghl'
+            ? 'GoHighLevel · API Oficial'
+            : `Instância: ${ev.instance || '-'}${ev.latencyMs != null ? ` · ${ev.latencyMs}ms` : ''}`;
     }
   } else if (hlth?.readiness?.checks) {
     const evCheck = hlth.readiness.checks.find(c => c.name === 'whatsapp' || c.name === 'evolution');
@@ -3155,6 +3159,7 @@ function render({ background = false } = {}) {
   try { renderList(); } catch (e) { console.error('[renderList]', e); }
   try { renderChat(); } catch (e) { console.error('[renderChat]', e); }
   try { renderHandoff(); } catch (e) { console.error('[renderHandoff]', e); }
+  try { renderFunnel(); } catch (e) { console.error('[renderFunnel]', e); }
   if (!background) {
     if (state.view === 'admin') { try { renderAdmin(); } catch (e) { console.error('[renderAdmin]', e); } }
     if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
@@ -3341,6 +3346,17 @@ function showView(view) {
   if (view === 'inbox') {
     renderList();
     renderChat();
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
+  }
+  if (view === 'sectors') {
+    loadCustomSectors().catch(() => {});
+  }
+  if (view === 'funnel') {
+    loadCadence().catch(() => {});
+    loadReputation().catch(() => {});
+    loadMissedCall().catch(() => {});
+    loadTenants().catch(() => {});
+    renderFunnel();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
   }
   if (view === 'handoff') {
@@ -5931,3 +5947,226 @@ async function loadApiIntegrationsPanel() {
     }
   });
 })();
+
+const FUNNEL_STAGES = [
+  { id: 'novo', label: 'Novo' },
+  { id: 'em_atendimento', label: 'Em atendimento' },
+  { id: 'agendado', label: 'Agendado' },
+  { id: 'transferido', label: 'Transferido' },
+  { id: 'fechado', label: 'Fechado' },
+];
+
+function renderFunnel() {
+  const board = $('#funnel-board');
+  if (!board) return;
+  const leads = (state.sessions || []).filter((s) => s.origin !== 'simulation');
+  const counter = $('#funnel-count');
+  if (counter) counter.textContent = leads.length;
+
+  board.innerHTML = FUNNEL_STAGES.map((col) => {
+    const items = leads.filter((s) => (s.funnelStage || 'novo') === col.id);
+    const cardsHtml = items.length ? items.map((item) => {
+      const dName = esc(item.displayName || item.name || item.phoneFormatted || 'Contato');
+      const preview = esc(item.preview || '');
+      const opts = FUNNEL_STAGES.map((st) => `<option value="${st.id}"${st.id === col.id ? ' selected' : ''}>${st.label}</option>`).join('');
+      return `<div class="kanban-card">
+        <div class="kanban-card-title">${dName}</div>
+        <div class="kanban-card-preview">${preview}</div>
+        <div class="kanban-card-actions">
+          <select class="kanban-stage-select" data-funnel-phone="${esc(item.phone)}">${opts}</select>
+          <button class="btn-handoff primary" style="padding:4px 8px;font-size:11px;" data-open-chat="${esc(item.phone)}">Chat</button>
+        </div>
+      </div>`;
+    }).join('') : '<div class="ops-muted" style="font-size:12px;">Sem contatos</div>';
+
+    return `<div class="kanban-col">
+      <div class="kanban-col-head"><span>${col.label}</span><span class="pill mini">${items.length}</span></div>
+      <div class="kanban-cards">${cardsHtml}</div>
+    </div>`;
+  }).join('');
+
+  board.querySelectorAll('[data-funnel-phone]').forEach((sel) => {
+    sel.onchange = async () => {
+      const phone = sel.getAttribute('data-funnel-phone');
+      const stage = sel.value;
+      try {
+        await api('/api/dashboard/funnel-stage', { method: 'POST', body: JSON.stringify({ phone, stage }) });
+        const target = state.sessions.find((s) => s.phone === phone);
+        if (target) target.funnelStage = stage;
+        renderFunnel();
+      } catch (err) {
+        alert('Erro ao mover etapa: ' + (err?.message || err));
+      }
+    };
+  });
+
+  board.querySelectorAll('[data-open-chat]').forEach((btn) => {
+    btn.onclick = () => {
+      state.selected = btn.getAttribute('data-open-chat');
+      document.querySelector('.nav-item[data-view="inbox"]')?.click();
+    };
+  });
+}
+
+$('#refresh-funnel')?.addEventListener('click', () => refresh().catch(() => {}));
+let cadenceSteps = [];
+async function loadCadence() {
+  const data = await api('/api/dashboard/cadence');
+  cadenceSteps = Array.isArray(data?.cadence) ? data.cadence : [];
+  renderCadence();
+}
+function renderCadence() {
+  const list = $('#cadence-steps-list');
+  if (!list) return;
+  if (!cadenceSteps.length) {
+    list.innerHTML = '<div class="ops-muted" style="font-size:12px;">Nenhuma etapa configurada. Clique em "+ Etapa" para criar uma régua (ex.: 120 min).</div>';
+    return;
+  }
+  list.innerHTML = cadenceSteps.map((st, idx) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <input type="number" min="1" class="kanban-stage-select" style="max-width:100px;" data-cad-delay="${idx}" value="${Number(st.delayMinutes || 120)}" title="Minutos sem resposta" />
+    <span class="ops-muted" style="font-size:12px;">min</span>
+    <select class="kanban-stage-select" style="max-width:150px;" data-cad-stage="${idx}">
+      <option value="all"${st.stageFilter === 'all' ? ' selected' : ''}>Todas as etapas</option>
+      <option value="novo"${st.stageFilter === 'novo' ? ' selected' : ''}>Novo</option>
+      <option value="em_atendimento"${st.stageFilter === 'em_atendimento' ? ' selected' : ''}>Em atendimento</option>
+      <option value="agendado"${st.stageFilter === 'agendado' ? ' selected' : ''}>Agendado</option>
+    </select>
+    <input type="text" class="kanban-stage-select" style="flex:1;min-width:220px;" data-cad-msg="${idx}" value="${esc(st.message || '')}" placeholder="Mensagem de follow-up..." />
+    <button type="button" class="btn-handoff" data-cad-del="${idx}">Remover</button>
+  </div>`).join('');
+  list.querySelectorAll('[data-cad-delay]').forEach((el) => { el.onchange = () => { cadenceSteps[Number(el.dataset.cadDelay)].delayMinutes = Number(el.value || 60); }; });
+  list.querySelectorAll('[data-cad-stage]').forEach((el) => { el.onchange = () => { cadenceSteps[Number(el.dataset.cadStage)].stageFilter = el.value; }; });
+  list.querySelectorAll('[data-cad-msg]').forEach((el) => { el.oninput = () => { cadenceSteps[Number(el.dataset.cadMsg)].message = el.value; }; });
+  list.querySelectorAll('[data-cad-del]').forEach((el) => { el.onclick = () => { cadenceSteps.splice(Number(el.dataset.cadDel), 1); renderCadence(); }; });
+}
+$('#cadence-add-btn')?.addEventListener('click', () => {
+  cadenceSteps.push({ delayMinutes: 120, stageFilter: 'all', message: 'Oi! Ficou alguma dúvida sobre o que conversamos?' });
+  renderCadence();
+});
+$('#cadence-save-btn')?.addEventListener('click', async () => {
+  const res = await api('/api/dashboard/cadence', { method: 'PUT', body: JSON.stringify({ cadence: cadenceSteps }) });
+  cadenceSteps = res?.cadence || cadenceSteps;
+  renderCadence();
+});
+$('#cadence-run-btn')?.addEventListener('click', async () => {
+  const res = await api('/api/dashboard/cadence/run', { method: 'POST', body: '{}' });
+  alert(`Cadência executada: ${res?.sent || 0} enviada(s), ${res?.skipped || 0} ignorada(s).`);
+});
+async function loadReputation() {
+  const data = await api('/api/dashboard/reputation');
+  const rep = data?.reputation || {};
+  const en = $('#rep-enabled'); if (en) en.checked = Boolean(rep.enabled);
+  const url = $('#rep-google-url'); if (url) url.value = rep.googleReviewUrl || '';
+  const msg = $('#rep-survey-msg'); if (msg) msg.value = rep.surveyMessage || '';
+}
+$('#rep-save-btn')?.addEventListener('click', async () => {
+  await api('/api/dashboard/reputation', {
+    method: 'PUT',
+    body: JSON.stringify({
+      enabled: Boolean($('#rep-enabled')?.checked),
+      googleReviewUrl: $('#rep-google-url')?.value || '',
+      surveyMessage: $('#rep-survey-msg')?.value || '',
+    }),
+  });
+  alert('Configuração de Reputação salva!');
+});
+async function loadTenants() {
+  const data = await api('/api/dashboard/tenants');
+  const listEl = $('#tenants-list');
+  if (!listEl) return;
+  const tenants = Array.isArray(data?.tenants) ? data.tenants : [];
+  listEl.innerHTML = tenants.map((t) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;flex-wrap:wrap;">
+    <div><strong>${esc(t.name)}</strong> <span class="pill mini">${esc(t.id)}</span> <span class="ops-muted" style="font-size:12px;">· ${esc(t.whatsappProvider || 'baileys')}</span></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <code style="font-size:11px;opacity:0.8;">/webhook/${esc(t.whatsappProvider === 'ghl' ? 'ghl' : 'manychat')}/${esc(t.id)}</code>
+      ${t.id !== 'default' ? `<button type="button" class="btn-handoff" data-tenant-del="${esc(t.id)}">Remover</button>` : ''}
+    </div>
+  </div>`).join('');
+  listEl.querySelectorAll('[data-tenant-del]').forEach((btn) => {
+    btn.onclick = async () => {
+      await api(`/api/dashboard/tenants?id=${encodeURIComponent(btn.dataset.tenantDel)}`, { method: 'DELETE' });
+      loadTenants().catch(() => {});
+    };
+  });
+}
+$('#tenant-add-btn')?.addEventListener('click', async () => {
+  const id = $('#tenant-id-input')?.value?.trim();
+  const name = $('#tenant-name-input')?.value?.trim();
+  const whatsappProvider = $('#tenant-provider-input')?.value || 'manychat';
+  if (!id && !name) return;
+  await api('/api/dashboard/tenants', { method: 'POST', body: JSON.stringify({ id, name, whatsappProvider }) });
+  if ($('#tenant-id-input')) $('#tenant-id-input').value = '';
+  if ($('#tenant-name-input')) $('#tenant-name-input').value = '';
+  loadTenants().catch(() => {});
+});
+async function loadMissedCall() {
+  const data = await api('/api/dashboard/missed-call');
+  const mc = data?.missedCall || {};
+  const en = $('#mc-enabled'); if (en) en.checked = Boolean(mc.enabled);
+  const d = $('#mc-delay'); if (d) d.value = Number(mc.delaySeconds || 60);
+  const m = $('#mc-msg'); if (m) m.value = mc.message || '';
+}
+$('#mc-save-btn')?.addEventListener('click', async () => {
+  await api('/api/dashboard/missed-call', {
+    method: 'PUT',
+    body: JSON.stringify({
+      enabled: Boolean($('#mc-enabled')?.checked),
+      delaySeconds: Number($('#mc-delay')?.value || 60),
+      message: $('#mc-msg')?.value || '',
+    }),
+  });
+  alert('Configuração de Ligação Perdida salva!');
+});
+let customSectorsCache = [];
+async function loadCustomSectors() {
+  const data = await api('/api/dashboard/sectors-custom');
+  customSectorsCache = Array.isArray(data?.sectors) ? data.sectors : [];
+  const listEl = $('#sectors-list');
+  if (!listEl) return;
+  listEl.innerHTML = customSectorsCache.map((s) => `<div class="panel" style="padding:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;">
+      <div><strong>${esc(s.name)}</strong> <span class="pill mini">${esc(s.id)}</span> ${s.handoffEnabled ? '<span class="pill mini amber">Handoff direto</span>' : '<span class="pill mini mint">IA atende</span>'}</div>
+      <div class="ops-muted" style="font-size:12px;margin-top:4px;">Palavras-chave: ${esc((s.keywords || []).join(', ') || '-')}</div>
+      <div style="font-size:12px;margin-top:4px;">${esc(s.promptInstructions || '')}</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button type="button" class="btn-handoff" data-sec-edit="${esc(s.id)}">Editar</button>
+      <button type="button" class="btn-handoff" data-sec-del="${esc(s.id)}">Remover</button>
+    </div>
+  </div>`).join('');
+  listEl.querySelectorAll('[data-sec-edit]').forEach((btn) => {
+    btn.onclick = () => {
+      const s = customSectorsCache.find((x) => x.id === btn.dataset.secEdit);
+      if (!s) return;
+      if ($('#sec-id')) $('#sec-id').value = s.id;
+      if ($('#sec-name')) $('#sec-name').value = s.name;
+      if ($('#sec-phone')) $('#sec-phone').value = s.responsiblePhone || '';
+      if ($('#sec-handoff')) $('#sec-handoff').checked = Boolean(s.handoffEnabled);
+      if ($('#sec-keywords')) $('#sec-keywords').value = (s.keywords || []).join(', ');
+      if ($('#sec-prompt')) $('#sec-prompt').value = s.promptInstructions || '';
+    };
+  });
+  listEl.querySelectorAll('[data-sec-del]').forEach((btn) => {
+    btn.onclick = async () => {
+      await api(`/api/dashboard/sectors-custom?id=${encodeURIComponent(btn.dataset.secDel)}`, { method: 'DELETE' });
+      loadCustomSectors().catch(() => {});
+    };
+  });
+}
+$('#sec-save-btn')?.addEventListener('click', async () => {
+  const id = $('#sec-id')?.value?.trim();
+  const name = $('#sec-name')?.value?.trim();
+  if (!id && !name) return;
+  await api('/api/dashboard/sectors-custom', {
+    method: 'POST',
+    body: JSON.stringify({
+      id,
+      name,
+      responsiblePhone: $('#sec-phone')?.value?.trim() || '',
+      handoffEnabled: Boolean($('#sec-handoff')?.checked),
+      keywords: $('#sec-keywords')?.value || '',
+      promptInstructions: $('#sec-prompt')?.value || '',
+    }),
+  });
+  loadCustomSectors().catch(() => {});
+});

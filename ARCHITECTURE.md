@@ -1,10 +1,10 @@
 # Arquitetura do Lia Sync
 
-Versão: **3.3.0**
+Versão: **3.4.0**
 
 ## Objetivo
 
-O Lia Sync recebe eventos do WhatsApp (via **Baileys Nativo** por WebSocket direto ou Evolution API v2 opcional), decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel e as integrações sincronizados. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA. O Lia Sync é a fonte central das configurações, ferramentas, campanhas, supressões, métricas e readiness operacional; o Chatwoot Lia atua como ponte autenticada e console de atendimento.
+O Lia Sync recebe eventos do WhatsApp (via **Baileys Nativo**, **ManyChat**, **GoHighLevel** ou Evolution API v2 opcional), decide o fluxo de atendimento, usa IA quando aplicável e mantém o painel (incluindo **Funil Kanban**, **Setores**, **Cadências**, **Reputação**, **Ligação Perdida** e **Multi-tenant**) sincronizado. Regras de segurança, autenticação e entrega não dependem de uma resposta de IA.
 
 ## Camadas
 
