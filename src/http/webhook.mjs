@@ -182,25 +182,7 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
           }
 
           if (isSelfChat || isCallingAssistantDirectly) {
-            if (item.text && item.phone) {
-      const sess = store.get?.(item.phone);
-      if (sess?.reputationAwaitingRating) {
-        const repRes = await handleReputationReply({
-          session: sess,
-          text: item.text,
-          phone: item.phone,
-          sendText,
-          reputationConfig: adminConfig?.active?.reputation || {},
-        });
-        if (repRes.handled) {
-          store.markDirty?.();
-          await store.flush?.().catch(() => {});
-          await finish('processed', 'reputation_rating');
-          return;
-        }
-      }
-    }
-    broadcastBridgeEvent('whatsapp_message', {
+            broadcastBridgeEvent('whatsapp_message', {
               id: messageId || undefined,
               phone: OWNER_SELF_KEY,
               jid: item.jid || item.phone,
@@ -307,6 +289,25 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
       if (optOut.matched) {
         await finish('processed', 'opt_out');
         return;
+      }
+    }
+
+    if (item.text && item.phone) {
+      const sess = store.get?.(item.phone);
+      if (sess?.reputationAwaitingRating) {
+        const repRes = await handleReputationReply({
+          session: sess,
+          text: item.text,
+          phone: item.phone,
+          sendText,
+          reputationConfig: adminConfig?.active?.reputation || {},
+        });
+        if (repRes.handled) {
+          store.markDirty?.();
+          await store.flush?.().catch(() => {});
+          await finish('processed', 'reputation_rating');
+          return;
+        }
       }
     }
 
