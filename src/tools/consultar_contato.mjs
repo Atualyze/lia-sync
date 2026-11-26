@@ -95,15 +95,20 @@ export const toolConsultarContato = {
           const filter = cleanPhone
             ? `or=(phone.eq.${encodeURIComponent(cleanPhone)},phone.ilike.*${encodeURIComponent(cleanPhone.slice(-8))}*)`
             : `or=(display_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*,push_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*)`;
-          const rows = await restClient.select('contacts', `select=id,phone,display_name,push_name,metadata,created_at&${filter}&limit=1`);
+          const rows = await restClient.select('contacts', `select=id,external_id,phone,display_name,push_name,metadata,created_at&${filter}&limit=1`);
           if (Array.isArray(rows) && rows[0]) {
             const r = rows[0];
+            const convRows = await restClient.select('conversations', `select=metadata&contact_id=eq.${encodeURIComponent(r.id)}&order=updated_at.desc&limit=1`).catch(() => []);
+            const convMeta = Array.isArray(convRows) && convRows[0]?.metadata ? convRows[0].metadata : {};
             contact = {
               name: r.display_name || r.push_name || 'Cliente',
-              phone: r.phone,
-              customer_type: r.metadata?.dealStage || r.metadata?.customer_type || 'lead',
-              labels: r.metadata?.labels || [],
-              notes: r.metadata?.contactNotes || r.metadata?.notes || ''
+              phone: r.phone || r.external_id || '',
+              customer_type: convMeta.funnelStage || r.metadata?.dealStage || r.metadata?.customer_type || 'lead',
+              labels: convMeta.tags || r.metadata?.labels || [],
+              notes: convMeta.contactNotes || convMeta.notes || r.metadata?.contactNotes || r.metadata?.notes || '',
+              aiContext: convMeta.aiContext || r.metadata?.aiContext || '',
+              email: convMeta.email || '',
+              dealValue: convMeta.dealValue ?? 0
             };
           }
         } catch {}
@@ -147,7 +152,8 @@ export const toolConsultarContato = {
           type: contact.customer_type || 'lead',
           labels: contact.labels || [],
           notes: contact.notes || 'Sem observações adicionais.',
-          ...(session?.aiContext ? { aiContext: session.aiContext } : {}),
+          ...(session?.aiContext || contact.aiContext ? { aiContext: session?.aiContext || contact.aiContext } : {}),
+          ...(contact.email || session?.email ? { email: contact.email || session?.email } : {}),
           ...(attendance ? { attendance } : {})
         };
       }

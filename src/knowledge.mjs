@@ -234,7 +234,7 @@ ${relevantKbs.length
       : '';
 
     const supportContactsList = Array.isArray(session.supportContacts) && session.supportContacts.length > 0
-      ? `\n[CONTATOS COM SUPORTE ATIVO / BASE VINCULADA]\n${JSON.stringify(session.supportContacts, null, 2)}\n`
+      ? `\n[CONTATOS DO CRM COM CONTEXTO / SUPORTE ATIVO]\n${JSON.stringify(session.supportContacts, null, 2)}\n`
       : '';
 
     return `${dateAndHoursHeader}

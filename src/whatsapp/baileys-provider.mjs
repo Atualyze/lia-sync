@@ -375,10 +375,16 @@ export class BaileysProvider {
               : (msg.message || {});
             let resolvedAlt = msg.key?.remoteJidAlt || '';
             if (!resolvedAlt && /@lid$/i.test(msg.key?.remoteJid || '')) {
-              try {
-                const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(msg.key.remoteJid);
-                if (pn) resolvedAlt = String(pn).replace(/:\d+(?=@)/, '');
-              } catch {}
+              const ownLidBase = String(sock?.user?.lid || '').split(':')[0].split('@')[0];
+              const remoteLidBase = String(msg.key.remoteJid).split(':')[0].split('@')[0];
+              if (ownLidBase && remoteLidBase === ownLidBase && this.connectedPhone) {
+                resolvedAlt = `${this.connectedPhone}@s.whatsapp.net`;
+              } else {
+                try {
+                  const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(msg.key.remoteJid);
+                  if (pn) resolvedAlt = String(pn).replace(/:\d+(?=@)/, '');
+                } catch {}
+              }
             }
             void Promise.resolve(this.onEvent({
               event: 'MESSAGES_UPSERT',

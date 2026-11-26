@@ -45,8 +45,8 @@ export function formatActivityTime(isoString) {
 export function deliveryTarget(job, defaultPhone = '') {
   if (isOwnerKey(job?.phone) || isOwnerKey(job?.jid)) {
     const rawJid = String(job?.jid || '');
-    if (rawJid && !isOwnerKey(rawJid)) return rawJid;
-    return defaultPhone;
+    if (rawJid && !isOwnerKey(rawJid) && !/@lid$/i.test(rawJid)) return rawJid;
+    return defaultPhone || rawJid;
   }
   const jid = String(job?.jid || '');
   const phone = String(job?.phone || '');
