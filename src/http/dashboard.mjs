@@ -225,11 +225,15 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
         }
       : null;
     const safeMediaType = ['audio', 'image', 'document', 'text'].includes(body.mediaType) ? body.mediaType : null;
+    const simContextText = safeReplyTo?.content
+      ? `O contato está respondendo/citando uma mensagem anterior.\nConteúdo citado (${safeReplyTo.sender}): ${safeReplyTo.content}`
+      : '';
     const answer = await store.enqueue(body.phone, async () => {
       const reply = await f.process({
         phone: body.phone,
         text: body.text,
         origin: 'simulation',
+        contextText: simContextText,
         mediaType: safeMediaType && safeMediaType !== 'text' ? safeMediaType : null
       });
       const simSession = store.get(body.phone, 'simulation');
@@ -265,10 +269,14 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
         delete store.sessions[rawPhone];
         store.markDirty();
       }
+      const internalContextText = body.replyTo?.content
+        ? `O usuário está respondendo/citando uma mensagem anterior.\nConteúdo citado (${String(body.replyTo.sender || 'Mensagem').slice(0, 60)}): ${String(body.replyTo.content).slice(0, 280)}`
+        : '';
       const answer = await store.enqueue(OWNER_SELF_KEY, () => f.process({
         phone: OWNER_SELF_KEY,
         text,
-        origin: 'dashboard'
+        origin: 'dashboard',
+        contextText: internalContextText
       }));
       await store.flush?.().catch(() => {});
       if (answer && typeof notifyCopilot === 'function') {
