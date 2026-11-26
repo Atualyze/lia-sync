@@ -3351,11 +3351,15 @@ function showView(view) {
   if (view === 'sectors') {
     loadCustomSectors().catch(() => {});
   }
-  if (view === 'funnel') {
+  if (view === 'automations') {
     loadCadence().catch(() => {});
     loadReputation().catch(() => {});
     loadMissedCall().catch(() => {});
+  }
+  if (view === 'integrations') {
     loadTenants().catch(() => {});
+  }
+  if (view === 'funnel') {
     renderFunnel();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
   }
