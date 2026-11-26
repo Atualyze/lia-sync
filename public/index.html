@@ -824,7 +824,7 @@
               </div>
             </details>
 
-            <!-- MENU RECOLHÍVEL 5: OPERAÇÕES, AUTOMAÇÃO, FOLLOW-UP & TRANSBORDO -->
+            <!-- MENU RECOLHÍVEL 5: OPERAÇÕES, MÍDIA, SYNC & TRANSBORDO -->
             <details class="config-accordion panel" id="acc-automation" data-section-keys="automation,behavior,human">
               <summary class="config-accordion-head">
                 <div class="acc-title-group">
@@ -833,7 +833,7 @@
                   </span>
                   <div>
                     <strong>Automação &amp; Transbordo</strong>
-                    <span>Leitura de mídias, follow-up automático e envio de alertas humanos</span>
+                    <span>Leitura de mídias, sincronização WhatsApp e envio de alertas humanos</span>
                   </div>
                 </div>
                 <div class="acc-meta">
@@ -855,18 +855,7 @@
                     <input data-config="behavior.allowClientResume" type="checkbox" />
                     <span>Permitir que o cliente reative a Lia por comando na conversa</span>
                   </label>
-                  <label class="toggle-field">
-                    <input data-config="automation.enableProactiveFollowUp" type="checkbox" />
-                    <span>Habilitar motor de follow-up proativo (Operações)</span>
-                  </label>
-                  <label class="toggle-field">
-                    <input id="admin-followup-enabled" data-config="behavior.leadFollowUpEnabled" type="checkbox" />
-                    <span>Ativar reengajamento automático de leads inativos</span>
-                  </label>
-                  <label class="toggle-field">
-                    <input data-config="automation.businessHoursOnly" type="checkbox" />
-                    <span>Disparar follow-ups somente dentro do horário comercial</span>
-                  </label>
+
                   <label class="toggle-field">
                     <input data-config="sync.whatsappSyncEnabled" type="checkbox" />
                     <span>Sincronização bidirecional com WhatsApp (exclusões, arquivamento e leitura)</span>
@@ -880,21 +869,7 @@
                     <span>Arquivar mensagens/conversas excluídas no banco (ocultas nos painéis, visíveis via SQL)</span>
                   </label>
 
-                  <label>Follow-up de Leads: Mínimo (horas)
-                    <input id="admin-followup-min" data-config="behavior.leadFollowUpMinHours" type="number" min="1" max="719" step="1" />
-                  </label>
-                  <label>Follow-up de Leads: Máximo (horas)
-                    <input id="admin-followup-max" data-config="behavior.leadFollowUpMaxHours" type="number" min="2" max="720" step="1" />
-                  </label>
-                  <label>Janela Operacional: Mínimo (horas)
-                    <input data-config="automation.followUpMinHours" type="number" min="1" max="719" step="1" />
-                  </label>
-                  <label>Janela Operacional: Máximo (horas)
-                    <input data-config="automation.followUpMaxHours" type="number" min="2" max="720" step="1" />
-                  </label>
-                  <label>Limite Diário Global de Follow-ups
-                    <input data-config="automation.maxDailyFollowUps" type="number" min="0" max="10000" step="1" />
-                  </label>
+
                   <label>Lembrete de Transbordo Pendente (minutos)
                     <input data-config="behavior.handoffReminderMinutes" type="number" min="1" max="1440" step="1" />
                   </label>
@@ -905,9 +880,7 @@
                     <input data-config="behavior.maxClinicalTurns" type="number" min="1" max="20" step="1" />
                   </label>
 
-                  <label class="wide">Template de Mensagem de Follow-up Proativo
-                    <textarea data-config="automation.followUpTemplate" rows="2" maxlength="2000"></textarea>
-                  </label>
+
 
                   <label class="wide">Destino dos Alertas de Transbordo e Copiloto Interno
                     <select id="admin-human-destination" data-config="human.alertDestination">
@@ -2583,6 +2556,44 @@
               </div>
             </div>
             <div id="cadence-steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+          <div id="proactive-followup-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Follow-up Proativo &amp; Reengajamento</strong><div class="ops-muted" style="font-size:12px;">Motor automático de follow-up, janelas operacionais, limite diário e template padrão.</div></div>
+              <button type="button" class="btn-handoff primary" id="followup-publish-btn">Publicar Follow-up</button>
+            </div>
+            <div class="admin-form-grid">
+              <label class="toggle-field">
+                <input data-config="automation.enableProactiveFollowUp" type="checkbox" />
+                <span>Habilitar motor de follow-up proativo (Operações)</span>
+              </label>
+              <label class="toggle-field">
+                <input id="admin-followup-enabled" data-config="behavior.leadFollowUpEnabled" type="checkbox" />
+                <span>Ativar reengajamento automático de leads inativos</span>
+              </label>
+              <label class="toggle-field">
+                <input data-config="automation.businessHoursOnly" type="checkbox" />
+                <span>Disparar follow-ups somente dentro do horário comercial</span>
+              </label>
+              <label>Follow-up de Leads: Mínimo (horas)
+                <input id="admin-followup-min" data-config="behavior.leadFollowUpMinHours" type="number" min="1" max="719" step="1" />
+              </label>
+              <label>Follow-up de Leads: Máximo (horas)
+                <input id="admin-followup-max" data-config="behavior.leadFollowUpMaxHours" type="number" min="2" max="720" step="1" />
+              </label>
+              <label>Janela Operacional: Mínimo (horas)
+                <input data-config="automation.followUpMinHours" type="number" min="1" max="719" step="1" />
+              </label>
+              <label>Janela Operacional: Máximo (horas)
+                <input data-config="automation.followUpMaxHours" type="number" min="2" max="720" step="1" />
+              </label>
+              <label>Limite Diário Global de Follow-ups
+                <input data-config="automation.maxDailyFollowUps" type="number" min="0" max="10000" step="1" />
+              </label>
+              <label class="wide">Template de Mensagem de Follow-up Proativo
+                <textarea data-config="automation.followUpTemplate" rows="2" maxlength="2000"></textarea>
+              </label>
+            </div>
           </div>
           <div id="reputation-panel" class="panel" style="margin-top:16px;padding:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">

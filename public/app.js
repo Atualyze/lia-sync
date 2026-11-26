@@ -3370,6 +3370,7 @@ function showView(view, opts = {}) {
     loadCustomSectors().catch(() => {});
   }
   if (view === 'automations') {
+    renderAdminData();
     loadCadence().catch(() => {});
     loadReputation().catch(() => {});
     loadMissedCall().catch(() => {});
@@ -3427,7 +3428,8 @@ function setupCommandPalette() {
     { title: 'Configurações: Identidade & System Prompt', sub: 'Persona, empresa e diretriz mestre', role: 'admin', action: () => openAdminSection('acc-identity') },
     { title: 'Configurações: Motor IA & Fallbacks', sub: 'Provedor, modelo ativo e reservas', role: 'admin', action: () => openAdminSection('acc-ai') },
     { title: 'Configurações: Voz Nativa (TTS WAV)', sub: 'Aoede, Kore, velocidade e PTT automático', role: 'admin', action: () => openAdminSection('acc-voice') },
-    { title: 'Configurações: Operações & Follow-up', sub: 'Automação, janelas e alertas humanos', role: 'admin', action: () => openAdminSection('acc-automation') },
+    { title: 'Atendimento: Automações & Follow-up', sub: 'Follow-up proativo, cadências, ligação perdida e reputação', role: 'admin', action: () => showView('automations') },
+    { title: 'Configurações: Operações & Transbordo', sub: 'Mídias, sincronização WhatsApp e alertas humanos', role: 'admin', action: () => openAdminSection('acc-automation') },
     { title: 'Configurações: Janela de Atendimento', sub: 'Expediente comercial e aviso fora de hora', role: 'admin', action: () => openAdminSection('acc-hours') },
     { title: 'Configurações: Google Calendar', sub: 'Horários livres, duração de slots e agenda', role: 'admin', action: () => openAdminSection('acc-calendar') },
     { title: 'Configurações: Base de Conhecimento (FAQ)', sub: 'Perguntas e respostas prioritárias', role: 'admin', action: () => openAdminSection('acc-faq') },
@@ -6204,6 +6206,9 @@ $('#cadence-save-btn')?.addEventListener('click', async () => {
 $('#cadence-run-btn')?.addEventListener('click', async () => {
   const res = await api('/api/dashboard/cadence/run', { method: 'POST', body: '{}' });
   alert(`Cadência executada: ${res?.sent || 0} enviada(s), ${res?.skipped || 0} ignorada(s).`);
+});
+$('#followup-publish-btn')?.addEventListener('click', () => {
+  publishAdminChanges();
 });
 async function loadReputation() {
   const data = await api('/api/dashboard/reputation');
