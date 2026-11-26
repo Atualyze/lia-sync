@@ -33,6 +33,12 @@ export const GOOGLE_OAUTH_SCOPE_CATALOG = Object.freeze({
     label: 'Gmail (Leitura + Rascunhos)',
     description: 'Buscar/ler e-mails e criar rascunhos seguros (nunca envia nem apaga)',
     scopes: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.compose']
+  },
+  contacts: {
+    id: 'contacts',
+    label: 'Google Contatos (People API)',
+    description: 'Importar contatos do Google Contatos para o CRM',
+    scopes: ['https://www.googleapis.com/auth/contacts.readonly']
   }
 });
 

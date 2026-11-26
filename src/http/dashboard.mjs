@@ -17,6 +17,7 @@ import { dedupeMessages } from '../supabase-runtime.mjs';
 import { normalizePhone } from '../sessions.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
+import { resolveGoogleAccessToken } from '../tools/google_auth.mjs';
 
 function sameInstancePhone(a, b) {
   const na = normalizePhone(String(a || '').replace(/@.*$/, '').replace(/\D/g, ''));
@@ -471,9 +472,17 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
   if (req.method === 'POST' && u.pathname === '/api/dashboard/crm-contact') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
-    if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
-    const session = store.get(body.phone);
-    if (!session) return json(res, 404, { error: 'session_not_found' });
+    const rawPhone = normalizePhone(String(body.phone || '')) || String(body.phone || '').trim();
+    if (!validPhone(rawPhone)) return json(res, 400, { error: 'invalid_phone' });
+    let session = store.get(rawPhone);
+    if (!session) {
+      if (body.create !== true) return json(res, 404, { error: 'session_not_found' });
+      session = store.ensure(rawPhone);
+      session.origin = 'real';
+      session.createdAt ||= new Date().toISOString();
+      const activeInst = typeof getActiveInstancePhone === 'function' ? getActiveInstancePhone() : '';
+      if (activeInst && !session.instancePhone) session.instancePhone = activeInst;
+    }
     if (body.clientName !== undefined) session.clientName = String(body.clientName || '').trim().slice(0, 120);
     if (body.email !== undefined) session.email = String(body.email || '').trim().slice(0, 160);
     if (body.dealValue !== undefined) {
@@ -481,6 +490,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       session.dealValue = Number.isFinite(val) && val >= 0 ? Math.round(val * 100) / 100 : 0;
     }
     if (body.notes !== undefined) session.notes = String(body.notes || '').trim().slice(0, 4000);
+    if (body.aiContext !== undefined) session.aiContext = String(body.aiContext || '').trim().slice(0, 2000);
     if (body.sectorId !== undefined) session.sectorId = String(body.sectorId || '').trim().slice(0, 60);
     if (body.tags !== undefined) {
       session.tags = (Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(','))
@@ -492,7 +502,98 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, phone: body.phone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+  }
+  if (req.method === 'DELETE' && u.pathname === '/api/dashboard/crm-contact') {
+    let body = {};
+    try { body = await readBody(req); } catch {}
+    const rawPhone = String(u.searchParams.get('phone') || body?.phone || '').trim();
+    const targetPhone = normalizePhone(rawPhone) || rawPhone;
+    if (!validPhone(targetPhone)) return json(res, 400, { error: 'invalid_phone' });
+    const archived = await store.archive(targetPhone, 'contato_excluido_crm');
+    if (store.sessions?.[targetPhone]) {
+      delete store.sessions[targetPhone];
+      store.markDirty();
+    }
+    if (!archived && !store.sessions) return json(res, 404, { ok: false, error: 'contact_not_found' });
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, phone: targetPhone });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/contacts/import') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const list = Array.isArray(body?.contacts) ? body.contacts.slice(0, 500) : [];
+    if (!list.length) return json(res, 400, { error: 'empty_contacts_list' });
+    const activeInst = typeof getActiveInstancePhone === 'function' ? getActiveInstancePhone() : '';
+    let imported = 0;
+    let skipped = 0;
+    const nowIso = new Date().toISOString();
+    for (const item of list) {
+      const normalized = normalizePhone(String(item?.phone || ''));
+      if (!normalized || !validPhone(normalized)) { skipped++; continue; }
+      const s = store.ensure(normalized);
+      s.origin ||= 'real';
+      s.createdAt ||= nowIso;
+      if (activeInst && !s.instancePhone) s.instancePhone = activeInst;
+      if (item.clientName) s.clientName = String(item.clientName).trim().slice(0, 120);
+      if (item.email) s.email = String(item.email).trim().slice(0, 160);
+      if (item.notes) s.notes = String(item.notes).trim().slice(0, 4000);
+      if (item.aiContext) s.aiContext = String(item.aiContext).trim().slice(0, 2000);
+      if (item.sectorId) s.sectorId = String(item.sectorId).trim().slice(0, 60);
+      if (Array.isArray(item.tags) && item.tags.length) {
+        s.tags = item.tags.map(t => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 20);
+      }
+      s.funnelStage ||= 'novo';
+      s.updatedAt = nowIso;
+      imported++;
+    }
+    store.markDirty();
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, imported, skipped });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/contacts/import-google') {
+    try {
+      const token = await resolveGoogleAccessToken();
+      if (!token) {
+        return json(res, 400, { ok: false, error: 'google_contacts_not_authorized', message: 'Conta Google não conectada. Conecte em Integrações ou importe o arquivo CSV exportado do Google Contatos.' });
+      }
+      const resPeople = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,biographies,organizations&pageSize=500', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!resPeople.ok) {
+        return json(res, 400, { ok: false, error: 'google_contacts_scope_missing', message: 'Autorize a permissão "Google Contatos" em Integrações → Google Workspace ou importe via arquivo CSV do Google Contatos.' });
+      }
+      const data = await resPeople.json();
+      const connections = Array.isArray(data?.connections) ? data.connections : [];
+      const activeInst = typeof getActiveInstancePhone === 'function' ? getActiveInstancePhone() : '';
+      let imported = 0;
+      let skipped = 0;
+      const nowIso = new Date().toISOString();
+      for (const person of connections) {
+        const rawPhone = person?.phoneNumbers?.[0]?.canonicalForm || person?.phoneNumbers?.[0]?.value || '';
+        const normalized = normalizePhone(String(rawPhone));
+        if (!normalized || !validPhone(normalized)) { skipped++; continue; }
+        const s = store.ensure(normalized);
+        s.origin ||= 'real';
+        s.createdAt ||= nowIso;
+        if (activeInst && !s.instancePhone) s.instancePhone = activeInst;
+        const name = String(person?.names?.[0]?.displayName || '').trim();
+        const email = String(person?.emailAddresses?.[0]?.value || '').trim();
+        const org = String(person?.organizations?.[0]?.name || '').trim();
+        const bio = String(person?.biographies?.[0]?.value || '').trim();
+        if (name && !s.clientName) s.clientName = name.slice(0, 120);
+        if (email && !s.email) s.email = email.slice(0, 160);
+        if ((org || bio) && !s.notes) s.notes = [org, bio].filter(Boolean).join(' · ').slice(0, 4000);
+        s.funnelStage ||= 'novo';
+        s.updatedAt = nowIso;
+        imported++;
+      }
+      store.markDirty();
+      await store.flush?.().catch(() => {});
+      return json(res, 200, { ok: true, imported, skipped, totalFound: connections.length });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: 'google_contacts_import_failed', message: err?.message || 'Falha ao importar contatos do Google.' });
+    }
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/canned-responses') {
     const items = Array.isArray(adminConfig?.active?.cannedResponses) ? adminConfig.active.cannedResponses : [];

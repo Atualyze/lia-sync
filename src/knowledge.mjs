@@ -479,8 +479,8 @@ ${(() => {
     return ctxBlock;
   })()}
 
-[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}
-  [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null })}
+[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}${session.aiContext ? `\n[CONTEXTO ESPECÍFICO DESTE CONTATO — PRIORIDADE NO ATENDIMENTO]\n${String(session.aiContext).trim().slice(0, 2000)}` : ''}
+  [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null, aiContext: session.aiContext || null })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
 }

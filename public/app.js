@@ -6114,16 +6114,25 @@ function renderFunnel() {
 }
 
 function openCrmModal(phone) {
-  const item = (state.sessions || []).find((s) => s.phone === phone);
-  if (!item) return;
-  if ($('#crm-phone')) $('#crm-phone').value = item.phone;
-  if ($('#crm-modal-title')) $('#crm-modal-title').textContent = `Ficha · ${item.displayName || item.phoneFormatted || item.phone}`;
+  const isCreate = !phone;
+  const item = isCreate ? {} : ((state.sessions || []).find((s) => s.phone === phone) || {});
+  if (!isCreate && !item.phone) return;
+  if ($('#crm-mode')) $('#crm-mode').value = isCreate ? 'create' : 'edit';
+  if ($('#crm-phone')) $('#crm-phone').value = item.phone || '';
+  if ($('#crm-phone-input')) {
+    $('#crm-phone-input').value = item.phone || '';
+    $('#crm-phone-input').readOnly = !isCreate;
+    $('#crm-phone-input').style.opacity = isCreate ? '1' : '0.7';
+  }
+  if ($('#crm-delete-btn')) $('#crm-delete-btn').classList.toggle('hidden', isCreate);
+  if ($('#crm-modal-title')) $('#crm-modal-title').textContent = isCreate ? 'Novo Contato' : `Ficha · ${item.displayName || item.phoneFormatted || item.phone}`;
   if ($('#crm-name')) $('#crm-name').value = item.clientName || item.name || '';
   if ($('#crm-email')) $('#crm-email').value = item.email || '';
   if ($('#crm-value')) $('#crm-value').value = item.dealValue || '';
   if ($('#crm-sector')) $('#crm-sector').value = item.sectorId || '';
   if ($('#crm-stage')) $('#crm-stage').value = item.funnelStage || 'novo';
   if ($('#crm-tags')) $('#crm-tags').value = (item.tags || []).join(', ');
+  if ($('#crm-ai-context')) $('#crm-ai-context').value = item.aiContext || '';
   if ($('#crm-notes')) $('#crm-notes').value = item.notes || '';
   $('#crm-lead-modal')?.classList.remove('hidden');
 }
@@ -6131,24 +6140,54 @@ $('#crm-close-btn')?.addEventListener('click', () => $('#crm-lead-modal')?.class
 $('#crm-search')?.addEventListener('input', () => renderFunnel());
 $('#crm-sector-filter')?.addEventListener('change', () => renderFunnel());
 $('#crm-save-btn')?.addEventListener('click', async () => {
-  const phone = $('#crm-phone')?.value;
-  if (!phone) return;
+  const isCreate = $('#crm-mode')?.value === 'create';
+  const phone = (isCreate ? $('#crm-phone-input')?.value : $('#crm-phone')?.value)?.trim();
+  if (!phone) {
+    showToast({ title: 'Telefone obrigatório', message: 'Informe o número com DDI+DDD (ex: 5585999991111).', type: 'error' });
+    return;
+  }
   const payload = {
     phone,
+    create: isCreate,
     clientName: $('#crm-name')?.value || '',
     email: $('#crm-email')?.value || '',
     dealValue: $('#crm-value')?.value || 0,
     sectorId: $('#crm-sector')?.value || '',
     funnelStage: $('#crm-stage')?.value || 'novo',
     tags: $('#crm-tags')?.value || '',
+    aiContext: $('#crm-ai-context')?.value || '',
     notes: $('#crm-notes')?.value || '',
   };
-  await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
-  const target = (state.sessions || []).find((s) => s.phone === phone);
-  if (target) Object.assign(target, { ...payload, displayName: payload.clientName || target.displayName, dealValue: Number(payload.dealValue || 0), tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean) });
+  const res = await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
+  const savedPhone = res?.phone || phone;
+  const target = (state.sessions || []).find((s) => s.phone === savedPhone);
+  if (target) {
+    Object.assign(target, { ...payload, phone: savedPhone, displayName: payload.clientName || target.displayName, dealValue: Number(payload.dealValue || 0), tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean) });
+  } else {
+    await refresh().catch(() => {});
+  }
+  selectedContactPhone = savedPhone;
   $('#crm-lead-modal')?.classList.add('hidden');
   renderFunnel();
   renderContacts();
+  showToast({ title: isCreate ? 'Contato Cadastrado' : 'Ficha Atualizada', message: payload.clientName || savedPhone, type: 'success' });
+});
+async function deleteContactByPhone(phone) {
+  if (!phone) return;
+  const item = (state.sessions || []).find((s) => s.phone === phone);
+  const label = item?.displayName || item?.clientName || item?.phoneFormatted || phone;
+  if (!window.confirm(`Excluir o contato "${label}" do CRM?`)) return;
+  await api(`/api/dashboard/crm-contact?phone=${encodeURIComponent(phone)}`, { method: 'DELETE' });
+  state.sessions = (state.sessions || []).filter((s) => s.phone !== phone);
+  if (selectedContactPhone === phone) selectedContactPhone = null;
+  $('#crm-lead-modal')?.classList.add('hidden');
+  renderFunnel();
+  renderContacts();
+  showToast({ title: 'Contato Excluído', message: label, type: 'success' });
+}
+$('#crm-delete-btn')?.addEventListener('click', () => {
+  const phone = $('#crm-phone')?.value;
+  deleteContactByPhone(phone).catch((e) => showToast({ title: 'Erro ao excluir', message: e.message, type: 'error' }));
 });
 $('#refresh-funnel')?.addEventListener('click', () => refresh().catch(() => {}));
 
@@ -6204,6 +6243,13 @@ function openContactContextMenu(item, x, y) {
         label: 'Exportar Transcrição (.txt)',
         icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
         action: () => exportConversationTranscript(item)
+      },
+      { divider: true },
+      {
+        label: 'Excluir Contato',
+        danger: true,
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+        action: () => deleteContactByPhone(item.phone).catch((e) => showToast({ title: 'Erro ao excluir', message: e.message, type: 'error' }))
       }
     ]
   });
@@ -6252,15 +6298,21 @@ function renderContactFicha(item) {
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${tagsHtml}</div>
     </div>
     <div class="detail-block">
+      <h3>Contexto para a Lia</h3>
+      <p class="ops-muted" style="font-size:12.5px;white-space:pre-wrap;margin:6px 0 0;">${esc(item.aiContext || 'Nenhum contexto específico definido. Clique em "Editar Ficha" para orientar a Lia sobre como atender este contato.')}</p>
+    </div>
+    <div class="detail-block">
       <h3>Observações</h3>
       <p class="ops-muted" style="font-size:12.5px;white-space:pre-wrap;margin:6px 0 0;">${esc(item.notes || 'Nenhuma observação registrada.')}</p>
     </div>
     <div class="detail-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="detail-action primary" id="ficha-open-inbox-btn">Abrir Conversa</button>
       ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="btn-handoff" style="text-decoration:none;">WhatsApp ↗</a>` : ''}
+      <button type="button" class="btn-handoff" id="ficha-delete-btn" style="color:var(--danger,#f87171);">Excluir</button>
     </div>
   `;
   $('#ficha-edit-btn')?.addEventListener('click', () => openCrmModal(item.phone));
+  $('#ficha-delete-btn')?.addEventListener('click', () => deleteContactByPhone(item.phone).catch((e) => showToast({ title: 'Erro ao excluir', message: e.message, type: 'error' })));
   $('#ficha-open-inbox-btn')?.addEventListener('click', () => {
     state.selected = item.phone;
     showView('inbox');
@@ -6384,6 +6436,90 @@ $('#contacts-stage-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-sector-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-mode-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-refresh-btn')?.addEventListener('click', () => refresh().catch(() => {}));
+$('#contacts-new-btn')?.addEventListener('click', () => openCrmModal(null));
+$('#contacts-google-import-btn')?.addEventListener('click', async () => {
+  const btn = $('#contacts-google-import-btn');
+  setButtonLoading(btn, true, 'Importando…');
+  try {
+    const res = await api('/api/dashboard/contacts/import-google', { method: 'POST', body: '{}' });
+    await refresh().catch(() => {});
+    showToast({ title: 'Google Contatos Importados', message: `${res.imported || 0} importado(s), ${res.skipped || 0} ignorado(s) sem telefone válido.`, type: 'success' });
+  } catch (err) {
+    showToast({ title: 'Importação Google', message: err.message || 'Use "Importar CSV / vCard" com o arquivo exportado de contacts.google.com.', type: 'warn', duration: 7000 });
+  } finally {
+    setButtonLoading(btn, false);
+  }
+});
+function parseContactsFileText(filename, text) {
+  const lower = String(filename || '').toLowerCase();
+  if (lower.endsWith('.json')) {
+    const parsed = JSON.parse(text);
+    const arr = Array.isArray(parsed) ? parsed : (parsed.contacts || []);
+    return arr.map(c => ({ clientName: c.clientName || c.name || '', phone: c.phone || c.tel || '', email: c.email || '', notes: c.notes || '', aiContext: c.aiContext || '' }));
+  }
+  if (lower.endsWith('.vcf')) {
+    const cards = String(text || '').split(/BEGIN:VCARD/i).slice(1);
+    return cards.map((card) => {
+      const fn = (card.match(/^FN[^:]*:(.*)$/mi)?.[1] || '').trim();
+      const tel = (card.match(/^TEL[^:]*:(.*)$/mi)?.[1] || '').trim();
+      const email = (card.match(/^EMAIL[^:]*:(.*)$/mi)?.[1] || '').trim();
+      const note = (card.match(/^NOTE[^:]*:(.*)$/mi)?.[1] || '').trim();
+      return { clientName: fn, phone: tel, email, notes: note };
+    }).filter(c => c.phone);
+  }
+  // CSV (suporta exportação padrão do Google Contatos e CSV simples nome,telefone,email,contexto)
+  const lines = String(text || '').split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const splitCsv = (line) => {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { out.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  };
+  const headers = splitCsv(lines[0]).map(h => h.toLowerCase());
+  const idxOf = (...names) => headers.findIndex(h => names.some(n => h === n || h.includes(n)));
+  const iName = idxOf('name', 'nome', 'first name', 'given name');
+  const iPhone = idxOf('phone 1 - value', 'telefone', 'phone', 'celular', 'whatsapp');
+  const iEmail = idxOf('e-mail 1 - value', 'email', 'e-mail');
+  const iNotes = idxOf('notes', 'notas', 'observa');
+  const iCtx = idxOf('contexto', 'context', 'aicontext');
+  return lines.slice(1).map((line) => {
+    const cols = splitCsv(line);
+    return {
+      clientName: iName >= 0 ? cols[iName] || '' : '',
+      phone: iPhone >= 0 ? cols[iPhone] || '' : '',
+      email: iEmail >= 0 ? cols[iEmail] || '' : '',
+      notes: iNotes >= 0 ? cols[iNotes] || '' : '',
+      aiContext: iCtx >= 0 ? cols[iCtx] || '' : ''
+    };
+  }).filter(c => c.phone);
+}
+$('#contacts-file-import-btn')?.addEventListener('click', () => $('#contacts-file-input')?.click());
+$('#contacts-file-input')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const contacts = parseContactsFileText(file.name, text);
+    if (!contacts.length) {
+      showToast({ title: 'Nenhum contato encontrado', message: 'Verifique se o CSV/vCard/JSON possui coluna de telefone.', type: 'warn' });
+      return;
+    }
+    const res = await api('/api/dashboard/contacts/import', { method: 'POST', body: JSON.stringify({ contacts }) });
+    await refresh().catch(() => {});
+    showToast({ title: 'Contatos Importados', message: `${res.imported || 0} importado(s), ${res.skipped || 0} ignorado(s).`, type: 'success' });
+  } catch (err) {
+    showToast({ title: 'Falha ao importar', message: err.message, type: 'error' });
+  }
+});
 
 let cannedCache = [];
 async function loadCannedResponses() {
