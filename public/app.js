@@ -3318,12 +3318,30 @@ const VIEW_TITLES = {
   users: 'Acessos & Auditoria',
   metrics: 'Monitoramento & Custos',
   vps: 'Monitor da VPS',
-  runtime: 'Autonomia & Memória'
+  runtime: 'Autonomia & Memória',
+  funnel: 'CRM · Funil de Leads',
+  sectors: 'Setores & Triagem',
+  automations: 'Automações & Réguas'
 };
 
-function showView(view) {
+function resolveViewFromUrl() {
+  const m = window.location.pathname.match(/^\/dashboard\/([a-z0-9-]+)\/?$/i);
+  const candidate = m ? m[1].toLowerCase() : '';
+  return candidate && document.querySelector(`#${candidate}-view`) ? candidate : null;
+}
+
+window.addEventListener('popstate', () => {
+  const v = resolveViewFromUrl() || 'overview';
+  showView(v, { skipHistory: true });
+});
+
+function showView(view, opts = {}) {
   if (view === 'agent') view = 'ai-hub';
   state.view = view;
+  const targetUrl = view === 'overview' ? '/dashboard' : `/dashboard/${view}`;
+  if (!opts.skipHistory && window.location.pathname !== targetUrl) {
+    try { window.history.pushState({ view }, '', targetUrl); } catch {}
+  }
   document.querySelectorAll('.view').forEach((item) => item.classList.remove('active-view'));
   const activeViewEl = document.querySelector(`#${view}-view`);
   activeViewEl?.classList.add('active-view');
@@ -3610,7 +3628,7 @@ async function sendChatMessage({ text, mediaType = 'text', fileName = '' } = {})
 }
 
 function startDashboard() {
-  showView('overview');
+  showView(resolveViewFromUrl() || 'overview', { skipHistory: true });
   setupCommandPalette();
 
   $('#mode-selector').value = state.mode;

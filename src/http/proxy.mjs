@@ -54,6 +54,7 @@ export function isLegacyStaticPath(pathname) {
     pathname === '/legacy-dashboard' ||
     pathname === '/dashboard' ||
     pathname === '/dashboard/' ||
+    /^\/dashboard\/[a-z0-9-]+$/i.test(pathname) ||
     pathname === '/dashboard/index.html' ||
     pathname === '/dashboard/app.js' ||
     pathname === '/dashboard/styles.css' ||

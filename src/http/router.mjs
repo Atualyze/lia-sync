@@ -228,7 +228,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
       if (isLegacyStaticPath(u.pathname)) {
-        if (u.pathname === '/legacy-dashboard') req.url = '/index.html';
+        if (u.pathname === '/legacy-dashboard' || /^\/dashboard\/[a-z0-9-]+$/i.test(u.pathname)) req.url = '/index.html';
         return serveStatic(req, res, config);
       }
       const authResult = await auth(req, config);
