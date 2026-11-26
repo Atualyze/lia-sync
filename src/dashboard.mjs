@@ -94,9 +94,11 @@ export async function serveStatic(req, res, config) {
           ? 'image/png'
           : 'text/html; charset=utf-8';
   try {
+    const isMutableAsset = relative.endsWith('.html') || relative.endsWith('.js') || relative.endsWith('.css');
     const body = await fs.readFile(file);
     res.writeHead(200, {
       'content-type': contentType,
+      'cache-control': isMutableAsset ? 'no-cache, must-revalidate' : 'public, max-age=86400',
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer',
       'content-security-policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; media-src 'self' data: blob:; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com"
