@@ -468,6 +468,56 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     await store.flush?.().catch(() => {});
     return json(res, 200, { ok: true, ...result });
   }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/crm-contact') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    if (!validPhone(body.phone)) return json(res, 400, { error: 'invalid_phone' });
+    const session = store.get(body.phone);
+    if (!session) return json(res, 404, { error: 'session_not_found' });
+    if (body.clientName !== undefined) session.clientName = String(body.clientName || '').trim().slice(0, 120);
+    if (body.email !== undefined) session.email = String(body.email || '').trim().slice(0, 160);
+    if (body.dealValue !== undefined) {
+      const val = Number(String(body.dealValue).replace(',', '.'));
+      session.dealValue = Number.isFinite(val) && val >= 0 ? Math.round(val * 100) / 100 : 0;
+    }
+    if (body.notes !== undefined) session.notes = String(body.notes || '').trim().slice(0, 4000);
+    if (body.sectorId !== undefined) session.sectorId = String(body.sectorId || '').trim().slice(0, 60);
+    if (body.tags !== undefined) {
+      session.tags = (Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(','))
+        .map((t) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 20);
+    }
+    if (body.funnelStage !== undefined && VALID_FUNNEL_STAGES.has(String(body.funnelStage).trim())) {
+      session.funnelStage = String(body.funnelStage).trim();
+    }
+    session.updatedAt = new Date().toISOString();
+    store.markDirty();
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, phone: body.phone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+  }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/canned-responses') {
+    const items = Array.isArray(adminConfig?.active?.cannedResponses) ? adminConfig.active.cannedResponses : [];
+    return json(res, 200, { ok: true, items });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/canned-responses') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const shortcut = String(body.shortcut || '').trim().replace(/^\/+/, '').toLowerCase().slice(0, 40);
+    const content = String(body.content || '').trim().slice(0, 2000);
+    if (!shortcut || !content) return json(res, 400, { error: 'missing_shortcut_or_content' });
+    const current = Array.isArray(adminConfig?.active?.cannedResponses) ? [...adminConfig.active.cannedResponses] : [];
+    const idx = current.findIndex((x) => x.shortcut === shortcut);
+    const item = { id: idx >= 0 ? current[idx].id : `macro_${shortcut}`, shortcut, title: String(body.title || shortcut).trim().slice(0, 80), content };
+    if (idx >= 0) current[idx] = item; else current.push(item);
+    await persistAdminPatch(adminConfig, { cannedResponses: current });
+    return json(res, 200, { ok: true, item, items: current });
+  }
+  if (req.method === 'DELETE' && u.pathname === '/api/dashboard/canned-responses') {
+    const shortcut = String(u.searchParams.get('shortcut') || '').trim().replace(/^\/+/, '').toLowerCase();
+    const current = Array.isArray(adminConfig?.active?.cannedResponses) ? adminConfig.active.cannedResponses : [];
+    const next = current.filter((x) => x.shortcut !== shortcut);
+    await persistAdminPatch(adminConfig, { cannedResponses: next });
+    return json(res, 200, { ok: true, items: next });
+  }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/funnel-stage') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }

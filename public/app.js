@@ -3355,11 +3355,13 @@ function showView(view) {
     loadCadence().catch(() => {});
     loadReputation().catch(() => {});
     loadMissedCall().catch(() => {});
+    loadCannedResponses().catch(() => {});
   }
   if (view === 'integrations') {
     loadTenants().catch(() => {});
   }
   if (view === 'funnel') {
+    api('/api/dashboard/sectors-custom').then(d => syncSectorDropdowns(d?.sectors || [])).catch(() => {});
     renderFunnel();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
   }
@@ -5960,10 +5962,48 @@ const FUNNEL_STAGES = [
   { id: 'fechado', label: 'Fechado' },
 ];
 
+const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+let lastHandoffAlertCount = -1;
+function playHandoffChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.25);
+  } catch {}
+}
+
+function syncSectorDropdowns(sectors = []) {
+  const filterEl = $('#crm-sector-filter');
+  const modalEl = $('#crm-sector');
+  if (filterEl) {
+    const cur = filterEl.value;
+    filterEl.innerHTML = '<option value="">Todos os setores</option>' + sectors.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+    filterEl.value = cur;
+  }
+  if (modalEl) {
+    const cur = modalEl.value;
+    modalEl.innerHTML = '<option value="">Sem setor</option>' + sectors.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+    modalEl.value = cur;
+  }
+}
+
 function renderFunnel() {
   const board = $('#funnel-board');
   if (!board) return;
   const instDigits = String(state.activeInstancePhone || '').replace(/\D/g, '');
+  const query = String($('#crm-search')?.value || '').trim().toLowerCase();
+  const secFilter = String($('#crm-sector-filter')?.value || '').trim();
+
   const leads = (state.sessions || []).filter((s) => {
     if (s.origin === 'simulation' || s.isInternal) return false;
     if (s.phoneFormatted === 'Canal Interno Copiloto') return false;
@@ -5971,29 +6011,48 @@ function renderFunnel() {
     if (/^[a-z0-9_]+_self$/i.test(rawP) || rawP === 'owner_self') return false;
     const digits = rawP.replace(/\D/g, '');
     if (instDigits && digits && digits === instDigits) return false;
+    if (secFilter && (s.sectorId || '') !== secFilter) return false;
+    if (query) {
+      const hay = [s.displayName, s.name, s.phoneFormatted, s.phone, ...(s.tags || [])].join(' ').toLowerCase();
+      if (!hay.includes(query)) return false;
+    }
     return true;
   });
+
   const counter = $('#funnel-count');
   if (counter) counter.textContent = leads.length;
+  const totalVal = leads.reduce((acc, s) => acc + Number(s.dealValue || 0), 0);
+  const totalEl = $('#crm-total-value');
+  if (totalEl) totalEl.textContent = `Pipeline: ${formatBRL(totalVal)}`;
+
+  const handoffTotal = (state.sessions || []).filter(s => s.human).length;
+  if (lastHandoffAlertCount >= 0 && handoffTotal > lastHandoffAlertCount) playHandoffChime();
+  lastHandoffAlertCount = handoffTotal;
 
   board.innerHTML = FUNNEL_STAGES.map((col) => {
     const items = leads.filter((s) => (s.funnelStage || 'novo') === col.id);
+    const colSum = items.reduce((acc, s) => acc + Number(s.dealValue || 0), 0);
     const cardsHtml = items.length ? items.map((item) => {
       const dName = esc(item.displayName || item.name || item.phoneFormatted || 'Contato');
       const preview = esc(item.preview || '');
+      const valBadge = Number(item.dealValue || 0) > 0 ? `<span class="pill mini mint">${formatBRL(item.dealValue)}</span>` : '';
+      const secBadge = item.sectorId ? `<span class="pill mini">${esc(item.sectorId)}</span>` : '';
+      const tagsHtml = (item.tags || []).slice(0, 3).map(t => `<span class="pill mini amber">${esc(t)}</span>`).join(' ');
       const opts = FUNNEL_STAGES.map((st) => `<option value="${st.id}"${st.id === col.id ? ' selected' : ''}>${st.label}</option>`).join('');
       return `<div class="kanban-card">
-        <div class="kanban-card-title">${dName}</div>
+        <div class="kanban-card-title" style="display:flex;justify-content:space-between;gap:6px;align-items:center;"><span>${dName}</span>${valBadge}</div>
         <div class="kanban-card-preview">${preview}</div>
+        ${(secBadge || tagsHtml) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;">${secBadge}${tagsHtml}</div>` : ''}
         <div class="kanban-card-actions">
           <select class="kanban-stage-select" data-funnel-phone="${esc(item.phone)}">${opts}</select>
+          <button class="btn-handoff" style="padding:4px 8px;font-size:11px;" data-crm-edit="${esc(item.phone)}">Ficha</button>
           <button class="btn-handoff primary" style="padding:4px 8px;font-size:11px;" data-open-chat="${esc(item.phone)}">Chat</button>
         </div>
       </div>`;
     }).join('') : '<div class="ops-muted" style="font-size:12px;">Sem contatos</div>';
 
     return `<div class="kanban-col">
-      <div class="kanban-col-head"><span>${col.label}</span><span class="pill mini">${items.length}</span></div>
+      <div class="kanban-col-head"><span>${col.label}</span><span class="pill mini">${items.length}${colSum > 0 ? ' · ' + formatBRL(colSum) : ''}</span></div>
       <div class="kanban-cards">${cardsHtml}</div>
     </div>`;
   }).join('');
@@ -6002,17 +6061,15 @@ function renderFunnel() {
     sel.onchange = async () => {
       const phone = sel.getAttribute('data-funnel-phone');
       const stage = sel.value;
-      try {
-        await api('/api/dashboard/funnel-stage', { method: 'POST', body: JSON.stringify({ phone, stage }) });
-        const target = state.sessions.find((s) => s.phone === phone);
-        if (target) target.funnelStage = stage;
-        renderFunnel();
-      } catch (err) {
-        alert('Erro ao mover etapa: ' + (err?.message || err));
-      }
+      await api('/api/dashboard/funnel-stage', { method: 'POST', body: JSON.stringify({ phone, stage }) });
+      const target = state.sessions.find((s) => s.phone === phone);
+      if (target) target.funnelStage = stage;
+      renderFunnel();
     };
   });
-
+  board.querySelectorAll('[data-crm-edit]').forEach((btn) => {
+    btn.onclick = () => openCrmModal(btn.getAttribute('data-crm-edit'));
+  });
   board.querySelectorAll('[data-open-chat]').forEach((btn) => {
     btn.onclick = () => {
       state.selected = btn.getAttribute('data-open-chat');
@@ -6021,7 +6078,72 @@ function renderFunnel() {
   });
 }
 
+function openCrmModal(phone) {
+  const item = (state.sessions || []).find((s) => s.phone === phone);
+  if (!item) return;
+  if ($('#crm-phone')) $('#crm-phone').value = item.phone;
+  if ($('#crm-modal-title')) $('#crm-modal-title').textContent = `Ficha · ${item.displayName || item.phoneFormatted || item.phone}`;
+  if ($('#crm-name')) $('#crm-name').value = item.clientName || item.name || '';
+  if ($('#crm-email')) $('#crm-email').value = item.email || '';
+  if ($('#crm-value')) $('#crm-value').value = item.dealValue || '';
+  if ($('#crm-sector')) $('#crm-sector').value = item.sectorId || '';
+  if ($('#crm-stage')) $('#crm-stage').value = item.funnelStage || 'novo';
+  if ($('#crm-tags')) $('#crm-tags').value = (item.tags || []).join(', ');
+  if ($('#crm-notes')) $('#crm-notes').value = item.notes || '';
+  $('#crm-lead-modal')?.classList.remove('hidden');
+}
+$('#crm-close-btn')?.addEventListener('click', () => $('#crm-lead-modal')?.classList.add('hidden'));
+$('#crm-search')?.addEventListener('input', () => renderFunnel());
+$('#crm-sector-filter')?.addEventListener('change', () => renderFunnel());
+$('#crm-save-btn')?.addEventListener('click', async () => {
+  const phone = $('#crm-phone')?.value;
+  if (!phone) return;
+  const payload = {
+    phone,
+    clientName: $('#crm-name')?.value || '',
+    email: $('#crm-email')?.value || '',
+    dealValue: $('#crm-value')?.value || 0,
+    sectorId: $('#crm-sector')?.value || '',
+    funnelStage: $('#crm-stage')?.value || 'novo',
+    tags: $('#crm-tags')?.value || '',
+    notes: $('#crm-notes')?.value || '',
+  };
+  await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
+  const target = (state.sessions || []).find((s) => s.phone === phone);
+  if (target) Object.assign(target, { ...payload, displayName: payload.clientName || target.displayName, dealValue: Number(payload.dealValue || 0), tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean) });
+  $('#crm-lead-modal')?.classList.add('hidden');
+  renderFunnel();
+});
 $('#refresh-funnel')?.addEventListener('click', () => refresh().catch(() => {}));
+
+let cannedCache = [];
+async function loadCannedResponses() {
+  const data = await api('/api/dashboard/canned-responses');
+  cannedCache = Array.isArray(data?.items) ? data.items : [];
+  const listEl = $('#canned-list');
+  if (!listEl) return;
+  listEl.innerHTML = cannedCache.length ? cannedCache.map(m => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;">
+    <div><strong>/${esc(m.shortcut)}</strong> · ${esc(m.title)} <div class="ops-muted" style="font-size:12px;">${esc(m.content)}</div></div>
+    <button type="button" class="btn-handoff" data-macro-del="${esc(m.shortcut)}">Remover</button>
+  </div>`).join('') : '<div class="ops-muted" style="font-size:12px;">Nenhuma macro cadastrada.</div>';
+  listEl.querySelectorAll('[data-macro-del]').forEach(btn => {
+    btn.onclick = async () => {
+      await api(`/api/dashboard/canned-responses?shortcut=${encodeURIComponent(btn.dataset.macroDel)}`, { method: 'DELETE' });
+      loadCannedResponses().catch(() => {});
+    };
+  });
+}
+$('#macro-save-btn')?.addEventListener('click', async () => {
+  const shortcut = $('#macro-shortcut')?.value?.trim();
+  const title = $('#macro-title')?.value?.trim();
+  const content = $('#macro-content')?.value?.trim();
+  if (!shortcut || !content) return;
+  await api('/api/dashboard/canned-responses', { method: 'POST', body: JSON.stringify({ shortcut, title, content }) });
+  if ($('#macro-shortcut')) $('#macro-shortcut').value = '';
+  if ($('#macro-title')) $('#macro-title').value = '';
+  if ($('#macro-content')) $('#macro-content').value = '';
+  loadCannedResponses().catch(() => {});
+});
 let cadenceSteps = [];
 async function loadCadence() {
   const data = await api('/api/dashboard/cadence');

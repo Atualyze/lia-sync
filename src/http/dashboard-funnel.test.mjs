@@ -76,3 +76,54 @@ test('PUT /api/dashboard/missed-call persiste via updateDraft e publish', async 
   assert.equal(adminConfig.active.missedCall.enabled, true);
   assert.equal(adminConfig.active.missedCall.delaySeconds, 45);
 });
+
+test('POST /api/dashboard/crm-contact e /api/dashboard/canned-responses persistem CRM e macros', async () => {
+  const session = { phone: '5511999990000', history: [] };
+  let flushed = false;
+  const store = {
+    get: (p) => (p === '5511999990000' ? session : null),
+    markDirty: () => {},
+    flush: async () => { flushed = true; },
+  };
+  const adminConfig = {
+    active: {},
+    async updateDraft(patch) { this._draft = patch; return { ok: true }; },
+    async publish() { Object.assign(this.active, this._draft); return { ok: true }; },
+  };
+
+  const resCrm = makeRes();
+  await handleDashboardSettingsRoutes({
+    req: makeReq('POST', {
+      phone: '5511999990000',
+      clientName: 'Ana Paula',
+      email: 'ana@exemplo.com',
+      dealValue: '1500.50',
+      tags: 'vip, retorno',
+      sectorId: 'vendas',
+      notes: 'Pediu proposta para sexta',
+      funnelStage: 'agendado',
+    }),
+    res: resCrm,
+    u: new URL('http://localhost/api/dashboard/crm-contact'),
+    store,
+    adminConfig,
+  });
+  assert.equal(resCrm.out.statusCode, 200);
+  assert.equal(flushed, true);
+  assert.equal(session.dealValue, 1500.5);
+  assert.deepEqual(session.tags, ['vip', 'retorno']);
+  assert.equal(session.sectorId, 'vendas');
+  assert.equal(session.funnelStage, 'agendado');
+
+  const resMacro = makeRes();
+  await handleDashboardSettingsRoutes({
+    req: makeReq('POST', { shortcut: '/pix', title: 'Chave Pix', content: 'Nossa chave Pix é 12.345.678/0001-90' }),
+    res: resMacro,
+    u: new URL('http://localhost/api/dashboard/canned-responses'),
+    store,
+    adminConfig,
+  });
+  assert.equal(resMacro.out.statusCode, 200);
+  assert.equal(adminConfig.active.cannedResponses.length, 1);
+  assert.equal(adminConfig.active.cannedResponses[0].shortcut, 'pix');
+});

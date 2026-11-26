@@ -2557,7 +2557,12 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             </button>
           </div>
-          <div id="funnel-board" class="kanban-board"></div>
+          <div id="crm-toolbar" class="panel" style="padding:12px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+  <input type="search" id="crm-search" class="kanban-stage-select" style="flex:1;min-width:200px;padding:7px 10px;" placeholder="Buscar lead por nome, telefone ou tag..." />
+  <select id="crm-sector-filter" class="kanban-stage-select" style="max-width:200px;padding:7px 10px;"><option value="">Todos os setores</option></select>
+  <span id="crm-total-value" class="pill mini mint" style="font-size:12px;padding:6px 10px;">Pipeline: R$ 0,00</span>
+</div>
+<div id="funnel-board" class="kanban-board"></div>
         </div>
       </section>
       <section id="automations-view" class="view" data-role="admin">
@@ -2602,6 +2607,19 @@
               <button type="button" class="btn-handoff primary" id="mc-save-btn">Salvar Ligação Perdida</button>
             </div>
           </div>
+          <div id="canned-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Respostas Rápidas (Macros /)</strong><div class="ops-muted" style="font-size:12px;">Atalhos prontos para o operador usar durante o atendimento.</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+              <input type="text" id="macro-shortcut" class="kanban-stage-select" style="max-width:130px;" placeholder="/pix" />
+              <input type="text" id="macro-title" class="kanban-stage-select" style="max-width:180px;" placeholder="Título (ex: Chave Pix)" />
+              <input type="text" id="macro-content" class="kanban-stage-select" style="flex:1;min-width:220px;" placeholder="Texto da resposta rápida..." />
+              <button type="button" class="btn-handoff primary" id="macro-save-btn">Salvar Macro</button>
+            </div>
+            <div id="canned-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
+
         </div>
       </section>
     </section>
@@ -2651,6 +2669,31 @@
     </div>
   </div>
 
+  <div id="crm-lead-modal" class="cmd-modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Ficha do Lead">
+    <div class="cmd-modal-card" style="max-width:520px;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <strong id="crm-modal-title" style="font-size:16px;">Ficha do Lead</strong>
+        <button type="button" class="cmd-close-btn" id="crm-close-btn">Fechar</button>
+      </div>
+      <input type="hidden" id="crm-phone" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <label style="font-size:12px;">Nome<input type="text" id="crm-name" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
+        <label style="font-size:12px;">E-mail<input type="email" id="crm-email" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
+        <label style="font-size:12px;">Valor (R$)<input type="number" min="0" step="0.01" id="crm-value" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
+        <label style="font-size:12px;">Setor<select id="crm-sector" class="kanban-stage-select" style="width:100%;margin-top:4px;"><option value="">Sem setor</option></select></label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <label style="font-size:12px;">Etapa<select id="crm-stage" class="kanban-stage-select" style="width:100%;margin-top:4px;">
+          <option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="agendado">Agendado</option><option value="transferido">Transferido</option><option value="fechado">Fechado</option>
+        </select></label>
+        <label style="font-size:12px;">Tags (vírgula)<input type="text" id="crm-tags" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="vip, retorno" /></label>
+      </div>
+      <label style="font-size:12px;display:block;margin-bottom:12px;">Notas Internas<textarea id="crm-notes" class="kanban-stage-select" style="width:100%;min-height:80px;margin-top:4px;" placeholder="Anotações da equipe..."></textarea></label>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" class="btn-handoff primary" id="crm-save-btn">Salvar Ficha</button>
+      </div>
+    </div>
+  </div>
   <script src="/dashboard/app.js"></script>
 </body>
 </html>
