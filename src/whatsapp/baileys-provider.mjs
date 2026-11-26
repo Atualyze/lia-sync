@@ -157,6 +157,7 @@ export class BaileysProvider {
     this.manualStop = false;
     this.starting = false;
     this.seenMessages = new BoundedLruCache({ max: DEDUPE_CACHE_MAX, ttlMs: DEDUPE_TTL_MS });
+    this.verifiedJidCache = new BoundedLruCache({ max: 1000, ttlMs: 6 * 60 * 60 * 1000 });
   }
 
   getStatus() {
@@ -517,14 +518,40 @@ export class BaileysProvider {
     return this.sock;
   }
 
+  async _resolveVerifiedJid(sock, jid) {
+    const remoteJid = toRemoteJid(jid);
+    if (!remoteJid || /@lid$/i.test(remoteJid)) return remoteJid;
+    const digits = remoteJid.split('@')[0].replace(/\D/g, '');
+    if (!digits.startsWith('55') || (digits.length !== 12 && digits.length !== 13)) return remoteJid;
+    const cached = this.verifiedJidCache?.get(digits);
+    if (cached) return cached;
+    try {
+      const altDigits = digits.length === 13 && digits[4] === '9'
+        ? `${digits.slice(0, 4)}${digits.slice(5)}`
+        : (digits.length === 12 ? `${digits.slice(0, 4)}9${digits.slice(4)}` : '');
+      const candidates = altDigits ? [digits, altDigits] : [digits];
+      const results = await Promise.race([
+        sock.onWhatsApp(...candidates),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('onWhatsApp_timeout')), 2500))
+      ]);
+      const match = Array.isArray(results) ? results.find(r => r?.exists && r?.jid) : null;
+      if (match?.jid) {
+        this.verifiedJidCache?.set(digits, match.jid);
+        return match.jid;
+      }
+    } catch {}
+    return remoteJid;
+  }
+
   async sendText(jid, text) {
     const sock = this._requireConnected();
-    const remoteJid = toRemoteJid(jid);
+    const remoteJid = await this._resolveVerifiedJid(sock, jid);
     const res = await sock.sendMessage(remoteJid, { text: String(text || '') });
     this.messagesSent += 1;
     this.lastMessageAt = new Date().toISOString();
     this._emitState();
-    this.logger.info?.('[baileys:send]', JSON.stringify({ suffix: remoteJid.slice(-12), isLid: /@lid$/i.test(remoteJid), id: res?.key?.id || null }));
+    const [u, dom] = remoteJid.split('@');
+    this.logger.info?.('[baileys:send]', JSON.stringify({ target: `***${String(u || '').slice(-4)}@${dom || ''}`, isLid: /@lid$/i.test(remoteJid), id: res?.key?.id || null }));
     return { result: res, id: res?.key?.id };
   }
 
