@@ -373,11 +373,18 @@ export class BaileysProvider {
             const normalizedMsg = msg.message?.documentWithCaptionMessage?.message
               ? { ...msg.message, documentMessage: msg.message.documentWithCaptionMessage.message.documentMessage }
               : (msg.message || {});
+            let resolvedAlt = msg.key?.remoteJidAlt || '';
+            if (!resolvedAlt && /@lid$/i.test(msg.key?.remoteJid || '')) {
+              try {
+                const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(msg.key.remoteJid);
+                if (pn) resolvedAlt = String(pn).replace(/:\d+(?=@)/, '');
+              } catch {}
+            }
             void Promise.resolve(this.onEvent({
               event: 'MESSAGES_UPSERT',
               instance: 'baileys',
               data: {
-                key: msg.key,
+                key: { ...msg.key, ...(resolvedAlt ? { remoteJidAlt: resolvedAlt } : {}) },
                 message: normalizedMsg,
                 pushName: msg.pushName || '',
                 messageTimestamp: msg.messageTimestamp
@@ -511,6 +518,7 @@ export class BaileysProvider {
     this.messagesSent += 1;
     this.lastMessageAt = new Date().toISOString();
     this._emitState();
+    this.logger.info?.('[baileys:send]', JSON.stringify({ suffix: remoteJid.slice(-12), isLid: /@lid$/i.test(remoteJid), id: res?.key?.id || null }));
     return { result: res, id: res?.key?.id };
   }
 

@@ -482,7 +482,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       if (!wasHuman && isHumanHandoffActive(store.get(job.phone))) {
         void integrationsStore.dispatchEvent('handoff.triggered', { phone: job.phone, text: job.text || '' }).catch(() => {});
       }
-      if (!answer) return null;
+      if (!answer) {
+        console.info('[deliver] sem resposta para envio', JSON.stringify({ suffix: String(job.phone || '').slice(-6), wasHuman, human: isHumanHandoffActive(store.get(job.phone)) }));
+        return null;
+      }
       // Ponto único de saída: nenhuma resposta chega ao WhatsApp sem passar por filterReply.
       const copilotTarget = isOwnerKey(job.phone);
       const serverAllowedPrices = copilotTarget ? new Set() : new Set(getAllowedPrices());
@@ -705,9 +708,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     getActiveInstancePhone,
     notifyCopilot: async (message) => {
       if (!message) return;
-      void telegramCopilot?.notifyAdmin?.(message).catch(() => {});
+      void telegramCopilot?.notifyAdmin?.(message).catch((err) => console.error('[notifyCopilot:tg]', err?.message || err));
       const humanPhone = getHumanPhone?.();
-      if (humanPhone) await sendText(humanPhone, message).catch(() => {});
+      if (!humanPhone) {
+        console.info('[notifyCopilot:wa] sem humanPhone configurado');
+        return;
+      }
+      await sendText(humanPhone, message).catch((err) => console.error('[notifyCopilot:wa]', err?.message || err));
     }
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.deliverReactivationReply = deliverReactivationReply; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
