@@ -1639,8 +1639,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         // 1.9 Chamada Inteligente com Persona de Copiloto do responsável
-        const configuredContextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
-        const contextTurns = Math.min(COPILOT_CONTEXT_LIMIT, configuredContextTurns);
+        const configuredContextTurns = Math.max(4, Math.min(200, Number(botConfig?.ai?.contextTurns) || 100));
+        const contextTurns = configuredContextTurns;
         activeTask = activeCopilotTask(sSelf, now());
         if (!activeTask && sSelf.pendingPixRequest?.requestedAt) {
           activeTask = {
@@ -1655,7 +1655,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
           : [];
         const fullRecentHistory = (Array.isArray(sSelf.history) ? sSelf.history : []).slice(-contextTurns);
-        let recentHistory = (taskHistory.length >= 2 ? taskHistory : fullRecentHistory).slice(-contextTurns);
+        let recentHistory = fullRecentHistory;
         let turnReview = null;
         let suppressToolExecution = false;
         const lastAssistantContext = [...recentHistory].reverse().find(entry => entry?.role === 'assistant')?.content || activeTask?.lastQuestion || '';
@@ -1712,14 +1712,15 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         const supportContacts = Object.values(store.sessions || {})
-          .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes))
+          .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes || s.aiContext))
           .map(s => ({
             name: s.clientName || s.contactName || s.pushName || s.phone,
             phone: s.phone,
             supportModeEnabled: Boolean(s.supportModeEnabled),
             knowledgeBaseId: s.knowledgeBaseId || null,
             contactRole: s.contactRole || null,
-            notes: s.contactNotes || ''
+            notes: s.contactNotes || '',
+            aiContext: s.aiContext || ''
           }));
         const ownerMemoryQuery = recentHistory.slice(-6)
           .map(entry => `${entry.role}: ${entry.content || ''}`)

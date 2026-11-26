@@ -51,7 +51,7 @@ function resolveFunnelStage(s, history) {
   return 'novo';
 }
 
-export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null }) {
+export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/avatar') {
     const rawPhone = String(u.searchParams.get('phone') || '').trim();
     if (!rawPhone || isOwnerKey(rawPhone) || rawPhone.startsWith('sim:') || rawPhone.length > 64) {
@@ -271,6 +271,9 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
         origin: 'dashboard'
       }));
       await store.flush?.().catch(() => {});
+      if (answer && typeof notifyCopilot === 'function') {
+        void Promise.resolve(notifyCopilot(answer)).catch(() => {});
+      }
       return json(res, 200, { ok: true, sent: true, internal: true, selectedPhone: OWNER_SELF_KEY, answer: answer || null });
     }
     const phone = rawPhone;
@@ -328,7 +331,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
 }
 
 // Modo/limpeza/configuração do painel (executadas depois das rotas /api/bridge/*).
-export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null, tenantStore = null, customSectorStore = null }) {
+export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null, tenantStore = null, customSectorStore = null, f = null, deliverReactivationReply = null }) {
   const activeTenantStore = tenantStore || defaultTenantStore;
   const activeSectorStore = customSectorStore || defaultSectorStore;
   if (req.method === 'POST' && u.pathname === '/api/dashboard/mode') {

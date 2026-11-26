@@ -147,6 +147,7 @@ export const toolConsultarContato = {
           type: contact.customer_type || 'lead',
           labels: contact.labels || [],
           notes: contact.notes || 'Sem observações adicionais.',
+          ...(session?.aiContext ? { aiContext: session.aiContext } : {}),
           ...(attendance ? { attendance } : {})
         };
       }

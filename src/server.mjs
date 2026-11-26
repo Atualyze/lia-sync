@@ -702,7 +702,13 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     copilotTaskStore,
     onAIConfigUpdated,
     deliverReactivationReply,
-    getActiveInstancePhone
+    getActiveInstancePhone,
+    notifyCopilot: async (message) => {
+      if (!message) return;
+      void telegramCopilot?.notifyAdmin?.(message).catch(() => {});
+      const humanPhone = getHumanPhone?.();
+      if (humanPhone) await sendText(humanPhone, message).catch(() => {});
+    }
   });
   app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.deliverReactivationReply = deliverReactivationReply; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }

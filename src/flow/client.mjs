@@ -708,7 +708,7 @@ export async function handleClientMessage({
       const aiDeadline = Date.now() + 35000;
       const items = await faq();
       const userText = `<mensagem_do_cliente>${clean}</mensagem_do_cliente>${formatMessageContextForAI(contextText)}`;
-      const contextTurns = Math.max(4, Math.min(100, Number(botConfig?.ai?.contextTurns) || 24));
+      const contextTurns = Math.max(4, Math.min(200, Number(botConfig?.ai?.contextTurns) || 100));
       const hasPendingClientWork = Boolean(
         s.pendingClientPayment || s.pendingClientAgenda || s.pendingPixRequest || s.pendingCheckout
       );
@@ -762,7 +762,8 @@ export async function handleClientMessage({
       const activeContext = selectActiveClientHistory(s.history, {
         maxTurns: contextTurns,
         nowMs: now(),
-        preservePendingContext: hasPendingClientWork && pendingContextContinuation
+        topicGapMs: Number.MAX_SAFE_INTEGER,
+        preservePendingContext: true
       });
       if (activeContext.topicBoundary && !pendingContextContinuation) {
         s.contextSummary = null;
@@ -833,8 +834,10 @@ export async function handleClientMessage({
         );
       }
 
+      const effectiveAiContext = s.aiContext || (origin === 'simulation' ? store.get(phone, 'real')?.aiContext : '') || '';
       const promptSession = {
         ...s,
+        aiContext: effectiveAiContext,
         history: activeContext.history,
         hasPriorConversation: activeContext.history.length > 1 || Boolean(s.lastBotAt),
         historyRecallRequested,
