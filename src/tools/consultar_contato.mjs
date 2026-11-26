@@ -40,9 +40,9 @@ function findMatchingSession(sessionsObj = {}, cleanPhone = '', name = '') {
 function buildAttendanceSummary(session) {
   if (!session) return null;
   const history = Array.isArray(session.history) ? session.history : [];
-  const recentMessages = history.slice(-10).map(msg => ({
+  const fullMessages = history.slice(-100).map(msg => ({
     role: msg.role === 'assistant' ? 'lia' : (msg.role === 'human' ? 'humano' : 'cliente'),
-    content: String(msg.content || '').slice(0, 320),
+    content: String(msg.content || '').slice(0, 500),
     createdAt: msg.createdAt || null
   }));
   return {
@@ -53,7 +53,7 @@ function buildAttendanceSummary(session) {
     lastBotAt: session.lastBotAt || null,
     updatedAt: session.updatedAt || null,
     handoffAt: session.handoffAt || null,
-    recentMessages
+    recentMessages: fullMessages
   };
 }
 
@@ -93,7 +93,7 @@ export const toolConsultarContato = {
       if (restClient && typeof restClient.select === 'function' && restClient.enabled !== false && (cleanPhone || name)) {
         try {
           const filter = cleanPhone
-            ? `or=(phone.eq.${encodeURIComponent(cleanPhone)},phone.ilike.*${encodeURIComponent(cleanPhone.slice(-8))}*)`
+            ? `or=(phone.eq.${encodeURIComponent(cleanPhone)},phone.ilike.*${encodeURIComponent(cleanPhone.slice(-8))}*,external_id.eq.${encodeURIComponent(cleanPhone)},external_id.ilike.*${encodeURIComponent(cleanPhone.slice(-8))}*)`
             : `or=(display_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*,push_name.ilike.*${encodeURIComponent(String(name).replace(/[*%,()]/g, ''))}*)`;
           const rows = await restClient.select('contacts', `select=id,external_id,phone,display_name,push_name,metadata,created_at&${filter}&limit=1`);
           if (Array.isArray(rows) && rows[0]) {
@@ -150,10 +150,13 @@ export const toolConsultarContato = {
           name: contact.name,
           phone: contact.phone,
           type: contact.customer_type || 'lead',
-          labels: contact.labels || [],
-          notes: contact.notes || 'Sem observações adicionais.',
+          labels: session?.tags?.length ? session.tags : (contact.labels || []),
+          notes: session?.contactNotes || session?.notes || contact.notes || 'Sem observações adicionais.',
           ...(session?.aiContext || contact.aiContext ? { aiContext: session?.aiContext || contact.aiContext } : {}),
           ...(contact.email || session?.email ? { email: contact.email || session?.email } : {}),
+          ...(session?.funnelStage || contact.customer_type ? { funnelStage: session?.funnelStage || contact.customer_type } : {}),
+          ...(Number(session?.dealValue || contact.dealValue || 0) > 0 ? { dealValue: Number(session?.dealValue || contact.dealValue) } : {}),
+          ...(session?.sectorId ? { sectorId: session.sectorId } : {}),
           ...(attendance ? { attendance } : {})
         };
       }

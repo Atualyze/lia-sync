@@ -1711,16 +1711,21 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
           }
         }
 
-        const supportContacts = Object.values(store.sessions || {})
-          .filter(s => s && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes || s.aiContext))
+        const supportContacts = Object.entries(store.sessions || {})
+          .filter(([k, s]) => s && !k.startsWith('sim:') && s.origin !== 'simulation' && !s.archived && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes || s.aiContext || s.clientName || s.notes))
+          .map(([, s]) => s)
+          .sort((a, b) => Date.parse(b.updatedAt || b.lastUserAt || 0) - Date.parse(a.updatedAt || a.lastUserAt || 0))
+          .slice(0, 40)
           .map(s => ({
             name: s.clientName || s.contactName || s.pushName || s.phone,
             phone: s.phone,
-            supportModeEnabled: Boolean(s.supportModeEnabled),
-            knowledgeBaseId: s.knowledgeBaseId || null,
-            contactRole: s.contactRole || null,
-            notes: s.contactNotes || '',
-            aiContext: s.aiContext || ''
+            ...(s.aiContext ? { aiContext: s.aiContext } : {}),
+            ...(s.contactNotes || s.notes ? { notes: s.contactNotes || s.notes } : {}),
+            ...(s.email ? { email: s.email } : {}),
+            ...(s.funnelStage ? { funnelStage: s.funnelStage } : {}),
+            ...(Number(s.dealValue || 0) > 0 ? { dealValue: s.dealValue } : {}),
+            ...(s.supportModeEnabled ? { supportModeEnabled: true } : {}),
+            ...(s.knowledgeBaseId ? { knowledgeBaseId: s.knowledgeBaseId } : {})
           }));
         const ownerMemoryQuery = recentHistory.slice(-6)
           .map(entry => `${entry.role}: ${entry.content || ''}`)
@@ -1889,13 +1894,26 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
 
           if (toolCallsToRun.length === 0) {
             const claimedLookup = /(?:consultando|verificando|checando|buscando|olhando|puxando)\s+(?:agora\s+)?(?:o\s+)?(?:cadastro|hist[oó]rico|dados|contato|conversa|crm)/i.test(rawRep);
-            const userAskedLookup = /\b(?:consulte|consultar|atendimento|hist[oó]rico|conversa|cliente|contato)\b/i.test(cleanCommand) && !/\b(?:cnpj|cep|cpf)\b/i.test(cleanCommand);
+            const userAskedLookup = /\b(?:consulte|consultar|atendimento|hist[oó]rico|conversa|cliente|contato|sabe\s+sobre|contexto|ficha)\b/i.test(cleanCommand) && !/\b(?:cnpj|cep|cpf)\b/i.test(cleanCommand);
             const rawDigits = cleanCommand.match(/\d{8,14}/)?.[0] || rawRep.match(/\d{8,14}/)?.[0] || '';
             if ((claimedLookup || userAskedLookup || /^\s*(?:\+?55)?\d{8,14}\s*$/.test(cleanCommand)) && rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
               toolCallsToRun.push({
                 name: 'consultar_contato_ou_lead',
                 args: { phone: rawDigits }
               });
+            } else if (userAskedLookup && !rawDigits && isToolEnabled('consultar_contato_ou_lead', botConfig)) {
+              const lowerCmd = cleanCommand.toLowerCase();
+              const matchedSess = Object.values(store.sessions || {}).find(item =>
+                item && item.phone && item.phone !== OWNER_SELF_KEY &&
+                [item.clientName, item.contactName, item.pushName].some(n => n && String(n).trim().length >= 3 && lowerCmd.includes(String(n).trim().toLowerCase()))
+              );
+              const lookupName = matchedSess ? (matchedSess.clientName || matchedSess.contactName || matchedSess.pushName) : '';
+              if (lookupName) {
+                toolCallsToRun.push({
+                  name: 'consultar_contato_ou_lead',
+                  args: { name: lookupName }
+                });
+              }
             }
           }
         }
