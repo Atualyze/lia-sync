@@ -3321,7 +3321,8 @@ const VIEW_TITLES = {
   runtime: 'Autonomia & Memória',
   funnel: 'CRM · Funil de Leads',
   sectors: 'Setores & Triagem',
-  automations: 'Automações & Réguas'
+  automations: 'Automações & Réguas',
+  prospecting: 'Prospecção Ativa'
 };
 
 function resolveViewFromUrl() {
@@ -3376,6 +3377,10 @@ function showView(view, opts = {}) {
     loadMissedCall().catch(() => {});
     loadCannedResponses().catch(() => {});
   }
+  if (view === 'prospecting') {
+    renderAdminData();
+    window.loadProspectLists?.().catch?.(() => {});
+  }
   if (view === 'integrations') {
     loadTenants().catch(() => {});
   }
@@ -3429,6 +3434,7 @@ function setupCommandPalette() {
     { title: 'Configurações: Motor IA & Fallbacks', sub: 'Provedor, modelo ativo e reservas', role: 'admin', action: () => openAdminSection('acc-ai') },
     { title: 'Configurações: Voz Nativa (TTS WAV)', sub: 'Aoede, Kore, velocidade e PTT automático', role: 'admin', action: () => openAdminSection('acc-voice') },
     { title: 'Atendimento: Automações & Follow-up', sub: 'Follow-up proativo, cadências, ligação perdida e reputação', role: 'admin', action: () => showView('automations') },
+    { title: 'Atendimento: Prospecção Ativa', sub: 'Motor de prospecção, janela de envio e listas CSV/JSON', role: 'admin', action: () => showView('prospecting') },
     { title: 'Configurações: Operações & Transbordo', sub: 'Mídias, sincronização WhatsApp e alertas humanos', role: 'admin', action: () => openAdminSection('acc-automation') },
     { title: 'Configurações: Janela de Atendimento', sub: 'Expediente comercial e aviso fora de hora', role: 'admin', action: () => openAdminSection('acc-hours') },
     { title: 'Configurações: Google Calendar', sub: 'Horários livres, duração de slots e agenda', role: 'admin', action: () => openAdminSection('acc-calendar') },
@@ -4738,8 +4744,9 @@ document.addEventListener('visibilitychange', () => {
       if (btn) btn.disabled = false;
     }
   });
-  acc?.addEventListener('toggle', () => {
-    if (acc.open) loadProspectLists();
+  window.loadProspectLists = loadProspectLists;
+  document.getElementById('prospecting-publish-btn')?.addEventListener('click', () => {
+    publishAdminChanges();
   });
 })();
 

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126b" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -135,6 +135,10 @@
             <button class="nav-item" data-view="automations" data-role="admin" title="Automações: Cadências, Ligação Perdida e Reputação">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               <span class="nav-label">Automações</span>
+            </button>
+            <button class="nav-item" data-view="prospecting" data-role="admin" title="Prospecção Ativa &amp; Importação de Leads (CSV/JSON)">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>
+              <span class="nav-label">Prospecção Ativa</span>
             </button>
           </div>
         </details>
@@ -627,7 +631,6 @@
               <button type="button" class="chip-btn" data-open-acc="acc-messages">Roteiros</button>
               <button type="button" class="chip-btn" data-open-acc="acc-faq">FAQ</button>
               <button type="button" class="chip-btn" data-open-acc="acc-history">Versões</button>
-              <button type="button" class="chip-btn" data-open-acc="acc-prospecting">Prospecção</button>
             </div>
             <div class="accordion-actions">
               <button type="button" class="icon-btn btn-sm" id="admin-expand-all" title="Expandir todas as seções" aria-label="Expandir todas as seções">
@@ -1144,90 +1147,6 @@
               </div>
             </details>
 
-            <!-- MENU RECOLHÍVEL 12: PROSPECÇÃO ATIVA & IMPORTAÇÃO DE LEADS -->
-            <details class="config-accordion panel" id="acc-prospecting" data-section-keys="prospecting">
-              <summary class="config-accordion-head">
-                <div class="acc-title-group">
-                  <span class="acc-icon tint-emerald">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>
-                  </span>
-                  <div>
-                    <strong>Prospecção Ativa</strong>
-                    <span>Limites diários, janela de envio e importação de listas (CSV/JSON)</span>
-                  </div>
-                </div>
-                <div class="acc-meta">
-                  <span class="admin-status" data-section-badge="prospecting">Sincronizado</span>
-                  <svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </div>
-              </summary>
-              <div class="config-accordion-body">
-                <div class="admin-form-grid">
-                  <label class="toggle-field wide">
-                    <input type="checkbox" data-config="prospecting.enabled" />
-                    <span>Ativar motor de prospecção automática no ciclo de manutenção</span>
-                  </label>
-                  <label class="toggle-field wide">
-                    <input type="checkbox" data-config="prospecting.testMode" />
-                    <span>Modo Teste (ignora restrição de domingo/horário comercial para testar com sua lista)</span>
-                  </label>
-                  <label>Teto Diário Base (leads/dia)
-                    <input type="number" data-config="prospecting.dailyCap" min="1" max="500" step="1" />
-                  </label>
-                  <label>Dias de Aquecimento Gradual (0–90)
-                    <input type="number" data-config="prospecting.warmupDays" min="0" max="90" step="1" />
-                  </label>
-                  <label>Início da Janela (Hora)
-                    <input type="time" data-config="prospecting.windowStart" />
-                  </label>
-                  <label>Fim da Janela (Hora)
-                    <input type="time" data-config="prospecting.windowEnd" />
-                  </label>
-                  <label class="wide">Template Padrão de Primeiro Contato
-                    <textarea data-config="prospecting.defaultTemplate" rows="3" maxlength="600" placeholder="Olá {{nome}}, tudo bem? ... Se preferir não receber mensagens, responda SAIR."></textarea>
-                    <span class="field-hint">Variáveis suportadas: <code>{{nome}}</code> e <code>{{empresa}}</code>. Inclua sempre opção clara de opt-out (ex: SAIR).</span>
-                  </label>
-                </div>
-
-                <hr style="border:0;border-top:1px solid var(--border-hairline);margin:18px 0;" />
-
-                <div class="admin-form-grid">
-                  <label>Nome da Nova Lista
-                    <input id="prospect-list-name" type="text" placeholder="Ex.: Clínicas Fortaleza Nov/2026" maxlength="120" />
-                  </label>
-                  <label>Segmento
-                    <input id="prospect-list-segment" type="text" placeholder="Ex.: Clínicas odontológicas" maxlength="120" />
-                  </label>
-                  <label class="wide">Base de Consentimento (LGPD)
-                    <input id="prospect-list-consent" type="text" placeholder="Ex.: Cadastro evento / Legítimo interesse" maxlength="160" />
-                  </label>
-                  <label>Início Programado (opcional)
-                    <input id="prospect-list-start" type="datetime-local" />
-                  </label>
-                  <label>Término Programado (opcional)
-                    <input id="prospect-list-end" type="datetime-local" />
-                  </label>
-                  <label class="wide">Carregar Arquivo (.csv ou .json)
-                    <input id="prospect-file-input" type="file" accept=".csv,.json,.txt" />
-                  </label>
-                  <label class="wide">Conteúdo CSV ou JSON (colunas: nome, telefone, segmento)
-                    <textarea id="prospect-leads-text" rows="5" placeholder="nome,telefone,segmento&#10;Ana Silva,(85) 99999-1111,Clínica"></textarea>
-                  </label>
-                  <div class="wide" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <button id="prospect-import-btn" type="button" class="admin-primary-btn">Importar Lista</button>
-                    <button id="prospect-test-tick-btn" type="button" class="admin-ghost-btn">Testar Agora</button>
-                    <button id="prospect-refresh-btn" type="button" class="icon-btn" title="Atualizar listas" aria-label="Atualizar listas">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                    </button>
-                    <span id="prospect-import-status" class="field-hint" aria-live="polite"></span>
-                  </div>
-                </div>
-
-                <div id="prospect-lists-container" class="ops-list" style="margin-top:16px;">
-                  <div class="detail-placeholder">Nenhuma lista carregada ainda. Clique em "Atualizar Listas" ou importe um CSV/JSON.</div>
-                </div>
-              </div>
-            </details>
           </div>
         </div>
       </section>
@@ -2633,6 +2552,94 @@
 
         </div>
       </section>
+      <section id="prospecting-view" class="view" data-role="admin">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Prospecção Ativa</h2>
+              <p>Limites diários, janela de envio, aquecimento gradual e importação de listas (CSV/JSON).</p>
+            </div>
+            <div class="hero-actions">
+              <button type="button" class="btn-handoff primary" id="prospecting-publish-btn">Publicar Prospecção</button>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top:16px;padding:16px;">
+            <div style="margin-bottom:12px;">
+              <strong>Motor &amp; Janela de Disparo</strong>
+              <div class="ops-muted" style="font-size:12px;">Regras globais do motor automático de prospecção ativa.</div>
+            </div>
+            <div class="admin-form-grid">
+              <label class="toggle-field wide">
+                <input type="checkbox" data-config="prospecting.enabled" />
+                <span>Ativar motor de prospecção automática no ciclo de manutenção</span>
+              </label>
+              <label class="toggle-field wide">
+                <input type="checkbox" data-config="prospecting.testMode" />
+                <span>Modo Teste (ignora restrição de domingo/horário comercial para testar com sua lista)</span>
+              </label>
+              <label>Teto Diário Base (leads/dia)
+                <input type="number" data-config="prospecting.dailyCap" min="1" max="500" step="1" />
+              </label>
+              <label>Dias de Aquecimento Gradual (0–90)
+                <input type="number" data-config="prospecting.warmupDays" min="0" max="90" step="1" />
+              </label>
+              <label>Início da Janela (Hora)
+                <input type="time" data-config="prospecting.windowStart" />
+              </label>
+              <label>Fim da Janela (Hora)
+                <input type="time" data-config="prospecting.windowEnd" />
+              </label>
+              <label class="wide">Template Padrão de Primeiro Contato
+                <textarea data-config="prospecting.defaultTemplate" rows="3" maxlength="600" placeholder="Olá {{nome}}, tudo bem? ... Se preferir não receber mensagens, responda SAIR."></textarea>
+                <span class="field-hint">Variáveis suportadas: <code>{{nome}}</code> e <code>{{empresa}}</code>. Inclua sempre opção clara de opt-out (ex: SAIR).</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top:16px;padding:16px;">
+            <div style="margin-bottom:12px;">
+              <strong>Importação &amp; Listas de Leads</strong>
+              <div class="ops-muted" style="font-size:12px;">Cadastre listas CSV/JSON com base de consentimento LGPD e acompanhe os envios.</div>
+            </div>
+            <div class="admin-form-grid">
+              <label>Nome da Nova Lista
+                <input id="prospect-list-name" type="text" placeholder="Ex.: Clínicas Fortaleza Nov/2026" maxlength="120" />
+              </label>
+              <label>Segmento
+                <input id="prospect-list-segment" type="text" placeholder="Ex.: Clínicas odontológicas" maxlength="120" />
+              </label>
+              <label class="wide">Base de Consentimento (LGPD)
+                <input id="prospect-list-consent" type="text" placeholder="Ex.: Cadastro evento / Legítimo interesse" maxlength="160" />
+              </label>
+              <label>Início Programado (opcional)
+                <input id="prospect-list-start" type="datetime-local" />
+              </label>
+              <label>Término Programado (opcional)
+                <input id="prospect-list-end" type="datetime-local" />
+              </label>
+              <label class="wide">Carregar Arquivo (.csv ou .json)
+                <input id="prospect-file-input" type="file" accept=".csv,.json,.txt" />
+              </label>
+              <label class="wide">Conteúdo CSV ou JSON (colunas: nome, telefone, segmento)
+                <textarea id="prospect-leads-text" rows="5" placeholder="nome,telefone,segmento&#10;Ana Silva,(85) 99999-1111,Clínica"></textarea>
+              </label>
+              <div class="wide" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <button id="prospect-import-btn" type="button" class="admin-primary-btn">Importar Lista</button>
+                <button id="prospect-test-tick-btn" type="button" class="admin-ghost-btn">Testar Agora</button>
+                <button id="prospect-refresh-btn" type="button" class="icon-btn" title="Atualizar listas" aria-label="Atualizar listas">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                </button>
+                <span id="prospect-import-status" class="field-hint" aria-live="polite"></span>
+              </div>
+            </div>
+
+            <div id="prospect-lists-container" class="ops-list" style="margin-top:16px;">
+              <div class="detail-placeholder">Nenhuma lista carregada ainda. Clique em "Atualizar Listas" ou importe um CSV/JSON.</div>
+            </div>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -2705,6 +2712,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126"></script>
+  <script src="/dashboard/app.js?v=20261126b"></script>
 </body>
 </html>
