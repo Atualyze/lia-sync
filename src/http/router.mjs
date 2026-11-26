@@ -1,7 +1,7 @@
 import { config } from '../config.mjs';
 import { serveStatic } from '../dashboard.mjs';
 import { json, NOT_HANDLED } from './utils.mjs';
-import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath } from './proxy.mjs';
+import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath, isDashboardViewPath } from './proxy.mjs';
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
 import { handleRuntimeDashboardRoutes } from './runtime-routes.mjs';
 import { handleAdminRoutes } from './admin.mjs';
@@ -228,7 +228,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
       if (isLegacyStaticPath(u.pathname)) {
-        if (u.pathname === '/legacy-dashboard' || /^\/dashboard\/[a-z0-9-]+$/i.test(u.pathname)) req.url = '/index.html';
+        if (u.pathname === '/legacy-dashboard' || isDashboardViewPath(u.pathname)) req.url = '/index.html';
         return serveStatic(req, res, config);
       }
       const authResult = await auth(req, config);

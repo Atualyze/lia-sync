@@ -3325,7 +3325,7 @@ const VIEW_TITLES = {
 };
 
 function resolveViewFromUrl() {
-  const m = window.location.pathname.match(/^\/dashboard\/([a-z0-9-]+)\/?$/i);
+  const m = window.location.pathname.match(/^(?:\/dashboard)?\/([a-z0-9-]+)\/?$/i);
   const candidate = m ? m[1].toLowerCase() : '';
   return candidate && document.querySelector(`#${candidate}-view`) ? candidate : null;
 }
@@ -3338,7 +3338,7 @@ window.addEventListener('popstate', () => {
 function showView(view, opts = {}) {
   if (view === 'agent') view = 'ai-hub';
   state.view = view;
-  const targetUrl = view === 'overview' ? '/dashboard' : `/dashboard/${view}`;
+  const targetUrl = view === 'overview' ? '/dashboard' : `/${view}`;
   if (!opts.skipHistory && window.location.pathname !== targetUrl) {
     try { window.history.pushState({ view }, '', targetUrl); } catch {}
   }

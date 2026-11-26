@@ -49,12 +49,23 @@ export function isChatwootApiPath(pathname) {
 export function isVerifiedWebhookEndpoint(method, pathname) {
   return ['GET', 'POST'].includes(method) && /^\/api\/webhooks\/(?:whatsapp|instagram|messenger|evolution|telegram)$/.test(pathname);
 }
+const DASHBOARD_VIEWS = new Set([
+  'overview', 'inbox', 'handoff', 'funnel', 'sectors', 'automations',
+  'admin', 'integrations', 'ai-hub', 'metrics', 'vps', 'runtime', 'users', 'tools',
+]);
+
+export function isDashboardViewPath(pathname = '') {
+  const clean = String(pathname || '').replace(/\/+$/, '');
+  const m = clean.match(/^(?:\/dashboard)?\/([a-z0-9-]+)$/i);
+  return Boolean(m && DASHBOARD_VIEWS.has(m[1].toLowerCase()));
+}
+
 export function isLegacyStaticPath(pathname) {
   return (
     pathname === '/legacy-dashboard' ||
     pathname === '/dashboard' ||
     pathname === '/dashboard/' ||
-    /^\/dashboard\/[a-z0-9-]+$/i.test(pathname) ||
+    isDashboardViewPath(pathname) ||
     pathname === '/dashboard/index.html' ||
     pathname === '/dashboard/app.js' ||
     pathname === '/dashboard/styles.css' ||
