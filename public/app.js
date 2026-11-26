@@ -3160,6 +3160,7 @@ function render({ background = false } = {}) {
   try { renderChat(); } catch (e) { console.error('[renderChat]', e); }
   try { renderHandoff(); } catch (e) { console.error('[renderHandoff]', e); }
   try { renderFunnel(); } catch (e) { console.error('[renderFunnel]', e); }
+  try { renderContacts(); } catch (e) { console.error('[renderContacts]', e); }
   if (!background) {
     if (state.view === 'admin') { try { renderAdmin(); } catch (e) { console.error('[renderAdmin]', e); } }
     if (state.view === 'agent') { try { renderAgent(); } catch (e) { console.error('[renderAgent]', e); } }
@@ -3320,6 +3321,7 @@ const VIEW_TITLES = {
   vps: 'Monitor da VPS',
   runtime: 'Autonomia & Memória',
   funnel: 'CRM · Funil de Leads',
+  contacts: 'Contatos',
   sectors: 'Setores & Triagem',
   automations: 'Automações & Réguas',
   prospecting: 'Prospecção Ativa'
@@ -3389,6 +3391,11 @@ function showView(view, opts = {}) {
     renderFunnel();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
   }
+  if (view === 'contacts') {
+    api('/api/dashboard/sectors-custom').then(d => syncSectorDropdowns(d?.sectors || [])).catch(() => {});
+    renderContacts();
+    if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
+  }
   if (view === 'handoff') {
     renderHandoff();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
@@ -3427,6 +3434,7 @@ function setupCommandPalette() {
     { title: 'Monitor VPS (Somente Leitura)', sub: 'CPU, RAM, Swap/ZRAM, Docker e processos em tempo real', action: () => showView('vps') },
     { title: 'Conversas (Inbox)', sub: 'Atendimento em tempo real e simulador', role: 'operator', action: () => showView('inbox') },
     { title: 'Fila de Transbordos', sub: 'Atendimentos aguardando humano', role: 'operator', action: () => showView('handoff') },
+    { title: 'Atendimento: Contatos', sub: 'Base de contatos, ficha técnica e menu de contexto', role: 'operator', action: () => showView('contacts') },
     { title: 'Ferramentas & Consulta Web', sub: 'Catálogo de Tool Calling e Google Search', action: () => showView('tools') },
     { title: 'Capacidades & Roteador IA', sub: 'Matriz de modelos e simulador de rota', action: () => showView('agent') },
     { title: 'Integrações & Webhooks', sub: 'Evolution API, Supabase e Ponte Chatwoot', action: () => showView('integrations') },
@@ -6010,13 +6018,13 @@ function playHandoffChime() {
 }
 
 function syncSectorDropdowns(sectors = []) {
-  const filterEl = $('#crm-sector-filter');
+  const filterEls = [$('#crm-sector-filter'), $('#contacts-sector-filter')].filter(Boolean);
   const modalEl = $('#crm-sector');
-  if (filterEl) {
+  filterEls.forEach((filterEl) => {
     const cur = filterEl.value;
     filterEl.innerHTML = '<option value="">Todos os setores</option>' + sectors.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     filterEl.value = cur;
-  }
+  });
   if (modalEl) {
     const cur = modalEl.value;
     modalEl.innerHTML = '<option value="">Sem setor</option>' + sectors.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
@@ -6140,8 +6148,242 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
   if (target) Object.assign(target, { ...payload, displayName: payload.clientName || target.displayName, dealValue: Number(payload.dealValue || 0), tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean) });
   $('#crm-lead-modal')?.classList.add('hidden');
   renderFunnel();
+  renderContacts();
 });
 $('#refresh-funnel')?.addEventListener('click', () => refresh().catch(() => {}));
+
+let selectedContactPhone = null;
+
+function openContactContextMenu(item, x, y) {
+  if (!item) return;
+  const displayTitle = item.displayName || item.clientName || item.name || item.phoneFormatted || item.phone;
+  const cleanNum = String(item.phone || '').replace(/\D/g, '');
+  openAppleContextMenu({
+    x,
+    y,
+    header: displayTitle,
+    items: [
+      {
+        label: 'Ver / Editar Ficha Técnica',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+        action: () => openCrmModal(item.phone)
+      },
+      {
+        label: 'Abrir Conversa no Inbox',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
+        action: () => {
+          state.selected = item.phone;
+          showView('inbox');
+        }
+      },
+      ...(cleanNum ? [{
+        label: 'Abrir no WhatsApp (wa.me)',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>`,
+        action: () => window.open(`https://wa.me/${cleanNum}`, '_blank', 'noopener')
+      }] : []),
+      {
+        label: item.human ? 'Reativar Lia (Automático)' : 'Assumir Atendimento Humano',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/></svg>`,
+        action: async () => {
+          const mode = item.human ? 'bot' : 'human';
+          await api('/api/dashboard/mode', { method: 'POST', body: JSON.stringify({ phone: item.phone, mode }) });
+          item.human = mode === 'human';
+          renderContacts();
+          showToast({ title: mode === 'bot' ? 'Lia Reativada' : 'Atendimento Humano', message: `${displayTitle} atualizado.`, type: 'success' });
+        }
+      },
+      {
+        label: 'Copiar Telefone',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        action: () => {
+          navigator.clipboard?.writeText(item.phoneFormatted || item.phone);
+          showToast({ title: 'Telefone Copiado', message: item.phoneFormatted || item.phone, type: 'success' });
+        }
+      },
+      {
+        label: 'Exportar Transcrição (.txt)',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        action: () => exportConversationTranscript(item)
+      }
+    ]
+  });
+}
+
+function renderContactFicha(item) {
+  const panel = $('#contact-detail-panel');
+  if (!panel) return;
+  if (!item) {
+    panel.innerHTML = '<div class="detail-placeholder">Selecione um contato na lista para visualizar a ficha técnica completa ou clique com o botão direito para abrir o menu de contexto.</div>';
+    return;
+  }
+  const dName = item.displayName || item.clientName || item.name || 'Contato';
+  const fPhone = item.phoneFormatted || item.phone || '';
+  const cleanNum = String(item.phone || '').replace(/\D/g, '');
+  const stageObj = FUNNEL_STAGES.find((st) => st.id === (item.funnelStage || 'novo'));
+  const stageLabel = stageObj ? stageObj.label : (item.funnelStage || 'Novo');
+  const tagsHtml = (item.tags || []).length
+    ? (item.tags || []).map((t) => `<span class="pill mini amber">${esc(t)}</span>`).join(' ')
+    : '<span class="ops-muted" style="font-size:12px;">Sem tags</span>';
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;">
+      <div>
+        <strong style="font-size:16px;display:block;">${esc(dName)}</strong>
+        <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${esc(fPhone)}</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="btn-handoff primary" id="ficha-edit-btn">Editar Ficha</button>
+        <button type="button" class="icon-btn" id="ficha-ctx-btn" title="Menu de contexto" aria-label="Menu de contexto">⋮</button>
+      </div>
+    </div>
+    <div class="detail-block">
+      <h3>Ficha Técnica</h3>
+      <div class="detail-row"><span>Nome Completo</span><b>${esc(item.clientName || item.displayName || '—')}</b></div>
+      <div class="detail-row"><span>E-mail</span><b>${esc(item.email || '—')}</b></div>
+      <div class="detail-row"><span>Etapa do Funil</span><b>${esc(stageLabel)}</b></div>
+      <div class="detail-row"><span>Setor</span><b>${esc(item.sectorId || 'Geral')}</b></div>
+      <div class="detail-row"><span>Valor Negociado</span><b>${Number(item.dealValue || 0) > 0 ? formatBRL(item.dealValue) : '—'}</b></div>
+      <div class="detail-row"><span>Modo</span><b>${item.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
+      <div class="detail-row"><span>Origem</span><b>${item.origin === 'simulation' ? 'Simulador' : 'WhatsApp Real'}</b></div>
+      <div class="detail-row"><span>Última Atividade</span><b>${esc(item.time || 'agora')}</b></div>
+    </div>
+    <div class="detail-block">
+      <h3>Tags</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${tagsHtml}</div>
+    </div>
+    <div class="detail-block">
+      <h3>Observações</h3>
+      <p class="ops-muted" style="font-size:12.5px;white-space:pre-wrap;margin:6px 0 0;">${esc(item.notes || 'Nenhuma observação registrada.')}</p>
+    </div>
+    <div class="detail-actions" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="detail-action primary" id="ficha-open-inbox-btn">Abrir Conversa</button>
+      ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="btn-handoff" style="text-decoration:none;">WhatsApp ↗</a>` : ''}
+    </div>
+  `;
+  $('#ficha-edit-btn')?.addEventListener('click', () => openCrmModal(item.phone));
+  $('#ficha-open-inbox-btn')?.addEventListener('click', () => {
+    state.selected = item.phone;
+    showView('inbox');
+  });
+  $('#ficha-ctx-btn')?.addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    openContactContextMenu(item, r.left, r.bottom + 6);
+  });
+}
+
+function renderContacts() {
+  const listEl = $('#contacts-list');
+  if (!listEl) return;
+  const instDigits = String(state.activeInstancePhone || '').replace(/\D/g, '');
+  const q = ($('#contacts-search')?.value || '').trim().toLowerCase();
+  const stageFilter = $('#contacts-stage-filter')?.value || '';
+  const secFilter = $('#contacts-sector-filter')?.value || '';
+  const modeFilter = $('#contacts-mode-filter')?.value || '';
+
+  const allContacts = (state.sessions || []).filter((s) => {
+    if (instDigits && String(s.phone || '').replace(/\D/g, '') === instDigits) return false;
+    if (s.archived) return false;
+    return true;
+  });
+
+  const counterBadge = $('#contacts-count');
+  if (counterBadge) counterBadge.textContent = allContacts.length;
+
+  const filtered = allContacts.filter((s) => {
+    if (stageFilter && (s.funnelStage || 'novo') !== stageFilter) return false;
+    if (secFilter && (s.sectorId || '') !== secFilter) return false;
+    if (modeFilter === 'human' && !s.human) return false;
+    if (modeFilter === 'bot' && s.human) return false;
+    if (q) {
+      const hay = `${s.displayName || ''} ${s.clientName || ''} ${s.name || ''} ${s.phone || ''} ${s.phoneFormatted || ''} ${s.email || ''} ${(s.tags || []).join(' ')} ${s.notes || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const totalPill = $('#contacts-total-pill');
+  if (totalPill) {
+    const pipelineVal = filtered.reduce((acc, s) => acc + Number(s.dealValue || 0), 0);
+    totalPill.textContent = `${filtered.length} contato(s)${pipelineVal > 0 ? ' · ' + formatBRL(pipelineVal) : ''}`;
+  }
+
+  if (!selectedContactPhone || !filtered.some((s) => s.phone === selectedContactPhone)) {
+    selectedContactPhone = filtered[0]?.phone || null;
+  }
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="detail-placeholder">Nenhum contato encontrado com os filtros atuais.</div>';
+    renderContactFicha(null);
+    return;
+  }
+
+  listEl.innerHTML = filtered.map((item) => {
+    const dName = item.displayName || item.clientName || item.name || item.phoneFormatted || 'Contato';
+    const fPhone = item.phoneFormatted || item.phone || '';
+    const stageObj = FUNNEL_STAGES.find((st) => st.id === (item.funnelStage || 'novo'));
+    const stageLabel = stageObj ? stageObj.label : (item.funnelStage || 'Novo');
+    const isSelected = item.phone === selectedContactPhone;
+    const valBadge = Number(item.dealValue || 0) > 0 ? `<span class="pill mini mint">${formatBRL(item.dealValue)}</span>` : '';
+    const modeBadge = item.human ? '<span class="pill mini warn">Humano</span>' : '<span class="pill mini ok">Lia</span>';
+    return `<div class="panel contact-row${isSelected ? ' active' : ''}" data-contact-phone="${esc(item.phone)}" style="padding:12px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;border:${isSelected ? '1px solid var(--accent, #10b981)' : '1px solid var(--border-hairline, rgba(255,255,255,0.08))'};">
+      <div style="min-width:0;flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <strong style="font-size:14px;">${esc(dName)}</strong>
+          ${modeBadge}
+          <span class="pill mini">${esc(stageLabel)}</span>
+          ${item.sectorId ? `<span class="pill mini">${esc(item.sectorId)}</span>` : ''}
+          ${valBadge}
+        </div>
+        <div class="ops-muted" style="font-size:12px;margin-top:3px;font-family:var(--font-mono);">${esc(fPhone)}${item.email ? ' · ' + esc(item.email) : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button type="button" class="btn-handoff" style="padding:4px 8px;font-size:11px;" data-contact-ficha="${esc(item.phone)}">Ficha</button>
+        <button type="button" class="icon-btn" data-contact-ctx="${esc(item.phone)}" title="Menu de contexto" aria-label="Menu de contexto">⋮</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  listEl.querySelectorAll('[data-contact-phone]').forEach((row) => {
+    const phone = row.getAttribute('data-contact-phone');
+    const item = filtered.find((s) => s.phone === phone);
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      selectedContactPhone = phone;
+      renderContacts();
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      selectedContactPhone = phone;
+      renderContacts();
+      openContactContextMenu(item, e.clientX, e.clientY);
+    });
+  });
+
+  listEl.querySelectorAll('[data-contact-ficha]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCrmModal(btn.getAttribute('data-contact-ficha'));
+    });
+  });
+
+  listEl.querySelectorAll('[data-contact-ctx]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const phone = btn.getAttribute('data-contact-ctx');
+      const item = filtered.find((s) => s.phone === phone);
+      const r = btn.getBoundingClientRect();
+      openContactContextMenu(item, r.left, r.bottom + 6);
+    });
+  });
+
+  renderContactFicha(filtered.find((s) => s.phone === selectedContactPhone) || filtered[0]);
+}
+
+$('#contacts-search')?.addEventListener('input', () => renderContacts());
+$('#contacts-stage-filter')?.addEventListener('change', () => renderContacts());
+$('#contacts-sector-filter')?.addEventListener('change', () => renderContacts());
+$('#contacts-mode-filter')?.addEventListener('change', () => renderContacts());
+$('#contacts-refresh-btn')?.addEventListener('click', () => refresh().catch(() => {}));
 
 let cannedCache = [];
 async function loadCannedResponses() {

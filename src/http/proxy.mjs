@@ -50,7 +50,7 @@ export function isVerifiedWebhookEndpoint(method, pathname) {
   return ['GET', 'POST'].includes(method) && /^\/api\/webhooks\/(?:whatsapp|instagram|messenger|evolution|telegram)$/.test(pathname);
 }
 const DASHBOARD_VIEWS = new Set([
-  'overview', 'inbox', 'handoff', 'funnel', 'sectors', 'automations', 'prospecting',
+  'overview', 'inbox', 'handoff', 'funnel', 'contacts', 'sectors', 'automations', 'prospecting',
   'admin', 'integrations', 'ai-hub', 'metrics', 'vps', 'runtime', 'users', 'tools',
 ]);
 

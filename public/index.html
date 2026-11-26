@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126b" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126c" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -127,6 +127,11 @@
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="13" rx="1"/><rect x="17" y="3" width="5" height="9" rx="1"/></svg>
               <span class="nav-label">Funil / Kanban</span>
               <b id="funnel-count">0</b>
+            </button>
+            <button class="nav-item" data-view="contacts" data-role="operator" title="Contatos, Ficha Técnica &amp; Menu de Contexto">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span class="nav-label">Contatos</span>
+              <b id="contacts-count">0</b>
             </button>
             <button class="nav-item" data-view="sectors" data-role="admin" title="Configuração de Setores &amp; Triagem">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
@@ -2457,6 +2462,45 @@
 <div id="funnel-board" class="kanban-board"></div>
         </div>
       </section>
+      <section id="contacts-view" class="view" data-role="operator">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Contatos</h2>
+              <p>Base unificada de contatos com ficha técnica completa, filtros e menu de contexto (botão direito ou ⋮).</p>
+            </div>
+            <div class="hero-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <span id="contacts-total-pill" class="pill mini">0 contato(s)</span>
+              <button type="button" class="btn-handoff" id="contacts-refresh-btn">Atualizar</button>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top:16px;padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <input type="search" id="contacts-search" class="kanban-stage-select" style="flex:2;min-width:220px;" placeholder="Buscar por nome, telefone, e-mail, tag ou observação..." />
+            <select id="contacts-stage-filter" class="kanban-stage-select" style="min-width:150px;">
+              <option value="">Todas as etapas</option>
+              <option value="novo">Novo</option>
+              <option value="em_atendimento">Em atendimento</option>
+              <option value="agendado">Agendado</option>
+              <option value="transferido">Transferido</option>
+              <option value="fechado">Fechado</option>
+            </select>
+            <select id="contacts-sector-filter" class="kanban-stage-select" style="min-width:150px;">
+              <option value="">Todos os setores</option>
+            </select>
+            <select id="contacts-mode-filter" class="kanban-stage-select" style="min-width:150px;">
+              <option value="">Todos os modos</option>
+              <option value="bot">Lia (Automático)</option>
+              <option value="human">Atendimento Humano</option>
+            </select>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr);gap:16px;margin-top:16px;align-items:start;">
+            <div id="contacts-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <aside id="contact-detail-panel" class="panel" style="padding:16px;position:sticky;top:16px;"></aside>
+          </div>
+        </div>
+      </section>
       <section id="automations-view" class="view" data-role="admin">
         <div class="ops-container">
           <div class="admin-hero panel">
@@ -2712,6 +2756,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126b"></script>
+  <script src="/dashboard/app.js?v=20261126c"></script>
 </body>
 </html>
