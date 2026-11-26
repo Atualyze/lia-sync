@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const PROJECTION_KEY = 'lia_custom_sectors';
+
 const DEFAULT_SECTORS = [
   {
     id: 'triagem',
@@ -109,52 +111,81 @@ export function sanitizeSectorId(raw) {
 }
 
 export class CustomSectorStore {
-  constructor(filePath = path.resolve('./data/custom-sectors.json')) {
+  constructor(filePath = path.resolve('./data/custom-sectors.json'), { client = null } = {}) {
     this.filePath = filePath;
+    this.client = client;
     this.sectors = new Map(DEFAULT_SECTORS.map((s) => [s.id, { ...s }]));
   }
 
-  load() {
+  _applyList(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    this.sectors.clear();
+    for (const item of list) {
+      const id = sanitizeSectorId(item?.id || item?.name);
+      if (!id) continue;
+      this.sectors.set(id, {
+        id,
+        name: String(item.name || id).trim().slice(0, 120),
+        description: String(item.description || '').trim().slice(0, 500),
+        keywords: Array.isArray(item.keywords)
+          ? item.keywords.map((k) => String(k).trim()).filter(Boolean)
+          : String(item.keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+        promptInstructions: String(item.promptInstructions || '').trim().slice(0, 2000),
+        handoffEnabled: Boolean(item.handoffEnabled),
+        responsiblePhone: String(item.responsiblePhone || '').trim().slice(0, 32),
+        isActive: item.isActive !== false,
+      });
+    }
+  }
+
+  async load() {
+    if (this.client) {
+      try {
+        const { data, error } = await this.client
+          .from('runtime_projections')
+          .select('payload')
+          .eq('key', PROJECTION_KEY)
+          .maybeSingle();
+        if (!error && data?.payload?.sectors) {
+          this._applyList(data.payload.sectors);
+        }
+      } catch {
+        // mantém fallback padrão
+      }
+      return this;
+    }
+
     if (!fs.existsSync(this.filePath)) return this;
     try {
       const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
       const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.sectors) ? raw.sectors : []);
-      if (list.length) {
-        this.sectors.clear();
-        for (const item of list) {
-          const id = sanitizeSectorId(item?.id || item?.name);
-          if (!id) continue;
-          this.sectors.set(id, {
-            id,
-            name: String(item.name || id).trim().slice(0, 120),
-            description: String(item.description || '').trim().slice(0, 500),
-            keywords: Array.isArray(item.keywords)
-              ? item.keywords.map((k) => String(k).trim()).filter(Boolean)
-              : String(item.keywords || '').split(',').map((k) => k.trim()).filter(Boolean),
-            promptInstructions: String(item.promptInstructions || '').trim().slice(0, 2000),
-            handoffEnabled: Boolean(item.handoffEnabled),
-            responsiblePhone: String(item.responsiblePhone || '').trim().slice(0, 32),
-            isActive: item.isActive !== false,
-          });
-        }
-      }
+      this._applyList(list);
     } catch {
       // mantém fallback padrão
     }
     return this;
   }
 
-  save() {
+  async save() {
+    const payload = { sectors: this.list() };
+    if (this.client) {
+      const { error } = await this.client
+        .from('runtime_projections')
+        .upsert({ key: PROJECTION_KEY, payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (error) throw new Error(`Falha ao salvar setores no banco: ${error.message}`);
+      return;
+    }
+
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify({ sectors: this.list() }, null, 2), 'utf8');
+    fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
   }
 
   list() {
     return Array.from(this.sectors.values());
   }
 
-  upsert(input = {}) {
+  async upsert(input = {}) {
     const id = sanitizeSectorId(input.id || input.name);
     if (!id) throw new Error('invalid_sector_id');
     const prev = this.sectors.get(id) || {};
@@ -173,15 +204,15 @@ export class CustomSectorStore {
       isActive: input.isActive !== undefined ? Boolean(input.isActive) : prev.isActive !== false,
     };
     this.sectors.set(id, next);
-    this.save();
+    await this.save();
     return next;
   }
 
-  remove(id) {
+  async remove(id) {
     const clean = sanitizeSectorId(id);
     if (!clean) return false;
     const deleted = this.sectors.delete(clean);
-    if (deleted) this.save();
+    if (deleted) await this.save();
     return deleted;
   }
 }

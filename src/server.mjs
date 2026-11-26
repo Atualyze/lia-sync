@@ -33,6 +33,8 @@ import { OperationsStore } from './operations.mjs';
 import { AIBudgetGate } from './ai/budget.mjs';
 import { WebhookEventStore } from './webhook-events.mjs';
 import { SectorProjection } from './sectors.mjs';
+import { TenantStore } from './tenants/store.mjs';
+import { CustomSectorStore } from './sectors/custom-sectors.mjs';
 import { createProspecting } from './prospecting/index.mjs';
 import { IntegrationsStore } from './http/integrations-store.mjs';
 import { CopilotTaskStore } from './copilot-tasks.mjs';
@@ -352,6 +354,10 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   // Projeção de runtime dos setores do Chatwoot: nunca entra em rascunho/revisão do painel.
   const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'), { client: supabaseRuntime.client });
   await sectorProjection.load();
+  const tenantStore = new TenantStore(undefined, { client: supabaseRuntime.client });
+  await tenantStore.load();
+  const customSectorStore = new CustomSectorStore(undefined, { client: supabaseRuntime.client });
+  await customSectorStore.load();
 
   const getTelemetry = async () => {
     let evoState = 'desconhecido';
@@ -682,6 +688,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     webhookEventStore,
     aiBudgetGate: budgetGate,
     sectorProjection,
+    tenantStore,
+    customSectorStore,
     prospecting,
     askAI: askAIWithBudget,
     integrationsStore,

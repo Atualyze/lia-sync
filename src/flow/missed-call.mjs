@@ -33,8 +33,11 @@ export function scheduleMissedCallTextBack({
   sendText,
   triggeredAt = Date.now(),
 } = {}) {
-  const clean = cleanJidPhone(phone);
-  if (!clean || !/^\d{8,15}$/.test(clean) || typeof sendText !== 'function') {
+  const rawStr = String(phone || '').trim();
+  const isLid = /@lid$/i.test(rawStr);
+  const exactJid = /@(s\.whatsapp\.net|lid)$/i.test(rawStr) ? rawStr.replace(/:\d+(?=@)/, '') : '';
+  const clean = isLid ? rawStr : cleanJidPhone(rawStr);
+  if (!clean || (!isLid && !/^\d{8,15}$/.test(clean)) || typeof sendText !== 'function') {
     return { scheduled: false, reason: 'invalid_phone_or_sender' };
   }
 
@@ -46,9 +49,15 @@ export function scheduleMissedCallTextBack({
     try {
       const session = store?.get?.(clean);
       if (session) {
-        if (isHumanHandoffActive(session)) return;
+        if (isHumanHandoffActive(session)) {
+          console.info('[missed-call] cancelado: contato em atendimento humano (handoff ativo)');
+          return;
+        }
         const lastActivity = Date.parse(session.updatedAt || '');
-        if (Number.isFinite(lastActivity) && lastActivity > triggeredAt) return;
+        if (Number.isFinite(lastActivity) && lastActivity > triggeredAt) {
+          console.info('[missed-call] cancelado: contato teve atividade recente após a ligação');
+          return;
+        }
       }
 
       const greeting = callerName ? `Oi, ${String(callerName).trim()}! ` : '';
@@ -57,8 +66,15 @@ export function scheduleMissedCallTextBack({
         : String(message || DEFAULT_MISSED_CALL_MSG);
 
       const finalMsg = sanitize(rawMsg);
-      const target = session?.jid || `${clean}@s.whatsapp.net`;
-      await sendText(target, finalMsg);
+      let resolvedTarget = exactJid || session?.jid || (isLid ? clean : `${clean}@s.whatsapp.net`);
+      if (/@lid$/i.test(resolvedTarget) && typeof store?.resolveConversationKey === 'function') {
+        const resolvedKey = await store.resolveConversationKey(resolvedTarget).catch(() => null);
+        if (resolvedKey && !/@lid$/i.test(resolvedKey)) {
+          resolvedTarget = `${resolvedKey}@s.whatsapp.net`;
+        }
+      }
+      const sendRes = await sendText(resolvedTarget, finalMsg);
+      console.info('[missed-call] retorno enviado com sucesso', JSON.stringify({ isLid: /@lid$/i.test(resolvedTarget), msgId: sendRes?.key?.id || sendRes?.id || null }));
 
       if (session) {
         session.missedCallAt = new Date().toISOString();

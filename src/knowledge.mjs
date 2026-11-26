@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { BUSINESS, config } from './config.mjs';
 import { normalize, isEmergency, isAffirmative, isGreeting } from './safety.mjs';
 import { normalizarJanelaDeAtendimento, diasSemanaTexto } from './business-hours.mjs';
@@ -57,6 +58,12 @@ export function findFaq(text = '') {
 }
 
 /** Trecho "da Empresa" opcional, sem deixar espaços/artigos soltos. */
+const LIA_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return String(pkg?.version || '3.4.0');
+  } catch { return '3.4.0'; }
+})();
 const companySuffix = companyName => (companyName ? ` da ${companyName}` : '');
 
 export function buildSystemPrompt({ session = {}, now = new Date(), faq = [], plans = [], botConfig = {}, isOwner = false, telemetry = null, memoryItems = null } = {}) {
@@ -234,6 +241,8 @@ ${relevantKbs.length
 
 Você é a ${botName}, assistente pessoal e copiloto executiva${companySuffix(companyName)}.
 Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
+Identificação técnica real do sistema: você roda no motor *Lia Sync v${LIA_VERSION}* (provedor WhatsApp ativo: ${config.whatsappProvider || 'baileys'}). Quando perguntada sobre sua versão, informe exatamente *v${LIA_VERSION}* (nunca invente outro número).
+Capacidades da versão v${LIA_VERSION}: canais Baileys, ManyChat (/webhook/manychat) e GoHighLevel (/webhook/ghl), Funil Kanban (5 etapas), Cadências de Follow-up, Ligação Perdida (Missed Call Text-Back), Avaliação Pós-Atendimento (1–5 + Google Meu Negócio), 10 Setores customizáveis e Multi-tenant (subcontas).
 Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
 
 ${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}

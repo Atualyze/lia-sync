@@ -25,6 +25,18 @@ function sameInstancePhone(a, b) {
 }
 
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
+async function persistAdminPatch(adminConfig, patch) {
+  if (!adminConfig) return;
+  if (typeof adminConfig.updateDraft === 'function' && typeof adminConfig.publish === 'function') {
+    const upd = await adminConfig.updateDraft(patch, 'dashboard');
+    if (upd?.ok === false) throw new Error((upd.errors || ['Falha ao atualizar rascunho']).join('; '));
+    const pub = await adminConfig.publish('dashboard');
+    if (pub?.ok === false && !pub.noChanges) throw new Error((pub.errors || ['Falha ao publicar no banco']).join('; '));
+    return;
+  }
+  if (adminConfig.active) Object.assign(adminConfig.active, patch);
+}
+
 const defaultTenantStore = new TenantStore().load();
 const defaultSectorStore = new CustomSectorStore().load();
 const VALID_FUNNEL_STAGES = new Set(['novo', 'em_atendimento', 'agendado', 'transferido', 'fechado']);
@@ -172,6 +184,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           clientName,
           origin: s.origin || (key.startsWith('sim:') ? 'simulation' : 'real'),
           human: isHumanHandoffActive(s),
+          isInternal: Boolean(isCopilotSelf || (activeInstancePhone && sameInstancePhone(rawPhone, activeInstancePhone))),
           funnelStage: resolveFunnelStage(s, history),
           updatedAt: s.updatedAt,
           lastActivityIso,
@@ -314,7 +327,9 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
 }
 
 // Modo/limpeza/configuração do painel (executadas depois das rotas /api/bridge/*).
-export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null }) {
+export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null, tenantStore = null, customSectorStore = null }) {
+  const activeTenantStore = tenantStore || defaultTenantStore;
+  const activeSectorStore = customSectorStore || defaultSectorStore;
   if (req.method === 'POST' && u.pathname === '/api/dashboard/mode') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -357,14 +372,14 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     return json(res, 200, { ok: true, human: isHumanHandoffActive(session) });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/sectors-custom') {
-    return json(res, 200, { ok: true, sectors: defaultSectorStore.list() });
+    return json(res, 200, { ok: true, sectors: activeSectorStore.list() });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/sectors-custom') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!body?.id && !body?.name) return json(res, 400, { error: 'missing_id_or_name' });
     try {
-      const sector = defaultSectorStore.upsert(body);
+      const sector = await activeSectorStore.upsert(body);
       return json(res, 200, { ok: true, sector });
     } catch {
       return json(res, 400, { error: 'invalid_sector' });
@@ -372,23 +387,23 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/sectors-custom') {
     const id = u.searchParams.get('id') || '';
-    const removed = defaultSectorStore.remove(id);
+    const removed = await activeSectorStore.remove(id);
     if (!removed) return json(res, 400, { error: 'sector_not_found' });
     return json(res, 200, { ok: true, removed: id });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/tenants') {
-    return json(res, 200, { ok: true, tenants: defaultTenantStore.list() });
+    return json(res, 200, { ok: true, tenants: activeTenantStore.list() });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/tenants') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
     if (!body?.id && !body?.name) return json(res, 400, { error: 'missing_id_or_name' });
-    const tenant = defaultTenantStore.upsert(body);
+    const tenant = await activeTenantStore.upsert(body);
     return json(res, 200, { ok: true, tenant });
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/tenants') {
     const id = u.searchParams.get('id') || '';
-    const removed = defaultTenantStore.remove(id);
+    const removed = await activeTenantStore.remove(id);
     if (!removed) return json(res, 400, { error: 'cannot_remove_tenant' });
     return json(res, 200, { ok: true, removed: id });
   }
@@ -404,10 +419,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       delaySeconds: Math.min(3600, Math.max(5, Number(body.delaySeconds || 60))),
       message: String(body.message || '').trim().slice(0, 1000) || 'Oi! Vi que você tentou ligar agora há pouco e não conseguimos atender. Como posso te ajudar por aqui?',
     };
-    if (adminConfig?.active) {
-      adminConfig.active.missedCall = next;
-      await adminConfig.save?.().catch(() => {});
-    }
+    await persistAdminPatch(adminConfig, { missedCall: next });
     return json(res, 200, { ok: true, missedCall: next });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/reputation') {
@@ -423,10 +435,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       minPositiveRating: Math.min(5, Math.max(1, Number(body.minPositiveRating || 4))),
       surveyMessage: String(body.surveyMessage || '').trim().slice(0, 1000) || 'Obrigado pelo contato! De 1 a 5, como você avalia nosso atendimento hoje?',
     };
-    if (adminConfig?.active) {
-      adminConfig.active.reputation = next;
-      await adminConfig.save?.().catch(() => {});
-    }
+    await persistAdminPatch(adminConfig, { reputation: next });
     return json(res, 200, { ok: true, reputation: next });
   }
   if (req.method === 'GET' && u.pathname === '/api/dashboard/cadence') {
@@ -443,10 +452,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       stageFilter: String(s.stageFilter || 'all'),
       message: String(s.message || '').trim().slice(0, 2000),
     })).filter((s) => s.message);
-    if (adminConfig?.active?.automation) {
-      adminConfig.active.automation.followUpCadence = cleaned;
-      await adminConfig.save?.().catch(() => {});
-    }
+    await persistAdminPatch(adminConfig, { automation: { ...(adminConfig?.active?.automation || {}), followUpCadence: cleaned } });
     return json(res, 200, { ok: true, cadence: cleaned });
   }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/cadence/run') {

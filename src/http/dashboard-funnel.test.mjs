@@ -54,3 +54,25 @@ test('POST /api/dashboard/funnel-stage atualiza etapa e rejeita etapa inválida'
   assert.equal(session.funnelStage, 'agendado');
   assert.equal(dirty, true);
 });
+
+test('PUT /api/dashboard/missed-call persiste via updateDraft e publish', async () => {
+  let drafted = null;
+  let published = false;
+  const adminConfig = {
+    active: {},
+    async updateDraft(patch) { drafted = patch; return { ok: true }; },
+    async publish() { published = true; Object.assign(this.active, drafted); return { ok: true }; },
+  };
+  const res = makeRes();
+  await handleDashboardSettingsRoutes({
+    req: makeReq('PUT', { enabled: true, delaySeconds: 45, message: 'Oi! Vi sua ligação.' }),
+    res,
+    u: new URL('http://localhost/api/dashboard/missed-call'),
+    store: {},
+    adminConfig,
+  });
+  assert.equal(res.out.statusCode, 200);
+  assert.equal(published, true);
+  assert.equal(adminConfig.active.missedCall.enabled, true);
+  assert.equal(adminConfig.active.missedCall.delaySeconds, 45);
+});

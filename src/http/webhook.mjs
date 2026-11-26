@@ -74,6 +74,23 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
       return;
     }
 
+    if (rawEvent === 'CALLMISSED' || rawEvent === 'CALL_MISSED') {
+      const mcCfg = adminConfig?.active?.missedCall || {};
+      let res = { scheduled: false, reason: 'disabled' };
+      if (mcCfg.enabled) {
+        res = scheduleMissedCallTextBack({
+          phone: payload?.data?.from || item.phone || item.jid,
+          delaySeconds: mcCfg.delaySeconds ?? 60,
+          message: mcCfg.message,
+          store,
+          sendText,
+        });
+      }
+      console.info('[webhook:call-missed]', JSON.stringify({ enabled: Boolean(mcCfg.enabled), delaySeconds: mcCfg.delaySeconds ?? 60, scheduled: res.scheduled, reason: res.reason || null }));
+      await finish('processed', mcCfg.enabled ? 'call_missed_scheduled' : 'call_missed_disabled');
+      return;
+    }
+
     const syncCfg = adminConfig?.active?.sync || {};
     if (syncCfg.whatsappSyncEnabled) {
       const archiveMode = syncCfg.archiveDeletedMessages !== false;

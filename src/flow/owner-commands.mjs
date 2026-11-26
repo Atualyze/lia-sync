@@ -1,9 +1,17 @@
+import fs from 'node:fs';
 import { filterReply, normalize } from '../safety.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { getMetricsSummary } from '../metrics.mjs';
 import { notifyReactivationToInternalChat } from '../http/reactivation-notice.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from './human-handoff-state.mjs';
+
+const LIA_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    return String(pkg?.version || '3.4.0');
+  } catch { return '3.4.0'; }
+})();
 
 function todayInTimezone(nowMs, timezone) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
@@ -108,9 +116,17 @@ export async function handleOwnerQuickCommands({
   PDF_TYPES,
   recordSelfTurn
 }) {
+  // 1.0.4 Versão exata e atualizações do sistema
+  if (/(?:qual [ée] a (?:sua )?vers[ãa]o|sua vers[ãa]o atual|n[úu]mero da vers[ãa]o|vers[ãa]o do sistema)/i.test(norm)) {
+    return recordSelfTurn(filterReply(`🤖 *Lia Sync v${LIA_VERSION}*\n\nEstou rodando na versão *${LIA_VERSION}* com suporte a Baileys, ManyChat, GoHighLevel, Funil Kanban, Cadências, Ligação Perdida, Reputação Google, 10 Setores e Multi-tenant.`, { isCopilot: true }).text);
+  }
+  if (/(?:quais (?:foram as )?atualiza[çc][õo]es|atualiza[çc][õo]es (?:vc|voc[êe]) recebeu|novidades da vers[ãa]o|o que foi atualizado|o que mudou)/i.test(norm)) {
+    return recordSelfTurn(filterReply(`🚀 *Atualizações da Lia Sync v${LIA_VERSION}:*\n\n• *Canais Oficiais:* suporte a ManyChat (/webhook/manychat) e GoHighLevel (/webhook/ghl) além do Baileys Nativo.\n• *Funil / Kanban:* 5 etapas visuais no painel (Novo → Em atendimento → Agendado → Transferido → Fechado).\n• *Cadências de Follow-up:* régua automática configurável por minutos sem resposta e etapa.\n• *Ligação Perdida (Missed Call Text-Back):* captura chamadas perdidas no Baileys e via /webhook/missed-call.\n• *Pós-atendimento & Reputação:* pesquisa 1–5 automática com link do Google Meu Negócio para notas altas.\n• *10 Setores Customizáveis:* triagem automática integrada ao painel Setores.\n• *Multi-tenant & Banco:* subcontas isoladas e persistência unificada no Supabase.`, { isCopilot: true }).text);
+  }
+
   // 1.0.5 Auto-conhecimento e Capacidades da assistente
   if (/(?:quem [ée] voc[êe]|o que voc[êe] faz|habilidades?|capacidades?|fun[cç][õo]es|ferramentas?|o que voc[êe] pode fazer|apresente-se|se apresente|sobre voc[êe]|quem e vc|quem voce e|suas skills)\b/i.test(norm)) {
-    const capMsg = `✨ *Olá, ${owner}! Eu sou a ${assistant}, sua Copiloto Executiva e Inteligência Artificial Operacional.*
+    const capMsg = `✨ *Olá, ${owner}! Eu sou a ${assistant} (Lia Sync v${LIA_VERSION}), sua Copiloto Executiva e Inteligência Artificial Operacional.*
 
 Atuo como seu braço direito no dia a dia${identity.companyName ? ` da ${identity.companyName}` : ''} e nos atendimentos aos clientes. Aqui está tudo o que eu sou capaz de fazer diretamente:
 
@@ -121,6 +137,10 @@ Atuo como seu braço direito no dia a dia${identity.companyName ? ` da ${identit
 • *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha própria voz sintetizada para seus contatos.
 • *Leitura de Documentos & PDFs:* Analiso comprovantes de pagamento (PIX/TED com valores e data), contratos, propostas e briefings.
 • *Follow-up Inteligente:* Reengajo automaticamente leads parados ou orçamentos não respondidos em horário comercial.
+• *Canais Oficiais & Multi-tenant:* Opero via Baileys Nativo, ManyChat e GoHighLevel, com suporte a subcontas isoladas.
+• *Funil Kanban & Cadências:* Organizo leads em 5 etapas no painel e executo cadências automáticas de follow-up.
+• *Ligação Perdida & Reputação:* Recupero ligações perdidas no WhatsApp e envio pesquisa 1–5 pós-atendimento com link do Google Meu Negócio.
+• *10 Setores Customizáveis:* Triagem automática por palavras-chave e instruções próprias por setor.
 • *Bases de Conhecimento:* Consulto os dossiês completos dos sistemas de cada cliente e parceiro cadastrado.
 
 💬 *Comandos Rápidos do Chat Interno:*

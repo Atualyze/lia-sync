@@ -40,7 +40,7 @@ export function normalizePhone(raw = '') {
  * e aplica normalização canônica de telefone.
  */
 export function cleanJidPhone(raw = '') {
-  return normalizePhone(String(raw || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  return normalizePhone(String(raw || '').replace(/[:@].*$/, '').replace(/\D/g, ''));
 }
 
 export function isValidRealMobilePhone(raw = '') {

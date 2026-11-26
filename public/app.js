@@ -5959,7 +5959,16 @@ const FUNNEL_STAGES = [
 function renderFunnel() {
   const board = $('#funnel-board');
   if (!board) return;
-  const leads = (state.sessions || []).filter((s) => s.origin !== 'simulation');
+  const instDigits = String(state.activeInstancePhone || '').replace(/\D/g, '');
+  const leads = (state.sessions || []).filter((s) => {
+    if (s.origin === 'simulation' || s.isInternal) return false;
+    if (s.phoneFormatted === 'Canal Interno Copiloto') return false;
+    const rawP = String(s.rawPhone || s.phone || '');
+    if (/^[a-z0-9_]+_self$/i.test(rawP) || rawP === 'owner_self') return false;
+    const digits = rawP.replace(/\D/g, '');
+    if (instDigits && digits && digits === instDigits) return false;
+    return true;
+  });
   const counter = $('#funnel-count');
   if (counter) counter.textContent = leads.length;
 

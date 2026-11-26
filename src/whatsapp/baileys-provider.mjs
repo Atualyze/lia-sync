@@ -410,6 +410,31 @@ export class BaileysProvider {
         });
       });
 
+      sock.ev.on('call', async (calls) => {
+        if (this.sock !== sock || !Array.isArray(calls)) return;
+        for (const c of calls) {
+          const st = String(c?.status || '').toLowerCase();
+          let caller = c?.callerPn || c?.from || '';
+          if (/@lid$/i.test(caller)) {
+            try {
+              const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(caller);
+              if (pn) caller = pn;
+            } catch { /* fallback para caller original */ }
+          }
+          // Remove sufixo de dispositivo (:12@) preservando o JID exato (12 ou 13 dígitos) registrado no WhatsApp
+          caller = String(caller || '').replace(/:\d+(?=@)/, '');
+          console.info('[baileys:call]', JSON.stringify({ id: c?.id, status: st, isGroup: Boolean(c?.isGroup), hasCaller: Boolean(caller), isLid: /@lid$/i.test(caller), len: caller.split('@')[0].length }));
+          if (c?.isGroup || !caller) continue;
+          if (['timeout', 'reject', 'terminate'].includes(st)) {
+            void this.onEvent?.({
+              event: 'CALL_MISSED',
+              instance: 'baileys',
+              data: { id: c.id, from: caller, status: st, date: c.date }
+            });
+          }
+        }
+      });
+
       return this.getStatus();
     } catch (error) {
       this.status = 'error';

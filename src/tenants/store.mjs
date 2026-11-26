@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const PROJECTION_KEY = 'lia_tenants';
+
 const DEFAULT_TENANT = {
   id: 'default',
   name: 'Conta Principal',
@@ -27,31 +29,61 @@ export function resolveTenantFromRequest(req, u) {
 }
 
 export class TenantStore {
-  constructor(filePath = path.resolve('./data/tenants.json')) {
+  constructor(filePath = path.resolve('./data/tenants.json'), { client = null } = {}) {
     this.filePath = filePath;
+    this.client = client;
     this.tenants = new Map([['default', { ...DEFAULT_TENANT }]]);
   }
 
-  load() {
+  _applyList(list) {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const id = sanitizeTenantId(item?.id);
+      this.tenants.set(id, { ...DEFAULT_TENANT, ...item, id });
+    }
+  }
+
+  async load() {
+    if (this.client) {
+      try {
+        const { data, error } = await this.client
+          .from('runtime_projections')
+          .select('payload')
+          .eq('key', PROJECTION_KEY)
+          .maybeSingle();
+        if (!error && data?.payload?.tenants) {
+          this._applyList(data.payload.tenants);
+        }
+      } catch {
+        // mantém default em caso de erro transitório
+      }
+      return this;
+    }
+
     if (!fs.existsSync(this.filePath)) return this;
     try {
       const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
       const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.tenants) ? raw.tenants : []);
-      for (const item of list) {
-        const id = sanitizeTenantId(item?.id);
-        this.tenants.set(id, { ...DEFAULT_TENANT, ...item, id });
-      }
+      this._applyList(list);
     } catch {
       // mantém fallback default
     }
     return this;
   }
 
-  save() {
+  async save() {
+    const payload = { tenants: this.list() };
+    if (this.client) {
+      const { error } = await this.client
+        .from('runtime_projections')
+        .upsert({ key: PROJECTION_KEY, payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (error) throw new Error(`Falha ao salvar tenants no banco: ${error.message}`);
+      return;
+    }
+
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const data = JSON.stringify({ tenants: this.list() }, null, 2);
-    fs.writeFileSync(this.filePath, data, 'utf8');
+    fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
   }
 
   list() {
@@ -62,7 +94,7 @@ export class TenantStore {
     return this.tenants.get(sanitizeTenantId(id)) || null;
   }
 
-  upsert(input = {}) {
+  async upsert(input = {}) {
     const id = sanitizeTenantId(input.id || input.name);
     const prev = this.tenants.get(id) || { ...DEFAULT_TENANT, id, createdAt: new Date().toISOString() };
     const next = {
@@ -76,15 +108,15 @@ export class TenantStore {
       updatedAt: new Date().toISOString(),
     };
     this.tenants.set(id, next);
-    this.save();
+    await this.save();
     return next;
   }
 
-  remove(id) {
+  async remove(id) {
     const clean = sanitizeTenantId(id);
     if (clean === 'default') return false;
     const deleted = this.tenants.delete(clean);
-    if (deleted) this.save();
+    if (deleted) await this.save();
     return deleted;
   }
 }
