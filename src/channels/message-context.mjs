@@ -114,12 +114,12 @@ function extractWhatsAppBodyText(message = {}) {
 function findWhatsAppContextInfo(message = {}) {
   const current = unwrapWhatsAppMessage(message);
   if (current.contextInfo && typeof current.contextInfo === 'object') return current.contextInfo;
-  if (current.messageContextInfo && typeof current.messageContextInfo === 'object') return current.messageContextInfo;
 
   for (const value of Object.values(current)) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     if (value.contextInfo && typeof value.contextInfo === 'object') return value.contextInfo;
   }
+  if (current.messageContextInfo && typeof current.messageContextInfo === 'object') return current.messageContextInfo;
   return {};
 }
 
