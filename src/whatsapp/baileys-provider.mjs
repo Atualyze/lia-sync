@@ -405,6 +405,9 @@ export class BaileysProvider {
         if (this.sock !== sock) return;
         for (const u of Array.isArray(updates) ? updates : []) {
           if (!u?.key?.remoteJid || /@(?:broadcast|g\.us|newsletter)$/i.test(u.key.remoteJid)) continue;
+          if (u?.key?.fromMe && u?.update?.status !== undefined) {
+            this.logger.info?.('[baileys:ack]', JSON.stringify({ id: u.key.id, status: u.update.status, suffix: String(u.key.remoteJid).split('@')[0].slice(-4) }));
+          }
           if (u?.update?.messageStubType === 'REVOKE' || u?.update?.status === 'DELETED') {
             void this.onEvent?.({
               event: 'MESSAGES_UPDATE',
@@ -535,6 +538,7 @@ export class BaileysProvider {
         new Promise((_, rej) => setTimeout(() => rej(new Error('onWhatsApp_timeout')), 2500))
       ]);
       const match = Array.isArray(results) ? results.find(r => r?.exists && r?.jid) : null;
+      this.logger.info?.('[baileys:onWhatsApp]', JSON.stringify({ input: digits.slice(-4), results: (results || []).map(r => ({ exists: r?.exists, jid: r?.jid ? `***${String(r.jid).split('@')[0].slice(-4)}@${String(r.jid).split('@')[1]}` : null })) }));
       if (match?.jid) {
         this.verifiedJidCache?.set(digits, match.jid);
         return match.jid;
