@@ -250,6 +250,7 @@ function rowToSession(row, messages = []) {
     notes: meta.notes || meta.crmNotes || meta.contactNotes || '',
     aiContext: meta.aiContext || '',
     notALead: Boolean(meta.notALead),
+    metadata: meta.lastLiaTrace ? { lastLiaTrace: meta.lastLiaTrace } : undefined,
     email: meta.email || '',
     dealValue: Number(meta.dealValue || 0) || 0,
     funnelStage: meta.funnelStage || '',
@@ -318,6 +319,7 @@ function sessionToConversation(key, session, contactId) {
     external_key: key,
     origin: session.origin === 'simulation' || key.startsWith('sim:') ? 'simulation' : 'real',
     status: session.status === 'closed' ? 'closed' : (session.archivedAt ? 'archived' : 'open'),
+    deleted_at: session.archivedAt ? date(session.archivedAt) : null,
     mode: session.human ? 'human' : 'bot',
     human_source: hSource,
     contact_name: session.clientName || session.contactName || null,
@@ -387,7 +389,8 @@ function sessionToConversation(key, session, contactId) {
         : null,
       followUpPendingId: session.followUpPendingId || null,
       followUpCount: Number(session.followUpCount || 0),
-      followUpSentAt: date(session.followUpSentAt)
+      followUpSentAt: date(session.followUpSentAt),
+      lastLiaTrace: session.metadata?.lastLiaTrace || null
     },
   };
 }

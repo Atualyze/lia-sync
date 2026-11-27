@@ -514,6 +514,10 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       const activeInst = typeof getActiveInstancePhone === 'function' ? getActiveInstancePhone() : '';
       if (activeInst && !session.instancePhone) session.instancePhone = activeInst;
     }
+    session.archived = false;
+    session.archivedAt = null;
+    session.archiveReason = null;
+    session.status = 'open';
     if (body.clientName !== undefined) session.clientName = String(body.clientName || '').trim().slice(0, 120);
     if (body.email !== undefined) session.email = String(body.email || '').trim().slice(0, 160);
     if (body.dealValue !== undefined) {
@@ -546,7 +550,31 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), knowledgeBaseIds: Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : (session.knowledgeBaseId ? [session.knowledgeBaseId] : []), knowledgeBaseId: session.knowledgeBaseId || null, supportModeEnabled: Boolean(session.supportModeEnabled), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+    const kbIds = Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : (session.knowledgeBaseId ? [session.knowledgeBaseId] : []);
+    const phoneFormatted = formatPhoneNumber(rawPhone);
+    const displayName = (session.clientName || session.contactName || session.pushName || '').trim() || phoneFormatted;
+    const crmPayload = { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), knowledgeBaseIds: kbIds, knowledgeBaseId: session.knowledgeBaseId || null, supportModeEnabled: Boolean(session.supportModeEnabled), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' };
+    return json(res, 200, {
+      ok: true,
+      phone: rawPhone,
+      crm: crmPayload,
+      session: {
+        ...crmPayload,
+        phone: rawPhone,
+        rawPhone,
+        phoneFormatted,
+        name: displayName,
+        displayName,
+        origin: session.origin || 'real',
+        human: isHumanHandoffActive(session),
+        updatedAt: session.updatedAt,
+        lastActivityIso: session.updatedAt,
+        lastActivityTime: Date.parse(session.updatedAt) || Date.now(),
+        time: formatActivityTime(session.updatedAt),
+        preview: Array.isArray(session.history) && session.history.length ? String(session.history[session.history.length - 1]?.content || '').slice(0, 80) : 'Sem mensagens ainda',
+        history: Array.isArray(session.history) ? session.history : []
+      }
+    });
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/crm-contact') {
     let body = {};

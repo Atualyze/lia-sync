@@ -6325,6 +6325,7 @@ $('#crm-close-btn')?.addEventListener('click', () => $('#crm-lead-modal')?.class
 $('#crm-search')?.addEventListener('input', () => renderFunnel());
 $('#crm-sector-filter')?.addEventListener('change', () => renderFunnel());
 $('#crm-save-btn')?.addEventListener('click', async () => {
+  const btn = $('#crm-save-btn');
   const isCreate = $('#crm-mode')?.value === 'create';
   const phone = (isCreate ? $('#crm-phone-input')?.value : $('#crm-phone')?.value)?.trim();
   if (!phone) {
@@ -6348,19 +6349,38 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
     supportModeEnabled: Boolean($('#crm-support-mode')?.checked || selectedKbIds.length),
     notes: $('#crm-notes')?.value || '',
   };
-  const res = await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
-  const savedPhone = res?.phone || phone;
-  const target = (state.sessions || []).find((s) => s.phone === savedPhone);
-  if (target) {
-    Object.assign(target, { ...payload, phone: savedPhone, displayName: payload.clientName || target.displayName, dealValue: Number(payload.dealValue || 0), tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean) });
-  } else {
-    await refresh().catch(() => {});
+  const origLabel = btn?.textContent || 'Salvar Ficha';
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const res = await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
+    const savedPhone = res?.phone || phone;
+    const savedSession = res?.session;
+    state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    const target = state.sessions.find((s) => s.phone === savedPhone);
+    if (target) {
+      Object.assign(target, savedSession || {
+        ...payload,
+        phone: savedPhone,
+        displayName: payload.clientName || target.displayName,
+        dealValue: Number(payload.dealValue || 0),
+        tags: String(payload.tags).split(',').map(x => x.trim()).filter(Boolean)
+      });
+    } else if (savedSession) {
+      state.sessions.unshift(savedSession);
+    } else {
+      await refresh({ background: true }).catch(() => {});
+    }
+    selectedContactPhone = savedPhone;
+    $('#crm-lead-modal')?.classList.add('hidden');
+    renderList();
+    renderFunnel();
+    renderContacts();
+    showToast({ title: isCreate ? 'Contato Cadastrado' : 'Ficha Atualizada', message: payload.clientName || savedPhone, type: 'success' });
+  } catch (err) {
+    showToast({ title: 'Erro ao salvar contato', message: err?.message || 'Verifique o telefone informado (DDI+DDD).', type: 'error' });
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origLabel; }
   }
-  selectedContactPhone = savedPhone;
-  $('#crm-lead-modal')?.classList.add('hidden');
-  renderFunnel();
-  renderContacts();
-  showToast({ title: isCreate ? 'Contato Cadastrado' : 'Ficha Atualizada', message: payload.clientName || savedPhone, type: 'success' });
 });
 async function deleteContactByPhone(phone) {
   if (!phone) return;
