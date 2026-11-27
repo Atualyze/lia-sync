@@ -3548,7 +3548,7 @@ function showView(view, opts = {}) {
     renderIntegrations();
     window.loadApiSettingsGroup?.();
   }
-  if (view === 'runtime') renderRuntimeView();
+  if (view === 'runtime') window.renderRuntimeView?.();
   setTimeout(() => decorateTechnicalTerms(document.body), 90);
 }
 
@@ -5302,6 +5302,7 @@ async function loadApiIntegrationsPanel() {
     }
   }
 
+  window.renderRuntimeView = renderRuntimeView; // exposto para showView(), fora deste escopo
   async function renderRuntimeView() {
     try {
       const data = await api('/api/dashboard/runtime/overview');

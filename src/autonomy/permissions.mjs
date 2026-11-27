@@ -71,9 +71,8 @@ export function normalizeOrgAutonomyPolicy(raw = {}) {
       : [],
     approval_policy: {
       requireHumanForOutbound: raw.approval_policy?.requireHumanForOutbound !== false,
-      requireHumanForPix: true, // imutável: Pix sempre exige confirmação
       ...(raw.approval_policy && typeof raw.approval_policy === 'object' ? raw.approval_policy : {}),
-      requireHumanForPix: true
+      requireHumanForPix: true // imutável: Pix sempre exige confirmação (vence qualquer valor vindo de raw)
     },
     daily_limits: {
       maxActionsPerHour: Math.max(1, Number(limits.maxActionsPerHour ?? 30)),

@@ -13,6 +13,7 @@
     "start": "node src/server.mjs",
     "build": "node scripts/build-dist.mjs",
     "lint": "node scripts/check-syntax.mjs",
+    "lint:eslint": "eslint . --max-warnings=78",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
     "test:contract": "node scripts/contract-check.mjs",
@@ -25,5 +26,10 @@
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0",
+    "globals": "17.14.0"
   }
 }

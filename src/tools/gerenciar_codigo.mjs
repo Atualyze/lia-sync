@@ -2,7 +2,6 @@ const SAFE_PATHS = [
   /^src\//,
   /^scripts\//,
   /^test[s]?\//,
-  /^\.github\/workflows\//,
   /^README\.md$/,
   /^docs\//
 ];

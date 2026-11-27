@@ -98,7 +98,6 @@ export function resolveMessages(botConfig = {}) {
   }
 
   result.plans = result.atendimento;
-  result.services = result.services;
   return result;
 }
 

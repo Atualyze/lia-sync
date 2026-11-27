@@ -27,6 +27,9 @@ import { detectClientReminderQuery, buildClientReminderQueryReply } from './clie
 export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000, 120_000]);
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
 const CLIENT_HANDOFF_CATEGORIES = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia']);
+// Última vez que avisamos "recebi seu arquivo" por telefone (cooldown de 1h); limitado para não crescer sem fim.
+const nonTextNotice = new Map();
+const NON_TEXT_NOTICE_MAX_ENTRIES = 5000;
 
 function buildIdentityClarificationReply(text = '', { alreadyIntroduced = false, owner = '' } = {}) {
   if (!alreadyIntroduced) return null;
@@ -479,6 +482,7 @@ export async function handleClientMessage({
         const last = nonTextNotice.get(phone) || 0;
         if (now() - last < 3600000) return null;
         nonTextNotice.set(phone, now());
+        if (nonTextNotice.size > NON_TEXT_NOTICE_MAX_ENTRIES) nonTextNotice.delete(nonTextNotice.keys().next().value);
         s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]' + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         store.markDirty();
         return 'Recebi seu arquivo por aqui! 📄\n\nSe preferir escrever ou mandar um áudio com o que você precisa, fico à disposição por aqui.';

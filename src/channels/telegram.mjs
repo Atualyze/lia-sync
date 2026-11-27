@@ -378,8 +378,6 @@ export function createTelegramCopilot({
         text,
         origin: 'telegram',
         nonText: false,
-        mediaType: 'text',
-        rawItem: { channel: 'telegram', chatId: String(chatId) },
         pushName: pushName || 'Admin Telegram',
         authorizedResume: true,
         messageId: messageId ? `tg:${messageId}` : '',

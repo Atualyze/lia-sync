@@ -230,8 +230,6 @@ function rowToSession(row, messages = []) {
   return {
     phone: c.phone || key.replace(/^sim:/, ''),
     origin: row.origin,
-    _conversationId: row.id || null,
-    _contactId: row.contact_id || c.id || null,
     history: cleanMessages,
     human: row.mode === 'human',
     humanSource: row.human_source || null,

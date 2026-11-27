@@ -240,7 +240,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     if (agendaResult !== false) return agendaResult;
     const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection, webhookEventStore, deliverReactivationReply });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
-    const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig, tenantStore, customSectorStore, f, deliverReactivationReply });
+    const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig, tenantStore, customSectorStore, f, deliverReactivationReply, getActiveInstancePhone });
     if (settingsResult !== NOT_HANDLED) return settingsResult;
     const adminResult = await handleAdminRoutes({ req, res, u, adminConfig, faqFor, integrationsStore, onAIConfigUpdated });
     if (adminResult !== NOT_HANDLED) return adminResult;

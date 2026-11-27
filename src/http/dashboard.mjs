@@ -349,7 +349,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
 }
 
 // Modo/limpeza/configuração do painel (executadas depois das rotas /api/bridge/*).
-export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null, tenantStore = null, customSectorStore = null, f = null, deliverReactivationReply = null }) {
+export async function handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig = null, tenantStore = null, customSectorStore = null, f = null, deliverReactivationReply = null, getActiveInstancePhone = null }) {
   const activeTenantStore = tenantStore || defaultTenantStore;
   const activeSectorStore = customSectorStore || defaultSectorStore;
   if (req.method === 'POST' && u.pathname === '/api/dashboard/mode') {
@@ -385,7 +385,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     const activeInst = typeof getActiveInstancePhone === 'function'
       ? String(getActiveInstancePhone() || '').replace(/@.*$/, '').replace(/\D/g, '')
       : '';
-    if (activeInst && !isOwnerKey(phone)) {
+    if (activeInst && !isOwnerKey(body.phone)) {
       session.instancePhone = activeInst;
     }
     session.updatedAt = new Date().toISOString();
