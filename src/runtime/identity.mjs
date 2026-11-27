@@ -18,7 +18,7 @@ function normalizeIdentityRecord(raw = {}, { nowIso, defaultName = 'Lia' } = {})
     id: 'primary',
     identity: {
       name: String(baseIdentity.name || defaultName).trim().slice(0, 80) || 'Lia',
-      version: String(baseIdentity.version || '3.5.0').trim().slice(0, 40),
+      version: String(baseIdentity.version || '3.6.0').trim().slice(0, 40),
       description: String(baseIdentity.description || 'Runtime operacional persistente da assistente Lia Sync.').trim().slice(0, 400)
     },
     role: String(raw.role || 'assistente_operacional').trim().slice(0, 80) || 'assistente_operacional',

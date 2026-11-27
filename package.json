@@ -1,6 +1,6 @@
 {
   "name": "lia-sync",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "description": "Lia Sync - Runtime Persistente de Agente, Aprendizado Contínuo, Autonomia Operacional e Copiloto via WhatsApp",
   "author": "Lia Sync",
   "private": true,

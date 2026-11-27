@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.6.0 - Agenda Unificada, Raio-X da Lia, Setores/Triagem Reais & Hardening
+- **Agenda Unificada (`src/agenda.mjs`, `src/http/agenda-routes.mjs`):** novo menu **Agenda** unificando reuniões próprias, retornos WhatsApp (`ReminderStore`), compromissos do `Lia Runtime` e Google Calendar opcional.
+- **Raio-X da Lia (`lastLiaTrace`):** telemetria por turno no dossiê do Inbox (modelo, tokens, latência, bases `.md` usadas e ferramentas).
+- **Setores, Triagem & Handoff (`custom-sectors.mjs`, `triage-router.mjs`, `transferir_setor.mjs`):** cliente REST Supabase corrigido, `promptInstructions`/`handoffEnabled`/`responsiblePhone` ativos no fluxo, `transferir_para_setor` chamando `triggerHandoff` e classificador ponderado.
+- **Segurança & Qualidade:** `isIssuedPixLink` em `/pix`, rate limit com `TRUSTED_PROXY_HOPS`, rotação de segredos `v2` (`kid`), ESLint `--max-warnings=0`, testes herméticos (`test-setup.mjs`) e `740/740` testes aprovados.
+
+
 ## 3.5.0 - CRM Inteligente na Lia, Suporte Dedicado por Contato, Inbox CRM-First & Otimização Mobile
 - **CRM Inteligente & Histórico Completo:** `consultar_contato_ou_lead` resolve por telefone, `external_id` ou nome, retornando `aiContext`, dados do CRM e histórico completo quando solicitado; prompt do Copiloto inclui resumo de contatos CRM.
 - **Flag `notALead` ("Não é lead"):** oculta contato do Funil / Kanban, bloqueia follow-ups automáticos e instrui a Lia para tratamento não comercial.

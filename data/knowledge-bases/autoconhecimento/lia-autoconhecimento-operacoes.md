@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.5.0
+Versão do Sistema: 3.6.0
 
 ### Capacidades Adicionais (v3.4.0)
 - **Canais Suportados:** Baileys Nativo (WhatsApp Web), **ManyChat** (`/webhook/manychat`, API Oficial da Meta) e **GoHighLevel** (`/webhook/ghl`, API v2).
@@ -291,3 +291,9 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
 - **Atendimento Próprio de Suporte (`.md` por contato):** contatos com `supportMode` ativo podem associar uma ou mais bases `.md` de `data/knowledge-bases/suporte_tecnico/` (`supportKnowledgeBases`), fazendo a Lia priorizar essas bases no atendimento daquele contato.
 - **Inbox CRM-First & Mobile:** o painel conta com filtro por etapa do funil na lista de conversas, faixa CRM no chat (`#chat-crm-strip`), dossiê lateral editável, menus *Assistente* e *Plataforma* recolhidos por padrão e layout mobile otimizado.
 - **Respostas Citadas (`replyTo`):** mensagens respondidas com citação no WhatsApp (Baileys), simulador e chat interno preservam o texto citado (`contextText`) para evitar perda de referência.
+
+### 2.16. Agenda Unificada, Raio-X no Inbox, Setores Ativos & Segurança (v3.6.0)
+- **Agenda Unificada (`src/agenda.mjs`, `/api/dashboard/agenda`):** o painel agora possui o menu **Agenda**, centralizando reuniões próprias (`AgendaStore`), retornos WhatsApp (`ReminderStore`), rotinas do `Lia Runtime` e eventos do **Google Calendar** (sincronização opcional quando conectado). Agendamentos feitos pela Lia ou pelo painel atualizam o contato no CRM para `agendado` (exceto quando marcado `notALead`).
+- **Raio-X da Lia ao vivo (`lastLiaTrace`):** cada resposta registrada em conversa de cliente grava modelo/provedor, latência, tokens, bases de conhecimento usadas (`suporte_tecnico/`, `sales_intelligence/`, `biblioteca_juridica/`, FAQ, contexto CRM) e ferramentas executadas para inspeção no dossiê do Inbox.
+- **Setores com Instruções, Handoff Direto e Responsável (`src/sectors/custom-sectors.mjs`, `src/triage-router.mjs`, `src/tools/transferir_setor.mjs`):** o motor mescla setores do painel com a projeção do Chatwoot, aplica `promptInstructions` no atendimento, aciona `triggerHandoff` quando `handoffEnabled` está ativo (ou via `transferir_para_setor`) e notifica o `responsiblePhone` do setor.
+- **Proteções Adicionais:** links `/pix?p=...` validam pedido emitido (`isIssuedPixLink`), rotas públicas de pagamento aplicam rate limit por IP confiável (`TRUSTED_PROXY_HOPS`), segredos suportam rotação com `kid` v2 e `.github/workflows/` foi removido da allowlist de `gerenciar_codigo`.

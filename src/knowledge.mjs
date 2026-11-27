@@ -61,8 +61,8 @@ export function findFaq(text = '') {
 const LIA_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    return String(pkg?.version || '3.5.0');
-  } catch { return '3.5.0'; }
+    return String(pkg?.version || '3.6.0');
+  } catch { return '3.6.0'; }
 })();
 const companySuffix = companyName => (companyName ? ` da ${companyName}` : '');
 

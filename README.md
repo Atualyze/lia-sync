@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.5.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.6.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.6.0 — Agenda Unificada, Raio-X da Lia, Setores/Triagem Reais & Hardening
+
+- **Agenda Unificada (`src/agenda.mjs`, `src/http/agenda-routes.mjs`, `public/index.html`):** novo menu **Agenda** reunindo reuniões próprias (`data/agenda.json` + `runtime_projections`), retornos WhatsApp (`ReminderStore`), rotinas do `Lia Runtime` e sincronização opcional com **Google Calendar**, atualizando o funil CRM para `agendado`.
+- **Raio-X da Lia ao vivo (`src/ai/call.mjs`, `src/knowledge.mjs`, `src/flow/client.mjs`, `public/app.js`):** indicador em tempo real no dossiê lateral do Inbox exibindo modelo/provedor, latência, tokens, bases de conhecimento usadas e ferramentas executadas.
+- **Setores, Triagem & Handoff Reais (`src/sectors/custom-sectors.mjs`, `src/triage-router.mjs`, `src/tools/transferir_setor.mjs`):** persistência REST corrigida no Supabase, mescla com projeção do Chatwoot, `promptInstructions` no prompt, `handoffEnabled`, roteamento para `responsiblePhone`, `transferir_para_setor` acionando `triggerHandoff` e classificador lexical com pesos e prioridades.
+- **Segurança & Qualidade:** validação `isIssuedPixLink` em `/pix?p=...`, rate limit anti-spoofing (`TRUSTED_PROXY_HOPS`), segredos `v2` com `kid` e rotação (`API_SECRETS_PREVIOUS_KEYS`), shutdown controlado, headers `frame-ancestors`/`ETag`, ESLint 10 (`--max-warnings=0`) e testes isolados em `os.tmpdir()`.
+
+Detalhes técnicos: [`docs/release-3.6.0.md`](docs/release-3.6.0.md).
 
 ## Novidades da Versão 3.5.0 — CRM Inteligente na Lia, Suporte Dedicado por Contato, Inbox CRM-First & Mobile
 
