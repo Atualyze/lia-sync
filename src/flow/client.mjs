@@ -3,7 +3,7 @@ import { sanitizeInput, isEmergency, filterReply, normalize, detectPriceMentions
 import { formatMessageContextForAI } from '../channels/message-context.mjs';
 import { getRecentAIErrorSummary } from '../ai.mjs';
 import { getNextProviderRecoveryDelayMs } from '../ai/state.mjs';
-import { buildSystemPrompt } from '../knowledge.mjs';
+import { buildSystemPrompt, inspectClientKnowledgeContext } from '../knowledge.mjs';
 import { memoryStore, buildMemoryScopeKey, extractMemoryCandidates } from '../core/memory.mjs';
 import { OWNER_SELF_KEY } from '../core/identity.mjs';
 import { findDynamicFaq, getPlansForPrompt, getAllowedPrices } from '../faq.mjs';
@@ -883,6 +883,8 @@ export async function handleClientMessage({
         isOwner: false,
         memoryItems: promptMemories
       });
+      const knowledgeTrace = inspectClientKnowledgeContext({ session: promptSession, faq: items });
+      const executedToolsTrace = [];
       const prevUserTurns = activeContext.history.slice(0, -1).filter(m => m.role === 'user');
       const lastPrevUser = prevUserTurns[prevUserTurns.length - 1];
       const normCurrent = normalize(clean);
@@ -1569,6 +1571,10 @@ export async function handleClientMessage({
                 toolArgs.valorLivre = true;
               }
               const toolRes = await executeToolCall(tc.name, toolArgs, toolContext);
+              executedToolsTrace.push({
+                name: resolveToolName(tc.name) || tc.name,
+                ok: toolRes?.success === true
+              });
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && toolRes?.success === true) {
                 void syncLeadToGoogleSheet({
@@ -2026,6 +2032,23 @@ export async function handleClientMessage({
           const maxStoredHistory = Math.max(20, Math.min(500, Number(botConfig?.ai?.maxStoredHistory) || 100));
           if (s.history.length > maxStoredHistory) s.history = s.history.slice(-maxStoredHistory);
       s.lastBotAt = new Date(now()).toISOString(); s.awaitingReply = true;
+      s.metadata = {
+        ...(s.metadata && typeof s.metadata === 'object' ? s.metadata : {}),
+        lastLiaTrace: {
+          at: s.lastBotAt,
+          provider: result?._meta?.provider || null,
+          model: result?._meta?.model || null,
+          fallbackUsed: Boolean(result?._meta?.fallbackUsed),
+          latencyMs: result?._meta?.latencyMs ?? null,
+          tokens: result?._meta?.tokens || null,
+          sector: s.sectorName || result?.sector || null,
+          sentiment: s.sentiment || result?.sentiment || null,
+          intent: result?.intent || null,
+          contextSummary: s.contextSummary || null,
+          knowledge: knowledgeTrace,
+          tools: executedToolsTrace
+        }
+      };
       store.markDirty();
 
       if (!isHumanHandoffActive(s) && !s.lastSheetSyncAt && s.history.length >= 4 && (s.contextSummary || s.sectorName)) {

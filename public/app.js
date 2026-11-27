@@ -1874,6 +1874,36 @@ function renderChat({ forceRender = false } = {}) {
     </div>
     ${crmHtml}
     ${docHtml}
+    ${(() => {
+      const tr = session.metadata?.lastLiaTrace;
+      if (!tr) {
+        return `<div class="detail-block lia-xray-block">
+          <div class="lia-xray-head"><h3>Raio-X da Lia</h3><span class="pill mini">Ao vivo</span></div>
+          <p class="ops-muted" style="font-size:11.5px;margin:4px 0 0;">Aguardando próxima resposta da Lia para registrar modelo, bases e ferramentas usadas.</p>
+        </div>`;
+      }
+      const kbMeta = tr.knowledge || {};
+      const kbPills = [];
+      (kbMeta.supportKbs || []).forEach(kb => kbPills.push(`<span class="lia-xray-pill kb">${esc(kb.title || kb.id)}</span>`));
+      if (kbMeta.guidanceKb) kbPills.push(`<span class="lia-xray-pill guidance">${esc(kbMeta.guidanceKb.title || kbMeta.guidanceKb.id)}</span>`);
+      if (kbMeta.hasFaq) kbPills.push('<span class="lia-xray-pill">FAQ</span>');
+      if (kbMeta.hasAiContext) kbPills.push('<span class="lia-xray-pill">Contexto CRM</span>');
+      if (kbMeta.notALead) kbPills.push('<span class="lia-xray-pill warn">Não é lead</span>');
+      const toolsList = Array.isArray(tr.tools) ? tr.tools : [];
+      const toolsHtml = toolsList.length
+        ? toolsList.map(t => `<span class="lia-xray-pill ${t.ok ? 'ok' : 'warn'}">${t.ok ? '✓' : '!'} ${esc(t.name)}</span>`).join('')
+        : '<span class="ops-muted" style="font-size:11.5px;">Nenhuma ferramenta acionada</span>';
+      const latencyLabel = Number.isFinite(Number(tr.latencyMs)) ? `${(Number(tr.latencyMs) / 1000).toFixed(1)}s` : 'Ao vivo';
+      const tokLabel = tr.tokens?.totalTokens ? `${tr.tokens.totalTokens} tok` : '';
+      return `<div class="detail-block lia-xray-block">
+        <div class="lia-xray-head"><h3>Raio-X da Lia</h3><span class="pill mini mint">${esc(latencyLabel)}${tokLabel ? ` · ${esc(tokLabel)}` : ''}</span></div>
+        <div class="detail-row"><span>Modelo</span><b>${esc([tr.provider, tr.model].filter(Boolean).join(' / ') || '—')}${tr.fallbackUsed ? ' (fallback)' : ''}</b></div>
+        ${(tr.intent || tr.sector || tr.sentiment) ? `<div class="detail-row"><span>Leitura</span><b>${esc([tr.intent, tr.sector, tr.sentiment].filter(Boolean).join(' · '))}</b></div>` : ''}
+        <div class="lia-xray-group"><span>Conhecimento usado</span><div class="lia-xray-pills">${kbPills.length ? kbPills.join('') : '<span class="ops-muted" style="font-size:11.5px;">Apenas prompt base</span>'}</div></div>
+        <div class="lia-xray-group"><span>Ferramentas</span><div class="lia-xray-pills">${toolsHtml}</div></div>
+        ${tr.contextSummary ? `<p class="ops-muted" style="font-size:11.5px;margin:6px 0 0;line-height:1.4;">${esc(tr.contextSummary)}</p>` : ''}
+      </div>`;
+    })()}
     <div class="detail-actions">
       <button type="button" class="detail-action primary" id="toggle-mode">${session.human ? 'Reativar Lia (Bot)' : 'Transferir para Humano'}</button>
       <button type="button" class="detail-action danger" id="clear-session">${session.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa'}</button>

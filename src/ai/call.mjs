@@ -679,6 +679,13 @@ export async function askAI(args = {}) {
           success: true,
           error: null
         });
+        parsed._meta = {
+          provider,
+          model: executedModel || providerModel || preferredModel || '',
+          latencyMs: Date.now() - start,
+          fallbackUsed: pIdx > 0,
+          tokens: res.tokens || null
+        };
         return parsed;
       } else if (res?.budgetPermit?.requestId) {
         await res.budgetPermit.markUnknown?.({ provider, model: res.model || providerModel });

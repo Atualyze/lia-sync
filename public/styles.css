@@ -5361,3 +5361,62 @@ summary:focus-visible {
     width: 100% !important;
   }
 }
+
+/* Raio-X da Lia (Inbox Dossier Live Telemetry) */
+.lia-xray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lia-xray-head h3 {
+  margin: 0;
+}
+.lia-xray-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+.lia-xray-group > span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.lia-xray-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.lia-xray-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #202227;
+  border: 1px solid #2e3138;
+  color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lia-xray-pill.kb,
+.lia-xray-pill.ok {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.34);
+  color: #6ee7b7;
+}
+.lia-xray-pill.guidance {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.34);
+  color: #93c5fd;
+}
+.lia-xray-pill.warn {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fcd34d;
+}

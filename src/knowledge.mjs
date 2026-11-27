@@ -490,6 +490,30 @@ ${(() => {
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
 }
 
+export function inspectClientKnowledgeContext({ session = {}, faq = [] } = {}) {
+  const isSupportContact = Boolean(session.supportModeEnabled);
+  const kbIds = [...new Set([
+    ...(Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : []),
+    ...(session.knowledgeBaseId ? [session.knowledgeBaseId] : [])
+  ].map(x => String(x || '').trim()).filter(Boolean))];
+  const knowledgeQuery = session.lastUserText || session.contextSummary || '';
+  const recentChatText = (session.history || []).slice(-4).map(h => h?.content || '').join(' ');
+  const perKbMaxChars = kbIds.length > 1 ? Math.max(2200, Math.floor(7500 / kbIds.length)) : 6500;
+  const kbDatas = kbIds.map(id => (isSupportContact
+    ? getRelevantKnowledgeBaseContentSync(id, knowledgeQuery, undefined, { maxChars: perKbMaxChars })
+    : getKnowledgeBaseContentSync(id))).filter(d => d && d.content);
+  const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
+  return {
+    isSupportContact,
+    supportKbs: kbDatas.map(d => ({ id: d.id, title: d.title, folder: d.folder || '' })),
+    guidanceKb: guidanceKb ? { id: guidanceKb.id, title: guidanceKb.title, folder: guidanceKb.folder || '' } : null,
+    hasFaq: Array.isArray(faq) && faq.length > 0,
+    hasAiContext: Boolean(String(session.aiContext || '').trim()),
+    notALead: Boolean(session.notALead),
+    hasNotes: Boolean(String(session.contactNotes || '').trim())
+  };
+}
+
 export const AI_AGENT_STRUCTURE = {
   knowledge: {
     companyInfo: { title: 'Informações gerais', description: BUSINESS.areas },
