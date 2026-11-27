@@ -2499,7 +2499,13 @@ function renderAdmin({ force = false } = {}) {
   if (draft.voice && !draft.voice.deliveryMode) {
     draft.voice.deliveryMode = draft.voice.sendTranscriptionWithAudio === false ? 'audio_only' : 'audio_and_text';
   }
-  if (draft.voice && (!['Aoede', 'Kore', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir'].includes(draft.voice.voiceName))) {
+  const supportedVoiceNames = new Set([
+    'Aoede', 'Kore', 'Leda', 'Zephyr', 'Puck', 'Charon', 'Fenrir',
+    'pt-BR-FranciscaNeural', 'pt-BR-ThalitaNeural', 'pt-BR-AntonioNeural',
+    'pt-BR-GiovannaNeural', 'pt-BR-BrendaNeural', 'pt-BR-DonatoNeural',
+    'alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'
+  ]);
+  if (draft.voice && !supportedVoiceNames.has(draft.voice.voiceName)) {
     draft.voice.voiceName = 'Aoede';
     if (!state.adminFormDirty && state.adminConfig?.draft?.voice) state.adminConfig.draft.voice.voiceName = 'Aoede';
   }
