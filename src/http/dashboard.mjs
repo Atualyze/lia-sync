@@ -26,6 +26,12 @@ function sameInstancePhone(a, b) {
   return Boolean(na && nb && na === nb);
 }
 
+function belongsToDifferentInstance(sessionInstancePhone, activeInstancePhone) {
+  const active = normalizePhone(String(activeInstancePhone || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  const sess = normalizePhone(String(sessionInstancePhone || '').replace(/@.*$/, '').replace(/\D/g, ''));
+  return Boolean(active && sess && sess !== active);
+}
+
 // Rotas de estado/simulação/envio do painel (executadas antes das rotas /api/bridge/*).
 async function persistAdminPatch(adminConfig, patch) {
   if (!adminConfig) return;
@@ -110,10 +116,9 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
       const rawPhone = s?.phone || k.replace(/^sim:/, '');
       const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(k) || /^[a-z0-9_]+_self$/i.test(rawPhone);
       const belongsToOtherInstance = Boolean(
-        activeInstancePhone
-        && !isSim
+        !isSim
         && !isCopilotSelf
-        && !sameInstancePhone(s?.instancePhone, activeInstancePhone)
+        && belongsToDifferentInstance(s?.instancePhone, activeInstancePhone)
       );
       if (belongsToOtherInstance) {
         otherInstancesCount++;
@@ -131,7 +136,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
         if (activeInstancePhone && !includeOtherInstances && !isSim) {
           const rawPhone = s?.phone || key.replace(/^sim:/, '');
           const isCopilotSelf = isOwnerKey(rawPhone) || isOwnerKey(key) || /^[a-z0-9_]+_self$/i.test(rawPhone);
-          if (!isCopilotSelf && !sameInstancePhone(s?.instancePhone, activeInstancePhone)) {
+          if (!isCopilotSelf && belongsToDifferentInstance(s?.instancePhone, activeInstancePhone)) {
             return false;
           }
         }
