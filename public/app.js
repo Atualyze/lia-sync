@@ -1338,10 +1338,13 @@ function avatarHtml(phone, fallbackName) {
 function renderList() {
   const query = ($('#search')?.value || '').toLowerCase();
   const filterMode = state.inboxFilter || 'all';
+  const stageFilter = $('#inbox-stage-filter')?.value || '';
   const items = state.sessions.filter((item) => {
     if (filterMode === 'human' && !item.human) return false;
     if (filterMode === 'bot' && item.human) return false;
-    return `${item.name || ''} ${item.displayName || ''} ${item.phone || ''} ${item.phoneFormatted || ''} ${item.preview || ''}`.toLowerCase().includes(query);
+    if (stageFilter === '__not_lead__' && !item.notALead) return false;
+    if (stageFilter && stageFilter !== '__not_lead__' && (item.funnelStage || 'novo') !== stageFilter) return false;
+    return `${item.name || ''} ${item.displayName || ''} ${item.phone || ''} ${item.phoneFormatted || ''} ${item.email || ''} ${(item.tags || []).join(' ')} ${item.preview || ''}`.toLowerCase().includes(query);
   });
 
   const convCountEl = $('#conversation-count');
@@ -1393,14 +1396,21 @@ function renderList() {
       const statusClass = item.human ? 'human' : 'bot';
       const mediaIcon = detectConversationMediaBadge(item.preview);
       const originTag = item.origin === 'simulation' ? '<span class="ops-inline-sep">· Simulador</span>' : '';
+      const stageObj = FUNNEL_STAGES.find((st) => st.id === (item.funnelStage || 'novo'));
+      const crmChip = item.notALead
+        ? '<span class="inbox-crm-chip warn">Não é lead</span>'
+        : (item.supportModeEnabled || item.knowledgeBaseId || item.knowledgeBaseIds?.length)
+          ? '<span class="inbox-crm-chip mint">Suporte</span>'
+          : `<span class="inbox-crm-chip">${esc(stageObj ? stageObj.label : 'Novo')}</span>`;
+      const dealChip = Number(item.dealValue || 0) > 0 ? `<span class="inbox-crm-val">${formatBRL(item.dealValue)}</span>` : '';
 
       return `<div class="conversation ${isSelected}" data-phone="${esc(item.phone)}">
         ${avatarHtml(item.phone, titleName)}
         <div class="conversation-body">
           <div class="conversation-top"><strong title="${titleName}">${titleName}</strong><time>${timeLabel}</time></div>
-          <div class="conversation-phone-tag">${phoneLabel}${originTag}</div>
+          <div class="conversation-phone-tag">${phoneLabel}${originTag}${dealChip}</div>
           <p>${mediaIcon}${previewText}</p>
-          <span class="mode-mini ${statusClass}">${statusLabel}</span>
+          <div class="conversation-badges">${crmChip}<span class="mode-mini ${statusClass}">${statusLabel}</span></div>
         </div>
       </div>`;
     })
@@ -1506,6 +1516,53 @@ function renderChat({ forceRender = false } = {}) {
   const phoneLink = $('#chat-phone-link');
   if (phoneLink) phoneLink.href = cleanNum ? `https://wa.me/${cleanNum}` : '#';
   $('#chat-phone').textContent = fPhone;
+
+  const crmStrip = $('#chat-crm-strip');
+  if (crmStrip) {
+    const isInternalOrSim = session.origin === 'simulation' || session.isInternal;
+    crmStrip.classList.toggle('hidden', isInternalOrSim);
+    if (!isInternalOrSim) {
+      const stageSel = $('#chat-stage-select');
+      if (stageSel) {
+        stageSel.value = session.funnelStage || 'novo';
+        stageSel.onchange = async () => {
+          const stage = stageSel.value;
+          await api('/api/dashboard/funnel-stage', { method: 'POST', body: JSON.stringify({ phone: session.phone, stage }) });
+          session.funnelStage = stage;
+          renderList();
+          renderFunnel();
+          renderChat({ forceRender: false });
+          showToast({ title: 'Etapa Atualizada', message: FUNNEL_STAGES.find(s => s.id === stage)?.label || stage, type: 'success' });
+        };
+      }
+      const secPill = $('#chat-sector-pill');
+      if (secPill) {
+        secPill.textContent = session.sectorId || 'Sem setor';
+        secPill.classList.toggle('hidden', !session.sectorId);
+      }
+      const valPill = $('#chat-value-pill');
+      if (valPill) {
+        valPill.textContent = Number(session.dealValue || 0) > 0 ? formatBRL(session.dealValue) : '';
+        valPill.classList.toggle('hidden', !(Number(session.dealValue || 0) > 0));
+      }
+      const profPill = $('#chat-profile-pill');
+      if (profPill) {
+        if (session.notALead) {
+          profPill.textContent = 'Não é lead';
+          profPill.className = 'pill mini warn';
+          profPill.classList.remove('hidden');
+        } else if (session.supportModeEnabled || session.knowledgeBaseId || session.knowledgeBaseIds?.length) {
+          profPill.textContent = 'Suporte (.md)';
+          profPill.className = 'pill mini mint';
+          profPill.classList.remove('hidden');
+        } else {
+          profPill.classList.add('hidden');
+        }
+      }
+      const fichaBtn = $('#chat-open-ficha-btn');
+      if (fichaBtn) fichaBtn.onclick = () => openCrmModal(session.phone);
+    }
+  }
 
   const pendingOptimistic = state.pendingOutboundByPhone?.get(session.phone) || [];
   const rawHistory = [...(session.history || []), ...pendingOptimistic];
@@ -1766,20 +1823,49 @@ function renderChat({ forceRender = false } = {}) {
       </div>`
     : '';
 
+  const stageOptsHtml = FUNNEL_STAGES.map((st) => `<option value="${st.id}"${st.id === (session.funnelStage || 'novo') ? ' selected' : ''}>${st.label}</option>`).join('');
+  const kbLinked = (Array.isArray(session.knowledgeBaseIds) && session.knowledgeBaseIds.length
+    ? session.knowledgeBaseIds
+    : (session.knowledgeBaseId ? [session.knowledgeBaseId] : [])).map(id => `${esc(id)}.md`).join(', ');
+  const tagsHtml = (session.tags || []).length
+    ? (session.tags || []).map((t) => `<span class="pill mini amber">${esc(t)}</span>`).join(' ')
+    : '<span class="ops-muted" style="font-size:11.5px;">Sem tags</span>';
+
   $('#detail-content').innerHTML = `
     <div class="detail-block">
-      <h3>Identificação</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;">Contato CRM</h3>
+        <button type="button" class="btn-handoff" style="padding:3px 9px;font-size:11px;" id="detail-edit-ficha">Editar Ficha</button>
+      </div>
       <div class="detail-profile">
         ${avatarHtml(session.phone, dName)}
-        <div>
+        <div style="min-width:0;">
           <strong>${esc(dName)}</strong>
           <span style="display:block;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);">${esc(fPhone)}</span>
+          ${session.email ? `<span style="display:block;font-size:11.5px;color:var(--text-tertiary);">${esc(session.email)}</span>` : ''}
           ${cleanNum ? `<a href="https://wa.me/${cleanNum}" target="_blank" rel="noopener" class="detail-wa-link"><span>Abrir no WhatsApp</span><svg class="svg-icon xs" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></a>` : ''}
         </div>
       </div>
     </div>
     <div class="detail-block">
-      <h3>Estado da Sessão</h3>
+      <h3>Pipeline &amp; Perfil</h3>
+      <div class="detail-row">
+        <span>Etapa</span>
+        <select id="detail-stage-select" class="kanban-stage-select" style="padding:2px 6px;font-size:11.5px;">${stageOptsHtml}</select>
+      </div>
+      <div class="detail-row"><span>Classificação</span><b>${session.notALead ? 'Não é lead' : 'Lead / Cliente'}</b></div>
+      <div class="detail-row"><span>Setor</span><b>${esc(session.sectorId || 'Geral')}</b></div>
+      <div class="detail-row"><span>Valor</span><b>${Number(session.dealValue || 0) > 0 ? formatBRL(session.dealValue) : '—'}</b></div>
+      <div class="detail-row"><span>Suporte (.md)</span><b>${kbLinked || (session.supportModeEnabled ? 'Ativo' : 'Padrão')}</b></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">${tagsHtml}</div>
+    </div>
+    <div class="detail-block">
+      <h3>Contexto para a Lia</h3>
+      <p class="ops-muted" style="font-size:12px;white-space:pre-wrap;margin:4px 0 0;">${esc(session.aiContext || 'Nenhuma instrução específica cadastrada.')}</p>
+    </div>
+    ${(session.notes || session.contactNotes || session.crmNotes) ? `<div class="detail-block"><h3>Notas Internas</h3><p class="ops-muted" style="font-size:12px;white-space:pre-wrap;margin:4px 0 0;">${esc(session.notes || session.contactNotes || session.crmNotes)}</p></div>` : ''}
+    <div class="detail-block">
+      <h3>Sessão</h3>
       <div class="detail-row"><span>Modo atual</span><b>${session.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
       <div class="detail-row"><span>Origem</span><b>${session.origin === 'simulation' ? 'Simulador Isolado' : 'WhatsApp Real'}</b></div>
       <div class="detail-row"><span>Última atividade</span><b>${esc(session.time || 'agora')}</b></div>
@@ -1793,6 +1879,16 @@ function renderChat({ forceRender = false } = {}) {
       <button type="button" class="detail-action danger" id="clear-session">${session.origin === 'simulation' ? 'Limpar Sessão de Teste' : 'Arquivar Conversa'}</button>
     </div>
   `;
+  $('#detail-edit-ficha')?.addEventListener('click', () => openCrmModal(session.phone));
+  $('#detail-stage-select')?.addEventListener('change', async (e) => {
+    const stage = e.target.value;
+    await api('/api/dashboard/funnel-stage', { method: 'POST', body: JSON.stringify({ phone: session.phone, stage }) });
+    session.funnelStage = stage;
+    renderList();
+    renderFunnel();
+    renderChat({ forceRender: false });
+    showToast({ title: 'Etapa Atualizada', message: FUNNEL_STAGES.find(s => s.id === stage)?.label || stage, type: 'success' });
+  });
   $('#toggle-mode')?.addEventListener('click', () => setMode(session.human ? 'bot' : 'human'));
   $('#clear-session')?.addEventListener('click', clearSession);
   decorateTechnicalTerms($('#detail-content'));
@@ -6515,6 +6611,7 @@ $('#contacts-stage-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-sector-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-mode-filter')?.addEventListener('change', () => renderContacts());
 $('#contacts-refresh-btn')?.addEventListener('click', () => refresh().catch(() => {}));
+$('#inbox-stage-filter')?.addEventListener('change', () => renderList());
 $('#contacts-new-btn')?.addEventListener('click', () => openCrmModal(null));
 $('#contacts-google-import-btn')?.addEventListener('click', async () => {
   const btn = $('#contacts-google-import-btn');

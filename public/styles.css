@@ -4872,3 +4872,99 @@ summary:focus-visible {
   color: inherit;
   border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
 }
+
+/* CRM-First Inbox Containment & Components */
+.inbox-grid .chat, .inbox-grid .detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.chat-active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.chat-active > .messages {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.detail > .detail-content {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.inbox-stage-filter-wrap {
+  padding: 0 2px 8px;
+  flex-shrink: 0;
+}
+.inbox-stage-select {
+  width: 100%;
+  background: var(--bg-tertiary, rgba(255,255,255,0.04));
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+}
+.conversation-badges {
+  grid-area: mode;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.inbox-crm-chip {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+}
+.inbox-crm-chip.mint { background: rgba(16,185,129,0.14); color: #34d399; }
+.inbox-crm-chip.warn { background: rgba(245,158,11,0.16); color: #fbbf24; }
+.inbox-crm-val {
+  margin-left: 6px;
+  font-weight: 600;
+  color: #34d399;
+  font-variant-numeric: tabular-nums;
+}
+.chat-crm-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+  background: rgba(255,255,255,0.015);
+  flex-shrink: 0;
+}
+.chat-crm-select {
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  color: var(--text-primary);
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.chat-crm-ficha-btn {
+  margin-left: auto;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-crm-ficha-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }

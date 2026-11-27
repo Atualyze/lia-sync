@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126f" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126g" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -148,7 +148,7 @@
           </div>
         </details>
 
-        <details class="nav-group" open>
+        <details class="nav-group">
           <summary class="nav-group-label"><span>Assistente</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
             <button class="nav-item" data-view="ai-hub" data-role="admin" title="Motor de IA, Modelos, Fallbacks, Provedores & Chaves de API">
@@ -171,7 +171,7 @@
           </div>
         </details>
 
-        <details class="nav-group" open>
+        <details class="nav-group">
           <summary class="nav-group-label"><span>Plataforma</span><svg class="chevron-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="nav-group-items">
             <button class="nav-item" data-view="integrations" title="WhatsApp Baileys, Ponte & Webhooks">
@@ -439,6 +439,17 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input id="search" type="search" placeholder="Buscar nome, número ou mensagem…" />
             </div>
+            <div class="inbox-stage-filter-wrap">
+              <select id="inbox-stage-filter" class="inbox-stage-select" aria-label="Filtrar por etapa do funil">
+                <option value="">Todas as etapas CRM</option>
+                <option value="novo">Novo</option>
+                <option value="em_atendimento">Em atendimento</option>
+                <option value="agendado">Agendado</option>
+                <option value="transferido">Transferido</option>
+                <option value="fechado">Fechado</option>
+                <option value="__not_lead__">Não é lead</option>
+              </select>
+            </div>
             <div id="conversation-items" class="conversation-items"></div>
           </section>
 
@@ -477,6 +488,19 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                   </button>
                 </div>
+              </div>
+              <div id="chat-crm-strip" class="chat-crm-strip hidden">
+                <select id="chat-stage-select" class="chat-crm-select" title="Etapa no Funil CRM">
+                  <option value="novo">Novo</option>
+                  <option value="em_atendimento">Em atendimento</option>
+                  <option value="agendado">Agendado</option>
+                  <option value="transferido">Transferido</option>
+                  <option value="fechado">Fechado</option>
+                </select>
+                <span id="chat-sector-pill" class="pill mini hidden"></span>
+                <span id="chat-value-pill" class="pill mini mint hidden"></span>
+                <span id="chat-profile-pill" class="pill mini hidden"></span>
+                <button type="button" class="chat-crm-ficha-btn" id="chat-open-ficha-btn">Ficha CRM</button>
               </div>
 
               <!-- BARRA DE BUSCA INTERNA NA CONVERSA -->
@@ -579,8 +603,8 @@
           <aside class="detail" id="detail-panel" aria-label="Contexto e Memória">
             <div class="panel-head">
               <div>
-                <strong>Contexto & Memória</strong>
-                <span>CRM extraído, mídias e sessão</span>
+                <strong>Ficha &amp; Contexto CRM</strong>
+                <span>Pipeline, contexto Lia e sessão</span>
               </div>
               <button type="button" class="icon-btn drawer-close-btn" id="detail-close-mobile" title="Fechar contexto" aria-label="Fechar contexto">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -2771,6 +2795,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126f"></script>
+  <script src="/dashboard/app.js?v=20261126g"></script>
 </body>
 </html>
