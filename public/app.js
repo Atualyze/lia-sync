@@ -44,7 +44,7 @@ const esc = (value = '') =>
 // NATIVE CLICK SOUND SYNTHESIZER, TOP PROGRESS BAR, SKELETONS & SPINNERS
 // ============================================================================
 let _audioCtx = null;
-function playNativeClick() {
+function playUiSound(kind = 'click') {
   if (!state.soundEnabled) return;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -52,18 +52,38 @@ function playNativeClick() {
     if (!_audioCtx) _audioCtx = new AudioCtx();
     if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
     const now = _audioCtx.currentTime;
-    const osc = _audioCtx.createOscillator();
-    const gain = _audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(680, now);
-    osc.frequency.exponentialRampToValueAtTime(220, now + 0.022);
-    gain.gain.setValueAtTime(0.055, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
-    osc.connect(gain);
-    gain.connect(_audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.026);
+    const tone = (freqStart, freqEnd, startOffset, dur, vol = 0.05, type = 'triangle') => {
+      const osc = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freqStart, now + startOffset);
+      if (freqEnd !== freqStart) {
+        osc.frequency.exponentialRampToValueAtTime(freqEnd, now + startOffset + dur);
+      }
+      gain.gain.setValueAtTime(vol, now + startOffset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + startOffset + dur);
+      osc.connect(gain);
+      gain.connect(_audioCtx.destination);
+      osc.start(now + startOffset);
+      osc.stop(now + startOffset + dur + 0.005);
+    };
+
+    if (kind === 'send') {
+      tone(520, 780, 0, 0.055, 0.045, 'sine');
+    } else if (kind === 'success') {
+      tone(587, 587, 0, 0.06, 0.04, 'sine');
+      tone(880, 880, 0.065, 0.09, 0.04, 'sine');
+    } else if (kind === 'error') {
+      tone(220, 170, 0, 0.08, 0.05, 'triangle');
+      tone(170, 140, 0.09, 0.09, 0.045, 'triangle');
+    } else {
+      tone(680, 220, 0, 0.024, 0.05, 'triangle');
+    }
   } catch { /* ignore audio context restrictions */ }
+}
+
+function playNativeClick() {
+  playUiSound('click');
 }
 
 function syncSoundToggleBtn() {
@@ -96,6 +116,15 @@ function setTopProgress(active) {
     _progressDepth = Math.max(0, _progressDepth - 1);
     if (_progressDepth === 0) bar.classList.remove('active');
   }
+}
+
+function renderConversationSkeletons(count = 6) {
+  return Array.from({ length: count }, () => `
+    <div class="conv-skeleton" aria-hidden="true">
+      <div class="conv-skeleton-avatar"></div>
+      <div class="conv-skeleton-lines"><span></span><span></span></div>
+    </div>
+  `).join('');
 }
 
 function renderSkeletonCards(count = 3) {
@@ -156,9 +185,29 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
   };
   const resolvedTitle = title || defaultTitles[normalizedType];
   const cleanMessage = String(message || '').replace(/^[✓⚡⚠🤖👤\s]+/u, '').trim();
+  const dedupeKey = `${normalizedType}::${resolvedTitle}::${cleanMessage}`;
+
+  // Smart deduplication: pulse existing toast instead of stacking duplicates
+  const existing = Array.from(container.querySelectorAll('.apple-toast:not(.toast-leaving)'))
+    .find((el) => el.dataset.toastKey === dedupeKey);
+  if (existing) {
+    existing.classList.remove('toast-pulse');
+    void existing.offsetWidth;
+    existing.classList.add('toast-pulse');
+    clearTimeout(Number(existing.dataset.timerId || 0));
+    if (duration > 0) {
+      const tid = setTimeout(() => existing.querySelector('.apple-toast-close')?.click(), duration);
+      existing.dataset.timerId = String(tid);
+    }
+    return;
+  }
+
+  if (normalizedType === 'error') playUiSound('error');
+  else if (normalizedType === 'success') playUiSound('success');
 
   const toast = document.createElement('div');
   toast.className = `apple-toast toast-${normalizedType}`;
+  toast.dataset.toastKey = dedupeKey;
   toast.innerHTML = `
     <div class="apple-toast-icon">${TOAST_ICONS[normalizedType]}</div>
     <div class="apple-toast-body">
@@ -171,22 +220,23 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
   `;
 
   const dismiss = () => {
+    clearTimeout(Number(toast.dataset.timerId || 0));
     if (toast.classList.contains('toast-leaving')) return;
     toast.classList.add('toast-leaving');
-    setTimeout(() => toast.remove(), 240);
+    setTimeout(() => toast.remove(), 220);
   };
 
   toast.querySelector('.apple-toast-close')?.addEventListener('click', dismiss);
   container.appendChild(toast);
 
-  // Limit max simultaneous toasts to 4
+  // Limit max simultaneous toasts to 3
   const allToasts = container.querySelectorAll('.apple-toast:not(.toast-leaving)');
-  if (allToasts.length > 4) {
+  if (allToasts.length > 3) {
     allToasts[0].remove();
   }
 
   if (duration > 0) {
-    setTimeout(dismiss, duration);
+    toast.dataset.timerId = String(setTimeout(dismiss, duration));
   }
 }
 
@@ -4083,6 +4133,7 @@ function startDashboard() {
     const text = input.value.trim();
     if (!text || !state.selected) return;
     input.value = '';
+    playUiSound('send');
     await sendChatMessage({ text });
   });
   $('#search')?.addEventListener('input', renderList);
@@ -4633,6 +4684,8 @@ function startDashboard() {
     }
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) {
       try {
+        const convBox = $('#conversation-items');
+        if (convBox && !convBox.children.length) convBox.innerHTML = renderConversationSkeletons(6);
         await refresh();
         if (state.refreshTimer) clearInterval(state.refreshTimer);
         state.refreshTimer = setInterval(() => { if (!document.hidden) refresh({ background: true }).catch(() => {}); }, 2500);

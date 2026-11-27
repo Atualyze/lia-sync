@@ -66,12 +66,12 @@
   --accent-pink: #d95d7f;
   --accent-pink-soft: #2e151e;
 
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 12px;
-  --radius-pill: 6px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-pill: 4px;
 
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-switch: cubic-bezier(0.32, 0.72, 0, 1);
@@ -5496,4 +5496,365 @@ summary:focus-visible {
   .agenda-card { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; }
   .agenda-card-time { flex-direction: row; gap: 8px; justify-content: flex-start; }
   .agenda-toolbar > * { width: 100%; min-width: 0; }
+}
+
+/* ==========================================================================
+   v3.8.0 Minimalist CRM, Sharp Geometry, Clean Chat & Mobile Overhaul
+   ========================================================================== */
+:root {
+  --bg-app: #111215;
+  --bg-sidebar: #16171b;
+  --bg-topbar: #16171b;
+  --bg-surface: #1b1d22;
+  --bg-surface-elevated: #22252c;
+  --border-hairline: #23262e;
+  --border-strong: #303440;
+}
+
+.inline-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 1. Typographic Hierarchy & Title Restraint */
+.topbar h1,
+.ops-hero h2,
+.admin-hero h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  margin: 0;
+}
+.ops-hero p,
+.admin-hero p {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+  line-height: 1.4;
+}
+
+/* 2. Sharper Geometry (Less Rounded, Intentional Borders) */
+.panel,
+.card,
+.kpi-tile,
+.config-accordion,
+.ops-row,
+.handoff-card,
+.provider-status-card,
+.login-card,
+.apple-toast,
+.apple-context-menu,
+.chat-smart-bar,
+.detail-block {
+  border-radius: var(--radius-lg) !important;
+  border-color: var(--border-hairline);
+}
+
+button,
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-xs-primary,
+.admin-primary-btn,
+.admin-ghost-btn,
+.icon-btn,
+.round-btn,
+.nav-item,
+.inbox-tab,
+.inbox-stage-select,
+.chat-crm-select,
+.search,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: var(--radius-sm) !important;
+  transition: background-color 110ms ease, border-color 110ms ease, color 110ms ease, transform 90ms ease;
+}
+
+button:active:not(:disabled),
+.nav-item:active,
+.inbox-tab:active {
+  transform: scale(0.985);
+}
+
+/* 3. Restraint on Pills & Badges (Micro-tags with status dots) */
+.pill,
+.crm-strip-pill,
+.crm-mini-chip,
+.agenda-type-pill,
+.badge-mini,
+.admin-status,
+.mode-badge,
+.mod-pill {
+  border-radius: var(--radius-xs) !important;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.pill.mini,
+.crm-strip-pill,
+.crm-mini-chip,
+.agenda-type-pill {
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+  background: #1a1c21 !important;
+  border: 1px solid var(--border-hairline) !important;
+  color: var(--text-secondary) !important;
+}
+
+.crm-strip-pill.stage,
+.pill.mint {
+  background: rgba(63, 185, 132, 0.1) !important;
+  border-color: rgba(63, 185, 132, 0.28) !important;
+  color: #7ee0b3 !important;
+}
+
+/* 4. Conversation List — Dense, Scannable Queue */
+.conversation-list {
+  background: var(--bg-sidebar);
+  padding: 10px 8px;
+}
+.conversation {
+  border-radius: var(--radius-sm) !important;
+  padding: 8px 10px !important;
+  gap: 10px !important;
+  border: 1px solid transparent;
+  position: relative;
+}
+.conversation:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--border-hairline);
+}
+.conversation.selected {
+  background: rgba(63, 185, 132, 0.08) !important;
+  border-color: rgba(63, 185, 132, 0.28) !important;
+  box-shadow: inset 2px 0 0 var(--accent-green);
+}
+.conversation-top strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.conversation-top time {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+.conversation-body p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 5. Chat Workspace — Clean, Structured & Breathable */
+.chat.panel {
+  background: #131418;
+}
+.chat-head {
+  padding: 10px 16px !important;
+  min-height: 54px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.chat-head-identity strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.chat-phone-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.chat-crm-strip {
+  padding: 6px 16px !important;
+  gap: 6px !important;
+  background: #14161a !important;
+  border-bottom: 1px solid var(--border-hairline);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chat-crm-strip::-webkit-scrollbar { display: none; }
+.chat-crm-select {
+  height: 26px !important;
+  padding: 0 8px !important;
+  font-size: 11.5px !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  flex-shrink: 0;
+}
+.chat-crm-ficha-btn {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent-mint);
+  background: rgba(63, 185, 132, 0.08);
+  border: 1px solid rgba(63, 185, 132, 0.25);
+  border-radius: var(--radius-xs) !important;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.chat-crm-ficha-btn:hover {
+  background: rgba(63, 185, 132, 0.16);
+}
+
+.messages {
+  padding: 18px 20px !important;
+  gap: 10px !important;
+  background: #111215;
+}
+.bubble-row {
+  max-width: min(76%, 600px) !important;
+}
+.bubble {
+  border-radius: 6px !important;
+  padding: 9px 12px 7px !important;
+  box-shadow: none !important;
+}
+.bubble.in {
+  background: #1c1e24 !important;
+  border: 1px solid #282b34 !important;
+  border-top-left-radius: 2px !important;
+}
+.bubble.out {
+  background: #152f26 !important;
+  border: 1px solid #224d3e !important;
+  border-top-right-radius: 2px !important;
+}
+.bubble-body,
+.bubble-text {
+  font-size: 13.5px;
+  line-height: 1.48;
+  color: var(--text-primary);
+}
+.bubble > small,
+.bubble-foot {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+.bubble.out > small,
+.bubble.out .bubble-foot {
+  color: #87c4aa;
+}
+
+.composer-dock {
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-hairline);
+  padding: 10px 16px 12px !important;
+}
+.composer {
+  background: #111215 !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 6px !important;
+  padding: 6px 8px !important;
+}
+.composer:focus-within {
+  border-color: var(--accent-green) !important;
+}
+
+/* 6. Smart Toast Notifications */
+.apple-toast {
+  border-radius: 6px !important;
+  border: 1px solid var(--border-strong) !important;
+  background: #1b1d23 !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48) !important;
+}
+.apple-toast.toast-pulse {
+  animation: toastPulse 220ms ease;
+}
+@keyframes toastPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); border-color: var(--accent-green); }
+  100% { transform: scale(1); }
+}
+
+/* 7. Conversation Skeleton Rows */
+.conv-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.conv-skeleton-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 5px;
+  background: #23262e;
+  flex-shrink: 0;
+  animation: skPulse 1.3s ease-in-out infinite;
+}
+.conv-skeleton-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conv-skeleton-lines span {
+  height: 9px;
+  border-radius: 3px;
+  background: #23262e;
+  animation: skPulse 1.3s ease-in-out infinite;
+}
+.conv-skeleton-lines span:first-child { width: 55%; }
+.conv-skeleton-lines span:last-child { width: 82%; opacity: 0.7; }
+@keyframes skPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+
+/* 8. Mobile Chat & Touch Optimization */
+@media (max-width: 820px) {
+  .view {
+    padding: 8px !important;
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #inbox-view.active-view {
+    padding: 0 !important;
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .inbox-grid {
+    gap: 0 !important;
+    height: 100%;
+  }
+  .inbox-grid .conversation-list,
+  .inbox-grid .chat.panel {
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+  }
+  .chat-head {
+    padding: 8px 10px !important;
+    min-height: 50px;
+  }
+  .chat-crm-strip {
+    padding: 6px 10px !important;
+  }
+  .messages {
+    padding: 12px 10px !important;
+    gap: 8px !important;
+  }
+  .bubble-row {
+    max-width: 88% !important;
+  }
+  .composer-dock {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .icon-btn:not(.btn-xs),
+  .composer-send-btn {
+    min-width: 38px;
+    min-height: 38px;
+  }
+  .funnel-board {
+    grid-auto-columns: minmax(265px, 84vw);
+  }
 }

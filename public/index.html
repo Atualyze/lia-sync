@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261127b" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261127c" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -1806,7 +1806,7 @@
               </div>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <span id="google-oauth-badge" class="badge-mini">Verificando…</span>
-                <button type="button" class="btn-primary btn-sm" id="google-oauth-connect-btn">🔗 Conectar com Google</button>
+                <button type="button" class="btn-primary btn-sm" id="google-oauth-connect-btn"><svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Conectar com Google</button>
                 <button type="button" class="btn-secondary btn-sm hidden" id="google-oauth-disconnect-btn">Desconectar</button>
               </div>
             </div>
@@ -1840,15 +1840,15 @@
               </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
                 <label class="field">
-                  <span style="font-size:12px">📅 Agenda Padrão (Google Calendar)</span>
+                  <span class="inline-icon-label"><svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Agenda Padrão (Google Calendar)</span>
                   <select id="google-pick-calendar" style="width:100%"><option value="primary">Agenda Principal (primary)</option></select>
                 </label>
                 <label class="field">
-                  <span style="font-size:12px">📁 Pasta Padrão (Google Drive)</span>
+                  <span class="inline-icon-label"><svg class="svg-icon xs" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Pasta Padrão (Google Drive)</span>
                   <select id="google-pick-folder" style="width:100%"><option value="">Todo o Meu Drive (sem restrição)</option></select>
                 </label>
                 <label class="field">
-                  <span style="font-size:12px">📊 Planilha Padrão (Google Sheets)</span>
+                  <span class="inline-icon-label"><svg class="svg-icon xs" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> Planilha Padrão (Google Sheets)</span>
                   <select id="google-pick-sheet" style="width:100%"><option value="">Nenhuma planilha padrão</option></select>
                 </label>
               </div>
@@ -1894,7 +1894,7 @@
               <p>Controle completo de objetivos, compromissos, políticas de autonomia, propostas de melhoria e credenciais de API sem precisar entrar na VPS.</p>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <button type="button" class="btn-secondary" id="runtime-wake-btn" data-role="admin">⚡ Acordar Runtime</button>
+              <button type="button" class="btn-secondary" id="runtime-wake-btn" data-role="admin"><svg class="svg-icon xs" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Acordar Runtime</button>
               <button type="button" class="icon-btn action-btn-ping" id="runtime-refresh-btn" title="Atualizar estado do Runtime" aria-label="Atualizar estado do Runtime">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               </button>
