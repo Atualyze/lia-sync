@@ -819,6 +819,17 @@
               </summary>
               <div class="config-accordion-body">
                 <div class="admin-form-grid">
+                  <label>Provedor de Voz (TTS)
+                    <select data-config="voice.provider" id="admin-voice-provider">
+                      <option value="auto">Automático (Gemini / Azure conforme chave)</option>
+                      <option value="gemini">Gemini Neural TTS</option>
+                      <option value="azure_speech">Azure AI Speech (500k chars grátis/mês)</option>
+                      <option value="azure_openai">Azure OpenAI TTS (tts-1 / gpt-4o-mini-tts)</option>
+                    </select>
+                  </label>
+                  <label>Modelo / Deployment TTS (opcional)
+                    <input type="text" data-config="voice.model" id="admin-voice-model" maxlength="120" placeholder="Padrão do provedor (ex.: tts-1)" />
+                  </label>
                   <label>Voz Oficial da Lia
                     <select data-config="voice.voiceName" id="admin-voice-select">
                       <optgroup label="Vozes Gemini TTS Multilíngues">
@@ -829,6 +840,22 @@
                         <option value="Puck">Puck (Gemini · Amigável e Fluida)</option>
                         <option value="Charon">Charon (Gemini · Firme e Solene)</option>
                         <option value="Fenrir">Fenrir (Gemini · Energética e Direta)</option>
+                      </optgroup>
+                      <optgroup label="Vozes Azure AI Speech (pt-BR)">
+                        <option value="pt-BR-FranciscaNeural">Francisca (Azure · Natural e Acolhedora)</option>
+                        <option value="pt-BR-ThalitaNeural">Thalita (Azure · Expressiva e Jovem)</option>
+                        <option value="pt-BR-GiovannaNeural">Giovanna (Azure · Clara e Profissional)</option>
+                        <option value="pt-BR-BrendaNeural">Brenda (Azure · Suave e Amigável)</option>
+                        <option value="pt-BR-AntonioNeural">Antonio (Azure · Masculina Firme)</option>
+                        <option value="pt-BR-DonatoNeural">Donato (Azure · Masculina Serena)</option>
+                      </optgroup>
+                      <optgroup label="Vozes OpenAI / Azure OpenAI TTS">
+                        <option value="nova">Nova (OpenAI · Calorosa e Clara)</option>
+                        <option value="coral">Coral (OpenAI · Natural e Expressiva)</option>
+                        <option value="sage">Sage (OpenAI · Serena e Profissional)</option>
+                        <option value="alloy">Alloy (OpenAI · Neutra e Equilibrada)</option>
+                        <option value="shimmer">Shimmer (OpenAI · Leve e Amigável)</option>
+                        <option value="onyx">Onyx (OpenAI · Masculina Grave)</option>
                       </optgroup>
                     </select>
                   </label>

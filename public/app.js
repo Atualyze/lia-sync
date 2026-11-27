@@ -1127,7 +1127,7 @@ function renderWaveformBars(seed = 1) {
 
 let activeAudioInstance = null;
 
-async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError } = {}) {
+async function playNeuralAudio(text, { voiceName = '', provider = '', model = '', onStart, onEnd, onError } = {}) {
   if (activeAudioInstance) {
     try {
       activeAudioInstance.pause();
@@ -1146,7 +1146,12 @@ async function playNeuralAudio(text, { voiceName = '', onStart, onEnd, onError }
   try {
     const res = await api('/api/dashboard/tts', {
       method: 'POST',
-      body: JSON.stringify({ text: clean, voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName })
+      body: JSON.stringify({
+        text: clean,
+        voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName,
+        provider: provider || state.adminConfig?.draft?.voice?.provider || state.draft?.voice?.provider || '',
+        model: model || state.adminConfig?.draft?.voice?.model || state.draft?.voice?.model || ''
+      })
     });
     if (res?.ok && res.audioBase64) {
       const src = `data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`;
@@ -4496,7 +4501,11 @@ function startDashboard() {
   $('#btn-test-voice')?.addEventListener('click', async () => {
     const btn = $('#btn-test-voice');
     const select = $('#admin-voice-select');
+    const providerSelect = $('#admin-voice-provider');
+    const modelInput = $('#admin-voice-model');
     const chosenVoice = select?.value || state.draft?.voice?.voiceName || 'pt-BR-FranciscaNeural';
+    const chosenProvider = providerSelect?.value || state.adminConfig?.draft?.voice?.provider || '';
+    const chosenModel = modelInput?.value?.trim() || state.adminConfig?.draft?.voice?.model || '';
     const statusText = $('#voice-engine-status-text');
     if (btn) btn.disabled = true;
     if (statusText) statusText.textContent = `Sintetizando amostra com a voz ${chosenVoice}...`;
@@ -4508,6 +4517,8 @@ function startDashboard() {
     const sampleIntro = sampleCompany ? `assistente virtual da ${sampleCompany}` : 'sua assistente virtual';
     await playNeuralAudio(`Olá! Eu sou ${sampleBot}, ${sampleIntro}. Como posso ajudar você hoje?`, {
       voiceName: chosenVoice,
+      provider: chosenProvider,
+      model: chosenModel,
       onStart: (info) => {
         if (info?.isFallback) {
           if (statusText) statusText.textContent = `Motor neural do servidor indisponível (${info?.error || 'fallback'}); reproduzindo voz padrão do navegador.`;

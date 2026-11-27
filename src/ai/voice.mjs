@@ -12,8 +12,60 @@ const GEMINI_VOICE_MAP = {
   'Fenrir': 'Fenrir',
   'pt-BR-FranciscaNeural': 'Aoede',
   'pt-BR-ThalitaNeural': 'Kore',
-  'pt-BR-AntonioNeural': 'Puck'
+  'pt-BR-AntonioNeural': 'Puck',
+  'pt-BR-GiovannaNeural': 'Leda',
+  'pt-BR-BrendaNeural': 'Zephyr',
+  'pt-BR-DonatoNeural': 'Charon',
+  'nova': 'Aoede',
+  'coral': 'Kore',
+  'sage': 'Leda',
+  'alloy': 'Puck',
+  'shimmer': 'Zephyr',
+  'onyx': 'Charon',
+  'echo': 'Fenrir'
 };
+
+const AZURE_VOICE_MAP = {
+  'Aoede': 'pt-BR-FranciscaNeural',
+  'Kore': 'pt-BR-ThalitaNeural',
+  'Leda': 'pt-BR-GiovannaNeural',
+  'Zephyr': 'pt-BR-BrendaNeural',
+  'Puck': 'pt-BR-AntonioNeural',
+  'Charon': 'pt-BR-DonatoNeural',
+  'Fenrir': 'pt-BR-AntonioNeural',
+  'nova': 'pt-BR-FranciscaNeural',
+  'coral': 'pt-BR-ThalitaNeural',
+  'sage': 'pt-BR-GiovannaNeural',
+  'alloy': 'pt-BR-BrendaNeural',
+  'shimmer': 'pt-BR-BrendaNeural',
+  'onyx': 'pt-BR-AntonioNeural',
+  'echo': 'pt-BR-DonatoNeural'
+};
+
+const OPENAI_VOICE_MAP = {
+  'Aoede': 'nova',
+  'Kore': 'coral',
+  'Leda': 'sage',
+  'Zephyr': 'shimmer',
+  'Puck': 'alloy',
+  'Charon': 'onyx',
+  'Fenrir': 'echo',
+  'pt-BR-FranciscaNeural': 'nova',
+  'pt-BR-ThalitaNeural': 'coral',
+  'pt-BR-GiovannaNeural': 'sage',
+  'pt-BR-BrendaNeural': 'shimmer',
+  'pt-BR-AntonioNeural': 'onyx',
+  'pt-BR-DonatoNeural': 'echo'
+};
+
+function escapeXml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
 /**
  * Normaliza texto para síntese de fala natural em português brasileiro (pt-BR),
@@ -94,7 +146,16 @@ export function pcm16ToWavBase64(rawBase64, sampleRate = 24000, numChannels = 1,
  * Status do runtime de voz. Síntese 100% Gemini API; sem motores offline desde a remoção do Piper.
  */
 export function getVoiceRuntimeStatus() {
-  return { offlineAvailable: false, engine: 'gemini-neural-pt-br', models: [] };
+  const engines = [];
+  if (config.geminiKey) engines.push('gemini-neural-pt-br');
+  if (config.azureSpeechKey) engines.push('azure-speech-pt-br');
+  if (config.azureOpenaiTtsEndpoint && config.azureOpenaiTtsKey) engines.push('azure-openai-tts');
+  return {
+    offlineAvailable: false,
+    engine: engines[0] || 'gemini-neural-pt-br',
+    engines,
+    models: []
+  };
 }
 
 async function transcribeWithGroqWhisper(cleanB64, cleanMime, timeoutMs = 45000) {
@@ -178,72 +239,191 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutM
   return null;
 }
 
-export async function synthesizeVoice(text, { voiceName = '', botConfig = {} } = {}) {
+async function synthesizeWithGemini(cleanText, { selectedVoice, model, timeoutMs }) {
+  if (!config.geminiKey) return null;
+  const geminiVoice = GEMINI_VOICE_MAP[selectedVoice] || 'Aoede';
+  const primaryTtsModel = (model && /gemini/i.test(model)) ? model : 'gemini-2.5-flash-preview-tts';
+  const directedPrompt = `Fale em português do Brasil (pt-BR) com voz humana brasileira natural, fluida, acolhedora e timbre fixo consistente, lendo exatamente o seguinte texto: ${cleanText}`;
+
+  const payload = {
+    contents: [{ parts: [{ text: directedPrompt }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        languageCode: 'pt-BR',
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoice } }
+      }
+    }
+  };
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(primaryTtsModel)}:generateContent`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': config.geminiKey
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.warn(`[ai] synthesizeVoice (${primaryTtsModel}) HTTP ${res.status}:`, err.slice(0, 150));
+      return null;
+    }
+    const data = await res.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    for (const p of parts) {
+      if (p.inlineData?.data) {
+        const rawMime = String(p.inlineData.mimeType || 'audio/L16;rate=24000');
+        const rateMatch = rawMime.match(/rate=(\d+)/i);
+        const sampleRate = rateMatch ? Number(rateMatch[1]) || 24000 : 24000;
+        const finalBase64 = pcm16ToWavBase64(p.inlineData.data, sampleRate);
+        return {
+          base64: finalBase64,
+          mimeType: 'audio/wav',
+          voiceName: selectedVoice,
+          engine: 'gemini-neural-pt-br'
+        };
+      }
+    }
+  } catch (err) {
+    console.warn(`[ai] synthesizeVoice (${primaryTtsModel}) erro:`, err.message);
+  }
+  return null;
+}
+
+async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0, timeoutMs }) {
+  if (!config.azureSpeechKey) return null;
+  const azureVoice = selectedVoice.startsWith('pt-BR-')
+    ? selectedVoice
+    : (AZURE_VOICE_MAP[selectedVoice] || 'pt-BR-FranciscaNeural');
+  const region = (config.azureSpeechRegion || 'eastus').trim();
+  const clampedSpeed = Math.max(0.5, Math.min(2.0, Number(speed) || 1.0));
+  const ratePct = `${Math.round((clampedSpeed - 1.0) * 100)}%`;
+  const inner = clampedSpeed === 1.0
+    ? escapeXml(cleanText)
+    : `<prosody rate='${ratePct}'>${escapeXml(cleanText)}</prosody>`;
+  const ssml = `<speak version='1.0' xml:lang='pt-BR'><voice name='${escapeXml(azureVoice)}'>${inner}</voice></speak>`;
+
+  try {
+    const url = `https://${encodeURIComponent(region)}.tts.speech.microsoft.com/cognitiveservices/v1`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': config.azureSpeechKey,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+        'User-Agent': 'lia-sync'
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: ssml
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.warn(`[ai] synthesizeWithAzureSpeech HTTP ${res.status}:`, err.slice(0, 150));
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) return null;
+    return {
+      base64: buf.toString('base64'),
+      mimeType: 'audio/mpeg',
+      voiceName: azureVoice,
+      engine: 'azure-speech-pt-br'
+    };
+  } catch (err) {
+    console.warn('[ai] synthesizeWithAzureSpeech erro:', err.message);
+    return null;
+  }
+}
+
+async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, speed = 1.0, timeoutMs }) {
+  if (!config.azureOpenaiTtsEndpoint || !config.azureOpenaiTtsKey) return null;
+  const openaiVoice = ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'].includes(selectedVoice)
+    ? selectedVoice
+    : (OPENAI_VOICE_MAP[selectedVoice] || 'nova');
+  const ttsModel = model || config.azureOpenaiTtsModel || 'tts-1';
+  const base = config.azureOpenaiTtsEndpoint.replace(/\/$/, '');
+  const url = base.includes('/audio/speech')
+    ? base
+    : (base.endsWith('/openai/v1')
+      ? `${base}/audio/speech`
+      : `${base}/openai/deployments/${encodeURIComponent(ttsModel)}/audio/speech?api-version=2025-03-01-preview`);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'api-key': config.azureOpenaiTtsKey,
+        'Authorization': `Bearer ${config.azureOpenaiTtsKey}`
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify({
+        model: ttsModel,
+        input: cleanText,
+        voice: openaiVoice,
+        speed: Math.max(0.25, Math.min(2.0, Number(speed) || 1.0)),
+        response_format: 'mp3'
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.warn(`[ai] synthesizeWithAzureOpenAI (${ttsModel}) HTTP ${res.status}:`, err.slice(0, 150));
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) return null;
+    return {
+      base64: buf.toString('base64'),
+      mimeType: 'audio/mpeg',
+      voiceName: openaiVoice,
+      engine: 'azure-openai-tts'
+    };
+  } catch (err) {
+    console.warn(`[ai] synthesizeWithAzureOpenAI (${ttsModel}) erro:`, err.message);
+    return null;
+  }
+}
+
+export async function synthesizeVoice(text, { voiceName = '', provider = '', model = '', botConfig = {} } = {}) {
   if (!text) return null;
   const explicitVoice = typeof voiceName === 'string' ? voiceName.trim() : '';
   const selectedVoice = explicitVoice || botConfig?.voice?.voiceName || 'Aoede';
+  const selectedProvider = (typeof provider === 'string' && provider.trim())
+    ? provider.trim()
+    : (botConfig?.voice?.provider || 'auto');
+  const selectedModel = (typeof model === 'string' && model.trim())
+    ? model.trim()
+    : (botConfig?.voice?.model || '');
+  const speed = Number(botConfig?.voice?.speed) || 1.0;
   const maxChars = Math.max(120, Math.min(2000, Number(botConfig?.voice?.maxTextChars) || 750));
   const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
   const cleanText = prepareSpeechText(text, maxChars);
   if (!cleanText) return null;
-  // Motor Neural Gemini 2.5 com trava estrita de identidade vocal PT-BR (sem troca de modelo acústico)
-  if (config.geminiKey) {
-    const geminiVoice = GEMINI_VOICE_MAP[selectedVoice] || 'Aoede';
-    // Usa exclusivamente o checkpoint primário para nunca alternar timbre entre mensagens
-    const primaryTtsModel = 'gemini-2.5-flash-preview-tts';
-    const directedPrompt = `Fale em português do Brasil (pt-BR) com voz humana brasileira natural, fluida, acolhedora e timbre fixo consistente, lendo exatamente o seguinte texto: ${cleanText}`;
 
-    const payload = {
-      contents: [
-        { parts: [{ text: directedPrompt }] }
-      ],
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          languageCode: 'pt-BR',
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: geminiVoice
-            }
-          }
-        }
-      }
-    };
+  const tryOrder = selectedProvider === 'azure_speech'
+    ? ['azure_speech', 'gemini']
+    : selectedProvider === 'azure_openai'
+      ? ['azure_openai', 'azure_speech', 'gemini']
+      : selectedProvider === 'gemini'
+        ? ['gemini', 'azure_speech']
+        : selectedVoice.startsWith('pt-BR-')
+          ? ['azure_speech', 'gemini', 'azure_openai']
+          : ['gemini', 'azure_speech', 'azure_openai'];
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(primaryTtsModel)}:generateContent`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': config.geminiKey
-        },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const parts = data?.candidates?.[0]?.content?.parts || [];
-        for (const p of parts) {
-          if (p.inlineData?.data) {
-            const rawMime = String(p.inlineData.mimeType || 'audio/L16;rate=24000');
-            const rateMatch = rawMime.match(/rate=(\d+)/i);
-            const sampleRate = rateMatch ? Number(rateMatch[1]) || 24000 : 24000;
-            const finalBase64 = pcm16ToWavBase64(p.inlineData.data, sampleRate);
-            return {
-              base64: finalBase64,
-              mimeType: 'audio/wav',
-              voiceName: selectedVoice,
-              engine: 'gemini-neural-pt-br'
-            };
-          }
-        }
-      } else {
-        const err = await res.text().catch(() => '');
-        console.warn(`[ai] synthesizeVoice (${primaryTtsModel}) HTTP ${res.status}:`, err.slice(0, 150));
-      }
-    } catch (err) {
-      console.warn(`[ai] synthesizeVoice (${primaryTtsModel}) erro:`, err.message);
+  for (const engine of tryOrder) {
+    if (engine === 'azure_speech') {
+      const res = await synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed, timeoutMs });
+      if (res) return res;
+    } else if (engine === 'azure_openai') {
+      const res = await synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model: selectedModel, speed, timeoutMs });
+      if (res) return res;
+    } else if (engine === 'gemini') {
+      const res = await synthesizeWithGemini(cleanText, { selectedVoice, model: selectedModel, timeoutMs });
+      if (res) return res;
     }
   }
   return null;

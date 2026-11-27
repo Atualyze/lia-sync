@@ -941,7 +941,9 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     const text = typeof body?.text === 'string' ? body.text.trim() : '';
     if (!text) return json(res, 400, { error: 'text_required' });
     const voiceName = typeof body?.voiceName === 'string' ? body.voiceName.trim() : (adminConfig?.active?.voice?.voiceName || 'Aoede');
-    const result = await synthesizeVoice(text, { voiceName, botConfig: adminConfig?.active });
+    const provider = typeof body?.provider === 'string' ? body.provider.trim() : '';
+    const model = typeof body?.model === 'string' ? body.model.trim() : '';
+    const result = await synthesizeVoice(text, { voiceName, provider, model, botConfig: adminConfig?.active });
     if (!result || !result.base64) return json(res, 503, { ok: false, error: 'tts_synthesis_failed' });
     return json(res, 200, {
       ok: true,

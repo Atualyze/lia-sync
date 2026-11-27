@@ -133,7 +133,9 @@ export const DEFAULT_BOT_CONFIG = {
     surveyMessage: 'Obrigado pelo contato! De 1 a 5, como você avalia nosso atendimento hoje?'
   },
   voice: {
-    voiceName: 'Aoede', // 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Puck' | 'Charon' | 'Fenrir'
+    provider: 'auto', // 'auto' | 'gemini' | 'azure_speech' | 'azure_openai'
+    model: '',
+    voiceName: 'Aoede', // Gemini, Azure Neural PT-BR ou OpenAI TTS
     tone: 'Acolhedor, dinâmico e profissional',
     speed: 1.0,
     autoVoiceOnAudio: true,
@@ -220,6 +222,9 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!Number.isInteger(value.automation?.maxDailyFollowUps) || value.automation.maxDailyFollowUps < 0 || value.automation.maxDailyFollowUps > 10000) errors.push('O limite diário de follow-ups deve ser um inteiro entre 0 e 10000.');
   if (typeof value.automation?.followUpTemplate !== 'string' || value.automation.followUpTemplate.length > 2000) errors.push('O texto do follow-up deve ter até 2000 caracteres.');
   if (value.automation?.followUpCadence !== undefined && !Array.isArray(value.automation.followUpCadence)) errors.push('A cadência de follow-up deve ser uma lista de etapas.');
+  const allowedVoiceProviders = new Set(['auto', 'gemini', 'azure_speech', 'azure_openai']);
+  if (value.voice?.provider !== undefined && !allowedVoiceProviders.has(value.voice.provider)) errors.push('O provedor de voz deve ser auto, gemini, azure_speech ou azure_openai.');
+  if (value.voice?.model !== undefined && (typeof value.voice.model !== 'string' || value.voice.model.length > 120)) errors.push('O modelo de voz deve ter até 120 caracteres.');
   const supportedVoices = new Set([
     'Aoede',
     'Kore',
@@ -228,6 +233,21 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
     'Puck',
     'Charon',
     'Fenrir',
+    'pt-BR-FranciscaNeural',
+    'pt-BR-ThalitaNeural',
+    'pt-BR-AntonioNeural',
+    'pt-BR-GiovannaNeural',
+    'pt-BR-BrendaNeural',
+    'pt-BR-DonatoNeural',
+    'alloy',
+    'ash',
+    'coral',
+    'echo',
+    'fable',
+    'nova',
+    'onyx',
+    'sage',
+    'shimmer',
   ]);
   // Vozes legadas Piper (offline) não são mais suportadas: mapear para voz Gemini segura (Aoede).
   if (typeof value.voice?.voiceName === 'string' && value.voice.voiceName.startsWith('piper-')) {
