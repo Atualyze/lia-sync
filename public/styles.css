@@ -5866,35 +5866,20 @@ button:active:not(:disabled),
   padding: 0 !important;
 }
 
-.inbox-grid {
-  grid-template-columns: 280px minmax(0, 1fr) 295px;
-  gap: 0 !important;
-}
-.inbox-grid.context-collapsed {
-  grid-template-columns: 280px minmax(0, 1fr);
-}
-@media (max-width: 1360px) and (min-width: 821px) {
+@media (min-width: 1121px) {
   .inbox-grid {
+    grid-template-columns: 270px minmax(0, 1fr) 290px;
+    gap: 0 !important;
+  }
+  .inbox-grid.context-collapsed {
     grid-template-columns: 270px minmax(0, 1fr);
   }
-  .inbox-grid .detail {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: min(340px, 88vw);
-    z-index: 30;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border-strong);
-    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.5);
-  }
-  .inbox-grid.mobile-context-open .detail {
-    display: flex;
-    flex-direction: column;
-  }
-  .drawer-close-btn {
-    display: inline-flex;
+}
+
+@media (max-width: 1120px) and (min-width: 821px) {
+  .inbox-grid {
+    grid-template-columns: 260px minmax(0, 1fr) !important;
+    gap: 0 !important;
   }
 }
 
@@ -5909,6 +5894,10 @@ button:active:not(:disabled),
   padding: 0 !important;
   border-left: none !important;
   border-right: 1px solid var(--border-hairline) !important;
+}
+.inbox-grid .detail {
+  border-left: 1px solid var(--border-hairline) !important;
+  border-right: none !important;
 }
 .inbox-list-head {
   padding: 10px 14px !important;
@@ -5933,18 +5922,65 @@ button:active:not(:disabled),
   padding: 4px 6px 12px !important;
 }
 
-/* Chat Header — No wrapping, crisp icon alignment */
+/* Chat Header + Inline CRM Stage/Ficha Controls */
 .chat-head {
   display: flex !important;
   align-items: center !important;
   flex-wrap: nowrap !important;
-  padding: 8px 16px !important;
+  padding: 8px 14px !important;
   min-height: 54px !important;
   gap: 10px !important;
 }
 .chat-head-identity {
   min-width: 0;
   flex: 1 1 auto;
+}
+.chat-head-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.chat-crm-strip {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 5px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+.chat-crm-strip.hidden {
+  display: none !important;
+}
+.chat-crm-select {
+  width: auto !important;
+  max-width: 132px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 22px 0 8px !important;
+  font-size: 11px !important;
+  line-height: 22px !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  flex-shrink: 0 !important;
+}
+.chat-crm-ficha-btn {
+  margin-left: 0 !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  color: var(--accent-mint);
+  background: rgba(63, 185, 132, 0.08);
+  border: 1px solid rgba(63, 185, 132, 0.25);
+  border-radius: var(--radius-xs) !important;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .chat-head-actions {
   display: flex !important;
@@ -5992,7 +6028,8 @@ button:active:not(:disabled),
 .composer-dock {
   background: var(--bg-sidebar) !important;
   border-top: 1px solid var(--border-hairline) !important;
-  padding: 10px 16px !important;
+  padding: 10px 14px !important;
+  flex-shrink: 0 !important;
 }
 .composer {
   display: flex !important;
@@ -6063,9 +6100,19 @@ button:active:not(:disabled),
 }
 
 @media (max-width: 820px) {
+  #inbox-view.active-view {
+    padding: 0 0 calc(58px + env(safe-area-inset-bottom, 0px)) 0 !important;
+  }
+  .inbox-grid {
+    grid-template-columns: 1fr !important;
+  }
   .chat-head {
     padding: 8px 10px !important;
     min-height: 50px !important;
+  }
+  .chat-crm-select {
+    max-width: 118px !important;
+    font-size: 11px !important;
   }
   .messages {
     padding: 12px 10px !important;
@@ -6074,7 +6121,7 @@ button:active:not(:disabled),
     max-width: 88% !important;
   }
   .composer-dock {
-    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 8px 10px !important;
   }
   .composer input,
   #message-input {

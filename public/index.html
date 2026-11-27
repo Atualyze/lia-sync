@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261127d" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261127e" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -476,6 +476,19 @@
                 <div class="chat-head-identity">
                   <div class="chat-head-title-row">
                     <strong id="chat-name">Contato</strong>
+                    <div id="chat-crm-strip" class="chat-crm-strip hidden">
+                <select id="chat-stage-select" class="chat-crm-select" title="Etapa no Funil CRM">
+                  <option value="novo">Novo</option>
+                  <option value="em_atendimento">Em atendimento</option>
+                  <option value="agendado">Agendado</option>
+                  <option value="transferido">Transferido</option>
+                  <option value="fechado">Fechado</option>
+                </select>
+                <span id="chat-sector-pill" class="pill mini hidden"></span>
+                <span id="chat-value-pill" class="pill mini mint hidden"></span>
+                <span id="chat-profile-pill" class="pill mini hidden"></span>
+                <button type="button" class="chat-crm-ficha-btn" id="chat-open-ficha-btn">Ficha CRM</button>
+              </div>
                   </div>
                   <a id="chat-phone-link" href="#" target="_blank" rel="noopener" class="chat-phone-link" title="Abrir conversa diretamente no WhatsApp">
                     <span id="chat-phone">-</span>
@@ -493,19 +506,6 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                   </button>
                 </div>
-              </div>
-              <div id="chat-crm-strip" class="chat-crm-strip hidden">
-                <select id="chat-stage-select" class="chat-crm-select" title="Etapa no Funil CRM">
-                  <option value="novo">Novo</option>
-                  <option value="em_atendimento">Em atendimento</option>
-                  <option value="agendado">Agendado</option>
-                  <option value="transferido">Transferido</option>
-                  <option value="fechado">Fechado</option>
-                </select>
-                <span id="chat-sector-pill" class="pill mini hidden"></span>
-                <span id="chat-value-pill" class="pill mini mint hidden"></span>
-                <span id="chat-profile-pill" class="pill mini hidden"></span>
-                <button type="button" class="chat-crm-ficha-btn" id="chat-open-ficha-btn">Ficha CRM</button>
               </div>
 
               <!-- BARRA DE BUSCA INTERNA NA CONVERSA -->
