@@ -107,7 +107,16 @@ const DEFAULT_SECTORS = [
 ];
 
 export function sanitizeSectorId(raw) {
-  return String(raw || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/&]+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    .slice(0, 64);
 }
 
 export class CustomSectorStore {
@@ -139,18 +148,18 @@ export class CustomSectorStore {
   }
 
   async load() {
-    if (this.client) {
+    if (this.client?.enabled && typeof this.client.select === 'function') {
       try {
-        const { data, error } = await this.client
-          .from('runtime_projections')
-          .select('payload')
-          .eq('key', PROJECTION_KEY)
-          .maybeSingle();
-        if (!error && data?.payload?.sectors) {
-          this._applyList(data.payload.sectors);
+        const rows = await this.client.select(
+          'runtime_projections',
+          `select=payload&key=eq.${PROJECTION_KEY}&limit=1`
+        );
+        const remoteList = rows?.[0]?.payload?.sectors;
+        if (Array.isArray(remoteList) && remoteList.length) {
+          this._applyList(remoteList);
         }
-      } catch {
-        // mantém fallback padrão
+      } catch (err) {
+        console.warn('[custom-sectors] falha ao carregar do Supabase:', err?.message || err);
       }
       return this;
     }
@@ -160,25 +169,29 @@ export class CustomSectorStore {
       const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
       const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.sectors) ? raw.sectors : []);
       this._applyList(list);
-    } catch {
-      // mantém fallback padrão
+    } catch (err) {
+      console.warn('[custom-sectors] falha ao ler arquivo local:', err?.message || err);
     }
     return this;
   }
 
   async save() {
     const payload = { sectors: this.list() };
-    if (this.client) {
-      const { error } = await this.client
-        .from('runtime_projections')
-        .upsert({ key: PROJECTION_KEY, payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-      if (error) throw new Error(`Falha ao salvar setores no banco: ${error.message}`);
+    if (this.client?.enabled && typeof this.client.upsert === 'function') {
+      await this.client.upsert(
+        'runtime_projections',
+        [{ key: PROJECTION_KEY, payload, updated_at: new Date().toISOString() }],
+        'key',
+        { returnRepresentation: false }
+      );
       return;
     }
 
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
+    const tmp = `${this.filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
+    fs.renameSync(tmp, this.filePath);
   }
 
   list() {
@@ -188,23 +201,36 @@ export class CustomSectorStore {
   async upsert(input = {}) {
     const id = sanitizeSectorId(input.id || input.name);
     if (!id) throw new Error('invalid_sector_id');
-    const prev = this.sectors.get(id) || {};
-    const keywords = Array.isArray(input.keywords)
-      ? input.keywords.map((k) => String(k).trim()).filter(Boolean)
-      : String(input.keywords ?? (prev.keywords || []).join(',')).split(',').map((k) => k.trim()).filter(Boolean);
+    if (!this.sectors.has(id) && this.sectors.size >= 100) {
+      throw new Error('sector_limit_reached');
+    }
+    const prev = this.sectors.get(id);
+    const prevEntry = prev ? { ...prev } : null;
+    const rawKeywords = Array.isArray(input.keywords)
+      ? input.keywords
+      : String(input.keywords ?? ((prev?.keywords || []).join(','))).split(',');
+    const keywords = [...new Set(rawKeywords.map((k) => String(k).trim().slice(0, 60)).filter(Boolean))].slice(0, 50);
+    const rawPhone = String(input.responsiblePhone ?? prev?.responsiblePhone ?? '').trim();
+    const cleanPhone = rawPhone ? rawPhone.replace(/\D/g, '').slice(0, 15) : '';
 
     const next = {
       id,
-      name: String(input.name || prev.name || id).trim().slice(0, 120),
-      description: String(input.description ?? prev.description ?? '').trim().slice(0, 500),
+      name: String(input.name || prev?.name || id).trim().slice(0, 120),
+      description: String(input.description ?? prev?.description ?? '').trim().slice(0, 500),
       keywords,
-      promptInstructions: String(input.promptInstructions ?? prev.promptInstructions ?? '').trim().slice(0, 2000),
-      handoffEnabled: input.handoffEnabled !== undefined ? Boolean(input.handoffEnabled) : Boolean(prev.handoffEnabled),
-      responsiblePhone: String(input.responsiblePhone ?? prev.responsiblePhone ?? '').trim().slice(0, 32),
-      isActive: input.isActive !== undefined ? Boolean(input.isActive) : prev.isActive !== false,
+      promptInstructions: String(input.promptInstructions ?? prev?.promptInstructions ?? '').trim().slice(0, 2000),
+      handoffEnabled: input.handoffEnabled !== undefined ? Boolean(input.handoffEnabled) : Boolean(prev?.handoffEnabled),
+      responsiblePhone: cleanPhone,
+      isActive: input.isActive !== undefined ? Boolean(input.isActive) : prev?.isActive !== false,
     };
     this.sectors.set(id, next);
-    await this.save();
+    try {
+      await this.save();
+    } catch (err) {
+      if (prevEntry) this.sectors.set(id, prevEntry);
+      else this.sectors.delete(id);
+      throw err;
+    }
     return next;
   }
 

@@ -689,15 +689,42 @@ export async function handleClientMessage({
         return directReply;
       }
 
-      // 2.5.2 SINAL AUXILIAR DE TRIAGEM (OBSERVABILIDADE)
-      // A classificação lexical nunca altera a sessão nem decide encaminhamento.
+      // 2.5.2 TRIAGEM E CONTEXTO DE SETOR
       const triageSectors = (Array.isArray(sectors) && sectors.length) ? sectors : (botConfig?.business?.sectors || []);
+      const resolveSectorMeta = (sectorIdOrName) => {
+        if (!sectorIdOrName || !Array.isArray(triageSectors)) return null;
+        return triageSectors.find(sec => sec && (sec.id === sectorIdOrName || sec.name === sectorIdOrName)) || null;
+      };
+      const notifyForSector = (sectorObj) => {
+        const phoneTarget = String(sectorObj?.responsiblePhone || '').replace(/\D/g, '');
+        if (phoneTarget && typeof whatsapp?.sendText === 'function') {
+          return async (msg) => {
+            try {
+              await whatsapp.sendText(phoneTarget, msg);
+            } catch {
+              if (typeof notify === 'function') await notify(msg);
+            }
+          };
+        }
+        return notify;
+      };
       if (Array.isArray(triageSectors) && triageSectors.length > 0) {
         const triageHint = classificarSetorPorTexto(clean, triageSectors, identity);
-        if (triageHint.category) logger.debug?.('[flow:triage] sinal lexical auxiliar:', {
-          category: triageHint.category,
-          confidence: triageHint.confidence
-        });
+        if (triageHint.category) {
+          logger.debug?.('[flow:triage] sinal lexical auxiliar:', {
+            category: triageHint.category,
+            confidence: triageHint.confidence
+          });
+          if (!s.sectorId && triageHint.sectorId && triageHint.confidence >= 0.6) {
+            s.sectorId = triageHint.sectorId;
+            s.sectorName = triageHint.sectorName;
+            s.sectorCategory = triageHint.category;
+          }
+        }
+      }
+      const preSector = resolveSectorMeta(s.sectorId || s.sectorName);
+      if (preSector?.promptInstructions) {
+        s.sectorPromptInstructions = preSector.promptInstructions;
       }
 
       // Atendimento inteligente: a assistente usa a IA com memória do contexto
@@ -971,6 +998,8 @@ export async function handleClientMessage({
           s.sectorId = resolvedSector.sectorId;
           s.sectorName = resolvedSector.sectorName;
           s.sectorCategory = resolvedSector.category;
+          const metaSector = resolveSectorMeta(resolvedSector.sectorId);
+          if (metaSector?.promptInstructions) s.sectorPromptInstructions = metaSector.promptInstructions;
           addSessionTags([resolvedSector.category || resolvedSector.sectorName]);
         }
       }
@@ -1560,6 +1589,21 @@ export async function handleClientMessage({
                 identity,
                 session: s,
                 userText,
+                sectors: triageSectors,
+                triggerHandoff: async ({ reason, sector, responsiblePhone }) => {
+                  if (sector?.id) {
+                    s.sectorId = sector.id;
+                    s.sectorName = sector.name || sector.id;
+                    if (sector.promptInstructions) s.sectorPromptInstructions = sector.promptInstructions;
+                  }
+                  await triggerHandoff(s, {
+                    reason: reason || 'Transferência para setor solicitada',
+                    urgency: 'normal',
+                    now: now(),
+                    notify: notifyForSector(sector || { responsiblePhone }),
+                    identity
+                  });
+                },
                 searchWebWithGemini: ai?.searchWebWithGemini
               };
               const toolArgs = { ...(tc.args || {}) };
@@ -2012,19 +2056,21 @@ export async function handleClientMessage({
       const handoffCategory = CLIENT_HANDOFF_CATEGORIES.has(result?.handoff_category)
         ? result.handoff_category
         : null;
-      if (!adminPixApprovalPending && !adminConsultPending && (pixFailureHandoff || handoffCategory)) {
+      const activeSectorObj = resolveSectorMeta(s.sectorId || s.sectorName);
+      const sectorRequiresHandoff = Boolean(activeSectorObj?.handoffEnabled && !isHumanHandoffActive(s));
+      if (!adminPixApprovalPending && !adminConsultPending && (pixFailureHandoff || handoffCategory || sectorRequiresHandoff)) {
         const handoffReason = pixFailureReason || result?.handoff_reason ||
           ({
             financeiro: 'Solicitação financeira que exige validação humana',
             reclamacao: 'Insatisfação com produto, serviço ou atendimento',
             pedido_pessoa: 'Pedido explícito de atendimento humano',
             emergencia: 'Situação de emergência identificada no contexto'
-          }[handoffCategory] || 'Solicitação exige atendimento humano');
+          }[handoffCategory] || (sectorRequiresHandoff ? `Setor ${activeSectorObj?.name || s.sectorId} configurado com handoff direto` : 'Solicitação exige atendimento humano'));
         await triggerHandoff(s, {
           reason: handoffReason,
           urgency: handoffCategory === 'emergencia' ? 'emergencia' : 'normal',
           now: now(),
-          notify,
+          notify: notifyForSector(activeSectorObj),
           identity
         });
         void syncLeadToGoogleSheet({

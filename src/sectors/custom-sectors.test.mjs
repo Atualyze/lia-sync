@@ -32,13 +32,17 @@ test('CustomSectorStore cria, edita, persiste e remove setores customizados (e s
 
   fs.rmSync(tmpFile, { force: true });
 
-  // Teste com mock de Supabase client (sem arquivo local)
+  // Teste com mock de Supabase REST client (sem arquivo local)
   let savedRow = null;
   const mockClient = {
-    from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: savedRow ? { payload: savedRow.payload } : null, error: null }) }) }),
-      upsert: async (row) => { savedRow = row; return { error: null }; },
-    }),
+    enabled: true,
+    async select() {
+      return savedRow ? [{ payload: savedRow.payload }] : [];
+    },
+    async upsert(_table, rows) {
+      savedRow = rows?.[0] || null;
+      return rows;
+    }
   };
   const dbStore = await new CustomSectorStore(tmpFile, { client: mockClient }).load();
   await dbStore.upsert({ id: 'vip', name: 'Atendimento VIP', keywords: 'vip' });

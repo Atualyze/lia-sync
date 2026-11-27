@@ -483,7 +483,7 @@ ${(() => {
     return ctxBlock;
   })()}
 
-[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}${session.notALead ? `\n[PERFIL DO CONTATO: NÃO É LEAD — Evite abordagem comercial, qualificação de funil ou ofertas de venda não solicitadas.]` : ''}${session.aiContext ? `\n[CONTEXTO ESPECÍFICO DESTE CONTATO — PRIORIDADE NO ATENDIMENTO]\n${String(session.aiContext).trim().slice(0, 2000)}` : ''}
+[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}${session.sectorPromptInstructions ? `\n[INSTRUÇÕES DO SETOR (${String(session.sectorName || session.sectorId || 'Ativo')})]\n${String(session.sectorPromptInstructions).trim().slice(0, 2000)}` : ''}${session.notALead ? `\n[PERFIL DO CONTATO: NÃO É LEAD — Evite abordagem comercial, qualificação de funil ou ofertas de venda não solicitadas.]` : ''}${session.aiContext ? `\n[CONTEXTO ESPECÍFICO DESTE CONTATO — PRIORIDADE NO ATENDIMENTO]\n${String(session.aiContext).trim().slice(0, 2000)}` : ''}
   [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null, aiContext: session.aiContext || null, notALead: Boolean(session.notALead) })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;

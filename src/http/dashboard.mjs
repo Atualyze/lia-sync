@@ -46,7 +46,7 @@ async function persistAdminPatch(adminConfig, patch) {
 }
 
 const defaultTenantStore = new TenantStore().load();
-const defaultSectorStore = new CustomSectorStore().load();
+const defaultSectorStore = new CustomSectorStore();
 const VALID_FUNNEL_STAGES = new Set(['novo', 'em_atendimento', 'agendado', 'transferido', 'fechado']);
 
 function resolveFunnelStage(s, history) {

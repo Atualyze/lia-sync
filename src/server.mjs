@@ -438,7 +438,20 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     copilotTaskStore,
     liaRuntime,
     getTelemetry,
-    getSectors: () => sectorProjection.active(),
+    getSectors: () => {
+      const projected = sectorProjection.active() || [];
+      const customList = customSectorStore.list() || [];
+      const byId = new Map();
+      for (const s of projected) if (s?.id) byId.set(String(s.id), { ...s });
+      for (const c of customList) {
+        if (!c?.id) continue;
+        const prev = byId.get(String(c.id)) || {};
+        const merged = { ...prev, ...c };
+        if (merged.isActive !== false) byId.set(String(c.id), merged);
+        else byId.delete(String(c.id));
+      }
+      return Array.from(byId.values());
+    },
     allowClientResume: config.humanAllowClientResume,
     maxInputChars: config.maxInputChars,
     rateLimitMax: config.rateLimitMax,
