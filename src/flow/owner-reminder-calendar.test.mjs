@@ -2,6 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareOwnerReminderCalendarCall, claimsUnverifiedCalendarCreation } from './owner-reminder-calendar.mjs';
 
+test('prepareOwnerReminderCalendarCall grounds multi-turn owner scheduling across history', () => {
+  const now = Date.parse('2026-11-27T16:00:00-03:00');
+  const prepared = prepareOwnerReminderCalendarCall({
+    message: 'pode criar',
+    history: [
+      { role: 'user', content: 'preciso que agende algo pra mim' },
+      { role: 'assistant', content: 'Claro! Me diga o assunto, o dia e o horário.' },
+      { role: 'user', content: 'para amanhã as 8, criar a prova dos alunos' }
+    ],
+    toolCalls: [{
+      name: 'gerenciar_agenda_google',
+      args: { action: 'criar_evento', date: '2026-11-28', startTime: '08:00', summary: 'Criar a prova dos alunos' }
+    }],
+    now,
+    timezone: 'America/Sao_Paulo'
+  });
+  assert.equal(prepared.state, 'ready');
+  assert.equal(prepared.toolCalls[0].name, 'gerenciar_agenda_google');
+  assert.equal(prepared.toolCalls[0].args.startTime, '08:00');
+});
+
 test('pedido genérico para guardar recado nunca vira agendamento', () => {
   const prepared = prepareOwnerReminderCalendarCall({
     message: 'poderia guardar um recado?',

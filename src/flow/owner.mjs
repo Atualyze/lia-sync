@@ -1802,6 +1802,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         const proposedToolCalls = Array.isArray(result?.tool_calls) ? [...result.tool_calls] : [];
         const reminderPreparation = prepareOwnerReminderCalendarCall({
           message: cleanCommand,
+          history: sSelf?.history || [],
           reminder: result?.reminder || null,
           toolCalls: proposedToolCalls,
           now: now(),

@@ -169,11 +169,22 @@ function dueAtFromCalendarCall(call, now, timezone) {
  */
 export function prepareOwnerReminderCalendarCall({
   message = '',
+  history = [],
   reminder = null,
   toolCalls = [],
   now = Date.now(),
   timezone = 'America/Sao_Paulo'
 } = {}) {
+  const recentUserTurns = Array.isArray(history)
+    ? history
+      .filter(entry => entry && entry.role === 'user' && typeof entry.content === 'string' && entry.content.trim())
+      .slice(-4)
+      .map(entry => entry.content.trim())
+    : [];
+  const groundedMessage = [...recentUserTurns, String(message || '').trim()]
+    .filter(Boolean)
+    .join(' ');
+
   const calls = Array.isArray(toolCalls) ? [...toolCalls] : [];
   const legacyReminderCall = calls.find(call =>
     ['agendar_retorno_ou_followup', 'agendar_retorno'].includes(String(call?.name || '').trim())
@@ -191,7 +202,7 @@ export function prepareOwnerReminderCalendarCall({
   const summary = String(candidate.text || '').trim();
   const dueAtValue = String(candidate.dueAt || '').trim();
   const gate = validateClientReminderRequest({
-    message,
+    message: groundedMessage,
     reason: summary,
     when: dueAtValue,
     now
@@ -199,10 +210,13 @@ export function prepareOwnerReminderCalendarCall({
   const retainedCalls = calls.filter(call => !isScheduleToolCall(call));
 
   if (!gate.allowed) {
+    const ownerReply = gate.code === 'schedule_not_explicit' && !/Qual recado/i.test(gate.reply)
+      ? 'Você quer que eu crie esse compromisso na sua Agenda Google? Me confirme o título, o dia e o horário.'
+      : gate.reply;
     return {
       state: 'clarification',
       code: gate.code,
-      reply: gate.reply,
+      reply: ownerReply,
       reminder: null,
       toolCalls: retainedCalls
     };
@@ -215,8 +229,8 @@ export function prepareOwnerReminderCalendarCall({
   }).formatToParts(dueAt).map(part => [part.type, part.value]));
   const actualDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
   const actualTime = `${timeParts.hour}:${timeParts.minute}`;
-  const requestedDate = explicitDateFromMessage(message, now, timezone);
-  const requestedTime = explicitTimeFromMessage(message);
+  const requestedDate = explicitDateFromMessage(groundedMessage, now, timezone);
+  const requestedTime = explicitTimeFromMessage(groundedMessage);
   if (!requestedDate || actualDate !== requestedDate) {
     return {
       state: 'clarification',
