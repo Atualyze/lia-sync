@@ -749,10 +749,10 @@ if (isDirectRun) {
   if (config.telegramBotToken) {
     void app.telegramCopilot?.start().catch(err => console.error('[telegram] Falha na inicialização automática:', redactSecrets(err?.message || String(err))));
   }
-  // Conexões SSE (/api/bridge/events) não podem ser mortas pelo requestTimeout padrão do Node (300s)
-  server.requestTimeout = 0;
-  server.headersTimeout = 65000;
-  server.keepAliveTimeout = 720000;
+  // Conexões SSE (/api/bridge/events) usam req.setTimeout(0) no handler; keepAlive alinhado ao proxy
+  server.requestTimeout = 60_000;
+  server.headersTimeout = 65_000;
+  server.keepAliveTimeout = 65_000;
   server.listen(config.port, config.host, () => console.log(`Lia Sync escutando em ${config.host}:${config.port}`));
   // Multi-réplica: só a réplica que obtém o lease distribuído executa manutenção,
   // garantindo um único envio de lembrete/follow-up/cobrança por vez.
@@ -920,8 +920,9 @@ if (isDirectRun) {
     if (stopping) return;
     stopping = true;
     process.exitCode = exitCode;
-    const forceExit = setTimeout(() => process.exit(exitCode), 5000);
+    const forceExit = setTimeout(() => process.exit(exitCode), 12_000);
     forceExit.unref?.();
+    const serverClosed = new Promise(resolve => server.close(() => resolve()));
     clearInterval(maintenanceTimer);
     clearInterval(runtimeSchedulerTimer);
     clearInterval(copilotTaskTimer);
@@ -932,7 +933,9 @@ if (isDirectRun) {
     await app.drainPending?.();
     await Promise.allSettled([...(store.queues?.values?.() || [])]);
     await store.flush().catch(() => {});
-    server.close(() => process.exit(exitCode));
+    server.closeIdleConnections?.();
+    await serverClosed;
+    process.exit(exitCode);
   };
   process.on('SIGTERM', () => { void stop(0); });
   process.on('SIGINT', () => { void stop(0); });

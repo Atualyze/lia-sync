@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.mjs';
 import { isOwnerKey } from '../core/identity.mjs';
 import { formatPhoneNumber as formatPhoneNumberCanonical } from '../sessions.mjs';
@@ -22,7 +22,7 @@ export function withoutHopByHopHeaders(headers = {}) {
 
 export function json(res, status, body, origin = '') { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...(origin ? { 'access-control-allow-origin': origin } : {}) }); res.end(JSON.stringify(body)); }
 
-export function authorized(req, token = config.webhookToken) { if (!token) return config.allowInsecureWebhook; const a = Buffer.from(String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')); const b = Buffer.from(token); return a.length === b.length && timingSafeEqual(a, b); }
+export function authorized(req, token = config.webhookToken) { if (!token) return config.allowInsecureWebhook; const provided = String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''); const a = createHash('sha256').update(provided).digest(); const b = createHash('sha256').update(String(token)).digest(); return timingSafeEqual(a, b); }
 export async function readBody(req, max = 256 * 1024) { let size = 0; const parts = []; for await (const chunk of req) { size += chunk.length; if (size > max) { const e = Error('payload too large'); e.statusCode = 413; throw e; } parts.push(chunk); } try { return JSON.parse(Buffer.concat(parts).toString() || '{}'); } catch { const e = Error('invalid json'); e.statusCode = 400; throw e; } }
 export const formatPhoneNumber = formatPhoneNumberCanonical;
 export function formatActivityTime(isoString) {

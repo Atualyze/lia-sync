@@ -24,7 +24,3 @@ services:
         max-size: 10m
         max-file: "3"
     stop_grace_period: 15s
-    networks: [default, evolution-net]
-networks:
-  evolution-net:
-    external: true

@@ -6,8 +6,11 @@ import { fileURLToPath } from 'node:url';
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CWD_KB_DIR = path.resolve(process.cwd(), 'data', 'knowledge-bases');
 const FALLBACK_KB_DIR = path.resolve(MODULE_DIR, '..', 'data', 'knowledge-bases');
+const SEED_KB_DIR = path.resolve(MODULE_DIR, '..', 'seed-knowledge-bases');
 
-export const DEFAULT_KB_DIR = fsSync.existsSync(CWD_KB_DIR) ? CWD_KB_DIR : FALLBACK_KB_DIR;
+export const DEFAULT_KB_DIR = fsSync.existsSync(CWD_KB_DIR)
+  ? CWD_KB_DIR
+  : (fsSync.existsSync(FALLBACK_KB_DIR) ? FALLBACK_KB_DIR : SEED_KB_DIR);
 
 let syncCache = {
   dir: '',

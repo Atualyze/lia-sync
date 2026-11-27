@@ -332,6 +332,7 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
     const isBridgeAuth = await isBridgeAuthorized(req, webhookAuthorize);
     if (!isBridgeAuth) return json(res, 401, { ok: false, error: 'unauthorized' });
     if (req.headers.origin && (!config.dashboardOrigin || req.headers.origin !== config.dashboardOrigin)) return json(res, 403, { ok: false, error: 'origin_not_allowed' });
+    req.setTimeout?.(0);
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',

@@ -3,9 +3,24 @@
 const DEFAULT_LIMIT_PER_MIN = 60;
 const MAX_TRACKED_KEYS = 10_000;
 
-export function clientKeyFor(req) {
-  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || req?.socket?.remoteAddress || 'unknown';
+function isLoopbackOrPrivate(ip = '') {
+  const clean = String(ip || '').replace(/^::ffff:/, '').trim();
+  return clean === '127.0.0.1' || clean === '::1' || clean.startsWith('10.') || clean.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(clean);
+}
+
+export function clientKeyFor(req, { trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1) } = {}) {
+  const remote = String(req?.socket?.remoteAddress || '').replace(/^::ffff:/, '').trim();
+  const hops = Number.isFinite(trustedProxyHops) ? Math.max(0, Math.floor(trustedProxyHops)) : 0;
+  if (hops > 0 && (!remote || isLoopbackOrPrivate(remote))) {
+    const parts = String(req?.headers?.['x-forwarded-for'] || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (parts.length > 0) {
+      return parts[Math.max(0, parts.length - hops)];
+    }
+  }
+  return remote || 'unknown';
 }
 
 export function createPublicRateLimiter({ limitPerMin = DEFAULT_LIMIT_PER_MIN, now = () => Date.now() } = {}) {
