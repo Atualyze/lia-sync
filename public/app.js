@@ -1134,7 +1134,7 @@ function renderWaveformBars(seed = 1) {
 
 let activeAudioInstance = null;
 
-async function playNeuralAudio(text, { voiceName = '', provider = '', model = '', onStart, onEnd, onError } = {}) {
+async function playNeuralAudio(text, { voiceName = '', provider = '', model = '', tone = '', onStart, onEnd, onError } = {}) {
   if (activeAudioInstance) {
     try {
       activeAudioInstance.pause();
@@ -1157,7 +1157,8 @@ async function playNeuralAudio(text, { voiceName = '', provider = '', model = ''
         text: clean,
         voiceName: voiceName || state.adminConfig?.draft?.voice?.voiceName || state.draft?.voice?.voiceName,
         provider: provider || state.adminConfig?.draft?.voice?.provider || state.draft?.voice?.provider || '',
-        model: model || state.adminConfig?.draft?.voice?.model || state.draft?.voice?.model || ''
+        model: model || state.adminConfig?.draft?.voice?.model || state.draft?.voice?.model || '',
+        tone: tone || state.adminConfig?.draft?.voice?.tone || state.draft?.voice?.tone || ''
       })
     });
     if (res?.ok && res.audioBase64) {
@@ -4544,6 +4545,7 @@ function startDashboard() {
     const chosenVoice = select?.value || state.draft?.voice?.voiceName || 'pt-BR-FranciscaNeural';
     const chosenProvider = providerSelect?.value || state.adminConfig?.draft?.voice?.provider || '';
     const chosenModel = modelInput?.value?.trim() || state.adminConfig?.draft?.voice?.model || '';
+    const chosenTone = $('[data-config="voice.tone"]')?.value?.trim() || state.adminConfig?.draft?.voice?.tone || '';
     const statusText = $('#voice-engine-status-text');
     if (btn) btn.disabled = true;
     if (statusText) statusText.textContent = `Sintetizando amostra com a voz ${chosenVoice}...`;
@@ -4557,6 +4559,7 @@ function startDashboard() {
       voiceName: chosenVoice,
       provider: chosenProvider,
       model: chosenModel,
+      tone: chosenTone,
       onStart: (info) => {
         if (info?.isFallback) {
           if (statusText) statusText.textContent = `Motor neural do servidor indisponível (${info?.error || 'fallback'}); reproduzindo voz padrão do navegador.`;

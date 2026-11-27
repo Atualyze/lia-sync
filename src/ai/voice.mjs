@@ -239,11 +239,12 @@ export async function transcribeAudio(base64, mimetype = 'audio/ogg', { timeoutM
   return null;
 }
 
-async function synthesizeWithGemini(cleanText, { selectedVoice, model, timeoutMs }) {
+async function synthesizeWithGemini(cleanText, { selectedVoice, model, tone = '', timeoutMs }) {
   if (!config.geminiKey) return null;
   const geminiVoice = GEMINI_VOICE_MAP[selectedVoice] || 'Aoede';
   const primaryTtsModel = (model && /gemini/i.test(model)) ? model : 'gemini-2.5-flash-preview-tts';
-  const directedPrompt = `Fale em português do Brasil (pt-BR) com voz humana brasileira natural, fluida, acolhedora e timbre fixo consistente, lendo exatamente o seguinte texto: ${cleanText}`;
+  const toneCue = tone ? ` Estilo vocal: ${tone}.` : ' Estilo vocal: acolhedor, dinâmico e profissional.';
+  const directedPrompt = `Fale em português do Brasil (pt-BR) com voz humana brasileira natural, fluida e timbre fixo consistente.${toneCue} Leia exatamente o seguinte texto: ${cleanText}`;
 
   const payload = {
     contents: [{ parts: [{ text: directedPrompt }] }],
@@ -294,7 +295,14 @@ async function synthesizeWithGemini(cleanText, { selectedVoice, model, timeoutMs
   return null;
 }
 
-async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0, timeoutMs }) {
+function resolveAzureStyle(tone = '', azureVoice = '') {
+  if (!tone || azureVoice !== 'pt-BR-FranciscaNeural') return '';
+  const t = tone.toLowerCase();
+  if (/calm|seren|suav|tranquil|acolhedor/.test(t)) return 'calm';
+  return '';
+}
+
+async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0, tone = '', timeoutMs }) {
   if (!config.azureSpeechKey) return null;
   const azureVoice = selectedVoice.startsWith('pt-BR-')
     ? selectedVoice
@@ -302,10 +310,14 @@ async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0
   const region = (config.azureSpeechRegion || 'eastus').trim();
   const clampedSpeed = Math.max(0.5, Math.min(2.0, Number(speed) || 1.0));
   const ratePct = `${Math.round((clampedSpeed - 1.0) * 100)}%`;
-  const inner = clampedSpeed === 1.0
+  const style = resolveAzureStyle(tone, azureVoice);
+  const prosodyBody = clampedSpeed === 1.0
     ? escapeXml(cleanText)
     : `<prosody rate='${ratePct}'>${escapeXml(cleanText)}</prosody>`;
-  const ssml = `<speak version='1.0' xml:lang='pt-BR'><voice name='${escapeXml(azureVoice)}'>${inner}</voice></speak>`;
+  const voiceInner = style
+    ? `<mstts:express-as style='${style}'>${prosodyBody}</mstts:express-as>`
+    : prosodyBody;
+  const ssml = `<speak version='1.0' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='pt-BR'><voice name='${escapeXml(azureVoice)}'>${voiceInner}</voice></speak>`;
 
   try {
     const url = `https://${encodeURIComponent(region)}.tts.speech.microsoft.com/cognitiveservices/v1`;
@@ -339,7 +351,7 @@ async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0
   }
 }
 
-async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, speed = 1.0, timeoutMs }) {
+async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, speed = 1.0, tone = '', timeoutMs }) {
   if (!config.azureOpenaiTtsEndpoint || !config.azureOpenaiTtsKey) return null;
   const openaiVoice = ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'].includes(selectedVoice)
     ? selectedVoice
@@ -353,6 +365,16 @@ async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, spee
       : `${base}/openai/deployments/${encodeURIComponent(ttsModel)}/audio/speech?api-version=2025-03-01-preview`);
 
   try {
+    const bodyPayload = {
+      model: ttsModel,
+      input: cleanText,
+      voice: openaiVoice,
+      speed: Math.max(0.25, Math.min(2.0, Number(speed) || 1.0)),
+      response_format: 'mp3'
+    };
+    if (tone && /gpt-4o-mini-tts/i.test(ttsModel)) {
+      bodyPayload.instructions = tone;
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -361,13 +383,7 @@ async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, spee
         'Authorization': `Bearer ${config.azureOpenaiTtsKey}`
       },
       signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        model: ttsModel,
-        input: cleanText,
-        voice: openaiVoice,
-        speed: Math.max(0.25, Math.min(2.0, Number(speed) || 1.0)),
-        response_format: 'mp3'
-      })
+      body: JSON.stringify(bodyPayload)
     });
     if (!res.ok) {
       const err = await res.text().catch(() => '');
@@ -388,7 +404,7 @@ async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, spee
   }
 }
 
-export async function synthesizeVoice(text, { voiceName = '', provider = '', model = '', botConfig = {} } = {}) {
+export async function synthesizeVoice(text, { voiceName = '', provider = '', model = '', tone = '', botConfig = {} } = {}) {
   if (!text) return null;
   const explicitVoice = typeof voiceName === 'string' ? voiceName.trim() : '';
   const selectedVoice = explicitVoice || botConfig?.voice?.voiceName || 'Aoede';
@@ -398,6 +414,9 @@ export async function synthesizeVoice(text, { voiceName = '', provider = '', mod
   const selectedModel = (typeof model === 'string' && model.trim())
     ? model.trim()
     : (botConfig?.voice?.model || '');
+  const selectedTone = (typeof tone === 'string' && tone.trim())
+    ? tone.trim()
+    : (typeof botConfig?.voice?.tone === 'string' ? botConfig.voice.tone.trim() : '');
   const speed = Number(botConfig?.voice?.speed) || 1.0;
   const maxChars = Math.max(120, Math.min(2000, Number(botConfig?.voice?.maxTextChars) || 750));
   const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
@@ -416,13 +435,13 @@ export async function synthesizeVoice(text, { voiceName = '', provider = '', mod
 
   for (const engine of tryOrder) {
     if (engine === 'azure_speech') {
-      const res = await synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed, timeoutMs });
+      const res = await synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed, tone: selectedTone, timeoutMs });
       if (res) return res;
     } else if (engine === 'azure_openai') {
-      const res = await synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model: selectedModel, speed, timeoutMs });
+      const res = await synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model: selectedModel, speed, tone: selectedTone, timeoutMs });
       if (res) return res;
     } else if (engine === 'gemini') {
-      const res = await synthesizeWithGemini(cleanText, { selectedVoice, model: selectedModel, timeoutMs });
+      const res = await synthesizeWithGemini(cleanText, { selectedVoice, model: selectedModel, tone: selectedTone, timeoutMs });
       if (res) return res;
     }
   }
