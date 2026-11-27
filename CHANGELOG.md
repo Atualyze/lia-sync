@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.5.0 - CRM Inteligente na Lia, Suporte Dedicado por Contato, Inbox CRM-First & Otimização Mobile
+- **CRM Inteligente & Histórico Completo:** `consultar_contato_ou_lead` resolve por telefone, `external_id` ou nome, retornando `aiContext`, dados do CRM e histórico completo quando solicitado; prompt do Copiloto inclui resumo de contatos CRM.
+- **Flag `notALead` ("Não é lead"):** oculta contato do Funil / Kanban, bloqueia follow-ups automáticos e instrui a Lia para tratamento não comercial.
+- **Suporte Dedicado por Contato (`.md`):** suporte a múltiplas bases `.md` em `data/knowledge-bases/suporte_tecnico/` vinculadas ao contato (`supportMode` / `supportKnowledgeBases`) com upload via modal.
+- **Respostas Citadas (`replyTo`):** leitura de `contextInfo` / `quotedMessage` no Baileys e propagação de `contextText` no simulador e chat interno.
+- **Inbox CRM-First & Mobile:** filtro por etapa no Inbox, faixa CRM rápida no chat, dossiê lateral editável, grupos *Assistente* e *Plataforma* recolhidos por padrão na sidebar e otimização mobile para Inbox, modais e filtros.
+- **Documentação & Versão:** criado `docs/release-3.5.0.md` e sincronizados `package.json`, `package-lock.json`, `metadata.json`, `README.md`, `ARCHITECTURE.md`, `public/index.html` e `lia-autoconhecimento-operacoes.md`.
+
+
 ## 3.4.0 - Canais Oficiais (ManyChat & GoHighLevel), CRM Kanban, Cadências, Reputação, Ligação Perdida, Setores & Multi-tenant
 - **Canais Oficiais (`src/whatsapp/manychat-provider.mjs`, `src/whatsapp/ghl-provider.mjs`, `src/whatsapp/inbound-normalizer.mjs`, `src/http/webhook.mjs`):** suporte a `WHATSAPP_PROVIDER=manychat` (`/webhook/manychat`) e `WHATSAPP_PROVIDER=ghl` (`/webhook/ghl`) com autenticação fail-closed (`401`), suporte a texto/áudio/imagem, tag de handoff e atualização de estágio no pipeline do GoHighLevel.
 - **CRM Funil / Kanban (`src/http/dashboard.mjs`, `public/index.html`, `public/app.js`, `public/styles.css`):** nova aba **Funil / Kanban** com 5 etapas (*Novo → Em atendimento → Agendado → Transferido → Fechado*) e persistência via `POST /api/dashboard/funnel-stage`.

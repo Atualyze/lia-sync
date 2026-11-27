@@ -1,7 +1,7 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.4.0
+Versão do Sistema: 3.5.0
 
 ### Capacidades Adicionais (v3.4.0)
 - **Canais Suportados:** Baileys Nativo (WhatsApp Web), **ManyChat** (`/webhook/manychat`, API Oficial da Meta) e **GoHighLevel** (`/webhook/ghl`, API v2).
@@ -284,3 +284,10 @@ Para manter transparência total com o responsável no Copiloto, a Lia reconhece
 - **Pedido de revisão humana:** quando um evento requer decisão humana, o administrador recebe o tipo e um motivo conciso, não o payload completo. Compromissos mantêm seu aviso específico. Destinos `owner:*` são resolvidos para o telefone humano configurado e as mensagens passam pelo filtro de saída.
 - **Deduplicação antes do envio:** `lia_proactive_notifications` recebe uma reserva antes do disparo. A chave única do Supabase coordena réplicas; o fallback em arquivo é seguro para uma instância. Se a persistência/deduplicação estiver indisponível, a notificação falha fechado.
 - **CRM explicitamente fora do escopo:** embora existam CRM Ports e funções comerciais no produto, esta fase não deve ler nem alterar CRM. Follow-ups externos permanecem limitados aos fluxos e autorizações preexistentes, incluindo opt-out, expediente e limites. Pagamentos, ações irreversíveis, efeitos incertos, segurança/permissões e deploy continuam exigindo confirmação humana ou bloqueio.
+
+### 2.15. CRM Inteligente, Suporte Dedicado por Contato, Inbox CRM-First & Respostas Citadas (v3.5.0)
+- **Acesso completo ao CRM e Histórico (`consultar_contato_ou_lead`):** no Copiloto, a Lia consulta contatos por telefone, `external_id` ou nome e acessa ficha CRM completa (`aiContext` / *Contexto para a Lia*, etapa, setor, tags, notas e histórico completo da conversa quando solicitado).
+- **Contato "Não é lead" (`notALead`):** contatos marcados com `notALead` ficam ocultos do Funil / Kanban, têm follow-ups automáticos bloqueados e recebem tratamento operacional/relacionamento sem abordagem comercial de funil.
+- **Atendimento Próprio de Suporte (`.md` por contato):** contatos com `supportMode` ativo podem associar uma ou mais bases `.md` de `data/knowledge-bases/suporte_tecnico/` (`supportKnowledgeBases`), fazendo a Lia priorizar essas bases no atendimento daquele contato.
+- **Inbox CRM-First & Mobile:** o painel conta com filtro por etapa do funil na lista de conversas, faixa CRM no chat (`#chat-crm-strip`), dossiê lateral editável, menus *Assistente* e *Plataforma* recolhidos por padrão e layout mobile otimizado.
+- **Respostas Citadas (`replyTo`):** mensagens respondidas com citação no WhatsApp (Baileys), simulador e chat interno preservam o texto citado (`contextText`) para evitar perda de referência.

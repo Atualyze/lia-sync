@@ -9,8 +9,8 @@ import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from './h
 const LIA_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-    return String(pkg?.version || '3.4.0');
-  } catch { return '3.4.0'; }
+    return String(pkg?.version || '3.5.0');
+  } catch { return '3.5.0'; }
 })();
 
 function todayInTimezone(nowMs, timezone) {

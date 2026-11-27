@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.4.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.5.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.5.0 — CRM Inteligente na Lia, Suporte Dedicado por Contato, Inbox CRM-First & Mobile
+
+- **CRM & Histórico Completo na Lia (`src/tools/`, `src/flow/`, `src/knowledge.mjs`):** `consultar_contato_ou_lead` agora resolve contatos por telefone, `external_id` ou nome e retorna ficha CRM completa (`aiContext`, etapa, setor, tags, notas e histórico completo da conversa quando solicitado), além de resumo de contatos CRM no prompt do Copiloto e suporte a respostas citadas (`replyTo`) no Baileys, simulador e chat interno.
+- **Flag "Não é lead" (`notALead`):** oculta o contato do Funil / Kanban, bloqueia follow-ups automáticos e orienta a Lia a tratá-lo sem abordagem comercial de funil.
+- **Atendimento Próprio de Suporte (`.md` por contato):** vinculação de uma ou mais bases `.md` em `data/knowledge-bases/suporte_tecnico/` na Ficha do Lead (`supportMode` + `supportKnowledgeBases`), com upload direto no painel.
+- **Inbox CRM-First, Sidebar & Mobile (`public/index.html`, `public/app.js`, `public/styles.css`):** filtro por etapa do funil, faixa CRM rápida no chat, dossiê lateral editável, menus *Assistente* e *Plataforma* recolhidos por padrão e layout responsivo otimizado para mobile.
+
+Detalhes técnicos: [`docs/release-3.5.0.md`](docs/release-3.5.0.md).
 
 ## Novidades da Versão 3.4.0 — Canais Oficiais, CRM Kanban, Cadências, Reputação, Ligação Perdida, Setores & Multi-tenant
 
