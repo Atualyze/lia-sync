@@ -7,7 +7,8 @@ import { handleAgendaRoutes } from './agenda-routes.mjs';
 import { handleRuntimeDashboardRoutes } from './runtime-routes.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
-import { renderPaymentLandingPage, renderPixPaymentPage } from './pix-page.mjs';
+import { isIssuedPixLink, renderPixPaymentPage } from './pix-page.mjs';
+import { clientKeyFor, createPublicRateLimiter } from './public-rate-limit.mjs';
 import { handleInfinitePayWebhookRoute, resolveInfinitePayWebhookSecret } from './infinitepay-webhook.mjs';
 import { consumeGoogleOAuthState, exchangeGoogleOAuthCode } from '../tools/google_oauth.mjs';
 import { clearGoogleTokenCache } from '../tools/google_auth.mjs';
@@ -17,7 +18,7 @@ import { handleWebhookRoutes } from './webhook.mjs';
 import { checkReadiness } from './readiness.mjs';
 import { createApiV1Handler } from './api-v1.mjs';
 import { renderPayHomePage } from './pay-home.mjs';
-import { infinitePayOrders, toolGerenciarCobrancaPagamento } from '../tools/gerenciar_cobranca_pagamento.mjs';
+import { infinitePayOrders } from '../tools/gerenciar_cobranca_pagamento.mjs';
 
 // Monta o handler de requests do createApp. A ponte de máquina continua independente
 // do guard humano do dashboard; rotas administrativas usam papéis Supabase explícitos.
@@ -85,6 +86,7 @@ export function requiredRole(pathname, method) {
 }
 
 export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, tenantStore = null, customSectorStore = null, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, copilotTaskStore = null, agendaStore = null, reminderStore = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+  const publicPayRateLimit = createPublicRateLimiter({ limitPerMin: Number(process.env.PAY_PUBLIC_RATE_LIMIT_PER_MIN) || undefined });
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -110,27 +112,26 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Página indisponível</title></head><body style="font-family:system-ui,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px"><div style="max-width:420px;text-align:center"><h2 style="margin:0 0 8px">Página de pagamento temporariamente desativada</h2><p style="color:#cbd5e1">Solicite a chave Pix ou QR Code diretamente pelo nosso WhatsApp.</p></div></body></html>');
     };
+    const payHost = (() => { try { return new URL(pixToolSettings.paymentBaseUrl || '').host.replace(/:\d+$/, '').toLowerCase(); } catch { return ''; } })() || 'pay.atualyze.com.br';
+    const isPayRoute = req.method === 'GET' && (u.pathname === '/pix' || /^\/p\/[A-Za-z0-9_-]{16}$/.test(u.pathname) || (u.pathname === '/' && requestHost === payHost));
+    if (isPayRoute) {
+      const limit = publicPayRateLimit(clientKeyFor(req));
+      if (!limit.allowed) {
+        res.writeHead(429, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': String(limit.retryAfterSec), 'cache-control': 'no-store' });
+        return res.end('Muitas requisições. Tente novamente em instantes.');
+      }
+    }
+    const renderPixLinkUnavailable = () => {
+      res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link Pix indisponível</title></head><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#07131a;color:#f5fbff;font:500 16px system-ui,sans-serif"><main style="max-width:420px;padding:28px;text-align:center"><h1>Link Pix indisponível</h1><p>Este link não existe ou não está mais disponível. Solicite uma nova cobrança pelo WhatsApp.</p></main></body></html>');
+    };
     const dashboardHost = (() => { try { return new URL(config.dashboardOrigin || '').host.replace(/:\d+$/, '').toLowerCase(); } catch { return ''; } })();
     if (req.method === 'GET' && u.pathname === '/' && dashboardHost && requestHost === dashboardHost) {
       res.writeHead(302, { location: '/dashboard', 'cache-control': 'no-store' });
       return res.end();
     }
-    if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
+    if (req.method === 'GET' && u.pathname === '/' && requestHost === payHost) {
       if (!payHomeEnabled) return renderPaymentPageDisabled();
-      try {
-        const generated = await toolGerenciarCobrancaPagamento.execute(
-          { valor: 0, enviarWhatsApp: false },
-          { botConfig: adminConfig?.active || {}, actor: 'client' }
-        );
-        if (generated?.success && generated.paymentUrl) {
-          const generatedUrl = new URL(generated.paymentUrl, 'https://pay.atualyze.com.br');
-          const paymentPageUrl = new URL('https://pay.atualyze.com.br/pix');
-          paymentPageUrl.search = generatedUrl.search;
-          return renderPixPaymentPage(res, paymentPageUrl);
-        }
-      } catch {
-        // Se a chave ainda não estiver configurada, mantém a página pública informativa.
-      }
       return renderPayHomePage(res);
     }
     const shortPixMatch = u.pathname.match(/^\/p\/([A-Za-z0-9_-]{16})$/);
@@ -147,18 +148,14 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       } catch {
         // Código inexistente, cobrança antiga ou URL armazenada inválida.
       }
-      if (!paymentPageUrl) {
-        res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        return res.end('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link Pix indisponível</title></head><body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#07131a;color:#f5fbff;font:500 16px system-ui,sans-serif"><main style="max-width:420px;padding:28px;text-align:center"><h1>Link Pix indisponível</h1><p>Este link não existe ou não está mais disponível. Solicite uma nova cobrança pelo WhatsApp.</p></main></body></html>');
-      }
+      if (!paymentPageUrl) return renderPixLinkUnavailable();
       return renderPixPaymentPage(res, paymentPageUrl);
     }
     if (req.method === 'GET' && u.pathname === '/pix') {
       if (!paymentPageEnabled) return renderPaymentPageDisabled();
+      const issuedOrderStore = store?.paymentOrderStore || infinitePayOrders;
+      if (!(await isIssuedPixLink(u, issuedOrderStore))) return renderPixLinkUnavailable();
       return renderPixPaymentPage(res, u);
-    }
-    if (req.method === 'GET' && u.pathname === '/' && requestHost === 'pay.atualyze.com.br') {
-      return renderPaymentLandingPage(res);
     }
     const paymentSettings = adminConfig?.active?.tools?.settings?.gerenciar_cobranca_pagamento || {};
     const infinitePayResult = await handleInfinitePayWebhookRoute({

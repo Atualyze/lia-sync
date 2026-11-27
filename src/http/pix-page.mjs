@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
@@ -56,6 +57,25 @@ function safeScriptJson(value) {
     .replace(/&/g, '\\u0026')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
+}
+
+// Só renderiza /pix?p=... quando o payload foi emitido pelo próprio sistema:
+// o pedido (tx) precisa existir e a URL armazenada deve conter exatamente o mesmo payload.
+// Impede que terceiros forjem links no domínio de pagamento com outra chave Pix.
+export async function isIssuedPixLink(urlObj, orderStore) {
+  try {
+    const tx = String(urlObj.searchParams.get('tx') || '').trim();
+    const provided = String(urlObj.searchParams.get('p') || '');
+    if (!tx || !provided || !orderStore?.getOrder) return false;
+    const order = await orderStore.getOrder(tx);
+    if (!order?.paymentUrl) return false;
+    const stored = String(new URL(order.paymentUrl).searchParams.get('p') || '');
+    const a = Buffer.from(stored);
+    const b = Buffer.from(provided);
+    return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 export async function renderPixPaymentPage(res, urlObj) {
