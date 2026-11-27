@@ -1,7 +1,13 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.6.0
+Versão do Sistema: 3.7.0
+
+### Capacidades Adicionais (v3.7.0)
+- **Voz Neural Multi-Provedor (TTS):** suporte a **Azure AI Speech** (`pt-BR-*Neural`, tier Free F0 com 500k caracteres/mês), **Gemini Neural TTS** (`gemini-2.5-flash-preview-tts`) e **Azure OpenAI TTS** (`tts-1` / `gpt-4o-mini-tts`), com seleção de provedor/modelo, filtro de vozes compatíveis no painel, aplicação da **Diretriz Acústica (`voice.tone`)** e audição imediata (`POST /api/dashboard/tts`).
+- **Identidade, Vínculo e Prompts Editáveis:** prompts distintos e isolados no painel para **Modo Copiloto** (`ai.copilotPrompt`) e **Atendimento ao Cliente** (`ai.clientPrompt`), além de `[IDENTIDADE_E_VINCULO_COM_ADMIN]` no Copiloto e preservação integral de segurança via `appendMasterSystemInstruction`.
+- **Azure OpenAI (`gpt-4.1-mini`):** suporte nativo via provedor customizado OpenAI-compatible (`/openai/v1`).
+- **Comandos Atualizados:** Telegram (`/crm`, `/versao` além dos 26 comandos operacionais) e atalhos rápidos do chat interno no WhatsApp.
 
 ### Capacidades Adicionais (v3.4.0)
 - **Canais Suportados:** Baileys Nativo (WhatsApp Web), **ManyChat** (`/webhook/manychat`, API Oficial da Meta) e **GoHighLevel** (`/webhook/ghl`, API v2).
@@ -52,7 +58,7 @@ Ela opera em **dois modos completamente distintos**:
 - Em seguida, a IA refina a classificação pelo significado da conversa (`sector`) e vincula a sessão ao setor correspondente (`sectorId`, `sectorName`).
 
 ### 2.3. Atendimento Multimodal (IA-First)
-- **Áudio:** Áudios recebidos são transcritos automaticamente. Se o cliente enviar áudio (ou pedir explicitamente para responder em áudio), a Lia responde com áudio sintetizado (TTS) e/ou transcrição, conforme configuração de voz. Se a transcrição falhar, transfere para o responsável ouvir.
+- **Áudio:** Áudios recebidos são transcritos automaticamente (Groq Whisper Free Tier com fallback para Gemini multimodal). Se o cliente enviar áudio (ou pedir explicitamente para responder em áudio), a Lia responde com áudio sintetizado pelo motor configurado (**Azure AI Speech `pt-BR-*Neural`**, **Gemini Neural TTS** ou **Azure OpenAI TTS**), aplicando a **Diretriz Acústica (`voice.tone`)** e velocidade configuradas. Se a transcrição falhar, transfere para o responsável ouvir.
 - **Imagens e PDFs:** Imagens e documentos PDF passam por análise multimodal (visão/extração de texto e pontos-chave). Quando a análise é bem-sucedida, a Lia **responde diretamente ao cliente** usando o conteúdo analisado e o histórico — sem travar ou transferir sem necessidade. A transferência só ocorre se o arquivo não puder ser analisado, se for vídeo, ou se o caso realmente exigir ação humana.
 
 ### 2.4. Horário de Expediente

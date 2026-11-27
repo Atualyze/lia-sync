@@ -9,8 +9,8 @@ import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from './h
 const LIA_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-    return String(pkg?.version || '3.6.0');
-  } catch { return '3.6.0'; }
+    return String(pkg?.version || '3.7.0');
+  } catch { return '3.7.0'; }
 })();
 
 function todayInTimezone(nowMs, timezone) {
@@ -121,7 +121,7 @@ export async function handleOwnerQuickCommands({
     return recordSelfTurn(filterReply(`🤖 *Lia Sync v${LIA_VERSION}*\n\nEstou rodando na versão *${LIA_VERSION}* com suporte a Baileys, ManyChat, GoHighLevel, Funil Kanban, Cadências, Ligação Perdida, Reputação Google, 10 Setores e Multi-tenant.`, { isCopilot: true }).text);
   }
   if (/(?:quais (?:foram as )?atualiza[çc][õo]es|atualiza[çc][õo]es (?:vc|voc[êe]) recebeu|novidades da vers[ãa]o|o que foi atualizado|o que mudou)/i.test(norm)) {
-    return recordSelfTurn(filterReply(`🚀 *Atualizações da Lia Sync v${LIA_VERSION}:*\n\n• *Canais Oficiais:* suporte a ManyChat (/webhook/manychat) e GoHighLevel (/webhook/ghl) além do Baileys Nativo.\n• *Funil / Kanban:* 5 etapas visuais no painel (Novo → Em atendimento → Agendado → Transferido → Fechado).\n• *Cadências de Follow-up:* régua automática configurável por minutos sem resposta e etapa.\n• *Ligação Perdida (Missed Call Text-Back):* captura chamadas perdidas no Baileys e via /webhook/missed-call.\n• *Pós-atendimento & Reputação:* pesquisa 1–5 automática com link do Google Meu Negócio para notas altas.\n• *10 Setores Customizáveis:* triagem automática integrada ao painel Setores.\n• *Multi-tenant & Banco:* subcontas isoladas e persistência unificada no Supabase.`, { isCopilot: true }).text);
+    return recordSelfTurn(filterReply(`🚀 *Atualizações da Lia Sync v${LIA_VERSION}:*\n\n• *Voz Neural Multi-Provedor (TTS):* suporte a **Azure AI Speech** (vozes \`pt-BR-*Neural\`, tier Free F0), **Gemini Neural TTS** e **Azure OpenAI TTS**, com seleção de provedor/modelo, filtro de vozes compatíveis, Diretriz Acústica (\`voice.tone\`) e audição no painel.\n• *Identidade, Vínculo & Prompts Editáveis:* prompts separados para **Modo Copiloto** (\`ai.copilotPrompt\`) e **Atendimento ao Cliente** (\`ai.clientPrompt\`), além de vínculo natural com o admin no Copiloto.\n• *Azure OpenAI & Provedores:* integração pronta com \`gpt-4.1-mini\` via \`/openai/v1\`.\n• *Painel & Publicação:* correção de exibição de erros (\`errors[]\` / \`noChanges\`) e contador exato de campos alterados no botão Publicar.`, { isCopilot: true }).text);
   }
 
   // 1.0.5 Auto-conhecimento e Capacidades da assistente
@@ -134,7 +134,7 @@ Atuo como seu braço direito no dia a dia${identity.companyName ? ` da ${identit
 • *Google Agenda:* Consulto horários livres, listo sua rotina e agendo reuniões com clientes diretamente pelo chat.
 • *Emissão de Documentos em PDF (pdfme):* Crio propostas, orçamentos e relatórios executivos em PDF nativo sem consumir CPU da VPS.
 • *Diagnóstico de Infraestrutura:* Monitoro a saúde da VPS, memória, containers, Evolution API e instâncias do Dokku em tempo real.
-• *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha própria voz sintetizada para seus contatos.
+• *Disparo Ativo no WhatsApp:* Envio mensagens de texto ou gravo áudios com minha voz neural (Azure AI Speech \`pt-BR-*Neural\`, Gemini TTS ou Azure OpenAI TTS) respeitando o tom configurado.
 • *Leitura de Documentos & PDFs:* Analiso comprovantes de pagamento (PIX/TED com valores e data), contratos, propostas e briefings.
 • *Follow-up Inteligente:* Reengajo automaticamente leads parados ou orçamentos não respondidos em horário comercial.
 • *Canais Oficiais & Multi-tenant:* Opero via Baileys Nativo, ManyChat e GoHighLevel, com suporte a subcontas isoladas.

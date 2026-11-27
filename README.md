@@ -2,7 +2,16 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.6.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.7.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.7.0 — Voz Neural Multi-Provedor (Azure & Gemini), Prompts Editáveis, Vínculo Copiloto & Correções de UI
+
+- **Voz Neural Multi-Provedor (`src/ai/voice.mjs`, `src/config.mjs`, `src/admin-config.mjs`, `src/http/dashboard.mjs`):** suporte completo a **Azure AI Speech** (`pt-BR-*Neural` com SSML, velocidade e estilo `<mstts:express-as>`, tier Free F0), **Gemini Neural TTS** e **Azure OpenAI TTS** (`tts-1` / `gpt-4o-mini-tts`), com seleção de provedor/modelo no painel, filtro dinâmico de vozes compatíveis (`updateVoiceOptionsVisibility`), aplicação da **Diretriz Acústica (`voice.tone`)** e botão de audição (`POST /api/dashboard/tts`).
+- **Prompts Editáveis & Vínculo no Copiloto (`src/knowledge.mjs`, `src/core/personality.mjs`, `src/ai/call.mjs`, `public/index.html`):** campos dedicados para `ai.copilotPrompt` e `ai.clientPrompt` com isolamento estrito entre modos, bloco `[IDENTIDADE_E_VINCULO_COM_ADMIN]` no Copiloto e preservação das regras estruturais em `appendMasterSystemInstruction`.
+- **Painel & Publicação (`public/app.js`):** extração limpa de `errors[]` em `api()` (sem despejar JSON bruto), tratamento informativo de `noChanges`, preservação de vozes Azure/OpenAI em `renderAdmin()` e contador exato de alterações (`countLeafDiffs`) no botão **Publicar**.
+- **Comandos WhatsApp & Telegram (`src/flow/owner-commands.mjs`, `src/channels/telegram.mjs`):** adicionados `/crm` e `/versao` no Telegram e atualizadas as respostas de versão, novidades e capacidades no Copiloto.
+
+Detalhes técnicos: [`docs/release-3.7.0.md`](docs/release-3.7.0.md).
 
 ## Novidades da Versão 3.6.0 — Agenda Unificada, Raio-X da Lia, Setores/Triagem Reais & Hardening
 

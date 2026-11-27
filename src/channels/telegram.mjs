@@ -38,6 +38,8 @@ export const TELEGRAM_COMMANDS = Object.freeze([
   { command: 'pix', description: 'Gerar cobrança Pix ou link de pagamento' },
   { command: 'web', description: 'Pesquisar informações atualizadas na web' },
   { command: 'cnpj', description: 'Consultar CNPJ ou CEP (Dados Brasil)' },
+  { command: 'crm', description: 'Consultar contato ou lead no CRM' },
+  { command: 'versao', description: 'Ver versão atual e novidades da Lia' },
   { command: 'meu_id', description: 'Mostrar seu Chat ID do Telegram' },
   { command: 'ajuda', description: 'Ver guia completo de comandos da Lia' }
 ]);
@@ -133,6 +135,8 @@ export function mapTelegramSlashCommand(rawText = '') {
   if (cmd === 'meu_id' || cmd === 'id') return { kind: 'meu_id' };
   if (cmd === 'start') return { kind: 'start' };
   if (cmd === 'ajuda' || cmd === 'help') return { kind: 'help' };
+  if (cmd === 'versao') return { kind: 'text', text: 'qual a sua versão e quais foram as atualizações?' };
+  if (cmd === 'crm') return { kind: 'text', text: args ? `consultar contato no crm: ${args}` : 'Qual contato ou telefone você quer consultar no CRM?' };
   // Operação & Monitoramento
   if (cmd === 'status') return { kind: 'text', text: 'status' };
   if (cmd === 'saude' || cmd === 'infra') return { kind: 'text', text: 'infra' };
@@ -237,7 +241,7 @@ function buildHelpText(botUsername = '') {
     '• /agenda • /gmail • /planilha • /drive',
     '',
     '*🧠 Autonomia & Produtividade:*',
-    '• /rotinas • /lembretes • /memoria • /pdf • /pix • /web • /cnpj',
+    '• /rotinas • /lembretes • /memoria • /pdf • /pix • /web • /cnpj • /crm • /versao',
     '',
     '*Dica:* Você também pode mandar mensagens livres ou *áudios de voz* — eu transcrevo e executo normalmente!'
   ].join('\n');
