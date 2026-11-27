@@ -711,7 +711,7 @@
             </details>
 
             <!-- MENU RECOLHÍVEL 2: IDENTIDADE, PERSONA & DIRETRIZ MESTRE -->
-            <details class="config-accordion panel" id="acc-identity" data-section-keys="identity,business.areas,business.timezone,ai.systemInstruction">
+            <details class="config-accordion panel" id="acc-identity" data-section-keys="identity,business.areas,business.timezone,ai.systemInstruction,ai.copilotPrompt,ai.clientPrompt">
               <summary class="config-accordion-head">
                 <div class="acc-title-group">
                   <span class="acc-icon tint-blue">
@@ -778,6 +778,14 @@
                   <label class="wide">Diretriz Mestre do Sistema (System Instruction da IA)
                     <textarea id="admin-system-instruction" data-config="ai.systemInstruction" rows="3" placeholder="Instruções fundamentais de formatação e postura da IA..."></textarea>
                     <span class="field-hint">Injetada diretamente no prompt de sistema de todas as chamadas cognitivas da Lia.</span>
+                  </label>
+                  <label class="wide">Prompt do Modo Copiloto (Admin / Gestor)
+                    <textarea id="admin-copilot-prompt" data-config="ai.copilotPrompt" rows="4" placeholder="Ex.: Fale comigo de forma próxima e parceira, chame pelo apelido, resuma números direto ao ponto mas com humor leve..."></textarea>
+                    <span class="field-hint">Instruções personalizadas para quando a Lia conversa diretamente com você (admin/gestor) no Copiloto.</span>
+                  </label>
+                  <label class="wide">Prompt de Atendimento ao Cliente (WhatsApp Externo)
+                    <textarea id="admin-client-prompt" data-config="ai.clientPrompt" rows="4" placeholder="Ex.: Sempre conduza o lead para agendamento após entender a dor, evite jargões técnicos..."></textarea>
+                    <span class="field-hint">Instruções adicionais aplicadas apenas ao atendimento de clientes externos.</span>
                   </label>
                 </div>
               </div>
@@ -2859,6 +2867,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261127b"></script>
+  <script src="/dashboard/app.js?v=20261127c"></script>
 </body>
 </html>

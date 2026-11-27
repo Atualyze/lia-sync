@@ -1499,7 +1499,7 @@ test('Lia Personality Engine injeta identidade compacta, adapta temperatura e de
   assert.ok(block.length < 1300, 'Camada de personalidade deve ser compacta para economizar tokens');
 
   assert.equal(resolveAdaptiveTemperature({ hasTools: true }), 0.25);
-  assert.equal(resolveAdaptiveTemperature({ isOwner: true }), 0.35);
+  assert.equal(resolveAdaptiveTemperature({ isOwner: true }), 0.52);
   assert.equal(resolveAdaptiveTemperature({ isJsonResponse: true }), 0.58);
   assert.equal(resolveAdaptiveTemperature({}), 0.62);
 

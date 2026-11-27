@@ -237,13 +237,25 @@ ${relevantKbs.length
       ? `\n[CONTATOS DO CRM COM CONTEXTO / SUPORTE ATIVO]\n${JSON.stringify(session.supportContacts, null, 2)}\n`
       : '';
 
+    const aliasesLabel = Array.isArray(identity.aliases) && identity.aliases.length
+      ? ` (também conhecido como: ${identity.aliases.join(', ')})`
+      : '';
+    const customCopilotPrompt = typeof botConfig?.ai?.copilotPrompt === 'string' && botConfig.ai.copilotPrompt.trim()
+      ? `\n[PROMPT_CUSTOMIZADO_DO_COPILOTO]\n${botConfig.ai.copilotPrompt.trim().slice(0, 8000)}\n[/PROMPT_CUSTOMIZADO_DO_COPILOTO]`
+      : '';
+
     return `${dateAndHoursHeader}
 
 Você é a ${botName}, assistente pessoal e copiloto executiva${companySuffix(companyName)}.
-Você está conversando diretamente com ${owner} em seu canal interno no WhatsApp.
+Você está conversando diretamente com ${owner}${aliasesLabel} em seu canal interno no WhatsApp.
+[IDENTIDADE_E_VINCULO_COM_ADMIN]
+- Você conhece muito bem ${owner}${aliasesLabel} e a operação${companySuffix(companyName)}${identity.areas ? ` (atuação: ${identity.areas})` : ''}.
+- Converse com ${owner} com naturalidade, proximidade, calor humano e espírito de parceria (como braço direito de confiança), seguindo fielmente o Tom de Voz e as Diretrizes configuradas — sem soar fria, distante ou burocrática.
+- Tom de voz configurado: ${identity.tone || 'Acolhedor, dinâmico e próximo'}.
+[/IDENTIDADE_E_VINCULO_COM_ADMIN]${customCopilotPrompt}
 Identificação técnica real do sistema: você roda no motor *Lia Sync v${LIA_VERSION}* (provedor WhatsApp ativo: ${config.whatsappProvider || 'baileys'}). Quando perguntada sobre sua versão, informe exatamente *v${LIA_VERSION}* (nunca invente outro número).
-Capacidades da versão v${LIA_VERSION}: canais Baileys, ManyChat (/webhook/manychat) e GoHighLevel (/webhook/ghl), Funil Kanban (5 etapas), Cadências de Follow-up, Ligação Perdida (Missed Call Text-Back), Avaliação Pós-Atendimento (1–5 + Google Meu Negócio), 10 Setores customizáveis e Multi-tenant (subcontas).
-Seu tom é prestativo, perspicaz, ágil, inteligente e com ótima comunicação. Você atua como seu braço direito operacional.
+Capacidades da versão v${LIA_VERSION}: canais Baileys, ManyChat (/webhook/manychat) e GoHighLevel (/webhook/ghl), Funil Kanban (5 etapas), Agenda Unificada, Cadências de Follow-up, Ligação Perdida (Missed Call Text-Back), Avaliação Pós-Atendimento (1–5 + Google Meu Negócio), 10 Setores customizáveis e Multi-tenant (subcontas).
+Seu tom é acolhedor, parceiro, perspicaz, ágil e com ótima comunicação. Você atua como seu braço direito operacional.
 
 ${buildPersonalityPrompt({ botName, isOwner: true, botConfig })}
 
@@ -483,7 +495,7 @@ ${(() => {
     return ctxBlock;
   })()}
 
-[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}${session.sectorPromptInstructions ? `\n[INSTRUÇÕES DO SETOR (${String(session.sectorName || session.sectorId || 'Ativo')})]\n${String(session.sectorPromptInstructions).trim().slice(0, 2000)}` : ''}${session.notALead ? `\n[PERFIL DO CONTATO: NÃO É LEAD — Evite abordagem comercial, qualificação de funil ou ofertas de venda não solicitadas.]` : ''}${session.aiContext ? `\n[CONTEXTO ESPECÍFICO DESTE CONTATO — PRIORIDADE NO ATENDIMENTO]\n${String(session.aiContext).trim().slice(0, 2000)}` : ''}
+[HORÁRIO LOCAL] ${local}${memorySection}${historyRecallSection}${crossModelContinuitySection}${typeof botConfig?.ai?.clientPrompt === 'string' && botConfig.ai.clientPrompt.trim() ? `\n[PROMPT_CUSTOMIZADO_DE_ATENDIMENTO]\n${botConfig.ai.clientPrompt.trim().slice(0, 8000)}\n[/PROMPT_CUSTOMIZADO_DE_ATENDIMENTO]` : ''}${session.sectorPromptInstructions ? `\n[INSTRUÇÕES DO SETOR (${String(session.sectorName || session.sectorId || 'Ativo')})]\n${String(session.sectorPromptInstructions).trim().slice(0, 2000)}` : ''}${session.notALead ? `\n[PERFIL DO CONTATO: NÃO É LEAD — Evite abordagem comercial, qualificação de funil ou ofertas de venda não solicitadas.]` : ''}${session.aiContext ? `\n[CONTEXTO ESPECÍFICO DESTE CONTATO — PRIORIDADE NO ATENDIMENTO]\n${String(session.aiContext).trim().slice(0, 2000)}` : ''}
   [CLIENTE] ${JSON.stringify({ clientName: session.clientName || session.contactName || null, subject: session.subject || null, sectorName: session.sectorName || null, sentiment: session.sentiment || null, contextSummary: session.contextSummary || null, conversationState: session.conversationState || null, supportModeEnabled: Boolean(session.supportModeEnabled), knowledgeBaseId: session.knowledgeBaseId || null, contactRole: session.contactRole || null, contactNotes: session.contactNotes || null, aiContext: session.aiContext || null, notALead: Boolean(session.notALead) })}
 [MENSAGENS PADRÃO] ${JSON.stringify(messagesBase)}
 [FAQ] ${JSON.stringify(faq).slice(0, 3000)}`;
