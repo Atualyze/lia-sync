@@ -1321,6 +1321,24 @@
                   <input type="checkbox" data-config="ai.requireParameters" />
                   <span>Exigir validação estrita de parâmetros nas ferramentas</span>
                 </label>
+                <label class="toggle-field">
+                  <input type="checkbox" data-config="ai.embeddingEnabled" />
+                  <span>Busca Semântica (Embeddings) nas bases de conhecimento e memória</span>
+                </label>
+                <div class="admin-form-grid" style="margin-top:8px;">
+                  <label>Provedor de Embeddings
+                    <select data-config="ai.embeddingProvider" id="admin-embedding-provider">
+                      <option value="auto">Automático (provedor ativo / OpenAI / Gemini)</option>
+                      <option value="azure-openai">Azure OpenAI (customizado)</option>
+                      <option value="openai">OpenAI (/v1/embeddings)</option>
+                      <option value="openrouter">OpenRouter (/embeddings)</option>
+                      <option value="gemini">Google Gemini (text-embedding-004)</option>
+                    </select>
+                  </label>
+                  <label>Modelo / Deployment de Embedding
+                    <input type="text" data-config="ai.embeddingModel" id="admin-embedding-model" maxlength="120" placeholder="text-embedding-3-small" />
+                  </label>
+                </div>
                 <label>Turnos de contexto enviados à IA (4–100)
                   <input data-config="ai.contextTurns" type="number" min="4" max="100" step="1" />
                 </label>

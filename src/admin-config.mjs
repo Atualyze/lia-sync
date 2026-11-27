@@ -99,6 +99,9 @@ export const DEFAULT_BOT_CONFIG = {
     agentMode: 'super_agente',
     enableToolCalling: true,
     autoRouting: true,
+    embeddingEnabled: false,
+    embeddingProvider: 'auto',
+    embeddingModel: 'text-embedding-3-small',
     contextTurns: 24,
     maxStoredHistory: 100,
     maxOutputTokens: 2048,
@@ -211,6 +214,9 @@ const validate = (value, { requirePublishedAI = true } = {}) => {
   if (!['assistente', 'super_agente'].includes(value.ai?.agentMode)) errors.push('O modo do agente precisa ser assistente ou super_agente.');
   if (typeof value.ai?.enableToolCalling !== 'boolean') errors.push('A ativação de chamadas de ferramentas deve ser verdadeiro/falso.');
   if (typeof value.ai?.autoRouting !== 'boolean') errors.push('O roteamento automático deve ser verdadeiro/falso.');
+  if (value.ai?.embeddingEnabled !== undefined && typeof value.ai.embeddingEnabled !== 'boolean') errors.push('A busca semântica (embeddings) deve ser verdadeiro/falso.');
+  if (value.ai?.embeddingProvider !== undefined && (typeof value.ai.embeddingProvider !== 'string' || value.ai.embeddingProvider.length > 80)) errors.push('O provedor de embeddings deve ter até 80 caracteres.');
+  if (value.ai?.embeddingModel !== undefined && (typeof value.ai.embeddingModel !== 'string' || value.ai.embeddingModel.length > 120)) errors.push('O modelo de embeddings deve ter até 120 caracteres.');
   if (typeof value.ai?.openrouterFreeOnly !== 'boolean') errors.push('O filtro de modelos gratuitos do OpenRouter deve ser verdadeiro/falso.');
   if (!Number.isInteger(value.ai?.contextTurns) || value.ai.contextTurns < 4 || value.ai.contextTurns > 100) errors.push('O contexto enviado à IA deve ter entre 4 e 100 turnos.');
   if (!Number.isInteger(value.ai?.maxStoredHistory) || value.ai.maxStoredHistory < 20 || value.ai.maxStoredHistory > 500) errors.push('O histórico armazenado deve ter entre 20 e 500 registros.');
