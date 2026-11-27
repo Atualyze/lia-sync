@@ -178,7 +178,7 @@ export function prepareOwnerReminderCalendarCall({
   const recentUserTurns = Array.isArray(history)
     ? history
       .filter(entry => entry && entry.role === 'user' && typeof entry.content === 'string' && entry.content.trim())
-      .slice(-4)
+      .slice(-12)
       .map(entry => entry.content.trim())
     : [];
   const groundedMessage = [...recentUserTurns, String(message || '').trim()]
@@ -212,7 +212,9 @@ export function prepareOwnerReminderCalendarCall({
   if (!gate.allowed) {
     const ownerReply = gate.code === 'schedule_not_explicit' && !/Qual recado/i.test(gate.reply)
       ? 'Você quer que eu crie esse compromisso na sua Agenda Google? Me confirme o título, o dia e o horário.'
-      : gate.reply;
+      : gate.code === 'reminder_subject_missing'
+        ? 'Sobre qual assunto ou título você quer que eu crie esse compromisso na Agenda Google?'
+        : gate.reply;
     return {
       state: 'clarification',
       code: gate.code,
@@ -229,8 +231,9 @@ export function prepareOwnerReminderCalendarCall({
   }).formatToParts(dueAt).map(part => [part.type, part.value]));
   const actualDate = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
   const actualTime = `${timeParts.hour}:${timeParts.minute}`;
-  const requestedDate = explicitDateFromMessage(groundedMessage, now, timezone);
-  const requestedTime = explicitTimeFromMessage(groundedMessage);
+  const allUserTurnsNewestFirst = [String(message || '').trim(), ...recentUserTurns.slice().reverse()].filter(Boolean);
+  const requestedDate = allUserTurnsNewestFirst.map(t => explicitDateFromMessage(t, now, timezone)).find(Boolean) || '';
+  const requestedTime = allUserTurnsNewestFirst.map(t => explicitTimeFromMessage(t)).find(Boolean) || '';
   if (!requestedDate || actualDate !== requestedDate) {
     return {
       state: 'clarification',
