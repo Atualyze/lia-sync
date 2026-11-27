@@ -34,7 +34,7 @@ export class AgendaStore {
       try {
         const rows = await this.client.select(
           'runtime_projections',
-          'select=payload,updated_at&projection_key=eq.agenda_events&limit=1'
+          'select=payload,updated_at&key=eq.agenda_events&limit=1'
         );
         const remoteEvents = rows?.[0]?.payload?.events;
         if (Array.isArray(remoteEvents) && remoteEvents.length) {
@@ -78,11 +78,11 @@ export class AgendaStore {
         await this.client.upsert(
           'runtime_projections',
           [{
-            projection_key: 'agenda_events',
+            key: 'agenda_events',
             payload: { events: this.events.slice(-1000) },
             updated_at: new Date(this.now()).toISOString()
           }],
-          'projection_key',
+          'key',
           { returnRepresentation: false }
         );
       } catch (err) {
