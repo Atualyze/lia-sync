@@ -1,5 +1,5 @@
 import { json, readBody } from './utils.mjs';
-import { toolGerenciarAgenda } from '../tools/gerenciar_agenda_google.mjs';
+import { toolGerenciarAgendaGoogle as toolGerenciarAgenda } from '../tools/gerenciar_agenda_google.mjs';
 import { normalizePhone } from '../sessions.mjs';
 
 function formatLocalDatePart(isoOrDate, tz = 'America/Sao_Paulo') {
