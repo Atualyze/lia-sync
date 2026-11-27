@@ -32,10 +32,10 @@ test('Google Calendar permite horários simulados em teste, mas nunca simula a c
   assert.match(agendamento.message, /Nenhum evento foi criado/i);
 });
 
-test('Google Calendar não retorna sucesso sem integração real ou mock explícito', async () => {
+test('Google Calendar usa agenda nativa como fallback sem integração externa ou mock', async () => {
   delete process.env.GOOGLE_CALENDAR_API_KEY;
   delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
   const result = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, {});
-  assert.equal(result.success, false);
-  assert.equal(result.error, 'google_calendar_unavailable');
+  assert.equal(result.success, true);
+  assert.equal(result.provider, 'agenda_nativa');
 });

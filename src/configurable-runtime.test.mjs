@@ -49,15 +49,15 @@ test('autosave com catálogo vazio não apaga o modelo ativo', async () => {
   assert.equal((await store.publish('test')).ok, true);
 });
 
-test('agenda nunca informa sucesso sem integração real ou mock de teste', async () => {
+test('agenda usa agenda nativa como fallback quando Google Calendar não está configurado', async () => {
   const oldEnv = { node: process.env.NODE_ENV, mock: process.env.GOOGLE_CALENDAR_MOCK, key: process.env.GOOGLE_CALENDAR_API_KEY, token: process.env.GOOGLE_CALENDAR_ACCESS_TOKEN };
   process.env.NODE_ENV = 'production';
   delete process.env.GOOGLE_CALENDAR_MOCK;
   delete process.env.GOOGLE_CALENDAR_API_KEY;
   delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
   const result = await toolGerenciarAgendaGoogle.execute({ action: 'consultar_livres', date: '2026-11-12' }, { botConfig: { integrations: { googleCalendar: { enabled: true } } } });
-  assert.equal(result.success, false);
-  assert.equal(result.error, 'google_calendar_unavailable');
+  assert.equal(result.success, true);
+  assert.equal(result.provider, 'agenda_nativa');
   if (oldEnv.node === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldEnv.node;
   if (oldEnv.mock === undefined) delete process.env.GOOGLE_CALENDAR_MOCK; else process.env.GOOGLE_CALENDAR_MOCK = oldEnv.mock;
   if (oldEnv.key === undefined) delete process.env.GOOGLE_CALENDAR_API_KEY; else process.env.GOOGLE_CALENDAR_API_KEY = oldEnv.key;

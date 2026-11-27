@@ -81,8 +81,8 @@ test('fluxo owner executa consultar_web e retorna síntese com fontes sem reexec
   assert.equal(calls, 2);
 });
 
-test('executeToolCall permite agenda no client e preserva o erro de integração ausente', async () => {
+test('executeToolCall permite agenda no client com fallback para agenda nativa', async () => {
   const result = await executeToolCall('gerenciar_agenda_google', { action: 'consultar_livres', date: 'amanhã' }, { actor: 'client' });
-  assert.equal(result.success, false);
-  assert.match(result.error, /google_calendar_unavailable/);
+  assert.equal(result.success, true);
+  assert.equal(result.provider, 'agenda_nativa');
 });

@@ -1,6 +1,26 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { config } from '../config.mjs';
+import { AgendaStore } from '../agenda.mjs';
+import { createSupabaseRuntime } from '../supabase-runtime.mjs';
 import { normalizarJanelaDeAtendimento, diasSemanaTexto } from '../business-hours.mjs';
 import { readGoogleCredentials } from './google_auth.mjs';
+
+let sharedAgendaStore = null;
+async function getNativeAgendaStore(context = {}) {
+  if (context?.agendaStore) {
+    if (!context.agendaStore.loaded) await context.agendaStore.load();
+    return context.agendaStore;
+  }
+  if (!sharedAgendaStore) {
+    const sb = config.supabaseRuntimeEnabled
+      ? createSupabaseRuntime({ url: config.supabaseUrl, serviceRoleKey: config.supabaseServiceRoleKey }).client
+      : null;
+    sharedAgendaStore = new AgendaStore(path.join(path.dirname(config.dataFile || './data/sessions.json'), 'agenda.json'), { client: sb });
+  }
+  if (!sharedAgendaStore.loaded) await sharedAgendaStore.load();
+  return sharedAgendaStore;
+}
 
 const WEEKDAY_NAMES_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const WEEKDAY_MAP_EN = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -354,16 +374,101 @@ export const toolGerenciarAgendaGoogle = {
       if (action === 'criar_evento') return { success: false, mocked: true, error: 'mock_calendar_write_disabled', message: 'Este ambiente está usando horários simulados. Nenhum evento foi criado no Google Agenda.' };
     }
 
+    const nativeFallback = async () => {
+      const store = await getNativeAgendaStore(context);
+      const activeEvents = store.list().filter(ev => ev.status !== 'cancelled');
+      if (action === 'criar_evento') {
+        const start = toZonedIsoTimestamp(isoDate, chosenTime, settings.timezone);
+        if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) {
+          return { success: false, error: 'event_datetime_not_future', message: 'A data e o horário do evento precisam estar no futuro. Nenhum evento foi criado.' };
+        }
+        const saved = await store.add({
+          title: String(summary).trim(),
+          startAt: start,
+          durationMinutes: settings.defaultEventDurationMinutes,
+          phone: attendeePhone || context?.phone || '',
+          clientName: context?.clientName || '',
+          notes: attendeeEmail ? `E-mail: ${attendeeEmail}` : '',
+          source: context?.actor === 'owner' ? 'copilot' : 'whatsapp'
+        });
+        return {
+          success: true,
+          provider: 'agenda_nativa',
+          event: { id: saved.id, title: saved.title, date: dateFormatted, time: chosenTime, status: saved.status },
+          message: `Compromisso "${saved.title}" criado na Agenda Nativa da Lia para ${dateFormatted} às ${chosenTime}.`
+        };
+      }
+      if (action === 'listar_eventos') {
+        const qNorm = String(query || '').trim().toLowerCase();
+        const items = activeEvents.filter(ev => {
+          const evDate = getIsoDateInZone(new Date(ev.startAt), settings.timezone);
+          if (evDate !== isoDate) return false;
+          if (!qNorm) return true;
+          return String(ev.title || '').toLowerCase().includes(qNorm) || String(ev.clientName || '').toLowerCase().includes(qNorm);
+        });
+        return { success: true, provider: 'agenda_nativa', date: dateFormatted, query: String(query || '').trim(), events: items };
+      }
+      if (action === 'sugerir_horarios') {
+        const totalDays = Math.max(1, Math.min(14, Number(days) || 3));
+        const dur = Math.max(15, Math.min(240, Number(durationMinutes) || settings.defaultEventDurationMinutes));
+        const busy = activeEvents.map(ev => ({ start: ev.startAt, end: ev.endAt }));
+        const suggestions = computeSuggestedSlots({
+          startDate: targetDate,
+          days: totalDays,
+          durationMinutes: dur,
+          stepMinutes: settings.slotDurationMinutes || 30,
+          workdayStart: settings.workdayStart,
+          workdayEnd: settings.workdayEnd,
+          allowedWeekdays: settings.allowedWeekdays,
+          timezone: settings.timezone,
+          busyIntervals: busy,
+          maxSuggestions: 8
+        });
+        return {
+          success: true,
+          provider: 'agenda_nativa',
+          date: dateFormatted,
+          weekdayName: weekday.name,
+          daysChecked: totalDays,
+          durationMinutes: dur,
+          suggestions,
+          availableSlots: suggestions.map(s => `${s.weekdayName} (${s.date}) às ${s.startTime}`),
+          message: suggestions.length
+            ? `Sugestões de horários livres (${dur} min): ${suggestions.map(s => `${s.weekdayName}, ${s.date} às ${s.startTime}`).join(', ')}.`
+            : `Não encontrei janelas livres de ${dur} min nos próximos ${totalDays} dia(s) a partir de ${weekday.name} (${dateFormatted}).`
+        };
+      }
+      if (action === 'consultar_livres') {
+        const busy = activeEvents.map(ev => ({ start: ev.startAt, end: ev.endAt }));
+        const availableSlots = MOCK_SLOTS.filter(slot => {
+          const slotStartMs = new Date(toZonedIsoTimestamp(isoDate, slot, settings.timezone)).getTime();
+          const slotEndMs = slotStartMs + settings.defaultEventDurationMinutes * 60000;
+          return !busy.some(item => {
+            const bStart = new Date(item.start).getTime();
+            const bEnd = new Date(item.end).getTime();
+            return Number.isFinite(bStart) && Number.isFinite(bEnd) && slotStartMs < bEnd && slotEndMs > bStart;
+          });
+        });
+        return {
+          success: true,
+          provider: 'agenda_nativa',
+          date: dateFormatted,
+          availableSlots,
+          message: availableSlots.length
+            ? `Para ${dateFormatted}, os horários livres são: ${availableSlots.join(', ')}.`
+            : `Não há horários livres disponíveis em ${dateFormatted}.`
+        };
+      }
+      return unavailable();
+    };
+
     const hasCredentials = Boolean(
       settings.accessToken ||
       settings.apiKey ||
       (settings.clientId && settings.clientSecret && settings.refreshToken) ||
       (settings.serviceAccountEmail && settings.serviceAccountPrivateKey)
     );
-    if (!hasCredentials) return unavailable();
-    if (!settings.calendarId) {
-      return { success: false, error: 'google_calendar_id_missing', message: 'O ID da agenda Google não está configurado. Nenhum evento foi criado.' };
-    }
+    if (!hasCredentials || !settings.calendarId) return nativeFallback();
 
     try {
       if (action === 'sugerir_horarios') {
@@ -444,7 +549,7 @@ export const toolGerenciarAgendaGoogle = {
       }
       if (action === 'criar_evento') {
         const token = await resolveAccessToken(settings);
-        if (!token) return { success: false, error: 'google_calendar_write_unavailable', message: 'Token OAuth ou Service Account é necessário para criar eventos no Google Calendar.' };
+        if (!token) return nativeFallback();
         const start = toZonedIsoTimestamp(isoDate, chosenTime, settings.timezone);
         if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) {
           return { success: false, error: 'event_datetime_not_future', message: 'A data e o horário do evento precisam estar no futuro. Nenhum evento foi criado.' };
@@ -483,8 +588,8 @@ export const toolGerenciarAgendaGoogle = {
         return { success: true, provider: 'google_calendar', date: dateFormatted, query: String(query || '').trim(), events: body.items || [] };
       }
       return { success: false, error: 'unsupported_action', message: 'Cancelamento requer o identificador do evento.' };
-    } catch (error) {
-      return { success: false, error: 'google_calendar_error', message: 'Não foi possível consultar o Google Calendar.', status: error.status };
+    } catch {
+      return nativeFallback();
     }
   }
 };
