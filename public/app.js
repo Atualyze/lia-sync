@@ -33,6 +33,7 @@ const state = {
   overviewSamples: [],
   overviewPollTimer: null,
   soundEnabled: localStorage.getItem('lia_click_sound') !== '0',
+  theme: localStorage.getItem('lia_theme') === 'light' ? 'light' : 'dark',
   initialized: false
 };
 
@@ -84,6 +85,21 @@ function playUiSound(kind = 'click') {
 
 function playNativeClick() {
   playUiSound('click');
+}
+
+function syncThemeToggleBtn() {
+  const btn = $('#theme-toggle-btn');
+  const isLight = state.theme === 'light';
+  document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  if (!btn) return;
+  btn.title = isLight ? 'Tema claro ativo (clique para escuro)' : 'Tema escuro ativo (clique para claro)';
+  btn.setAttribute('aria-pressed', isLight ? 'true' : 'false');
+}
+
+function toggleTheme() {
+  state.theme = state.theme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('lia_theme', state.theme);
+  syncThemeToggleBtn();
 }
 
 function syncSoundToggleBtn() {
@@ -3916,7 +3932,9 @@ function startDashboard() {
     refresh();
   });
   syncSoundToggleBtn();
+  syncThemeToggleBtn();
   $('#sound-toggle-btn')?.addEventListener('click', toggleClickSound);
+  $('#theme-toggle-btn')?.addEventListener('click', toggleTheme);
   $('#logout')?.addEventListener('click', async () => {
     const btn = $('#logout');
     setButtonLoading(btn, true, 'Saindo…');

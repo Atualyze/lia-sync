@@ -6128,3 +6128,270 @@ button:active:not(:disabled),
     font-size: 16px !important;
   }
 }
+
+/* ==========================================================================
+   Theme Toggle Icons & Complete Light Theme (Sidebar Remains Dark)
+   ========================================================================== */
+#theme-toggle-btn .icon-sun { display: none; }
+#theme-toggle-btn .icon-moon { display: inline-block; }
+html[data-theme="light"] #theme-toggle-btn .icon-sun { display: inline-block; color: #b45309; }
+html[data-theme="light"] #theme-toggle-btn .icon-moon { display: none; }
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #f5f6f8;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-app: #f5f6f8;
+  --bg-topbar: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f0f2f5;
+  --bg-input: #f8f9fb;
+  --bg-input-hover: #f1f3f6;
+
+  --text-primary: #111318;
+  --text-secondary: #4b5262;
+  --text-tertiary: #71798a;
+
+  --border-hairline: #e3e6ec;
+  --border-strong: #cfd5df;
+  --border-specular: #dce0e8;
+
+  --accent-green: #198754;
+  --accent-green-hover: #146c43;
+  --accent-green-soft: #e8f6ef;
+  --accent-blue: #1f5f78;
+  --accent-blue-hover: #174a5e;
+  --accent-blue-soft: #e6f2f6;
+  --accent-mint: #157347;
+  --accent-mint-soft: #e6f5ee;
+  --accent-amber: #b45309;
+  --accent-amber-soft: #fef3c7;
+  --accent-red: #b91c1c;
+  --accent-red-soft: #fee2e2;
+}
+
+/* Scrollbar in light theme */
+html[data-theme="light"] * {
+  scrollbar-color: #cbd2dd #f1f3f6;
+}
+html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f3f6; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd2dd; border-color: #f1f3f6; }
+
+/* Keep Sidebar Dark Forever (Scoped Token Reset) */
+html[data-theme="light"] .sidebar {
+  --bg-sidebar: #16171b;
+  --bg-secondary: #1c1d1f;
+  --bg-surface: #252629;
+  --bg-card: #252629;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a6a8b1;
+  --text-tertiary: #6e7078;
+  --border-hairline: #26282e;
+  --border-strong: #343740;
+  --accent-green: #48aa7e;
+  --accent-mint: #86deba;
+  background: #16171b !important;
+  color: #f5f5f5 !important;
+  border-right: 1px solid #24262e !important;
+}
+html[data-theme="light"] .sidebar .nav-item {
+  color: #a6a8b1;
+}
+html[data-theme="light"] .sidebar .nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f5f5;
+}
+html[data-theme="light"] .sidebar .nav-item.active {
+  background: rgba(72, 170, 126, 0.14);
+  color: #86deba;
+}
+
+/* Main Shell, Topbar & Panels */
+html[data-theme="light"] body,
+html[data-theme="light"] .main {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+html[data-theme="light"] .topbar {
+  background: #ffffff;
+  border-bottom: 1px solid var(--border-hairline);
+}
+html[data-theme="light"] .panel,
+html[data-theme="light"] .card,
+html[data-theme="light"] .kpi-tile,
+html[data-theme="light"] .config-accordion,
+html[data-theme="light"] .ops-row,
+html[data-theme="light"] .handoff-card,
+html[data-theme="light"] .provider-status-card,
+html[data-theme="light"] .detail-block,
+html[data-theme="light"] .login-card,
+html[data-theme="light"] .modal-card,
+html[data-theme="light"] .cmd-palette-card {
+  background: #ffffff !important;
+  border-color: var(--border-hairline) !important;
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(17, 19, 24, 0.04);
+}
+html[data-theme="light"] .config-accordion-head,
+html[data-theme="light"] .panel-head {
+  border-bottom-color: var(--border-hairline);
+}
+
+/* Inputs, Selects, Buttons */
+html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .inbox-stage-select,
+html[data-theme="light"] .chat-crm-select,
+html[data-theme="light"] .conversation-list .search {
+  background-color: #f8f9fb !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .conversation-list .search input {
+  border: none !important;
+  background: transparent !important;
+}
+html[data-theme="light"] .icon-btn,
+html[data-theme="light"] .round-btn,
+html[data-theme="light"] .btn-secondary,
+html[data-theme="light"] .admin-ghost-btn,
+html[data-theme="light"] .chip-btn {
+  background: #f4f6f9 !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .icon-btn:hover,
+html[data-theme="light"] .round-btn:hover,
+html[data-theme="light"] .btn-secondary:hover,
+html[data-theme="light"] .admin-ghost-btn:hover {
+  background: #e9edf3 !important;
+}
+html[data-theme="light"] .btn-primary,
+html[data-theme="light"] .btn-xs-primary,
+html[data-theme="light"] .admin-primary-btn {
+  background: var(--accent-green) !important;
+  border-color: var(--accent-green) !important;
+  color: #ffffff !important;
+}
+
+/* Pills & Micro-tags in Light Theme */
+html[data-theme="light"] .pill.mini,
+html[data-theme="light"] .crm-strip-pill,
+html[data-theme="light"] .crm-mini-chip,
+html[data-theme="light"] .agenda-type-pill,
+html[data-theme="light"] .admin-status {
+  background: #f0f2f6 !important;
+  border-color: #d6dce5 !important;
+  color: #3d4454 !important;
+}
+html[data-theme="light"] .crm-strip-pill.stage,
+html[data-theme="light"] .pill.mint {
+  background: #e6f5ee !important;
+  border-color: #b4dfc9 !important;
+  color: #146c43 !important;
+}
+html[data-theme="light"] .chat-crm-ficha-btn {
+  background: #e6f5ee;
+  border-color: #b4dfc9;
+  color: #146c43;
+}
+
+/* Inbox List, Chat & Detail Panel in Light Theme */
+html[data-theme="light"] .inbox-grid .conversation-list {
+  background: #fafbfc !important;
+  border-right-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .inbox-filter-tabs {
+  background: #eef1f5 !important;
+}
+html[data-theme="light"] .inbox-tab {
+  color: var(--text-secondary) !important;
+}
+html[data-theme="light"] .inbox-tab.active {
+  background: #ffffff !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+}
+html[data-theme="light"] .conversation:hover {
+  background: rgba(17, 19, 24, 0.03) !important;
+}
+html[data-theme="light"] .conversation.selected {
+  background: #e9f6ef !important;
+  border-color: #b7e1cb !important;
+}
+html[data-theme="light"] .inbox-grid .detail {
+  background: #fafbfc !important;
+  border-left-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .chat-head {
+  background: #ffffff !important;
+  border-bottom-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .messages {
+  background: #eef1f5 !important;
+}
+html[data-theme="light"] .bubble.in {
+  background: #ffffff !important;
+  border-color: #dce1ea !important;
+}
+html[data-theme="light"] .bubble.out {
+  background: #dcf4e8 !important;
+  border-color: #b5dfc9 !important;
+}
+html[data-theme="light"] .bubble.out .bubble-body,
+html[data-theme="light"] .bubble.out .bubble-text {
+  color: #0e291c !important;
+}
+html[data-theme="light"] .bubble.out > small,
+html[data-theme="light"] .bubble.out .bubble-foot {
+  color: #2f6f52 !important;
+}
+html[data-theme="light"] .composer-dock {
+  background: #ffffff !important;
+  border-top-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .composer-attach-btn {
+  background: #f0f2f6 !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-secondary) !important;
+}
+html[data-theme="light"] .composer input,
+html[data-theme="light"] #message-input {
+  background: #f5f7fa !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .composer-send-btn {
+  background: var(--accent-green) !important;
+  border-color: var(--accent-green) !important;
+  color: #ffffff !important;
+}
+
+/* Funnel, Toasts, Context Menus & Mobile Bottom Nav */
+html[data-theme="light"] .funnel-column {
+  background: #eef1f5 !important;
+  border-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .funnel-card {
+  background: #ffffff !important;
+  border-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .apple-toast,
+html[data-theme="light"] .apple-context-menu,
+html[data-theme="light"] .tech-tooltip-popover,
+html[data-theme="light"] .chat-smart-bar {
+  background: #ffffff !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 10px 28px rgba(17, 19, 24, 0.12) !important;
+}
+html[data-theme="light"] .mobile-bottom-nav {
+  background: #ffffff !important;
+  border-top-color: var(--border-hairline) !important;
+}
+html[data-theme="light"] .conv-skeleton-avatar,
+html[data-theme="light"] .conv-skeleton-lines span {
+  background: #e2e6ee;
+}
