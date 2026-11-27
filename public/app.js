@@ -2389,6 +2389,22 @@ function renderAdminHistory() {
   }).join('');
 }
 
+function countLeafDiffs(a, b) {
+  if (a === b) return 0;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
+    return JSON.stringify(a) === JSON.stringify(b) ? 0 : 1;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b) ? 0 : 1;
+  }
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let count = 0;
+  for (const key of keys) {
+    count += countLeafDiffs(a[key], b[key]);
+  }
+  return count;
+}
+
 function updateSectionDiffBadges() {
   const active = state.adminConfig?.active;
   const draft = state.adminConfig?.draft;
@@ -2407,12 +2423,14 @@ function updateSectionDiffBadges() {
     }
   });
 
-  const hasAnyDiff = JSON.stringify(active) !== JSON.stringify(draft);
+  const modifiedFields = countLeafDiffs(active, draft);
+  const hasAnyDiff = modifiedFields > 0;
   for (const selector of ['#admin-publish', '#global-publish-btn']) {
     const button = $(selector);
     if (button) {
       button.disabled = !hasAnyDiff;
-      button.title = hasAnyDiff ? 'Publicar alterações do rascunho' : 'Não há alterações para publicar';
+      button.title = hasAnyDiff ? `Publicar ${modifiedFields} alteração(ões) do rascunho` : 'Não há alterações para publicar';
+      button.textContent = hasAnyDiff ? `Publicar (${modifiedFields})` : 'Publicar';
     }
   }
   $('#admin-draft-badge')?.classList.toggle('hidden', !hasAnyDiff);
@@ -2420,12 +2438,16 @@ function updateSectionDiffBadges() {
   if (globalBanner && state.role === 'admin') {
     globalBanner.classList.toggle('hidden', !hasAnyDiff);
     const textEl = $('#global-draft-text');
-    if (textEl) textEl.textContent = modifiedSections > 0 ? `${modifiedSections} seção(ões) em rascunho` : 'Alterações em rascunho';
+    if (textEl) {
+      textEl.textContent = hasAnyDiff
+        ? `${modifiedFields} alteração(ões) em ${modifiedSections || 1} seção(ões)`
+        : 'Alterações em rascunho';
+    }
   }
   const diffSummary = $('#admin-diff-summary');
   if (diffSummary) {
     diffSummary.textContent = hasAnyDiff
-      ? `Há alterações em rascunho (${modifiedSections || 1} seção modificada). Publique para atualizar o motor em produção.`
+      ? `Há ${modifiedFields} alteração(ões) em rascunho (${modifiedSections || 1} seção(ões)). Publique para atualizar o motor em produção.`
       : `Todas as seções estão sincronizadas com a versão publicada (v${state.adminConfig?.revision || 0}).`;
   }
 }
@@ -2850,6 +2872,7 @@ async function publishAdminChanges() {
   } finally {
     setButtonLoading(btn, false);
     setButtonLoading(globalBtn, false);
+    updateSectionDiffBadges();
   }
 }
 
