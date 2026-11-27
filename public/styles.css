@@ -5858,3 +5858,226 @@ button:active:not(:disabled),
     grid-auto-columns: minmax(265px, 84vw);
   }
 }
+
+/* ==========================================================================
+   v3.8.1 WhatsApp-Inspired Chat Layout, Alignment & Breathing Room
+   ========================================================================== */
+#inbox-view.active-view {
+  padding: 0 !important;
+}
+
+.inbox-grid {
+  grid-template-columns: 280px minmax(0, 1fr) 295px;
+  gap: 0 !important;
+}
+.inbox-grid.context-collapsed {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+@media (max-width: 1360px) and (min-width: 821px) {
+  .inbox-grid {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+  .inbox-grid .detail {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(340px, 88vw);
+    z-index: 30;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-strong);
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.5);
+  }
+  .inbox-grid.mobile-context-open .detail {
+    display: flex;
+    flex-direction: column;
+  }
+  .drawer-close-btn {
+    display: inline-flex;
+  }
+}
+
+.inbox-grid .conversation-list,
+.inbox-grid .chat.panel,
+.inbox-grid .detail {
+  border-radius: 0 !important;
+  border-top: none !important;
+  border-bottom: none !important;
+}
+.inbox-grid .conversation-list {
+  padding: 0 !important;
+  border-left: none !important;
+  border-right: 1px solid var(--border-hairline) !important;
+}
+.inbox-list-head {
+  padding: 10px 14px !important;
+  min-height: 54px;
+  border-bottom: 1px solid var(--border-hairline);
+  margin: 0 !important;
+}
+.inbox-filter-tabs {
+  padding: 8px 12px 4px !important;
+  gap: 4px !important;
+}
+.conversation-list .search {
+  margin: 4px 12px 6px !important;
+  padding: 0 10px !important;
+  height: 34px !important;
+}
+.inbox-stage-filter-wrap {
+  padding: 0 12px 8px !important;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.conversation-items {
+  padding: 4px 6px 12px !important;
+}
+
+/* Chat Header — No wrapping, crisp icon alignment */
+.chat-head {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  padding: 8px 16px !important;
+  min-height: 54px !important;
+  gap: 10px !important;
+}
+.chat-head-identity {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chat-head-actions {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+.chat-head-actions .icon-btn,
+.chat-head .icon-btn {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+/* Chat Messages — WhatsApp Rhythm & Clean Grouping */
+.messages {
+  background: #0e1013 !important;
+  padding: 16px 22px !important;
+  gap: 6px !important;
+}
+.bubble-row.in + .bubble-row.out,
+.bubble-row.out + .bubble-row.in {
+  margin-top: 6px;
+}
+.bubble-row {
+  max-width: min(74%, 620px) !important;
+}
+.bubble {
+  padding: 8px 12px 6px !important;
+  gap: 3px !important;
+}
+.bubble > small,
+.bubble-foot {
+  margin-top: 1px;
+  justify-content: flex-end;
+}
+
+/* Composer Dock — Single Clean Input + Aligned Buttons */
+.composer-dock {
+  background: var(--bg-sidebar) !important;
+  border-top: 1px solid var(--border-hairline) !important;
+  padding: 10px 16px !important;
+}
+.composer {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+.composer:focus-within {
+  border: none !important;
+}
+.composer-attach-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #20232a !important;
+  border: 1px solid var(--border-hairline) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-secondary) !important;
+  flex-shrink: 0 !important;
+}
+.composer-attach-btn:hover {
+  background: #272b34 !important;
+  color: var(--text-primary) !important;
+}
+.composer input,
+#message-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  background: #111317 !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-primary) !important;
+  font-size: 13.5px !important;
+  line-height: 36px !important;
+}
+.composer input:focus,
+#message-input:focus {
+  border-color: var(--accent-green) !important;
+  background: #14171c !important;
+  outline: none !important;
+}
+.composer-send-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--accent-green) !important;
+  border: 1px solid var(--accent-green) !important;
+  border-radius: var(--radius-sm) !important;
+  color: #0d1612 !important;
+  flex-shrink: 0 !important;
+}
+.composer-send-btn svg {
+  margin-left: 1px;
+}
+
+@media (max-width: 820px) {
+  .chat-head {
+    padding: 8px 10px !important;
+    min-height: 50px !important;
+  }
+  .messages {
+    padding: 12px 10px !important;
+  }
+  .bubble-row {
+    max-width: 88% !important;
+  }
+  .composer-dock {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .composer input,
+  #message-input {
+    font-size: 16px !important;
+  }
+}
