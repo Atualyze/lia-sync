@@ -8,11 +8,6 @@ import { enterHumanHandoff, resumeHumanHandoff } from './human-handoff-state.mjs
 const PENDING_TTL_MS = 30 * 60 * 1000;
 const LOW_CONFIDENCE = 0.6;
 
-const INTENTS = {
-  HUMAN: 'Combinado! Mantive *${label}* no **modo humano** aguardando você.',
-  CLOSE: 'Perfeito! Concluí e encerrei o atendimento de *${label}*.'
-};
-
 const CONFIRM_YES_RE = /^(?:sim|confirmo|confirmado|isso|isso mesmo|correto|correta|exato|exata|ok|okay|beleza|blz|pode|pode sim|certo|certa|perfeito|aprovo|aprovar)\b/i;
 const CONFIRM_NO_RE = /^(?:n[aã]o|n|negativo|errado|errada|cancela|cancelar|esquece|esquecer|outro|outra|nao foi isso|não foi isso)\b/i;
 
@@ -66,7 +61,7 @@ async function classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget
     'Seja conservador: qualquer dúvida real entre opções é UNCERTAIN.'
   ].join('\n');
 
-  let result = null;
+  let result;
   try {
     result = await ai.askAI({
       system,
@@ -179,19 +174,18 @@ export async function handlePendingReactivationReply({
     store.markDirty?.();
   }
 
-  let intent = null;
+  let intent;
   // Respostas binárias à pergunta padrão não precisam de nova chamada à IA.
   // "sim" autoriza a Lia a continuar; "não" mantém o atendimento humano.
   let classification = null;
-  if (CONFIRM_YES_RE.test(cmd)) intent = 'BOT_CONTINUE';
-  else if (CONFIRM_NO_RE.test(cmd)) intent = 'HUMAN';
-  else classification = await classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget, now });
-
-  if (classification) {
-    intent = classification.intent;
+  if (CONFIRM_YES_RE.test(cmd)) {
+    intent = 'BOT_CONTINUE';
+  } else if (CONFIRM_NO_RE.test(cmd)) {
+    intent = 'HUMAN';
   } else {
+    classification = await classifyReactivationIntent({ ai, botConfig, cmd, pending, sTarget, now });
     // Fallback: IA indisponível ou resposta não interpretável.
-    intent = classifyByRegex(cmd);
+    intent = classification ? classification.intent : classifyByRegex(cmd);
   }
 
   // Incerto (UNCERTAIN ou confiança baixa): não executa nada, não limpa o pending;
@@ -246,7 +240,6 @@ async function applyIntent(intent, { store, sTarget, pending, sSelf, owner, now,
   }
 
   // BOT_CONTINUE: Lia retoma e envia resposta natural ao cliente
-  const targetJid = sTarget.jid || `${String(pending.phone).replace(/\D/g, '')}@s.whatsapp.net`;
   const sys = buildSystemPrompt({
     session: sTarget,
     now: new Date(now()),

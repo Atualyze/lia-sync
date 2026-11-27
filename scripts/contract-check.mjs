@@ -5,7 +5,6 @@ const readNormalized = async (file) => (await readFile(file, 'utf8')).replace(/\
 const legacyMigration = await readNormalized('supabase/migrations/20261112220000_phone_suppressions.sql');
 const observabilityMigration = await readNormalized('supabase/migrations/20261113000000_operations_observability.sql');
 const campaigns = await readNormalized('src/campaigns.mjs');
-const dashboardRoutes = await readNormalized('src/http/dashboard.mjs');
 const operationsRoutes = await readNormalized('src/http/operations.mjs');
 const operations = await readNormalized('src/operations.mjs');
 const router = await readNormalized('src/http/router.mjs');

@@ -363,7 +363,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
   await customSectorStore.load();
 
   const getTelemetry = async () => {
-    let evoState = 'desconhecido';
+    let evoState;
     if (config.whatsappProvider === 'baileys' && baileysProvider) {
       evoState = baileysProvider.status === 'connected' ? 'connected' : baileysProvider.status;
       if (baileysProvider.connectedPhone) {

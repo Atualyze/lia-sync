@@ -58,7 +58,7 @@ export function cleanForSpeech(text = '') {
     .replace(/["“”«»]/g, ' ')
     .replace(/https?:\/\/\S+/g, 'link')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
-    .replace(/^[•\-\+]\s+/gm, '')
+    .replace(/^[•+-]\s+/gm, '')
     .replace(/\n{2,}/g, '. ')
     .replace(/\n/g, ', ')
     .replace(/:\s*,\s*/g, ': ')
@@ -514,7 +514,7 @@ export function extractDispatchIntent(cleanCommand, { pendingRecipient, pendingA
   }
 
   const wantsText = /(?:em\s+|por\s+|um\s+|uma\s+mensagem\s+de\s+)?(?:texto|escrito)\b/i.test(cleanCommand);
-  let asAudio = false;
+  let asAudio;
   if (wantsText) {
     asAudio = false;
   } else {

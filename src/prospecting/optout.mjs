@@ -28,7 +28,7 @@ export async function handleInboundOptOut({ phone, text, campaignStore, prospect
   const normalized = normalizePhone(phone);
   if (!normalized) return { matched: false };
 
-  let isLead = false;
+  let isLead;
   try { isLead = Boolean(await prospectStore?.hasLeadByPhone?.(normalized)); } catch { return { matched: false, reason: 'lead_lookup_failed' }; }
   if (hasActiveSession(sessionStore, normalized) && !isLead) return { matched: false, reason: 'active_session' };
   if (!campaignStore?.addSuppression && !isLead) return { matched: false, reason: 'no_optout_store' };

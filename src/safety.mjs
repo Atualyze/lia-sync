@@ -1,4 +1,3 @@
-const tokens = (text = '') => normalize(text).split(/\s+/).filter(Boolean);
 
 const ADMIN_AUTHORITY_CLAIM_RE = /\b(?:sou|aqui e|estou falando como|falo em nome de|represento|tenho autorizacao de)\s+(?:(?:o|a)\s+)?(?:admin(?:istrador)?|dono|proprietario|responsavel|gestor|diretor|administracao)\b/;
 const SECRET_TERMS_RE = /\b(?:senha|password|api key|chave de api|token|credenciais?|segredo|secret|webhook secret|service role|chave privada|supabase secret key|github token)\b/;
@@ -52,7 +51,6 @@ export function normalize(text = '') {
     .trim();
 }
 
-const has = (text, pattern) => pattern.test(normalize(text));
 
 /**
  * Filtro de urgência/emergência geral ou pedido crítico de atendimento.
@@ -83,6 +81,7 @@ export function isEmergency(text = '') {
 
 export function sanitizeInput(text, max = 2000) {
   return String(text || '')
+    // eslint-disable-next-line no-control-regex -- sanitização intencional de caracteres de controle
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\[\[[\s\S]*?\]\]/g, '')
     .replace(/\s+/g, ' ')

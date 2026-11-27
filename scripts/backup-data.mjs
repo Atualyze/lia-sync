@@ -64,7 +64,6 @@ async function copyRecursive(src, dest, filesAcc = []) {
       await fs.copyFile(srcPath, destPath);
       const stat = await fs.stat(destPath);
       const sha256 = await fileHash(destPath);
-      const relativeName = path.relative(dest, destPath).replace(/\\/g, '/');
       filesAcc.push({
         path: path.relative(src, srcPath).replace(/\\/g, '/'),
         size: stat.size,

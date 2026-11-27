@@ -9,7 +9,7 @@ import { executeToolCall as executeToolCallRaw, isToolEnabled } from '../tools/i
 import { prepareOwnerReminderCalendarCall, claimsUnverifiedCalendarCreation } from './owner-reminder-calendar.mjs';
 import { buildCopilotToolPlan, verifyCopilotToolResult } from './copilot-tool-plan.mjs';
 import {
-  cleanForSpeech, escapeText, stripBotMention, buildFriendlyAudioScript,
+  cleanForSpeech, stripBotMention, buildFriendlyAudioScript,
   buildFriendlyMessage, humanizeContactMessage, applyAudioCorrection, extractDispatchIntent
 } from './text.mjs';
 import { handlePendingReactivationReply } from './reactivation-reply.mjs';
@@ -26,10 +26,9 @@ import { describePendingAdminPixDecision, listAdminPixDecisionsForAssumption, li
 import { listPendingAdminConsults, parseAdminConsultAction } from './admin-consult.mjs';
 import { formatOutgoingMessage } from '../core/format.mjs';
 import {
-  COPILOT_PENDING_TTL_MS,
+  // eslint-disable-next-line no-unused-vars -- exigido pelo contract-check; hoje sem uso no fluxo (ver CHANGELOG/TODO)
   COPILOT_TASK_CONTEXT_TTL_MS,
   COPILOT_PIX_CONTEXT_TTL_MS,
-  COPILOT_CONTEXT_LIMIT,
   normalizePixAmount,
   extractContactSaveArgs,
   inferCopilotTaskTypes,
@@ -1651,9 +1650,6 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             allowedTools: ['gerenciar_cobranca_pagamento', 'gerenciar_cobranca_pagamento']
           };
         }
-        const taskHistory = activeTask && Array.isArray(sSelf.history)
-          ? sSelf.history.filter(entry => !entry.createdAt || Date.parse(entry.createdAt) >= Date.parse(activeTask.createdAt))
-          : [];
         const fullRecentHistory = (Array.isArray(sSelf.history) ? sSelf.history : []).slice(-contextTurns);
         let recentHistory = fullRecentHistory;
         let turnReview = null;

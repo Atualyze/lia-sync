@@ -66,7 +66,7 @@ test('fila local persiste, reivindica, conclui e entrega notificação uma únic
 test('lease expirado reprograma somente leitura e torna ação não repetível incerta', async () => {
   await withStore(async (store, getNow, setNow) => {
     const read = await store.enqueue(input({ taskKey: 'copilot:read' }));
-    const claimedRead = await store.claimNext('worker-a', 30);
+    await store.claimNext('worker-a', 30);
     setNow(getNow() + 31_000);
     const retriedRead = await store.claimNext('worker-b', 30);
     assert.equal(retriedRead.id, read.id);

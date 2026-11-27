@@ -121,7 +121,7 @@ test('IA indisponível e sem casamento de regex => pergunta de confirmação e p
 
   const ai = { askAI: async () => null };
   const reply = await handlePendingReactivationReply({
-    ...BASE, store, ai, sSelf: self, cleanCommand: 'blz'
+    ...BASE, store, ai, sSelf: self, cleanCommand: 'hmm, talvez depois'
   });
   assert.match(reply, /Não entendi|encerrar|humano/i);
   assert.notEqual(self.pendingReactivation, null);
@@ -163,5 +163,41 @@ test('negação direta aceita não sem código e encerra a confirmação pendent
     ...BASE, store, ai: { askAI: async () => null }, sSelf: self, cleanCommand: 'não, vou responder pessoalmente'
   });
   assert.match(second, /Não executei/i);
+  assert.equal(self.pendingReactivation, null);
+});
+
+test('resposta binária "sim" à pergunta padrão retoma a Lia sem chamar a IA classificadora', async () => {
+  const client = { phone: '5511999991006', clientName: 'Rita', human: false, history: [{ role: 'user', text: 'Ainda aguardando?' }] };
+  const self = { phone: OWNER_SELF_KEY, history: [] };
+  const store = makeStore({ [OWNER_SELF_KEY]: self, '5511999991006': client });
+  notifyReactivationToInternalChat({ store, session: client, phone: client.phone });
+  let classifyCalls = 0;
+  const ai = { askAI: async args => {
+    if (String(args.system || '').includes('classifica a intenção')) classifyCalls += 1;
+    return { text: 'Oi! Posso continuar.' };
+  } };
+  const reply = await handlePendingReactivationReply({
+    ...BASE, store, ai, sSelf: self, cleanCommand: 'sim',
+    stageOutboundDispatch: async prepared => `PREVIEW ${prepared.message}`
+  });
+  assert.match(reply, /PREVIEW/);
+  assert.equal(classifyCalls, 0);
+  assert.equal(self.pendingReactivation, null);
+});
+
+test('resposta binária "não" à pergunta padrão mantém o modo humano sem chamar a IA classificadora', async () => {
+  const client = { phone: '5511999991007', clientName: 'Paulo', human: false, history: [{ role: 'user', text: 'Alguém aí?' }] };
+  const self = { phone: OWNER_SELF_KEY, history: [] };
+  const store = makeStore({ [OWNER_SELF_KEY]: self, '5511999991007': client });
+  notifyReactivationToInternalChat({ store, session: client, phone: client.phone });
+  let classifyCalls = 0;
+  const ai = { askAI: async args => {
+    if (String(args.system || '').includes('classifica a intenção')) classifyCalls += 1;
+    return { text: 'ok' };
+  } };
+  const reply = await handlePendingReactivationReply({ ...BASE, store, ai, sSelf: self, cleanCommand: 'não' });
+  assert.match(reply, /modo humano/i);
+  assert.equal(client.human, true);
+  assert.equal(classifyCalls, 0);
   assert.equal(self.pendingReactivation, null);
 });

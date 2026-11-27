@@ -15,7 +15,7 @@ import { avaliarJanelaDeAtendimento } from '../business-hours.mjs';
 import { classificarSetorPorTexto, resolverSetorPorCategoria } from '../triage-router.mjs';
 import { buildMemoryRetrievalQuery, isExplicitHistoryRecallRequest, lastAssistantAskedForAgendaConfirmation, lastAssistantAskedForPayment, lastAssistantAskedForPaymentAmount, selectActiveClientHistory, selectRelevantConversationContext } from './client-context.mjs';
 import { isNaturalAffirmation, isNaturalNegative, resolvePaymentChoice, isPixActionRequest } from './decision-signals.mjs';
-import { cleanForSpeech, escapeText } from './text.mjs';
+import { escapeText } from './text.mjs';
 import { transcribeIncomingAudio, sendVoiceReply } from './media.mjs';
 import { buildAdminPixDecisionNotice } from './admin-pix-approval.mjs';
 import { ADMIN_CONSULT_TTL_MS, buildAdminConsultNotice, detectUnexecutedClientPromiseOrFakeAttachment } from './admin-consult.mjs';
@@ -1299,7 +1299,7 @@ export async function handleClientMessage({
               at: now(),
               reason: 'Confirmação de valor/preço pendente com a equipe'
             });
-            const consult = await createAdminConsultCommitment({
+            await createAdminConsultCommitment({
               reason: 'Confirmação de valor/preço antes de informar ao cliente',
               title: 'Confirmar informação de preço com responsável',
               category: 'financeiro'
@@ -2001,7 +2001,6 @@ export async function handleClientMessage({
           hasPix: isPixConfigured(botConfig)
         });
         safeReplyText = finalReply;
-        toolReplyOverride = null;
         s.pendingClientPayment = null;
       }
 

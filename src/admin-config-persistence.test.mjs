@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { AdminConfigStore, clone, normalizeBotConfig } from './admin-config.mjs';
+import { AdminConfigStore, clone } from './admin-config.mjs';
 import { SupabaseAdminConfigStore } from './supabase-runtime.mjs';
 
 test('publish sem diferencas nao incrementa revisao nem cria historico', async () => {
@@ -58,7 +58,6 @@ test('rollback com falha de flush local reverte estado anterior', async () => {
     const published = await store.publish('test');
     assert.equal(published.ok, true);
     const before = { revision: store.revision, active: clone(store.active), history: clone(store.history) };
-    const originalFlush = store.flush.bind(store);
     store.flush = async () => { throw new Error('falha de gravação'); };
     const result = await store.rollback(1, 'test');
     assert.equal(result.ok, false);

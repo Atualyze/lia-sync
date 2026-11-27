@@ -1,8 +1,7 @@
 import crypto from 'node:crypto';
 import { SessionStore, normalizePhone } from './sessions.mjs';
-import { AdminConfigStore, DEFAULT_BOT_CONFIG, merge, normalizeBotConfig } from './admin-config.mjs';
+import { AdminConfigStore, merge, normalizeBotConfig } from './admin-config.mjs';
 
-const jsonClone = value => JSON.parse(JSON.stringify(value));
 const iso = value => value ? new Date(value).toISOString() : null;
 const normalizePendingClientPayment = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -107,7 +106,7 @@ export class SupabaseRestClient {
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const text = await response.text();
-    let data = null;
+    let data;
     try { data = text ? JSON.parse(text) : null; } catch { data = text; }
     if (!response.ok) throw new Error(`Supabase ${method} ${table} HTTP ${response.status}: ${data?.message || data?.hint || text || 'erro desconhecido'}`);
     return data;

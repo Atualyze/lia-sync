@@ -677,5 +677,5 @@ test('Auto-registro de Leads no Google Sheets - grava na aba Leads!A:G, deduplic
     const simRes = await syncLeadToGoogleSheet({ session: { phone: 'sim:5588999991234', origin: 'simulation' }, stage: 'Qualificado', botConfig, executeAppend });
     assert.equal(simRes.synced, false);
     assert.equal(simRes.reason, 'non_client_session');
-  } finally {}
+  } finally { /* nada a limpar */ }
 });

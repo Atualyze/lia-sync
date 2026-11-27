@@ -4,7 +4,6 @@ import {
   normalizeOrgAutonomyPolicy,
   selectCostTier
 } from './permissions.mjs';
-import { LiaAutonomyStore } from './store.mjs';
 import { PresenceEngine, CommunicationGuard, resolveContextualConflict } from './presence.mjs';
 import { verifyOutcome, planRecovery, evaluateSystemHealth, AutonomyAuditStore } from './verification.mjs';
 import {

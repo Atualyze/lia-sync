@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.mjs';
-import { decryptSecret, encryptSecret, hasSecretEncryptionKey, isEncryptedSecret } from './security/secrets.mjs';
+import { decryptSecret, encryptSecret, hasSecretEncryptionKey, isEncryptedSecret, needsReencryption } from './security/secrets.mjs';
 
 const PROJECTION_ID = 'api_runtime_settings';
 
@@ -178,6 +178,7 @@ export class ApiSettingsStore {
     const encryptionReady = hasSecretEncryptionKey(this.secretEncryptionKey);
     let needsPersistence = false;
     let legacyPlaintextCount = 0;
+    let rotatedCount = 0;
     for (const field of API_SETTING_FIELDS) {
       if (!field.secret) continue;
       if (Object.prototype.hasOwnProperty.call(this.overrides, field.key)) {
@@ -186,6 +187,8 @@ export class ApiSettingsStore {
         if (isEncryptedSecret(stored)) {
           try {
             this.overrides[field.key] = decryptSecret(stored, { key: this.secretEncryptionKey, context: this._context(field.key) });
+            // Rotação: valor v1 ou cifrado com chave anterior é regravado com a chave atual.
+            if (needsReencryption(stored, { key: this.secretEncryptionKey })) { needsPersistence = true; rotatedCount += 1; }
           } catch (error) {
             this.overrides[field.key] = '';
             this.logger.error?.('[api-settings] não foi possível abrir o segredo ' + field.key + '; confira API_SECRETS_ENCRYPTION_KEY (' + error.message + ').');
@@ -210,6 +213,7 @@ export class ApiSettingsStore {
       try {
         await this._persistOverrides(this.overrides, this.updatedAt);
         this.logger.info?.('[api-settings] credenciais legadas migradas para armazenamento criptografado (' + (this.mode === 'supabase' ? 'Supabase' : 'local') + ').');
+        if (rotatedCount > 0) this.logger.info?.('[api-settings] ' + rotatedCount + ' segredo(s) recriptografado(s) com a chave atual.');
       } catch (error) {
         this.logger.error?.('[api-settings] migração de credenciais não concluída (' + (error?.code || error?.message || 'err') + '). Os valores legados foram mantidos em memória.');
       }

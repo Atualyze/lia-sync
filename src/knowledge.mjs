@@ -450,7 +450,6 @@ ${(() => {
     const kbDatas = kbIds.map(id => (isSupportContact
       ? getRelevantKnowledgeBaseContentSync(id, knowledgeQuery, undefined, { maxChars: perKbMaxChars })
       : getKnowledgeBaseContentSync(id))).filter(d => d && d.content);
-    const kbData = kbDatas[0] || null;
     const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
     const notes = (session.contactNotes || '').trim();
     const roleLabel = session.contactRole === 'partner_team'

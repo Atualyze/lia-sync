@@ -2,6 +2,7 @@ const MAX_REFERENCE_CHARS = 1200;
 
 function compactText(value, maxChars = MAX_REFERENCE_CHARS) {
   return String(value || '')
+    // eslint-disable-next-line no-control-regex -- sanitização intencional de caracteres de controle
     .replace(/\u0000/g, '')
     .replace(/\r\n?/g, '\n')
     .trim()

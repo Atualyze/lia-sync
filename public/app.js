@@ -155,7 +155,7 @@ function showToast({ title, message = '', type = 'info', duration = 4200 } = {})
     info: 'Notificação do Sistema'
   };
   const resolvedTitle = title || defaultTitles[normalizedType];
-  const cleanMessage = String(message || '').replace(/^[✓⚡⚠🤖👤\s]+/, '').trim();
+  const cleanMessage = String(message || '').replace(/^[✓⚡⚠🤖👤\s]+/u, '').trim();
 
   const toast = document.createElement('div');
   toast.className = `apple-toast toast-${normalizedType}`;
@@ -1612,7 +1612,7 @@ function renderChat({ forceRender = false } = {}) {
             }
 
             // Content block by media type
-            let bodyHtml = '';
+            let bodyHtml;
             if (parsed.kind === 'audio') {
               bodyHtml = `
                 <div class="media-card media-audio-card">
@@ -4685,7 +4685,6 @@ document.addEventListener('visibilitychange', () => {
   const refreshBtn = document.getElementById('prospect-refresh-btn');
   const statusEl = document.getElementById('prospect-import-status');
   const container = document.getElementById('prospect-lists-container');
-  const acc = document.getElementById('acc-prospecting');
   if (!container) return;
 
   const setStatus = (msg, isError = false) => {

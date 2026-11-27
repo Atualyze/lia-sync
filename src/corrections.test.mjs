@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';import assert from 'node:assert/strict';import os from 'node:os';import path from 'node:path';import fs from 'node:fs/promises';import {isEmergency,isAffirmative,isGreeting,filterReply,sanitizeInput} from './safety.mjs';import {parseAIResponse,normalizeHistory,buildOpenRouterBody} from './ai.mjs';import {SessionStore} from './sessions.mjs';import {plansToFaq} from './faq.mjs';import {createFlow} from './flow.mjs';import {parsePayload,isIgnoredJid,isMessageUpsert} from './whatsapp.mjs';
 test('detector de urgência usa palavras inteiras e respeita negação',()=>{for(const x of ['qual o horário de vocês?','quero saber do plano','bom dia'])assert.equal(isEmergency(x),false);assert.equal(isEmergency('isso não é urgente, pode responder depois'),false);assert.equal(isEmergency('minha fatura está urgente'),true);assert.equal(isEmergency('quero falar com o atendente agora'),false);assert.equal(isEmergency('sofri uma fraude no pagamento'),true);});
 test('afirmativa e saudação são correspondências exatas',()=>{assert.equal(isAffirmative('sim'),true);assert.equal(isAffirmative('quero cancelar meu plano'),false);assert.equal(isAffirmative('pode me passar o preço?'),false);assert.equal(isGreeting('Oi, quero agendar'),false);});
@@ -382,7 +383,7 @@ test('A2: CONFIRMAR COM A DRA. nunca vaza no filterReply nem no knowledge FAQ', 
 });
 
 test('A3 e A4: providers priorizam configurados saudáveis e breaker abre com 429', async () => {
-  const { providers, getCircuitBreakers, call } = await import('./ai.mjs');
+  const { providers, getCircuitBreakers } = await import('./ai.mjs');
   const list = providers();
   const breakers = getCircuitBreakers();
   const configured = Object.entries(breakers).filter(([, value]) => value.configured).map(([name]) => name).sort();
@@ -403,7 +404,7 @@ test('M4: script migrate-phones migra chaves sem 9o digito preservando mais rece
   await fs.writeFile(file, JSON.stringify(initial));
 
   const { spawnSync } = await import('node:child_process');
-  const res = spawnSync('node', ['scripts/migrate-phones.mjs', file], { encoding: 'utf8' });
+  const res = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/migrate-phones.mjs', import.meta.url)), file], { encoding: 'utf8' });
   assert.equal(res.status, 0);
 
   const migrated = JSON.parse(await fs.readFile(file, 'utf8'));

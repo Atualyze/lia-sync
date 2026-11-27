@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import test from 'node:test';
 import { CustomProviderStore } from './ai/custom-providers.mjs';
 import { describeAIError } from './ai/errors.mjs';
-import { providers, available, parseFallbackModel, getCircuitBreakers, getRecentAIErrorSummary, providerDefaultModel } from './ai/config.mjs';
+import { providers, available, parseFallbackModel, getCircuitBreakers, providerDefaultModel } from './ai/config.mjs';
 import { call } from './ai/call.mjs';
 import { config } from './config.mjs';
 import { validateBotConfig, DEFAULT_BOT_CONFIG, clone } from './admin-config.mjs';

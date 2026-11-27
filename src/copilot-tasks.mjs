@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const STATES = new Set(['queued', 'running', 'awaiting_input', 'succeeded', 'failed', 'uncertain', 'cancelled']);
 const RETRY_POLICIES = new Set(['read_only', 'never']);
 const READ_ONLY_TASK_TOOLS = new Set([
   'consultar_web', 'consultar_contato_ou_lead', 'consultar_base_conhecimento',
@@ -14,11 +13,6 @@ const isReadOnlyTaskStep = step => READ_ONLY_TASK_TOOLS.has(step.name)
   || (step.name === 'gerenciar_drive_google' && ['listar_arquivos', 'buscar_arquivo', 'ler_documento'].includes(String(step.args?.acao || '')))
   || (step.name === 'gerenciar_agenda_google' && ['consultar_livres', 'sugerir_horarios', 'listar_eventos'].includes(String(step.args?.action || '')))
   || (step.name === 'gerenciar_gmail_google' && ['buscar_mensagens', 'ler_mensagem', 'listar_rascunhos'].includes(String(step.args?.acao || '')));
-const NOTIFICATION_STATES = new Set(['pending', 'sending', 'sent', 'uncertain', 'unaddressable']);
-const iso = value => {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-};
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function normalizeStep(step = {}) {

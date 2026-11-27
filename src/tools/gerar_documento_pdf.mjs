@@ -7,6 +7,7 @@ function sanitize(text = '') {
   return String(text)
     .replace(/[\u2018\u2019\u201C\u201D\u2013\u2014\u2026\u00A0\u2192]/g, c => CHAR_MAP[c] || ' ')
     .replace(/[\uFE0E\uFE0F\u200D]/g, '')
+    // eslint-disable-next-line no-control-regex -- sanitização intencional de caracteres de controle
     .replace(/[^\u0000-\u00FF\u2022\n]/g, '');
 }
 
@@ -198,7 +199,7 @@ export const toolGerarDocumentoPdf = {
       }
 
       const pageNow = pageCtx.page;
-      const { width: wNow, height: hNow } = pageNow.getSize();
+      const { width: wNow } = pageNow.getSize();
 
       // 6. Box de Valor (se houver)
       if (valor) {

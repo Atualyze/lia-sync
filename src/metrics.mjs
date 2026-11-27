@@ -113,7 +113,7 @@ function sanitizeErrorMessage(msg) {
   return msg
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL]')
     .replace(/\b\d{8,15}\b/g, '[NUMERO]')
-    .replace(/(bearer\s+)[a-zA-Z0-9_\-\.]+/gi, '$1[REDACTED]')
+    .replace(/(bearer\s+)[a-zA-Z0-9_.-]+/gi, '$1[REDACTED]')
     .replace(/((?:key|api[_-]?key|token|secret)=)[^\s&]+/gi, '$1[REDACTED]')
     .slice(0, 160);
 }

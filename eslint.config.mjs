@@ -2,15 +2,14 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 // Regras de classe "bug" (variável indefinida, chave duplicada, auto-atribuição) falham o lint.
-// As demais regras do conjunto recomendado ficam como aviso: há uma dívida histórica conhecida e
-// o teto de avisos em `npm run lint:eslint` impede que ela cresça (reduza o teto ao limpar).
+// As demais regras do conjunto recomendado também falham o lint (dívida histórica zerada).
 const legacyWarnings = {
-  'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
-  'no-empty': ['warn', { allowEmptyCatch: true }],
-  'no-useless-assignment': 'warn',
-  'no-useless-escape': 'warn',
-  'no-control-regex': 'warn',
-  'no-misleading-character-class': 'warn'
+  'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none', ignoreRestSiblings: true, varsIgnorePattern: '^_' }],
+  'no-empty': ['error', { allowEmptyCatch: true }],
+  'no-useless-assignment': 'error',
+  'no-useless-escape': 'error',
+  'no-control-regex': 'error',
+  'no-misleading-character-class': 'error'
 };
 
 export default [

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import test from 'node:test';
-import { LiaLearningStore, createLearningEngine, evaluateExperiment } from './index.mjs';
+import { LiaLearningStore, createLearningEngine } from './index.mjs';
 import { LiaRuntimeStore, createLiaRuntime } from '../runtime/index.mjs';
 
 const silentLogger = { info() {}, warn() {}, error() {} };

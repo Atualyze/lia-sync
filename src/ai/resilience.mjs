@@ -1,8 +1,8 @@
 const CAPABILITY_TTL_MS = 6 * 60 * 60 * 1000;
 const capabilityCache = new Map();
 
-const REASONING_MODEL_RE = /(?:gpt-oss|qwen3|deepseek|(?:\b|[-_\/])r1(?:\b|[-_])|nemotron|gemma-4|thinking|\bo[134](?:-mini|-preview)?\b)/i;
-const JSON_FRAGILE_REASONING_RE = /(?:gpt-oss|qwen3|deepseek|(?:\b|[-_\/])r1(?:\b|[-_])|nemotron|thinking)/i;
+const REASONING_MODEL_RE = /(?:gpt-oss|qwen3|deepseek|(?:\b|[-_/])r1(?:\b|[-_])|nemotron|gemma-4|thinking|\bo[134](?:-mini|-preview)?\b)/i;
+const JSON_FRAGILE_REASONING_RE = /(?:gpt-oss|qwen3|deepseek|(?:\b|[-_/])r1(?:\b|[-_])|nemotron|thinking)/i;
 const THINKING_TEMPLATE_RE = /(?:nemotron|qwen3|deepseek|thinking)/i;
 
 const PROVIDER_SAFETY_FALLBACKS = Object.freeze({

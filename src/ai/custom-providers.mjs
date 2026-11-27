@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { maskSecretValue } from '../api-settings.mjs';
-import { decryptSecret, encryptSecret, hasSecretEncryptionKey, isEncryptedSecret } from '../security/secrets.mjs';
+import { decryptSecret, encryptSecret, hasSecretEncryptionKey, isEncryptedSecret, needsReencryption } from '../security/secrets.mjs';
 
 const PROJECTION_KEY = 'custom_ai_providers';
 const BUILTIN_IDS = new Set(['gemini', 'groq', 'nvidia', 'openrouter', 'qwen', 'openai', 'cloudflare']);
@@ -142,12 +142,14 @@ export class CustomProviderStore {
     this.providers.clear();
     let needsPersistence = false;
     let legacyPlaintextCount = 0;
+    let rotatedCount = 0;
     for (const item of loaded) {
       try {
         const storedKey = String(item?.apiKey || '');
         let apiKey = storedKey;
         if (isEncryptedSecret(storedKey)) {
           apiKey = decryptSecret(storedKey, { key: this.secretEncryptionKey, context: this._context(item.id) });
+          if (needsReencryption(storedKey, { key: this.secretEncryptionKey })) { needsPersistence = true; rotatedCount += 1; }
         } else if (storedKey) {
           legacyPlaintextCount += 1;
           if (hasSecretEncryptionKey(this.secretEncryptionKey)) needsPersistence = true;
@@ -163,6 +165,7 @@ export class CustomProviderStore {
       try {
         await this._persist();
         this.logger.info?.('[custom-providers] credenciais legadas migradas para armazenamento criptografado.');
+        if (rotatedCount > 0) this.logger.info?.('[custom-providers] ' + rotatedCount + ' credencial(is) recriptografada(s) com a chave atual.');
       } catch (error) {
         this.logger.error?.('[custom-providers] migração de credenciais não concluída (' + (error?.code || error?.message || 'err') + ').');
       }

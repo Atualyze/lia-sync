@@ -210,7 +210,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       return proxyToChatwoot(req, res);
     }
     if (u.pathname === '/api/dashboard/auth/config') return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: false });
-    let authContext = null;
+    let authContext;
     if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) {
       const authResult = await auth(req, config);
       const authorizedRequest = authResult && typeof authResult === 'object' ? authResult.ok === true : authResult === true;

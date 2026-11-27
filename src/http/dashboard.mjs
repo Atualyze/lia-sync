@@ -764,7 +764,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     } else {
       const syncCfg = adminConfig?.active?.sync || {};
       if (syncCfg.whatsappSyncEnabled && typeof store.softDeleteConversation === 'function') {
-        let removed = false;
+        let removed;
         try {
           removed = await store.softDeleteConversation({
             key: body.phone,

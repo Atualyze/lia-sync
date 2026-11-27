@@ -122,7 +122,7 @@ test('ApiSettingsStore criptografa segredos, faz hot-reload e limpa sem restaura
     assert.equal(store.getSafeView().items.find(i => i.key === 'geminiKey').source, 'panel');
     const stored = await readFile(filePath, 'utf8');
     assert.equal(stored.includes('AIzaEnvKeyOriginal12345'), false);
-    assert.match(stored, /lia-secret:v1:/);
+    assert.match(stored, /lia-secret:v2:/);
 
     const updated = await store.update({
       geminiKey: 'AIzaPanelSecretKey99999',

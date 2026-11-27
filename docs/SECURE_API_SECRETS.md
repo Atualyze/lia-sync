@@ -27,6 +27,20 @@ Mantenha no .env as credenciais estruturais necessárias para iniciar e proteger
 
 Depois de confirmar que as credenciais aparecem como origem panel no painel e que os provedores continuam funcionando, remova do .env as variáveis legadas correspondentes aos campos secretos migrados. Não remova a chave mestra.
 
+## Formato e identificador de chave
+
+Segredos novos são gravados como `lia-secret:v2:<kid>:<iv>:<tag>:<ciphertext>`, onde `kid` são os 8 primeiros caracteres hex do SHA-256 da chave (não revela a chave). Valores `lia-secret:v1:` (legado, sem `kid`) continuam sendo lidos e são regravados em `v2` no próximo startup.
+
 ## Escritas e rotação
 
-Novas credenciais não são gravadas em texto claro. Sem uma chave mestra válida, alterações em campos secretos são recusadas. Para rotacionar a chave mestra, implemente uma migração de recriptografia com a chave antiga e a nova; não basta substituir o valor no .env.
+Novas credenciais não são gravadas em texto claro. Sem uma chave mestra válida, alterações em campos secretos são recusadas.
+
+Para rotacionar a chave mestra sem perder segredos:
+
+1. Gere a nova chave: `openssl rand -base64 32` e guarde-a no gerenciador de segredos.
+2. No `.env` da VPS, mova a chave atual para `API_SECRETS_PREVIOUS_KEYS` (várias separadas por vírgula) e coloque a nova em `API_SECRETS_ENCRYPTION_KEY`.
+3. Reinicie. No startup, API settings e provedores personalizados abrem os valores com a chave anterior e os regravam com a atual; os logs mostram `segredo(s) recriptografado(s) com a chave atual`.
+4. Confirme no painel que as credenciais continuam válidas e que os provedores respondem.
+5. Só depois remova `API_SECRETS_PREVIOUS_KEYS` e mantenha a chave antiga guardada offline por um período de segurança.
+
+Se um valor referenciar um `kid` que não está no chaveiro, o erro registrado é `api_secret_key_unavailable`: restaure a chave anterior em `API_SECRETS_PREVIOUS_KEYS` e reinicie.

@@ -402,7 +402,7 @@ export const toolGerenciarCobrancaPagamento = {
     const orderStore = context?.infinitePayOrders || context?.store?.paymentOrderStore || infinitePayOrders;
     if (action === 'verificar_pagamento') {
       const requesterPhone = String(context?.targetPhone || context?.phone || context?.session?.phone || '').replace(/\D/g, '');
-      let stored = null;
+      let stored;
       if (context?.actor === 'client') {
         if (requesterPhone.length < 8) {
           return { success: false, error: 'order_nsu_not_found', message: 'Não encontrei um pedido para consultar neste atendimento.' };

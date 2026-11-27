@@ -20,7 +20,6 @@ import { toolConsultarBaseConhecimento } from './tools/consultar_base_conhecimen
 import { toolSalvarContato } from './tools/salvar_contato.mjs';
 import { synthesizeVoice } from './ai/voice.mjs';
 import { decidirModeloPorContexto } from './model-router.mjs';
-import { askAI } from './ai.mjs';
 import { responseSchema, buildOpenRouterBody } from './ai/parsing.mjs';
 import { config } from './config.mjs';
 import { extractContactSaveArgs } from './flow/owner-helpers.mjs';

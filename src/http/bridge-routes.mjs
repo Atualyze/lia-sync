@@ -8,7 +8,6 @@ import { getKnowledgeBaseContentSync, listKnowledgeBases, saveKnowledgeBase } fr
 import { sendText } from '../whatsapp.mjs';
 import { broadcastBridgeEvent, bridgeSubscribers } from './bridge.mjs';
 import { TtlIdempotencyStore, idempotencyKey } from '../core/idempotency.mjs';
-import { CampaignStore } from '../campaigns.mjs';
 import { markBridgeConfigRead } from './bridge-config-status.mjs';
 import { resumoJanelaDeAtendimento } from '../business-hours.mjs';
 import { SectorProjection, SectorProjectionError } from '../sectors.mjs';
@@ -302,12 +301,10 @@ export async function handleBridgeRoutes({ req, res, u, store, f, webhookAuthori
         store.markDirty();
       }
       let sent = false;
-      let sendError = null;
       try {
         await sendText(targetJid, text);
         sent = true;
       } catch (err) {
-        sendError = err.message;
         console.error('[bridge/send] falha ao enviar WhatsApp:', err.message);
       }
       await store.flush?.().catch(() => {});

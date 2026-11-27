@@ -28,9 +28,10 @@ export function prepareSpeechText(rawText, maxChars = 750) {
     // Substitui URLs por fala natural
     .replace(/https?:\/\/\S+/gi, 'no link enviado')
     // Remove emojis e pictogramas Unicode para evitar leitura literal pelo TTS
+    // eslint-disable-next-line no-misleading-character-class -- sanitização intencional de caracteres de controle
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, ' ')
     // Converte marcadores de lista em pausas naturais de fala
-    .replace(/(?:^|\n)\s*[•▸▪\-\+]\s+/g, '. ')
+    .replace(/(?:^|\n)\s*[•▸▪+-]\s+/g, '. ')
     // Normaliza valores monetários em reais
     .replace(/R\$\s*(\d+(?:\.\d{3})*),(\d{2})/g, (_, intPart, cents) => {
       const cleanInt = intPart.replace(/\./g, '');
@@ -181,7 +182,6 @@ export async function synthesizeVoice(text, { voiceName = '', botConfig = {} } =
   if (!text) return null;
   const explicitVoice = typeof voiceName === 'string' ? voiceName.trim() : '';
   const selectedVoice = explicitVoice || botConfig?.voice?.voiceName || 'Aoede';
-  const speed = Number(botConfig?.voice?.speed) || 1.0;
   const maxChars = Math.max(120, Math.min(2000, Number(botConfig?.voice?.maxTextChars) || 750));
   const timeoutMs = Math.max(5000, Math.min(120000, Number(botConfig?.voice?.requestTimeoutMs) || 45000));
   const cleanText = prepareSpeechText(text, maxChars);

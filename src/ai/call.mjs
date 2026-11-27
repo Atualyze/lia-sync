@@ -7,7 +7,7 @@ import { getCustomProvider } from './custom-providers.mjs';
 import { describeAIError } from './errors.mjs';
 import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail, parseAIResponse } from './parsing.mjs';
 import { shouldEnableGoogleSearch } from './search.mjs';
-import { getEnabledTools, getGeminiToolDeclarations, getToolExecutionPolicy } from '../tools/index.mjs';
+import { getEnabledTools, getToolExecutionPolicy } from '../tools/index.mjs';
 import { resolveAdaptiveTemperature } from '../core/personality.mjs';
 import {
   getModelCapabilities,
@@ -431,7 +431,6 @@ export async function call(provider, {
     }
     try {
       permit = await reserveModelBudget(budgetGate, budgetContext, provider, candidateModel);
-      let usedPlainBody = !body.tools && !body.response_format;
       let response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(body) });
       // Se um modelo gratuito/customizado no OpenRouter, Groq, NVIDIA NIM ou Qwen recusar 'tools' nativo com 400/404/422, aprende e re-tenta sem 'tools' usando o catálogo compacto
       if (!response.ok && (response.status === 400 || response.status === 404 || response.status === 422) && nativeTools.length > 0 && body.tools && !skipToollessFallback) {
@@ -466,7 +465,6 @@ export async function call(provider, {
         delete plainBody.reasoning_effort;
         delete plainBody.reasoning;
         delete plainBody.chat_template_kwargs;
-        usedPlainBody = true;
         response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(plainBody) });
       }
       // Groq (tier free 6k TPM) e provedores OpenAI-compatible podem retornar 413/429 "Request too large".
@@ -485,7 +483,6 @@ export async function call(provider, {
               { role: 'user', content: compactText(userText, 2500) }
             ]
           }, { provider, model: candidateModel, caps });
-          usedPlainBody = true;
           response = await fetch(`${base}/chat/completions`, { method: 'POST', headers, signal, body: JSON.stringify(compactBody) });
         }
       }

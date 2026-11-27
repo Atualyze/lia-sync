@@ -671,7 +671,7 @@ export class BaileysProvider {
     if (cached && cached.expiresAt > Date.now()) {
       return cached.url;
     }
-    let url = null;
+    let url;
     try {
       url = await this.sock.profilePictureUrl(jid, 'image');
     } catch {

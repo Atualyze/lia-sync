@@ -40,7 +40,7 @@ async function githubRequest(path, { token, method = 'GET', body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const text = await response.text();
-  let data = null;
+  let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
   if (!response.ok) {
     const message = data?.message || data?.error || `GitHub respondeu HTTP ${response.status}`;

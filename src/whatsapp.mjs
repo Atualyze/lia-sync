@@ -177,7 +177,7 @@ async function providerSend(url, payload, kind, jid) {
   let text;
   try { text = await response.text(); }
   catch (cause) { throw Object.assign(new Error('Evolution resultado de entrega desconhecido'), { code: 'evolution_delivery_unknown', deliveryUnknown: true, cause }); }
-  let result = {};
+  let result;
   try { result = text ? JSON.parse(text) : {}; }
   catch (cause) { throw Object.assign(new Error('Evolution resposta inválida; resultado de entrega desconhecido'), { code: 'evolution_delivery_unknown', deliveryUnknown: true, cause }); }
   if (result?.error) throw Error('Evolution rejeitou o envio');

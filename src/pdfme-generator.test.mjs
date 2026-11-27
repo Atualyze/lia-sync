@@ -28,7 +28,6 @@ test('pdfme tool: sanitiza emojis e quebra linhas longas em múltiplas páginas'
 
   assert.equal(res.success, true, res.error);
   assert.ok(res.fileSize > 1000);
-  const fs = await import('node:fs');
   const bytes = Buffer.from(res.dataUrl.split(',')[1], 'base64');
   assert.equal(bytes.slice(0, 5).toString(), '%PDF-');
 });

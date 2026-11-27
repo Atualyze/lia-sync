@@ -23,7 +23,7 @@ test('provedores personalizados criptografam a chave persistida e restauram apó
     assert.equal(saved.configured, true);
     const raw = await readFile(filePath, 'utf8');
     assert.equal(raw.includes('provider-x-secret-value'), false);
-    assert.match(raw, /lia-secret:v1:/);
+    assert.match(raw, /lia-secret:v2:/);
     const second = new CustomProviderStore({ filePath, secretEncryptionKey: KEY, logger: { info() {}, warn() {}, error() {} } });
     await second.load();
     assert.equal(getCustomProvider('providerx').apiKey, 'provider-x-secret-value');
@@ -60,7 +60,7 @@ test('provedores personalizados migram chaves legadas em texto claro para armaze
     assert.equal(getCustomProvider('legacyx').apiKey, legacyKey);
     const persisted = await readFile(filePath, 'utf8');
     assert.equal(persisted.includes(legacyKey), false);
-    assert.match(persisted, /lia-secret:v1:/);
+    assert.match(persisted, /lia-secret:v2:/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFlow, isTalkToOwnerRequest } from './flow.mjs';
-import { SessionStore } from './sessions.mjs';
 import { OWNER_SELF_KEY } from './core/identity.mjs';
 
 function createMockStore() {
@@ -63,7 +62,7 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   cancelStore.get('5585991099483').clientName = 'Lima';
   const cancelSent = [];
   const cancelFlow = createDispatchFlow(cancelStore, cancelSent, () => Date.now());
-  const cancelPreview = await startDispatch(cancelFlow);
+  await startDispatch(cancelFlow);
   const cancelled = await cancelFlow.process({ phone: '5588921694598', text: 'não precisa mandar' });
   assert.match(cancelled, /cancelado/i);
   assert.equal(cancelSent.length, 0);
@@ -74,7 +73,7 @@ test('Prévia de disparo aceita sim/não sem código e respeita cancelamento/exp
   expireStore.get('5585991099483').clientName = 'Lima';
   const expireSent = [];
   const expireFlow = createDispatchFlow(expireStore, expireSent, () => nowMs);
-  const expirePreview = await startDispatch(expireFlow);
+  await startDispatch(expireFlow);
   nowMs += 16 * 60 * 1000;
   const expired = await expireFlow.process({ phone: '5588921694598', text: 'sim' });
   assert.match(expired, /expirou/i);
@@ -455,7 +454,7 @@ test('Conversa interna: comandos de gestão de contatos (bot, humano, limpar)', 
   const repLista = await flow.process({ phone: '5588921694598', text: 'lista completa' });
   assert.match(repLista, /Glória Vasconcelos/);
 
-  const repAlguem = await flow.process({ phone: '5588921694598', text: 'tem alguém esperando?' });
+  await flow.process({ phone: '5588921694598', text: 'tem alguém esperando?' });
   assert.match(repQuem, /Glória Vasconcelos/);
 });
 

@@ -80,7 +80,7 @@ export async function isIssuedPixLink(urlObj, orderStore) {
 
 export async function renderPixPaymentPage(res, urlObj) {
   const encodedPayload = urlObj.searchParams.get('p') || '';
-  let payload = '';
+  let payload;
   try {
     payload = Buffer.from(encodedPayload, 'base64url').toString('utf8').trim();
   } catch {
@@ -100,7 +100,6 @@ export async function renderPixPaymentPage(res, urlObj) {
     : 'Valor livre';
   const merchantName = (extractTopLevelValue(payload, '59') || 'Atualyze').slice(0, 40);
   const description = extractPixDescription(payload).slice(0, 80);
-  const txid = (urlObj.searchParams.get('tx') || '').slice(0, 25);
   const pixKey = extractPixKey(payload).slice(0, 120);
   const checkoutUrl = urlObj.searchParams.get('c') || '';
   const safeCheckoutUrl = hasAmount ? getSafeInfinitePayCheckoutUrl(checkoutUrl) : '';

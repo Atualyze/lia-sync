@@ -11,6 +11,7 @@ export function createChatwootProxy({ chatwootInternalUrl }) {
       target = new URL(chatwootInternalUrl);
       incoming = new URL(req.url, 'http://localhost');
       if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.search || target.hash || target.pathname !== '/') throw new Error('invalid_chatwoot_target');
+      // eslint-disable-next-line no-control-regex -- sanitização intencional de caracteres de controle
       if (incoming.pathname.length > 2048 || incoming.search.length > 2048 || /%(?:2f|5c|2e)/i.test(incoming.pathname) || /[\\\u0000-\u001f]/.test(incoming.pathname)) throw new Error('invalid_chatwoot_path');
       if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) throw new Error('invalid_chatwoot_method');
     } catch {
