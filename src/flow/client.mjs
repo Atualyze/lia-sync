@@ -762,8 +762,7 @@ export async function handleClientMessage({
       const activeContext = selectActiveClientHistory(s.history, {
         maxTurns: contextTurns,
         nowMs: now(),
-        topicGapMs: Number.MAX_SAFE_INTEGER,
-        preservePendingContext: true
+        preservePendingContext: hasPendingClientWork && pendingContextContinuation
       });
       if (activeContext.topicBoundary && !pendingContextContinuation) {
         s.contextSummary = null;
