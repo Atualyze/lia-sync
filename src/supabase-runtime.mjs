@@ -248,6 +248,7 @@ function rowToSession(row, messages = []) {
     crmNotes: meta.crmNotes || meta.contactNotes || meta.notes || '',
     notes: meta.notes || meta.crmNotes || meta.contactNotes || '',
     aiContext: meta.aiContext || '',
+    notALead: Boolean(meta.notALead),
     email: meta.email || '',
     dealValue: Number(meta.dealValue || 0) || 0,
     funnelStage: meta.funnelStage || '',
@@ -359,6 +360,7 @@ function sessionToConversation(key, session, contactId) {
       crmNotes: session.crmNotes || session.contactNotes || session.notes || '',
       notes: session.notes || session.crmNotes || session.contactNotes || '',
       aiContext: session.aiContext || '',
+      notALead: Boolean(session.notALead),
       email: session.email || '',
       dealValue: Number(session.dealValue || 0) || 0,
       funnelStage: session.funnelStage || '',
@@ -754,6 +756,9 @@ export class SupabaseSessionStore extends SessionStore {
           }
           if (lSession.aiContext && (!rSession.aiContext || lTime >= rTime)) {
             rSession.aiContext = lSession.aiContext;
+          }
+          if (lSession.notALead !== undefined && lTime >= rTime) {
+            rSession.notALead = Boolean(lSession.notALead);
           }
           if (lSession.email && (!rSession.email || lTime >= rTime)) {
             rSession.email = lSession.email;

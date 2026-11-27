@@ -30,7 +30,7 @@ export async function runFollowUpCadence({
 
   for (const [key, session] of Object.entries(sessions)) {
     if (sent >= maxDaily) break;
-    if (!session || key.startsWith('sim:') || session.origin === 'simulation') {
+    if (!session || key.startsWith('sim:') || session.origin === 'simulation' || session.notALead) {
       skipped++;
       continue;
     }

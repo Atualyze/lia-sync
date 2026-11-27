@@ -835,9 +835,11 @@ export async function handleClientMessage({
       }
 
       const effectiveAiContext = s.aiContext || (origin === 'simulation' ? store.get(phone, 'real')?.aiContext : '') || '';
+      const effectiveNotALead = Boolean(s.notALead || (origin === 'simulation' && store.get(phone, 'real')?.notALead));
       const promptSession = {
         ...s,
         aiContext: effectiveAiContext,
+        notALead: effectiveNotALead,
         history: activeContext.history,
         hasPriorConversation: activeContext.history.length > 1 || Boolean(s.lastBotAt),
         historyRecallRequested,

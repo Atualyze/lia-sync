@@ -153,6 +153,7 @@ export const toolConsultarContato = {
           labels: session?.tags?.length ? session.tags : (contact.labels || []),
           notes: session?.contactNotes || session?.notes || contact.notes || 'Sem observações adicionais.',
           ...(session?.aiContext || contact.aiContext ? { aiContext: session?.aiContext || contact.aiContext } : {}),
+          ...(session?.notALead || contact.notALead ? { notALead: true } : {}),
           ...(contact.email || session?.email ? { email: contact.email || session?.email } : {}),
           ...(session?.funnelStage || contact.customer_type ? { funnelStage: session?.funnelStage || contact.customer_type } : {}),
           ...(Number(session?.dealValue || contact.dealValue || 0) > 0 ? { dealValue: Number(session?.dealValue || contact.dealValue) } : {}),

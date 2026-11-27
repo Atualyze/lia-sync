@@ -6,4 +6,5 @@ alter table if exists public.contacts
   add column if not exists funnel_stage text default 'novo',
   add column if not exists sector_id text,
   add column if not exists tags text[] default '{}'::text[],
+  add column if not exists not_a_lead boolean default false,
   add column if not exists metadata jsonb default '{}'::jsonb;

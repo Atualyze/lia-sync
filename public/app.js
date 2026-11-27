@@ -6040,7 +6040,7 @@ function renderFunnel() {
   const secFilter = String($('#crm-sector-filter')?.value || '').trim();
 
   const leads = (state.sessions || []).filter((s) => {
-    if (s.origin === 'simulation' || s.isInternal) return false;
+    if (s.origin === 'simulation' || s.isInternal || s.archived || s.notALead) return false;
     if (s.phoneFormatted === 'Canal Interno Copiloto') return false;
     const rawP = String(s.rawPhone || s.phone || '');
     if (/^[a-z0-9_]+_self$/i.test(rawP) || rawP === 'owner_self') return false;
@@ -6133,6 +6133,7 @@ function openCrmModal(phone) {
   if ($('#crm-stage')) $('#crm-stage').value = item.funnelStage || 'novo';
   if ($('#crm-tags')) $('#crm-tags').value = (item.tags || []).join(', ');
   if ($('#crm-ai-context')) $('#crm-ai-context').value = item.aiContext || '';
+  if ($('#crm-not-a-lead')) $('#crm-not-a-lead').checked = Boolean(item.notALead);
   if ($('#crm-notes')) $('#crm-notes').value = item.notes || '';
   $('#crm-lead-modal')?.classList.remove('hidden');
 }
@@ -6156,6 +6157,7 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
     funnelStage: $('#crm-stage')?.value || 'novo',
     tags: $('#crm-tags')?.value || '',
     aiContext: $('#crm-ai-context')?.value || '',
+    notALead: Boolean($('#crm-not-a-lead')?.checked),
     notes: $('#crm-notes')?.value || '',
   };
   const res = await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
@@ -6240,6 +6242,18 @@ function openContactContextMenu(item, x, y) {
         }
       },
       {
+        label: item.notALead ? 'Marcar como Lead' : 'Marcar como Não é lead',
+        icon: `<svg width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,
+        action: async () => {
+          const next = !item.notALead;
+          await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify({ phone: item.phone, notALead: next }) });
+          item.notALead = next;
+          renderFunnel();
+          renderContacts();
+          showToast({ title: next ? 'Marcado como Não é lead' : 'Marcado como Lead', message: displayTitle, type: 'success' });
+        }
+      },
+      {
         label: 'Exportar Transcrição (.txt)',
         icon: `<svg width="15" height="15" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
         action: () => exportConversationTranscript(item)
@@ -6290,6 +6304,7 @@ function renderContactFicha(item) {
       <div class="detail-row"><span>Setor</span><b>${esc(item.sectorId || 'Geral')}</b></div>
       <div class="detail-row"><span>Valor Negociado</span><b>${Number(item.dealValue || 0) > 0 ? formatBRL(item.dealValue) : '—'}</b></div>
       <div class="detail-row"><span>Modo</span><b>${item.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
+      <div class="detail-row"><span>Classificação</span><b>${item.notALead ? 'Não é lead' : 'Lead / Cliente'}</b></div>
       <div class="detail-row"><span>Origem</span><b>${item.origin === 'simulation' ? 'Simulador' : 'WhatsApp Real'}</b></div>
       <div class="detail-row"><span>Última Atividade</span><b>${esc(item.time || 'agora')}</b></div>
     </div>
@@ -6382,7 +6397,7 @@ function renderContacts() {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <strong style="font-size:14px;">${esc(dName)}</strong>
           ${modeBadge}
-          <span class="pill mini">${esc(stageLabel)}</span>
+          ${item.notALead ? '<span class="pill mini warn">Não é lead</span>' : `<span class="pill mini">${esc(stageLabel)}</span>`}
           ${item.sectorId ? `<span class="pill mini">${esc(item.sectorId)}</span>` : ''}
           ${valBadge}
         </div>

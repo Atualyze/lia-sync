@@ -506,6 +506,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     }
     if (body.notes !== undefined) session.notes = String(body.notes || '').trim().slice(0, 4000);
     if (body.aiContext !== undefined) session.aiContext = String(body.aiContext || '').trim().slice(0, 2000);
+    if (body.notALead !== undefined) session.notALead = Boolean(body.notALead);
     if (body.sectorId !== undefined) session.sectorId = String(body.sectorId || '').trim().slice(0, 60);
     if (body.tags !== undefined) {
       session.tags = (Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(','))
@@ -517,7 +518,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/crm-contact') {
     let body = {};
