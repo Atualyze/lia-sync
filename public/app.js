@@ -2453,6 +2453,36 @@ function updateSectionDiffBadges() {
   }
 }
 
+function updateVoiceOptionsVisibility({ autoSelectFirst = false } = {}) {
+  const providerSelect = $('#admin-voice-provider');
+  const voiceSelect = $('#admin-voice-select');
+  if (!providerSelect || !voiceSelect) return;
+
+  const provider = providerSelect.value || 'auto';
+  const showAll = provider === 'auto';
+  let currentVisible = false;
+  let firstVisibleValue = '';
+
+  voiceSelect.querySelectorAll('optgroup[data-voice-provider]').forEach((group) => {
+    const matches = showAll || group.dataset.voiceProvider === provider;
+    group.hidden = !matches;
+    group.disabled = !matches;
+    group.querySelectorAll('option').forEach((opt) => {
+      opt.hidden = !matches;
+      opt.disabled = !matches;
+      if (matches) {
+        if (!firstVisibleValue) firstVisibleValue = opt.value;
+        if (opt.value === voiceSelect.value) currentVisible = true;
+      }
+    });
+  });
+
+  if (autoSelectFirst && !currentVisible && firstVisibleValue) {
+    voiceSelect.value = firstVisibleValue;
+    voiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 function updateHumanDestinationVisibility() {
   const destSelect = $('#admin-human-destination');
   const phoneGroup = $('#admin-human-phone-group');
@@ -2498,6 +2528,7 @@ function renderAdmin({ force = false } = {}) {
   }
   renderActiveModelLabel();
   updateHumanDestinationVisibility();
+  updateVoiceOptionsVisibility({ autoSelectFirst: false });
   loadProviderModels();
   loadFallbackCatalogs();
   renderHoursWeekdays(draft);
@@ -4237,10 +4268,12 @@ function startDashboard() {
   document.querySelectorAll('[data-config]').forEach(input => {
     input.addEventListener('input', () => {
       updateHumanDestinationVisibility();
+  updateVoiceOptionsVisibility({ autoSelectFirst: false });
       queueAdminSave();
     });
     input.addEventListener('change', () => {
       updateHumanDestinationVisibility();
+      updateVoiceOptionsVisibility({ autoSelectFirst: input.id === 'admin-voice-provider' });
       queueAdminSave();
     });
   });
