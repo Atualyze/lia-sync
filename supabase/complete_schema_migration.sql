@@ -1164,7 +1164,7 @@ comment on table public.runtime_projections is 'Projeções efêmeras de runtime
 commit;
 
 
--- ======== 20261115_prospecting.sql ========
+-- ======== 20261115000000_prospecting.sql ========
 -- Prospecção autônoma (Fase 1): listas, leads, cadências e eventos.
 -- Reutiliza phone_suppressions como fonte única de opt-out.
 
@@ -1241,7 +1241,7 @@ REVOKE ALL ON TABLE prospect_lists, prospect_cadences, prospect_leads, prospect_
 GRANT ALL ON TABLE prospect_lists, prospect_cadences, prospect_leads, prospect_events TO service_role;
 
 
--- ======== 20261115_sync_archive.sql ========
+-- ======== 20261115000100_sync_archive.sql ========
 -- Soft delete / arquivo morto para sincronização bidirecional com WhatsApp.
 -- Registros com deleted_at preenchido ficam ocultos nos painéis (LiaSync e LiaSync CRM),
 -- mas permanecem preservados no banco para consulta direta.

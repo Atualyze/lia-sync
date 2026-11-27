@@ -28,7 +28,7 @@ export const AI_RETRY_BACKOFF_MS = Object.freeze([15_000, 30_000, 60_000, 90_000
 export const AI_RETRY_MAX_TTL_MS = 6 * 60_000;
 const CLIENT_HANDOFF_CATEGORIES = new Set(['financeiro', 'reclamacao', 'pedido_pessoa', 'emergencia']);
 
-function buildIdentityClarificationReply(text = '', { alreadyIntroduced = false, owner = 'Tauan' } = {}) {
+function buildIdentityClarificationReply(text = '', { alreadyIntroduced = false, owner = '' } = {}) {
   if (!alreadyIntroduced) return null;
   const normalized = normalize(text);
   const asksWho = /^(?:quem e voce|quem esta falando|quem ta falando|quem fala|qual e seu nome)\b/.test(normalized);
@@ -36,7 +36,7 @@ function buildIdentityClarificationReply(text = '', { alreadyIntroduced = false,
     || /^voce e (?:uma )?nova contratada\b/.test(normalized)
     || /^(?:(?:e|voce e) )?a nova funcionaria\b/.test(normalized);
   const saysDoesNotRemember = /^(?:nao lembro(?: de)? (?:voce|vc)|nao me lembro de voce|nao te conheco)\b/.test(normalized);
-  const responsible = String(owner || 'Tauan').trim() || 'Tauan';
+  const responsible = String(owner || '').trim() || 'responsável';
 
   if (asksIfNewHire) {
     return 'Não sou uma nova contratada humana; atuo como assistente virtual do ' + responsible + '. Posso continuar seu atendimento por aqui.';

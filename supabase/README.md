@@ -20,8 +20,8 @@ Para um projeto novo ou ambiente ainda não migrado, aplique os arquivos SQL nes
 8. `migrations/20261113153840_atomic_ai_budgets.sql` — tabela de reservas e RPCs de orçamento de IA
 9. `migrations/20261113154223_ai_budget_effective_model.sql` — modelo efetivo e preservação de uso desconhecido
 10. `migrations/20261114072000_runtime_projections.sql` — tabela `runtime_projections` dedicada para projeções operacionais (ex.: `sectors_projection`)
-11. `migrations/20261115_prospecting.sql` — listas, cadências, leads e eventos de prospecção
-12. `migrations/20261115_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
+11. `migrations/20261115000000_prospecting.sql` — listas, cadências, leads e eventos de prospecção
+12. `migrations/20261115000100_sync_archive.sql` — `deleted_at` / soft-delete em conversas e mensagens
 13. `migrations/20261116000000_review_hardening.sql` — RLS nas tabelas `prospect_*` e `reminders`, CHECK de `created_by` removido, lease de manutenção
 14. `migrations/20261120150000_copilot_task_queue.sql` — fila persistente backend-only do Copiloto, leases, idempotência e notificação de resultados
 15. `migrations/20261121100000_lia_runtime.sql` — fundação do Lia Runtime (`lia_identity`, `lia_goals`, `lia_events`, `lia_commitments`, `lia_runtime_state`), RLS backend-only

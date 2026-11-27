@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { getSafeInfinitePayCheckoutUrl } from '../payment-urls.mjs';
 
+const MAX_PERSISTED_ORDERS = 5000;
+
 function tlv(id, value) {
   const str = String(value ?? '');
   const len = String(Buffer.byteLength(str, 'utf8')).padStart(2, '0');
@@ -144,18 +146,26 @@ export class InfinitePayOrderStore {
           if (item?.orderNsu) this.orders.set(item.orderNsu, item);
         }
       }
-    } catch {
-      // fallback em memória se o disco ainda não existir
+    } catch (error) {
+      if (fs.existsSync(this.filePath)) {
+        // Arquivo existe mas está ilegível/corrompido: preserva para análise em vez de sobrescrever.
+        try { fs.renameSync(this.filePath, `${this.filePath}.corrupt-${Date.now()}`); } catch {}
+        console.error('[payment-orders] arquivo local de pedidos ilegível; preservado como .corrupt-*:', error?.code || error?.name || 'erro');
+      }
+      // sem arquivo ainda: segue em memória
     }
   }
 
   _persist() {
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-      const items = [...this.orders.values()].slice(-500);
-      fs.writeFileSync(this.filePath, JSON.stringify(items, null, 2), 'utf8');
-    } catch {
-      // falha de disco não bloqueia a operação em runtime
+      const items = [...this.orders.values()].slice(-MAX_PERSISTED_ORDERS);
+      const tmp = `${this.filePath}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(items, null, 2), 'utf8');
+      fs.renameSync(tmp, this.filePath);
+    } catch (error) {
+      // falha de disco não bloqueia a operação em runtime, mas precisa ficar visível nos logs
+      console.error('[payment-orders] falha ao persistir pedidos localmente:', error?.code || error?.name || 'erro');
     }
   }
 

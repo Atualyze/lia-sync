@@ -315,8 +315,8 @@ supabase/migrations/20261113152048_follow_up_atomic_claim.sql
 supabase/migrations/20261113153840_atomic_ai_budgets.sql
 supabase/migrations/20261113154223_ai_budget_effective_model.sql
 supabase/migrations/20261114072000_runtime_projections.sql
-supabase/migrations/20261115_prospecting.sql
-supabase/migrations/20261115_sync_archive.sql
+supabase/migrations/20261115000000_prospecting.sql
+supabase/migrations/20261115000100_sync_archive.sql
 supabase/migrations/20261116000000_review_hardening.sql
 supabase/seed.sql  # opcional, somente desenvolvimento/teste
 ```

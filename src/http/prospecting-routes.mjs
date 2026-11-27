@@ -7,7 +7,7 @@ function mapProspectingError(err) {
       status: 503,
       body: {
         error: 'prospecting_migration_missing',
-        message: 'Tabelas de prospecção não encontradas no Supabase. Execute a migration 20261115_prospecting.sql.'
+        message: 'Tabelas de prospecção não encontradas no Supabase. Execute a migration 20261115000000_prospecting.sql.'
       }
     };
   }
