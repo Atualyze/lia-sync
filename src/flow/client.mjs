@@ -1577,6 +1577,10 @@ export async function handleClientMessage({
               });
               logger.log?.(`[flow:tool] Executada ${tc.name}; sucesso: ${toolRes?.success === true}`);
               if (tc.name === 'gerenciar_agenda_google' && tc.args?.action === 'criar_evento' && toolRes?.success === true) {
+                if (!s.notALead) {
+                  s.funnelStage = 'agendado';
+                  s.scheduled = true;
+                }
                 void syncLeadToGoogleSheet({
                   session: s,
                   stage: 'Agendado',
@@ -1585,6 +1589,9 @@ export async function handleClientMessage({
                   botConfig,
                   now
                 });
+              }
+              if (tc.name === 'agendar_retorno_ou_followup' && (tc.args?.action || 'agendar') === 'agendar' && toolRes?.success === true && !s.notALead) {
+                s.funnelStage = 'agendado';
               }
               if (tc.name === 'gerenciar_cobranca_pagamento') {
                 pixHandledByTool = true;
@@ -1608,6 +1615,9 @@ export async function handleClientMessage({
                     ? 'No momento não consegui gerar o Pix automaticamente porque a chave Pix ainda não está configurada. Vou pedir para a equipe te enviar por aqui.'
                     : 'Não consegui concluir a geração do Pix agora. Já vou pedir para a equipe verificar e te retornar por aqui, sem solicitar novamente os dados que você já enviou.';
                 }
+              }
+              if (tc.name === 'agendar_retorno_ou_followup' && (tc.args?.action || 'agendar') === 'agendar' && toolRes?.success === true && !s.notALead) {
+                s.funnelStage = 'agendado';
               }
               if (tc.name === 'gerenciar_cobranca_pagamento') {
                 if (toolRes?.success && toolRes.action === 'verificar_pagamento') {

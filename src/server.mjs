@@ -21,6 +21,7 @@ import { AdminConfigStore } from './admin-config.mjs';
 import { SupabaseSessionStore, SupabaseAdminConfigStore, createSupabaseRuntime } from './supabase-runtime.mjs';
 import { setMetricsPersistenceSink } from './metrics.mjs';
 import { ReminderStore } from './reminders.mjs';
+import { AgendaStore } from './agenda.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from './core/identity.mjs';
 import { createOutboundDispatchPreview } from './outbound-dispatch.mjs';
 import { createChatwootProxy } from './http/proxy.mjs';
@@ -351,6 +352,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
 
   const reminderStore = new ReminderStore(path.join(path.dirname(config.dataFile), 'reminders.json'), { client: supabaseRuntime.client });
   await reminderStore.load();
+  const agendaStore = new AgendaStore(path.join(path.dirname(config.dataFile), 'agenda.json'), { client: supabaseRuntime.client });
+  await agendaStore.load();
   // Projeção de runtime dos setores do Chatwoot: nunca entra em rascunho/revisão do painel.
   const sectorProjection = new SectorProjection(path.join(path.dirname(config.dataFile), 'sectors-projection.json'), { client: supabaseRuntime.client });
   await sectorProjection.load();
@@ -703,6 +706,8 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     customProviderStore,
     baileysProvider,
     copilotTaskStore,
+    agendaStore,
+    reminderStore,
     onAIConfigUpdated,
     deliverReactivationReply,
     getActiveInstancePhone,
@@ -717,7 +722,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
       await sendText(humanPhone, message).catch((err) => console.error('[notifyCopilot:wa]', err?.message || err));
     }
   });
-  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.deliverReactivationReply = deliverReactivationReply; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
+  app.store = store; app.flow = f; app.adminConfig = adminConfig; app.reminderStore = reminderStore; app.agendaStore = agendaStore; app.getHumanPhone = getHumanPhone; app.getActiveInstancePhone = getActiveInstancePhone; app.deliverReactivationReply = deliverReactivationReply; app.prospecting = prospecting; app.stageAutomatedOutbound = stageAutomatedOutbound; app.copilotTaskStore = copilotTaskStore; app.copilotTaskWorker = copilotTaskWorker; app.liaRuntime = liaRuntime; app.liaLearning = liaLearning; app.liaAutonomy = liaAutonomy; app.apiSettingsStore = apiSettingsStore; app.customProviderStore = customProviderStore; app.baileysProvider = baileysProvider; app.telegramCopilot = telegramCopilot; app.runPendingAIRetries = runPendingAIRetries; app.drainPending = drainPending; app.schedule = schedule; return app;
 }
 
 const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));

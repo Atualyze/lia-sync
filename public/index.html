@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126l" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261127a" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -132,6 +132,11 @@
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               <span class="nav-label">Contatos</span>
               <b id="contacts-count">0</b>
+            </button>
+            <button class="nav-item" data-view="agenda" data-role="operator" title="Agenda Unificada: Reuniões, Retornos &amp; Google Calendar">
+              <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span class="nav-label">Agenda</span>
+              <b id="agenda-count">0</b>
             </button>
             <button class="nav-item" data-view="sectors" data-role="admin" title="Configuração de Setores &amp; Triagem">
               <svg class="svg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
@@ -2529,6 +2534,42 @@
           </div>
         </div>
       </section>
+      <section id="agenda-view" class="view" data-role="operator">
+        <div class="ops-container">
+          <div class="admin-hero panel">
+            <div class="hero-copy">
+              <h2>Agenda Unificada</h2>
+              <p>Reuniões, retornos automáticos no WhatsApp, compromissos da Lia e sincronização opcional com Google Calendar.</p>
+            </div>
+            <div class="hero-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <span id="agenda-google-badge" class="pill mini">Agenda Local</span>
+              <button type="button" class="btn-handoff primary" id="agenda-new-btn">+ Novo Agendamento</button>
+              <button type="button" class="btn-handoff" id="agenda-refresh-btn">Atualizar</button>
+            </div>
+          </div>
+
+          <div id="agenda-kpi-grid" class="agenda-kpi-grid"></div>
+
+          <div class="panel agenda-toolbar">
+            <div class="inbox-filter-tabs" id="agenda-type-tabs" style="margin-bottom:0;">
+              <button type="button" class="inbox-tab active" data-agenda-type="all">Todos</button>
+              <button type="button" class="inbox-tab" data-agenda-type="meeting">Reuniões</button>
+              <button type="button" class="inbox-tab" data-agenda-type="reminder">Retornos</button>
+              <button type="button" class="inbox-tab" data-agenda-type="commitment">Rotinas Lia</button>
+              <button type="button" class="inbox-tab" data-agenda-type="google">Google</button>
+            </div>
+            <input type="search" id="agenda-search" class="kanban-stage-select" placeholder="Buscar por título, contato ou telefone..." />
+            <select id="agenda-status-filter" class="kanban-stage-select">
+              <option value="active">Pendentes / Ativos</option>
+              <option value="all">Todos os status</option>
+              <option value="completed">Concluídos / Enviados</option>
+              <option value="cancelled">Cancelados</option>
+            </select>
+          </div>
+
+          <div id="agenda-list" class="agenda-list"></div>
+        </div>
+      </section>
       <section id="automations-view" class="view" data-role="admin">
         <div class="ops-container">
           <div class="admin-hero panel">
@@ -2759,6 +2800,29 @@
     </div>
   </div>
 
+  <div id="agenda-modal" class="cmd-modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Novo Agendamento">
+    <div class="cmd-modal-card crm-modal-card" style="max-width:480px;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <strong style="font-size:16px;">Novo Agendamento</strong>
+        <button type="button" class="cmd-close-btn" id="agenda-modal-close">Fechar</button>
+      </div>
+      <div class="crm-modal-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <label style="font-size:12px;">Tipo<select id="agenda-form-type" class="kanban-stage-select" style="width:100%;margin-top:4px;"><option value="meeting">Reunião / Horário Marcado</option><option value="reminder">Retorno / Lembrete WhatsApp</option></select></label>
+        <label style="font-size:12px;">Duração (min)<input type="number" id="agenda-form-duration" min="5" max="480" value="30" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
+      </div>
+      <label style="font-size:12px;display:block;margin-bottom:10px;">Título / Assunto<input type="text" id="agenda-form-title" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="Ex: Reunião de demonstração ou Retornar orçamento" /></label>
+      <div class="crm-modal-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <label style="font-size:12px;">Data e Hora<input type="datetime-local" id="agenda-form-start" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
+        <label style="font-size:12px;">Telefone CRM (opcional)<input type="text" id="agenda-form-phone" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="5585999991111" /></label>
+      </div>
+      <label style="font-size:12px;display:block;margin-bottom:10px;">Nome do Contato (opcional)<input type="text" id="agenda-form-client" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="Ex: João Silva" /></label>
+      <label class="toggle-field" id="agenda-sync-google-wrap" style="margin-bottom:10px;"><input type="checkbox" id="agenda-form-sync-google" checked /><span>Espelhar no Google Calendar (se conectado)</span></label>
+      <label style="font-size:12px;display:block;margin-bottom:12px;">Observações<textarea id="agenda-form-notes" class="kanban-stage-select" style="width:100%;min-height:64px;margin-top:4px;" placeholder="Detalhes, link ou contexto..."></textarea></label>
+      <div class="crm-modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" class="btn-handoff primary" id="agenda-form-save">Salvar Agendamento</button>
+      </div>
+    </div>
+  </div>
   <div id="crm-lead-modal" class="cmd-modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Ficha do Lead">
     <div class="cmd-modal-card crm-modal-card" style="max-width:520px;padding:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -2795,6 +2859,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126l"></script>
+  <script src="/dashboard/app.js?v=20261127a"></script>
 </body>
 </html>

@@ -3448,6 +3448,7 @@ const VIEW_TITLES = {
   runtime: 'Autonomia & Memória',
   funnel: 'CRM · Funil de Leads',
   contacts: 'Contatos',
+  agenda: 'Agenda Unificada',
   sectors: 'Setores & Triagem',
   automations: 'Automações & Réguas',
   prospecting: 'Prospecção Ativa'
@@ -3516,6 +3517,9 @@ function showView(view, opts = {}) {
     api('/api/dashboard/sectors-custom').then(d => syncSectorDropdowns(d?.sectors || [])).catch(() => {});
     renderFunnel();
     if ((ROLE_LEVEL[state.role] ?? 0) >= ROLE_LEVEL.operator) refresh().catch(() => {});
+  }
+  if (view === 'agenda') {
+    loadAgendaView().catch(() => {});
   }
   if (view === 'contacts') {
     api('/api/dashboard/sectors-custom').then(d => syncSectorDropdowns(d?.sectors || [])).catch(() => {});
@@ -6938,4 +6942,193 @@ $('#sec-save-btn')?.addEventListener('click', async () => {
     }),
   });
   loadCustomSectors().catch(() => {});
+});
+
+// ============================================================================
+// AGENDA UNIFICADA (REUNIÕES, RETORNOS WHATSAPP, ROTINAS LIA & GOOGLE)
+// ============================================================================
+let agendaState = { items: [], typeFilter: 'all', googleConnected: false, summary: {} };
+
+async function loadAgendaView() {
+  const data = await api('/api/dashboard/agenda');
+  agendaState.items = Array.isArray(data?.items) ? data.items : [];
+  agendaState.googleConnected = Boolean(data?.googleConnected);
+  agendaState.summary = data?.summary || {};
+  const gBadge = $('#agenda-google-badge');
+  if (gBadge) {
+    gBadge.textContent = agendaState.googleConnected ? 'Google Calendar: Conectado' : 'Agenda Local (CRM)';
+    gBadge.className = agendaState.googleConnected ? 'pill mini mint' : 'pill mini';
+  }
+  const activeTotal = (agendaState.summary.meetings || 0) + (agendaState.summary.reminders || 0) + (agendaState.summary.commitments || 0);
+  const badge = $('#agenda-count');
+  if (badge) badge.textContent = String(activeTotal);
+  renderAgenda();
+}
+
+function renderAgenda() {
+  const kpiEl = $('#agenda-kpi-grid');
+  const listEl = $('#agenda-list');
+  if (!listEl) return;
+  const sum = agendaState.summary || {};
+  if (kpiEl) {
+    kpiEl.innerHTML = [
+      { label: 'Reuniões Ativas', val: sum.meetings || 0 },
+      { label: 'Retornos Pendentes', val: sum.reminders || 0 },
+      { label: 'Rotinas Lia', val: sum.commitments || 0 },
+      { label: 'Eventos Google', val: sum.google || 0 }
+    ].map(k => `<div class="panel agenda-kpi-tile"><span>${esc(k.label)}</span><strong>${esc(k.val)}</strong></div>`).join('');
+  }
+  const q = ($('#agenda-search')?.value || '').trim().toLowerCase();
+  const statusFilter = $('#agenda-status-filter')?.value || 'active';
+  const typeFilter = agendaState.typeFilter || 'all';
+  const filtered = (agendaState.items || []).filter(item => {
+    if (typeFilter !== 'all' && item.type !== typeFilter) return false;
+    const st = String(item.status || 'scheduled').toLowerCase();
+    const isDone = ['completed', 'sent', 'fulfilled'].includes(st);
+    const isCancel = ['cancelled', 'missed', 'no_show'].includes(st);
+    if (statusFilter === 'active' && (isDone || isCancel)) return false;
+    if (statusFilter === 'completed' && !isDone) return false;
+    if (statusFilter === 'cancelled' && !isCancel) return false;
+    if (q) {
+      const hay = `${item.title || ''} ${item.clientName || ''} ${item.phone || ''} ${item.notes || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="panel detail-placeholder">Nenhum agendamento encontrado para os filtros atuais.</div>';
+    return;
+  }
+  const typeLabels = { meeting: 'Reunião', reminder: 'Retorno WhatsApp', commitment: 'Rotina Lia', google: 'Google Calendar' };
+  const statusLabels = { scheduled: 'Agendado', confirmed: 'Confirmado', pending: 'Pendente', completed: 'Concluído', sent: 'Enviado', fulfilled: 'Concluído', cancelled: 'Cancelado', no_show: 'Não compareceu', overdue: 'Atrasado', in_progress: 'Em andamento' };
+  const groups = new Map();
+  for (const item of filtered) {
+    const d = new Date(item.startAt || Date.now());
+    const dayKey = Number.isNaN(d.getTime()) ? 'Sem data' : d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!groups.has(dayKey)) groups.set(dayKey, []);
+    groups.get(dayKey).push(item);
+  }
+  listEl.innerHTML = Array.from(groups.entries()).map(([day, items]) => {
+    const cards = items.map(item => {
+      const d = new Date(item.startAt || '');
+      const timeStr = Number.isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const st = String(item.status || 'scheduled').toLowerCase();
+      const isFinal = ['completed', 'sent', 'fulfilled', 'cancelled'].includes(st);
+      return `<div class="panel agenda-card" data-agenda-id="${esc(item.id)}" data-agenda-type="${esc(item.type)}">
+        <div class="agenda-card-time">${esc(timeStr)}<span>${item.durationMinutes ? `${esc(item.durationMinutes)}m` : ''}</span></div>
+        <div class="agenda-card-body">
+          <div class="agenda-card-top">
+            <strong>${esc(item.title)}</strong>
+            <span class="agenda-type-pill ${esc(item.type)}">${esc(typeLabels[item.type] || item.type)}</span>
+            <span class="pill mini ${st === 'confirmed' || st === 'completed' || st === 'sent' ? 'mint' : (st === 'cancelled' ? 'red' : '')}">${esc(statusLabels[st] || st)}</span>
+          </div>
+          <div class="agenda-card-meta">
+            ${item.clientName ? `<span>${esc(item.clientName)}</span>` : ''}
+            ${item.phone ? `<span style="font-family:var(--font-mono);">${esc(item.phone)}</span>` : ''}
+            ${item.notes ? `<span class="ops-muted">${esc(item.notes)}</span>` : ''}
+          </div>
+        </div>
+        <div class="agenda-card-actions">
+          ${item.type === 'meeting' && st === 'scheduled' ? `<button type="button" class="btn-handoff" data-ag-act="confirm">Confirmar</button>` : ''}
+          ${!isFinal && item.type !== 'google' ? `<button type="button" class="btn-handoff" data-ag-act="complete">Concluir</button>` : ''}
+          ${!isFinal ? `<button type="button" class="btn-handoff" data-ag-act="cancel" style="color:var(--danger,#f87171);">Cancelar</button>` : ''}
+          ${item.googleHtmlLink ? `<a href="${esc(item.googleHtmlLink)}" target="_blank" rel="noopener" class="btn-handoff">Google</a>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="agenda-day-group"><div class="agenda-day-title">${esc(day)}</div>${cards}</div>`;
+  }).join('');
+  listEl.querySelectorAll('[data-ag-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const card = btn.closest('.agenda-card');
+      const id = card?.getAttribute('data-agenda-id');
+      const type = card?.getAttribute('data-agenda-type');
+      const act = btn.getAttribute('data-ag-act');
+      if (!id) return;
+      try {
+        if (type === 'google' && act === 'cancel') {
+          await api(`/api/dashboard/agenda/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        } else {
+          const status = act === 'confirm' ? 'confirmed' : (act === 'complete' ? 'completed' : 'cancelled');
+          await api(`/api/dashboard/agenda/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ type, status }) });
+        }
+        await loadAgendaView();
+        showToast({ title: 'Agenda atualizada', message: 'Alteração salva.', type: 'success' });
+      } catch (err) {
+        showToast({ title: 'Erro na Agenda', message: err.message, type: 'error' });
+      }
+    });
+  });
+}
+
+function openAgendaModal(prefillPhone = '') {
+  const nowLocal = new Date(Date.now() + 3600000);
+  const pad = n => String(n).padStart(2, '0');
+  const localIso = `${nowLocal.getFullYear()}-${pad(nowLocal.getMonth() + 1)}-${pad(nowLocal.getDate())}T${pad(nowLocal.getHours())}:00`;
+  if ($('#agenda-form-type')) $('#agenda-form-type').value = 'meeting';
+  if ($('#agenda-form-title')) $('#agenda-form-title').value = '';
+  if ($('#agenda-form-start')) $('#agenda-form-start').value = localIso;
+  if ($('#agenda-form-duration')) $('#agenda-form-duration').value = '30';
+  if ($('#agenda-form-phone')) $('#agenda-form-phone').value = prefillPhone || '';
+  if ($('#agenda-form-client')) $('#agenda-form-client').value = '';
+  if ($('#agenda-form-notes')) $('#agenda-form-notes').value = '';
+  if ($('#agenda-sync-google-wrap')) $('#agenda-sync-google-wrap').style.display = 'flex';
+  $('#agenda-modal')?.classList.remove('hidden');
+}
+
+$('#agenda-new-btn')?.addEventListener('click', () => openAgendaModal());
+$('#agenda-refresh-btn')?.addEventListener('click', () => loadAgendaView().catch(() => {}));
+$('#agenda-modal-close')?.addEventListener('click', () => $('#agenda-modal')?.classList.add('hidden'));
+$('#agenda-form-type')?.addEventListener('change', (e) => {
+  const wrap = $('#agenda-sync-google-wrap');
+  if (wrap) wrap.style.display = e.target.value === 'meeting' ? 'flex' : 'none';
+});
+$('#agenda-search')?.addEventListener('input', () => renderAgenda());
+$('#agenda-status-filter')?.addEventListener('change', () => renderAgenda());
+document.querySelectorAll('#agenda-type-tabs [data-agenda-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#agenda-type-tabs [data-agenda-type]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    agendaState.typeFilter = btn.getAttribute('data-agenda-type') || 'all';
+    renderAgenda();
+  });
+});
+$('#agenda-form-save')?.addEventListener('click', async () => {
+  const btn = $('#agenda-form-save');
+  const type = $('#agenda-form-type')?.value || 'meeting';
+  const title = ($('#agenda-form-title')?.value || '').trim();
+  const startRaw = $('#agenda-form-start')?.value || '';
+  if (!title || !startRaw) {
+    showToast({ title: 'Campos obrigatórios', message: 'Informe o título e a data/hora.', type: 'error' });
+    return;
+  }
+  const startAt = new Date(startRaw).toISOString();
+  const orig = btn?.textContent || 'Salvar Agendamento';
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const res = await api('/api/dashboard/agenda', {
+      method: 'POST',
+      body: JSON.stringify({
+        type,
+        title,
+        startAt,
+        durationMinutes: Number($('#agenda-form-duration')?.value || 30),
+        phone: ($('#agenda-form-phone')?.value || '').trim(),
+        clientName: ($('#agenda-form-client')?.value || '').trim(),
+        notes: ($('#agenda-form-notes')?.value || '').trim(),
+        syncGoogle: type === 'meeting' && Boolean($('#agenda-form-sync-google')?.checked)
+      })
+    });
+    $('#agenda-modal')?.classList.add('hidden');
+    await loadAgendaView();
+    showToast({
+      title: 'Agendamento Salvo',
+      message: res?.googleSyncError ? `Salvo no CRM (Google: ${res.googleSyncError})` : title,
+      type: 'success'
+    });
+  } catch (err) {
+    showToast({ title: 'Erro ao salvar', message: err.message, type: 'error' });
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
 });

@@ -176,6 +176,28 @@ export class ReminderStore {
     return this.reminders.filter(r => r.status === 'pending').sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
   }
 
+  listAll() {
+    return [...this.reminders].sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  }
+
+  async updateStatus(id, status) {
+    const allowed = new Set(['pending', 'sent', 'completed', 'cancelled']);
+    if (!allowed.has(status)) throw new Error('Status de lembrete inválido.');
+    const item = this.reminders.find(r => r.id === id);
+    if (!item) return null;
+    item.status = status;
+    if (status === 'sent' && !item.sentAt) item.sentAt = new Date(this.now()).toISOString();
+    await this.save();
+    if (this.client?.enabled) {
+      await this.client.request('reminders', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(id)}`,
+        body: { status, ...(item.sentAt ? { sent_at: item.sentAt } : {}) }
+      }).catch(() => {});
+    }
+    return item;
+  }
+
   /**
    * Consulta somente lembretes vinculados ao identificador autenticado do contato.
    * Números são comparados completos; IDs @lid só correspondem ao mesmo @lid.

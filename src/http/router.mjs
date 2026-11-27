@@ -3,6 +3,7 @@ import { serveStatic } from '../dashboard.mjs';
 import { json, NOT_HANDLED } from './utils.mjs';
 import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath, isDashboardViewPath } from './proxy.mjs';
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
+import { handleAgendaRoutes } from './agenda-routes.mjs';
 import { handleRuntimeDashboardRoutes } from './runtime-routes.mjs';
 import { handleAdminRoutes } from './admin.mjs';
 import { handleBridgeRoutes } from './bridge-routes.mjs';
@@ -83,7 +84,7 @@ export function requiredRole(pathname, method) {
   return rule ? rule.role : 'admin';
 }
 
-export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, tenantStore = null, customSectorStore = null, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, copilotTaskStore = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
+export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, runtimeAI, faqFor, rateMessage, schedule, getHumanPhone, getCachedInstanceOwner, updateInstanceOwner, proxyToChatwoot, readinessCheck = checkReadiness, campaignStore, operationsStore, webhookEventStore, aiBudgetGate, sectorProjection, tenantStore = null, customSectorStore = null, prospecting = null, askAI = null, integrationsStore = null, liaRuntime = null, liaLearning = null, liaAutonomy = null, apiSettingsStore = null, customProviderStore = null, baileysProvider = null, copilotTaskStore = null, agendaStore = null, reminderStore = null, onAIConfigUpdated = null, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null, apiV1 = createApiV1Handler({ integrationsStore }) }) {
   return async (req, res) => {
     const u = new URL(req.url, 'http://localhost');
     const requestOrigin = req.headers.origin;
@@ -238,6 +239,8 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
     }
     const dashboardResult = await handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply, getActiveInstancePhone, notifyCopilot });
     if (dashboardResult !== NOT_HANDLED) return dashboardResult;
+    const agendaResult = await handleAgendaRoutes({ req, res, u, store, adminConfig, agendaStore, reminderStore, liaRuntime });
+    if (agendaResult !== false) return agendaResult;
     const bridgeResult = await handleBridgeRoutes({ req, res, u, store, f, webhookAuthorize, campaignStore, adminConfig, sectorProjection, webhookEventStore, deliverReactivationReply });
     if (bridgeResult !== NOT_HANDLED) return bridgeResult;
     const settingsResult = await handleDashboardSettingsRoutes({ req, res, u, store, runtimeAI, adminConfig, tenantStore, customSectorStore, f, deliverReactivationReply });
