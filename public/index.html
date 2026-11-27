@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126h" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126i" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -2760,14 +2760,14 @@
   </div>
 
   <div id="crm-lead-modal" class="cmd-modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Ficha do Lead">
-    <div class="cmd-modal-card" style="max-width:520px;padding:20px;">
+    <div class="cmd-modal-card crm-modal-card" style="max-width:520px;padding:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <strong id="crm-modal-title" style="font-size:16px;">Ficha do Lead</strong>
         <button type="button" class="cmd-close-btn" id="crm-close-btn">Fechar</button>
       </div>
       <input type="hidden" id="crm-phone" />
       <input type="hidden" id="crm-mode" value="edit" />
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div class="crm-modal-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <label style="font-size:12px;">Telefone / WhatsApp (DDI+DDD)<input type="text" id="crm-phone-input" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="Ex: 5585999991111" /></label>
         <label style="font-size:12px;">Nome<input type="text" id="crm-name" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
         <label style="font-size:12px;">E-mail<input type="email" id="crm-email" class="kanban-stage-select" style="width:100%;margin-top:4px;" /></label>
@@ -2789,12 +2789,12 @@
       </div>
       <label style="font-size:12px;display:block;margin-bottom:10px;">Contexto para a Lia (como tratar / atender este contato)<textarea id="crm-ai-context" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" maxlength="2000" placeholder="Ex.: Cliente VIP, prefere atendimento direto, já usa o plano Pro, não oferecer desconto sem falar com o gestor..."></textarea></label>
       <label style="font-size:12px;display:block;margin-bottom:12px;">Notas Internas<textarea id="crm-notes" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" placeholder="Anotações da equipe..."></textarea></label>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div class="crm-modal-actions" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <button type="button" class="btn-handoff" id="crm-delete-btn" style="color:var(--danger,#f87171);border-color:rgba(248,113,113,0.35);">Excluir Contato</button>
         <button type="button" class="btn-handoff primary" id="crm-save-btn">Salvar Ficha</button>
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126h"></script>
+  <script src="/dashboard/app.js?v=20261126i"></script>
 </body>
 </html>
