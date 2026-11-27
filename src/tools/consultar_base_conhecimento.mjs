@@ -21,17 +21,26 @@ export const toolConsultarBaseConhecimento = {
   async execute({ termo }, context = {}) {
     if (context.actor === 'client') {
       const session = context.session || {};
-      const assignedKb = session.supportModeEnabled && session.knowledgeBaseId
-        ? listKnowledgeBasesSync().find(kb => kb.id === session.knowledgeBaseId && !kb.copilotOnly)
-        : null;
-      if (assignedKb?.content) {
-        const relevant = getRelevantKnowledgeBaseContentSync(assignedKb.id, termo, undefined, { maxChars: 6500 });
+      const kbIds = [...new Set([
+        ...(Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : []),
+        ...(session.knowledgeBaseId ? [session.knowledgeBaseId] : [])
+      ].map(x => String(x || '').trim()).filter(Boolean))];
+      const allKbs = listKnowledgeBasesSync();
+      const assignedKbs = (session.supportModeEnabled || kbIds.length)
+        ? kbIds.map(id => allKbs.find(kb => kb.id === id && !kb.copilotOnly)).filter(kb => kb?.content)
+        : [];
+      if (assignedKbs.length) {
+        const perMax = assignedKbs.length > 1 ? Math.max(2000, Math.floor(7500 / assignedKbs.length)) : 6500;
+        const excerpts = assignedKbs.map(kb => {
+          const relevant = getRelevantKnowledgeBaseContentSync(kb.id, termo, undefined, { maxChars: perMax });
+          return `[${kb.title} v${kb.version}]\n${relevant?.content || kb.content.slice(0, 1800)}`;
+        });
         return {
           found: true,
           termo,
-          base: assignedKb.title,
-          versao: assignedKb.version,
-          resposta: relevant?.content || assignedKb.content.slice(0, 1800)
+          base: assignedKbs.map(k => k.title).join(', '),
+          versao: assignedKbs[0].version,
+          resposta: excerpts.join('\n\n---\n\n')
         };
       }
 

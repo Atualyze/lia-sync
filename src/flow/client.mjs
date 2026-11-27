@@ -834,12 +834,23 @@ export async function handleClientMessage({
         );
       }
 
-      const effectiveAiContext = s.aiContext || (origin === 'simulation' ? store.get(phone, 'real')?.aiContext : '') || '';
-      const effectiveNotALead = Boolean(s.notALead || (origin === 'simulation' && store.get(phone, 'real')?.notALead));
+      const realRef = origin === 'simulation' ? store.get(phone, 'real') : null;
+      const effectiveAiContext = s.aiContext || realRef?.aiContext || '';
+      const effectiveNotALead = Boolean(s.notALead || realRef?.notALead);
+      const effectiveKbIds = [...new Set([
+        ...(Array.isArray(s.knowledgeBaseIds) ? s.knowledgeBaseIds : []),
+        ...(s.knowledgeBaseId ? [s.knowledgeBaseId] : []),
+        ...(Array.isArray(realRef?.knowledgeBaseIds) ? realRef.knowledgeBaseIds : []),
+        ...(realRef?.knowledgeBaseId ? [realRef.knowledgeBaseId] : [])
+      ].map(x => String(x || '').trim()).filter(Boolean))];
+      const effectiveSupportMode = Boolean(s.supportModeEnabled || realRef?.supportModeEnabled || effectiveKbIds.length);
       const promptSession = {
         ...s,
         aiContext: effectiveAiContext,
         notALead: effectiveNotALead,
+        knowledgeBaseIds: effectiveKbIds,
+        knowledgeBaseId: effectiveKbIds[0] || s.knowledgeBaseId || null,
+        supportModeEnabled: effectiveSupportMode,
         history: activeContext.history,
         hasPriorConversation: activeContext.history.length > 1 || Boolean(s.lastBotAt),
         historyRecallRequested,

@@ -1712,7 +1712,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         }
 
         const supportContacts = Object.entries(store.sessions || {})
-          .filter(([k, s]) => s && !k.startsWith('sim:') && s.origin !== 'simulation' && !s.archived && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || s.contactNotes || s.aiContext || s.clientName || s.notes))
+          .filter(([k, s]) => s && !k.startsWith('sim:') && s.origin !== 'simulation' && !s.archived && s.phone && s.phone !== OWNER_SELF_KEY && (s.supportModeEnabled || s.knowledgeBaseId || (Array.isArray(s.knowledgeBaseIds) && s.knowledgeBaseIds.length) || s.contactNotes || s.aiContext || s.clientName || s.notes))
           .map(([, s]) => s)
           .sort((a, b) => Date.parse(b.updatedAt || b.lastUserAt || 0) - Date.parse(a.updatedAt || a.lastUserAt || 0))
           .slice(0, 40)
@@ -1725,7 +1725,8 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
             ...(s.funnelStage ? { funnelStage: s.funnelStage } : {}),
             ...(Number(s.dealValue || 0) > 0 ? { dealValue: s.dealValue } : {}),
             ...(s.supportModeEnabled ? { supportModeEnabled: true } : {}),
-            ...(s.knowledgeBaseId ? { knowledgeBaseId: s.knowledgeBaseId } : {})
+            ...(s.knowledgeBaseId ? { knowledgeBaseId: s.knowledgeBaseId } : {}),
+            ...(Array.isArray(s.knowledgeBaseIds) && s.knowledgeBaseIds.length ? { knowledgeBaseIds: s.knowledgeBaseIds } : {})
           }));
         const ownerMemoryQuery = recentHistory.slice(-6)
           .map(entry => `${entry.role}: ${entry.content || ''}`)

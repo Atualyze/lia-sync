@@ -241,7 +241,8 @@ function rowToSession(row, messages = []) {
     pushName: c.push_name || '',
     jid: meta.jid || undefined,
     supportModeEnabled: Boolean(meta.supportModeEnabled),
-    knowledgeBaseId: meta.knowledgeBaseId || null,
+    knowledgeBaseId: meta.knowledgeBaseId || (Array.isArray(meta.knowledgeBaseIds) ? meta.knowledgeBaseIds[0] : null) || null,
+    knowledgeBaseIds: Array.isArray(meta.knowledgeBaseIds) ? meta.knowledgeBaseIds : (meta.knowledgeBaseId ? [meta.knowledgeBaseId] : []),
     instancePhone: meta.instancePhone || null,
     contactRole: meta.contactRole || null,
     contactNotes: meta.contactNotes || meta.crmNotes || meta.notes || '',
@@ -353,7 +354,8 @@ function sessionToConversation(key, session, contactId) {
       role: 'lia-assistant',
       jid: session.jid || null,
       supportModeEnabled: Boolean(session.supportModeEnabled),
-      knowledgeBaseId: session.knowledgeBaseId || null,
+      knowledgeBaseId: session.knowledgeBaseId || (Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds[0] : null) || null,
+      knowledgeBaseIds: Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : (session.knowledgeBaseId ? [session.knowledgeBaseId] : []),
       instancePhone: session.instancePhone || null,
       contactRole: session.contactRole || null,
       contactNotes: session.contactNotes || session.crmNotes || session.notes || '',
@@ -744,6 +746,9 @@ export class SupabaseSessionStore extends SessionStore {
           }
           if (lSession.knowledgeBaseId && (!rSession.knowledgeBaseId || lTime >= rTime)) {
             rSession.knowledgeBaseId = lSession.knowledgeBaseId;
+          }
+          if (Array.isArray(lSession.knowledgeBaseIds) && (!Array.isArray(rSession.knowledgeBaseIds) || !rSession.knowledgeBaseIds.length || lTime >= rTime)) {
+            rSession.knowledgeBaseIds = lSession.knowledgeBaseIds;
           }
           if (lSession.instancePhone && (!rSession.instancePhone || lTime >= rTime)) {
             rSession.instancePhone = lSession.instancePhone;

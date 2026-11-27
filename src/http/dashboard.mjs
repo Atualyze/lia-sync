@@ -17,6 +17,7 @@ import { dedupeMessages } from '../supabase-runtime.mjs';
 import { normalizePhone } from '../sessions.mjs';
 import { isOwnerKey, OWNER_SELF_KEY } from '../core/identity.mjs';
 import { isHumanHandoffActive, enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
+import { listKnowledgeBases, saveKnowledgeBase } from '../knowledge-bases.mjs';
 import { resolveGoogleAccessToken } from '../tools/google_auth.mjs';
 
 function sameInstancePhone(a, b) {
@@ -484,6 +485,21 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     await store.flush?.().catch(() => {});
     return json(res, 200, { ok: true, ...result });
   }
+  if (req.method === 'GET' && u.pathname === '/api/dashboard/knowledge-bases') {
+    const bases = (await listKnowledgeBases()).filter(kb => !kb.copilotOnly);
+    return json(res, 200, { ok: true, knowledgeBases: bases });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/knowledge-bases') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const rawId = String(body?.id || '').trim();
+    const content = String(body?.content || '');
+    if (!rawId || !content.trim()) return json(res, 400, { error: 'id_and_content_required' });
+    const safeId = rawId.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 64) || 'base_suporte';
+    await saveKnowledgeBase(safeId, content);
+    const bases = (await listKnowledgeBases()).filter(kb => !kb.copilotOnly);
+    return json(res, 200, { ok: true, id: safeId, knowledgeBases: bases });
+  }
   if (req.method === 'POST' && u.pathname === '/api/dashboard/crm-contact') {
     let body;
     try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
@@ -507,6 +523,18 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     if (body.notes !== undefined) session.notes = String(body.notes || '').trim().slice(0, 4000);
     if (body.aiContext !== undefined) session.aiContext = String(body.aiContext || '').trim().slice(0, 2000);
     if (body.notALead !== undefined) session.notALead = Boolean(body.notALead);
+    if (body.knowledgeBaseIds !== undefined || body.knowledgeBaseId !== undefined) {
+      const rawList = Array.isArray(body.knowledgeBaseIds)
+        ? body.knowledgeBaseIds
+        : (body.knowledgeBaseId ? [body.knowledgeBaseId] : []);
+      const cleanIds = [...new Set(rawList.map(x => String(x || '').trim().slice(0, 80)).filter(Boolean))].slice(0, 10);
+      session.knowledgeBaseIds = cleanIds;
+      session.knowledgeBaseId = cleanIds[0] || null;
+      if (cleanIds.length > 0) session.supportModeEnabled = true;
+    }
+    if (body.supportModeEnabled !== undefined) {
+      session.supportModeEnabled = Boolean(body.supportModeEnabled) || Boolean(session.knowledgeBaseIds?.length);
+    }
     if (body.sectorId !== undefined) session.sectorId = String(body.sectorId || '').trim().slice(0, 60);
     if (body.tags !== undefined) {
       session.tags = (Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(','))
@@ -518,7 +546,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     session.updatedAt = new Date().toISOString();
     store.markDirty();
     await store.flush?.().catch(() => {});
-    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
+    return json(res, 200, { ok: true, phone: rawPhone, crm: { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), knowledgeBaseIds: Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : (session.knowledgeBaseId ? [session.knowledgeBaseId] : []), knowledgeBaseId: session.knowledgeBaseId || null, supportModeEnabled: Boolean(session.supportModeEnabled), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' } });
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/crm-contact') {
     let body = {};

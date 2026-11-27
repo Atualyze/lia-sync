@@ -436,18 +436,21 @@ ${webSearchAvailable ? '   • "consultar_web": {"query": "..."} - pesquisa a we
    - MÍDIAS ANALISADAS (IMAGEM/PDF): Se a mensagem do cliente trouxer "[Imagem analisada]" ou "[Documento ... analisado]", responda diretamente à dúvida ou solicitação usando o resumo visual/textual e o histórico. Só use handoff_category quando uma categoria permitida realmente se aplicar; falha técnica de análise não é categoria de transbordo.
 ${(() => {
     const isSupportContact = Boolean(session.supportModeEnabled);
-    const kbId = session.knowledgeBaseId || '';
+    const kbIds = [...new Set([
+      ...(Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : []),
+      ...(session.knowledgeBaseId ? [session.knowledgeBaseId] : [])
+    ].map(x => String(x || '').trim()).filter(Boolean))];
     const knowledgeQuery = session.lastUserText || session.contextSummary || '';
     const recentChatText = (session.history || []).slice(-4).map(h => h?.content || '').join(' ');
-    // Sem knowledgeBaseId explícito, NÃO há fallback por palavra-chave: dossiês de
+    // Sem knowledgeBaseId(s) explícito(s), NÃO há fallback por palavra-chave: dossiês de
     // clientes distintos convivem no mesmo diretório, e um match por tokens pode
     // injetar a base de um cliente no atendimento de outro. A orientação genérica
     // continua via findGuidanceKnowledgeSync (pastas dedicadas).
-    const kbData = kbId
-      ? (isSupportContact
-        ? getRelevantKnowledgeBaseContentSync(kbId, knowledgeQuery, undefined, { maxChars: 6500 })
-        : getKnowledgeBaseContentSync(kbId))
-      : null;
+    const perKbMaxChars = kbIds.length > 1 ? Math.max(2200, Math.floor(7500 / kbIds.length)) : 6500;
+    const kbDatas = kbIds.map(id => (isSupportContact
+      ? getRelevantKnowledgeBaseContentSync(id, knowledgeQuery, undefined, { maxChars: perKbMaxChars })
+      : getKnowledgeBaseContentSync(id))).filter(d => d && d.content);
+    const kbData = kbDatas[0] || null;
     const guidanceKb = !isSupportContact ? findGuidanceKnowledgeSync(recentChatText, undefined, { maxChars: 3000 }) : null;
     const notes = (session.contactNotes || '').trim();
     const roleLabel = session.contactRole === 'partner_team'
@@ -456,7 +459,7 @@ ${(() => {
         ? 'Cliente Final / Simulação de Suporte do Sistema'
         : 'Cliente / Responsável do Projeto em Atendimento';
 
-    if (!isSupportContact && !kbData && !guidanceKb && !notes) return '';
+    if (!isSupportContact && !kbDatas.length && !guidanceKb && !notes) return '';
 
     let ctxBlock = `\n8. CONTEXTO ESPECIAL DESTE CONTATO (CONFIGURAÇÃO SELECIONADA NO PAINEL):`;
     if (isSupportContact) {
@@ -466,12 +469,14 @@ ${(() => {
     if (notes) {
       ctxBlock += `\n   - OBSERVAÇÕES INDIVIDUAIS DO CONTATO: ${notes}`;
     }
-    if (kbData && kbData.content) {
-      ctxBlock += `\n   - REPERTÓRIO DE CONHECIMENTO DA BASE (${kbData.title}):
+    if (kbDatas.length) {
+      const titles = kbDatas.map(d => d.title).join(', ');
+      const refsBlock = kbDatas.map(d => `[REFERÊNCIA RELEVANTE DA BASE OFICIAL: ${d.title} (v${d.version})]\n${d.content}`).join('\n\n---\n\n');
+      ctxBlock += `\n   - REPERTÓRIO DE CONHECIMENTO DA(S) BASE(S) (${titles}):
      1. RESPOSTA ENXUTA E DIRETA (SEM TEXTÃO): Não explique demais nem despeje todo o manual de uma vez! Responda apenas o ponto necessário, com o tamanho natural para a pergunta.
      2. FOCO PRÁTICO NO CRM (/admin) + LANDING PAGE: Sempre explique na visão prática do cliente: *o que é*, *o que faz*, *onde fica na tela/menu/botão* e *como usar passo a passo*.
      3. DADOS TÉCNICOS DE USO SIM, CÓDIGO INTERNO JAMAIS: Você pode explicar o funcionamento técnico operacional (ex: botão "Sincronizar com Asaas" na aba de Pedidos, Dossiê "Funil 360", colunas do Kanban, regras de cobrança mensal/anual, planos e valores), mas é TERMINANTEMENTE PROIBIDA de citar caminhos de backend, rotas de API (/api/...), nomes de tabelas do banco de dados ou arquivos de código interno.
-     4. USE O CONHECIMENTO PARA COMPREENDER E CONDUZIR: Não copie o manual, não cite a base e não transforme exemplos em regras. Se faltar um dado real, consulte a ferramenta adequada ou faça uma pergunta curta.\n     5. NOTIFICAÇÃO AO RESPONSÁVEL / EQUIPE: Só encaminhe quando houver necessidade de ação humana, dúvida técnica interna ou ausência de informação necessária. Não transfira apenas porque uma frase não apareceu literalmente na base.\n\n[REFERÊNCIA RELEVANTE DA BASE OFICIAL: ${kbData.title} (v${kbData.version})]\n${kbData.content}`;
+     4. USE O CONHECIMENTO PARA COMPREENDER E CONDUZIR: Não copie o manual, não cite a base e não transforme exemplos em regras. Se faltar um dado real, consulte a ferramenta adequada ou faça uma pergunta curta.\n     5. NOTIFICAÇÃO AO RESPONSÁVEL / EQUIPE: Só encaminhe quando houver necessidade de ação humana, dúvida técnica interna ou ausência de informação necessária. Não transfira apenas porque uma frase não apareceu literalmente na base.\n\n${refsBlock}`;
     }
     if (guidanceKb && guidanceKb.content) {
       ctxBlock += `\n\n[DIRETRIZES DE CONDUÇÃO E CONFORMIDADE: ${guidanceKb.title}]\nUse como referência de postura, empatia, quebra de objeções e conformidade legal. NUNCA trate exemplos ilustrativos deste guia como preços ou condições reais da empresa (use sempre o FAQ oficial para dados reais).\n${guidanceKb.content}`;

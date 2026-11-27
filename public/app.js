@@ -6113,7 +6113,39 @@ function renderFunnel() {
   });
 }
 
-function openCrmModal(phone) {
+async function loadKnowledgeBasesList(force = false) {
+  if (!force && Array.isArray(state.knowledgeBases) && state.knowledgeBases.length) return state.knowledgeBases;
+  try {
+    const data = await api('/api/dashboard/knowledge-bases');
+    state.knowledgeBases = Array.isArray(data?.knowledgeBases) ? data.knowledgeBases : [];
+  } catch {
+    state.knowledgeBases ||= [];
+  }
+  return state.knowledgeBases;
+}
+
+function renderCrmKbList(selectedIds = []) {
+  const listEl = $('#crm-kb-list');
+  if (!listEl) return;
+  const selectedSet = new Set((Array.isArray(selectedIds) ? selectedIds : []).map(x => String(x || '').trim()).filter(Boolean));
+  const bases = Array.isArray(state.knowledgeBases) ? state.knowledgeBases : [];
+  if (!bases.length) {
+    listEl.innerHTML = '<div class="ops-muted" style="font-size:12px;">Nenhuma base .md encontrada em data/knowledge-bases.</div>';
+    return;
+  }
+  listEl.innerHTML = bases.map((kb) => `<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:4px 0;cursor:pointer;">
+    <input type="checkbox" class="crm-kb-cb" value="${esc(kb.id)}"${selectedSet.has(kb.id) ? ' checked' : ''} />
+    <span><strong>${esc(kb.title || kb.id)}</strong> <span class="ops-muted">(${esc(kb.id)}.md · v${esc(kb.version || '1.0')})</span></span>
+  </label>`).join('');
+  listEl.querySelectorAll('.crm-kb-cb').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const anyChecked = [...listEl.querySelectorAll('.crm-kb-cb:checked')].length > 0;
+      if (anyChecked && $('#crm-support-mode')) $('#crm-support-mode').checked = true;
+    });
+  });
+}
+
+async function openCrmModal(phone) {
   const isCreate = !phone;
   const item = isCreate ? {} : ((state.sessions || []).find((s) => s.phone === phone) || {});
   if (!isCreate && !item.phone) return;
@@ -6134,9 +6166,35 @@ function openCrmModal(phone) {
   if ($('#crm-tags')) $('#crm-tags').value = (item.tags || []).join(', ');
   if ($('#crm-ai-context')) $('#crm-ai-context').value = item.aiContext || '';
   if ($('#crm-not-a-lead')) $('#crm-not-a-lead').checked = Boolean(item.notALead);
+  const initialKbIds = [...new Set([
+    ...(Array.isArray(item.knowledgeBaseIds) ? item.knowledgeBaseIds : []),
+    ...(item.knowledgeBaseId ? [item.knowledgeBaseId] : [])
+  ].filter(Boolean))];
+  if ($('#crm-support-mode')) $('#crm-support-mode').checked = Boolean(item.supportModeEnabled || initialKbIds.length);
   if ($('#crm-notes')) $('#crm-notes').value = item.notes || '';
   $('#crm-lead-modal')?.classList.remove('hidden');
+  await loadKnowledgeBasesList();
+  renderCrmKbList(initialKbIds);
 }
+$('#crm-kb-upload-btn')?.addEventListener('click', () => $('#crm-kb-file-input')?.click());
+$('#crm-kb-file-input')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const content = await file.text();
+    const currentChecked = [...document.querySelectorAll('#crm-kb-list .crm-kb-cb:checked')].map(el => el.value);
+    const baseId = file.name.replace(/\.(md|markdown|txt)$/i, '');
+    const res = await api('/api/dashboard/knowledge-bases', { method: 'POST', body: JSON.stringify({ id: baseId, content }) });
+    state.knowledgeBases = Array.isArray(res?.knowledgeBases) ? res.knowledgeBases : state.knowledgeBases;
+    const newId = res?.id || baseId;
+    renderCrmKbList([...new Set([...currentChecked, newId])]);
+    if ($('#crm-support-mode')) $('#crm-support-mode').checked = true;
+    showToast({ title: 'Base .md Adicionada', message: `${newId}.md vinculada ao contato.`, type: 'success' });
+  } catch (err) {
+    showToast({ title: 'Erro ao enviar .md', message: err.message, type: 'error' });
+  }
+});
 $('#crm-close-btn')?.addEventListener('click', () => $('#crm-lead-modal')?.classList.add('hidden'));
 $('#crm-search')?.addEventListener('input', () => renderFunnel());
 $('#crm-sector-filter')?.addEventListener('change', () => renderFunnel());
@@ -6147,6 +6205,7 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
     showToast({ title: 'Telefone obrigatório', message: 'Informe o número com DDI+DDD (ex: 5585999991111).', type: 'error' });
     return;
   }
+  const selectedKbIds = [...document.querySelectorAll('#crm-kb-list .crm-kb-cb:checked')].map(el => el.value).filter(Boolean);
   const payload = {
     phone,
     create: isCreate,
@@ -6158,6 +6217,9 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
     tags: $('#crm-tags')?.value || '',
     aiContext: $('#crm-ai-context')?.value || '',
     notALead: Boolean($('#crm-not-a-lead')?.checked),
+    knowledgeBaseIds: selectedKbIds,
+    knowledgeBaseId: selectedKbIds[0] || null,
+    supportModeEnabled: Boolean($('#crm-support-mode')?.checked || selectedKbIds.length),
     notes: $('#crm-notes')?.value || '',
   };
   const res = await api('/api/dashboard/crm-contact', { method: 'POST', body: JSON.stringify(payload) });
@@ -6305,6 +6367,7 @@ function renderContactFicha(item) {
       <div class="detail-row"><span>Valor Negociado</span><b>${Number(item.dealValue || 0) > 0 ? formatBRL(item.dealValue) : '—'}</b></div>
       <div class="detail-row"><span>Modo</span><b>${item.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
       <div class="detail-row"><span>Classificação</span><b>${item.notALead ? 'Não é lead' : 'Lead / Cliente'}</b></div>
+      <div class="detail-row"><span>Suporte (.md)</span><b>${(item.knowledgeBaseIds?.length ? item.knowledgeBaseIds : (item.knowledgeBaseId ? [item.knowledgeBaseId] : [])).map(id => `${esc(id)}.md`).join(', ') || (item.supportModeEnabled ? 'Ativo (sem base)' : 'Desativado')}</b></div>
       <div class="detail-row"><span>Origem</span><b>${item.origin === 'simulation' ? 'Simulador' : 'WhatsApp Real'}</b></div>
       <div class="detail-row"><span>Última Atividade</span><b>${esc(item.time || 'agora')}</b></div>
     </div>
@@ -6398,6 +6461,7 @@ function renderContacts() {
           <strong style="font-size:14px;">${esc(dName)}</strong>
           ${modeBadge}
           ${item.notALead ? '<span class="pill mini warn">Não é lead</span>' : `<span class="pill mini">${esc(stageLabel)}</span>`}
+          ${(item.supportModeEnabled || item.knowledgeBaseId || item.knowledgeBaseIds?.length) ? '<span class="pill mini mint">Suporte</span>' : ''}
           ${item.sectorId ? `<span class="pill mini">${esc(item.sectorId)}</span>` : ''}
           ${valBadge}
         </div>

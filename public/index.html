@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126e" />
+  <link rel="stylesheet" href="/dashboard/styles.css?v=20261126f" />
 </head>
 <body>
   <!-- NATIVE APPLE NOTIFICATION CENTER (TOAST STACK) -->
@@ -2755,6 +2755,14 @@
       </div>
       <label style="font-size:12px;display:block;margin-bottom:10px;">Tags (vírgula)<input type="text" id="crm-tags" class="kanban-stage-select" style="width:100%;margin-top:4px;" placeholder="vip, retorno" /></label>
       <label class="toggle-field" style="margin-bottom:10px;"><input type="checkbox" id="crm-not-a-lead" /><span>Não é lead (ocultar do Funil / Kanban e bloquear follow-ups automáticos)</span></label>
+      <div style="border:1px solid var(--border-hairline,rgba(255,255,255,0.1));border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <label class="toggle-field" style="margin:0;"><input type="checkbox" id="crm-support-mode" /><span>Atendimento próprio de Suporte (.md)</span></label>
+          <button type="button" class="btn-handoff" style="padding:3px 8px;font-size:11px;" id="crm-kb-upload-btn">+ Enviar .md</button>
+          <input type="file" id="crm-kb-file-input" accept=".md,.markdown,.txt" class="hidden" />
+        </div>
+        <div id="crm-kb-list" style="max-height:130px;overflow:auto;"></div>
+      </div>
       <label style="font-size:12px;display:block;margin-bottom:10px;">Contexto para a Lia (como tratar / atender este contato)<textarea id="crm-ai-context" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" maxlength="2000" placeholder="Ex.: Cliente VIP, prefere atendimento direto, já usa o plano Pro, não oferecer desconto sem falar com o gestor..."></textarea></label>
       <label style="font-size:12px;display:block;margin-bottom:12px;">Notas Internas<textarea id="crm-notes" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" placeholder="Anotações da equipe..."></textarea></label>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
@@ -2763,6 +2771,6 @@
       </div>
     </div>
   </div>
-  <script src="/dashboard/app.js?v=20261126e"></script>
+  <script src="/dashboard/app.js?v=20261126f"></script>
 </body>
 </html>
