@@ -1012,12 +1012,19 @@ async function api(path, options = {}) {
     const detail = await response.text();
     if (response.status === 403) throw new Error('Seu usuário autenticou, mas ainda não possui um perfil ativo/autorizado no Supabase. Ative o perfil em public.profiles.');
     if (response.status === 503) throw new Error('O serviço de autorização do Supabase está temporariamente indisponível.');
-    let parsedMsg = detail;
+    let parsedMsg = `HTTP ${response.status}`;
+    let parsedPayload = null;
     try {
-      const parsed = JSON.parse(detail);
-      parsedMsg = parsed.error || parsed.message || detail;
-    } catch {}
-    throw new Error(parsedMsg);
+      parsedPayload = JSON.parse(detail);
+      const errList = Array.isArray(parsedPayload?.errors) ? parsedPayload.errors.filter(Boolean).join(' ') : '';
+      parsedMsg = errList || parsedPayload?.error || parsedPayload?.message || parsedMsg;
+    } catch {
+      if (detail && detail.length < 300) parsedMsg = detail;
+    }
+    const err = new Error(parsedMsg);
+    err.status = response.status;
+    err.payload = parsedPayload;
+    throw err;
   }
   return response.json();
 }
@@ -2830,6 +2837,14 @@ async function publishAdminChanges() {
     if (state.view === 'tools') await renderTools();
     if (state.view === 'overview') await renderOverview();
   } catch (error) {
+    if (error?.payload?.noChanges || /Não há alterações no rascunho para publicar/i.test(error?.message || '')) {
+      if (error?.payload?.snapshot) state.adminConfig = error.payload.snapshot;
+      renderAdmin({ force: true });
+      const rev = state.adminConfig?.revision ? ` (v${state.adminConfig.revision})` : '';
+      adminFeedback(`Todas as alterações já estão publicadas${rev}.`, 'info');
+      opsFeedback('tools-feedback', `Todas as alterações já estão publicadas${rev}.`, 'info');
+      return;
+    }
     adminFeedback(`Erro na publicação: ${error.message}`, 'error');
     opsFeedback('tools-feedback', `Erro na publicação: ${error.message}`, 'error');
   } finally {
