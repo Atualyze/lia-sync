@@ -6395,3 +6395,100 @@ html[data-theme="light"] .conv-skeleton-avatar,
 html[data-theme="light"] .conv-skeleton-lines span {
   background: #e2e6ee;
 }
+
+/* Light Theme Contrast & Remaining Dark-Surface Overrides */
+html[data-theme="light"] {
+  --text-secondary: #3d4454;
+  --text-tertiary: #5e6678;
+  --border-hairline: #dde2ea;
+  --border-strong: #c5ccd8;
+}
+
+html[data-theme="light"] .segmented-control,
+html[data-theme="light"] .sticky-admin-bar,
+html[data-theme="light"] .toggle-field,
+html[data-theme="light"] .admin-faq-row,
+html[data-theme="light"] .admin-preview-result,
+html[data-theme="light"] .voice-test-box,
+html[data-theme="light"] .composer-reply-bar,
+html[data-theme="light"] .media-card,
+html[data-theme="light"] .bubble-quote,
+html[data-theme="light"] .detail > .panel-head,
+html[data-theme="light"] .config-accordion-body,
+html[data-theme="light"] .agenda-card,
+html[data-theme="light"] .agenda-kpi-card,
+html[data-theme="light"] .error-item,
+html[data-theme="light"] .global-draft-banner,
+html[data-theme="light"] .cmd-item:hover,
+html[data-theme="light"] .wa-attach-item:hover,
+html[data-theme="light"] .wa-quick-item:hover {
+  background: #f5f7fa !important;
+  border-color: var(--border-hairline) !important;
+  color: var(--text-primary) !important;
+}
+
+html[data-theme="light"] .segment-btn {
+  color: var(--text-secondary) !important;
+}
+html[data-theme="light"] .segment-btn.active {
+  background: #ffffff !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 1px 2px rgba(17, 19, 24, 0.08) !important;
+}
+html[data-theme="light"] .contact-avatar {
+  background: #e3e8f0 !important;
+  color: #1f2937 !important;
+  border: 1px solid #cfd6e2;
+}
+html[data-theme="light"] .metrics-table th {
+  background: #f0f3f7 !important;
+  color: var(--text-secondary) !important;
+  border-bottom-color: var(--border-strong) !important;
+}
+html[data-theme="light"] .metrics-table td {
+  border-bottom-color: var(--border-hairline) !important;
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .metrics-table tbody tr:hover td {
+  background: #f6f8fb !important;
+}
+html[data-theme="light"] code,
+html[data-theme="light"] pre,
+html[data-theme="light"] .bubble-text code {
+  background: #eef2f6 !important;
+  color: #1b2432 !important;
+  border: 1px solid #dce2ec;
+}
+html[data-theme="light"] .bubble.out .bubble-text code {
+  background: #c8ebd9 !important;
+  color: #0d2b1d !important;
+  border-color: #a6d8be;
+}
+html[data-theme="light"] .bubble-actions {
+  background: #ffffff !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: 0 4px 12px rgba(17, 19, 24, 0.1) !important;
+}
+html[data-theme="light"] .bubble-act-btn {
+  color: var(--text-secondary) !important;
+}
+html[data-theme="light"] .bubble-act-btn:hover {
+  background: #eef2f6 !important;
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .audio-play-btn,
+html[data-theme="light"] .media-play-btn {
+  background: var(--accent-green) !important;
+  color: #ffffff !important;
+}
+html[data-theme="light"] .ctx-menu-item {
+  color: var(--text-primary) !important;
+}
+html[data-theme="light"] .ctx-menu-item:hover {
+  background: #f0f3f7 !important;
+}
+html[data-theme="light"] .ctx-menu-item kbd {
+  background: #eef1f5 !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-strong) !important;
+}
