@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { serveStatic } from '../dashboard.mjs';
+import { serveStatic, isAiStudioPreview } from '../dashboard.mjs';
 import { json, NOT_HANDLED } from './utils.mjs';
 import { isChatwootApiPath, isVerifiedWebhookEndpoint, isLegacyStaticPath, isDashboardViewPath } from './proxy.mjs';
 import { handleDashboardRoutes, handleDashboardSettingsRoutes, handleDashboardRuntimeRoutes } from './dashboard.mjs';
@@ -210,9 +210,7 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       return proxyToChatwoot(req, res);
     }
     if (u.pathname === '/api/dashboard/auth/config') {
-      const previewBypass = process.env.AI_STUDIO_PREVIEW === 'true'
-        && process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true'
-        && process.env.NODE_ENV !== 'production';
+      const previewBypass = isAiStudioPreview(req);
       return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: previewBypass, previewBypass });
     }
     let authContext;

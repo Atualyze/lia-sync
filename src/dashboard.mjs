@@ -9,15 +9,18 @@ export function validPhone(p) {
   return /^\d{8,15}$/.test(value) || /^\d+@lid$/i.test(value);
 }
 
+export function isAiStudioPreview(req = null) {
+  if (process.env.AI_STUDIO_PREVIEW === 'true' && process.env.NODE_ENV !== 'production') return true;
+  const host = String(req?.headers?.host || '').split(':')[0].trim().toLowerCase();
+  if (/^ais-dev-[a-z0-9-]+\.[a-z0-9-]+\.run\.app$/i.test(host)) return true;
+  return false;
+}
+
 export function authCache() {
   const cache = new Map();
 
   return async (req, config) => {
-    if (
-      process.env.AI_STUDIO_PREVIEW === 'true'
-      && process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true'
-      && process.env.NODE_ENV !== 'production'
-    ) {
+    if (isAiStudioPreview(req)) {
       return {
         ok: true,
         user: { id: 'ai-studio-preview', email: 'preview@aistudio.local', role: 'admin', active: true }
@@ -107,7 +110,7 @@ export async function serveStatic(req, res, config) {
     const isMutableAsset = relative.endsWith('.html') || relative.endsWith('.js') || relative.endsWith('.css');
     const stat = await fs.stat(file);
     const etag = `"${stat.size}-${Math.floor(stat.mtimeMs)}"`;
-    const allowAiStudioFrame = process.env.AI_STUDIO_PREVIEW === 'true' && process.env.NODE_ENV !== 'production';
+    const allowAiStudioFrame = isAiStudioPreview(req);
     const commonHeaders = {
       'content-type': contentType,
       'cache-control': isMutableAsset ? 'no-cache, must-revalidate' : 'public, max-age=86400',
