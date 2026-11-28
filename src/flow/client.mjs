@@ -485,6 +485,20 @@ export async function handleClientMessage({
         if (nonTextNotice.size > NON_TEXT_NOTICE_MAX_ENTRIES) nonTextNotice.delete(nonTextNotice.keys().next().value);
         s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]' + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         store.markDirty();
+        if (ai?.askAI) {
+          try {
+            const mediaReply = await ai.askAI({
+              system: `Você é ${assistant || 'a assistente virtual'} da empresa ${identity?.companyName || 'equipe'}.\n\n[ANEXO_SEM_TEXTO]\nO contato enviou um arquivo ou mídia sem texto explicativo. Responda de forma natural, breve e acolhedora perguntando como pode ajudar com o material enviado, sem usar frases engessadas.\n[/ANEXO_SEM_TEXTO]`,
+              history: s.history.slice(-8, -1),
+              userText: '[Arquivo/mídia enviada]',
+              botConfig,
+              disableToolCalling: true,
+              deadline: Date.now() + 12_000
+            });
+            const naturalMediaReply = String(mediaReply?.reply || '').trim();
+            if (naturalMediaReply) return naturalMediaReply;
+          } catch {}
+        }
         return 'Recebi seu arquivo por aqui! 📄\n\nSe preferir escrever ou mandar um áudio com o que você precisa, fico à disposição por aqui.';
       }
 
@@ -1324,16 +1338,34 @@ export async function handleClientMessage({
               s.pendingClientPayment.args?.descricao || 'Pagamento via Pix'
             );
           } else if (isPriceViolation && !filtered.violations.includes('clinica') && origin !== 'simulation' && origin !== 'preview') {
-            enterHumanHandoff(s, {
-              at: now(),
-              reason: 'Confirmação de valor/preço pendente com a equipe'
-            });
-            await createAdminConsultCommitment({
-              reason: 'Confirmação de valor/preço antes de informar ao cliente',
-              title: 'Confirmar informação de preço com responsável',
-              category: 'financeiro'
-            });
-            safeReplyText = 'Para te passar o valor correto, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.';
+            let contextualPriceReply = '';
+            try {
+              const repaired = await ai?.askAI?.({
+                system: `${systemPrompt}\n\n[ORIENTAÇÃO_DE_CUSTO_CONTEXTUAL]\nO cliente perguntou sobre custos/valores, mas o rascunho anterior mencionou um valor não confirmado na tabela publicada. NÃO transfira para humano automaticamente e NÃO use frase genérica. Responda diretamente à dúvida do cliente considerando o contexto da conversa: explique de forma natural o que define o valor/escopo ou informe apenas os valores oficialmente presentes na sua base de conhecimento, fazendo uma pergunta objetiva para entender a necessidade dele.\n[/ORIENTAÇÃO_DE_CUSTO_CONTEXTUAL]`,
+                history: activeContext.history.slice(-contextTurns, -1),
+                userText,
+                botConfig,
+                disableToolCalling: true,
+                deadline: aiDeadline
+              });
+              const candidate = String(repaired?.reply || '').trim();
+              const checked = filterReply(candidate, { allowedPrices, strictPrices: true });
+              if (candidate && !checked.blocked) contextualPriceReply = checked.text;
+            } catch {}
+            if (contextualPriceReply) {
+              safeReplyText = contextualPriceReply;
+            } else {
+              enterHumanHandoff(s, {
+                at: now(),
+                reason: 'Confirmação de valor/preço pendente com a equipe'
+              });
+              await createAdminConsultCommitment({
+                reason: 'Confirmação de valor/preço antes de informar ao cliente',
+                title: 'Confirmar informação de preço com responsável',
+                category: 'financeiro'
+              });
+              safeReplyText = 'Para te passar o valor correto, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.';
+            }
           } else {
             safeReplyText = faqPriceReply || (isPriceViolation
               ? 'Para informar o valor corretamente, preciso confirmar essa informação com a equipe. Ainda não gerei nenhuma cobrança.'

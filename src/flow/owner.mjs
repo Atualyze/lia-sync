@@ -2436,8 +2436,20 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
         if (calResult) {
           const res = calResult.result;
           const calStatus = res?.success ? '🟢 Operação confirmada' : '🔴 Operação não concluída';
-          const calMsg = `📅 *Google Agenda / Compromissos:*\n\n${res?.message || 'Não foi possível concluir a operação.'}\n• *Status:* ${calStatus}${res?.success && res.availableSlots ? `\n• *Horários Livres:* ${res.availableSlots.join(', ')}` : ''}`;
-          return recordSelfTurn(filterReply(calMsg, { isCopilot: true }).text);
+          const fallbackCalMsg = `📅 *Google Agenda / Compromissos:*\n\n${res?.message || 'Não foi possível concluir a operação.'}\n• *Status:* ${calStatus}${res?.success && res.availableSlots ? `\n• *Horários Livres:* ${res.availableSlots.join(', ')}` : ''}`;
+          const calSynth = await ai?.askAI?.({
+            system: `${sys}\n\n[RESULTADO_AGENDA_JSON]\nApresente o resultado real abaixo de forma natural, clara e direta para o responsável. Nunca invente horários ou confirmação: se success for false ou não houver event.id na criação, explique exatamente o ocorrido.\n${JSON.stringify(res)}\n[/RESULTADO_AGENDA_JSON]`,
+            history: recentHistory,
+            userText: cleanCommand + formatMessageContextForAI(contextText),
+            botConfig,
+            isOwner: true,
+            disableToolCalling: true,
+            deadline: Math.min(aiDeadline, Date.now() + 14_000)
+          }).catch(() => null);
+          const calNatural = String(calSynth?.reply || '').trim();
+          const missingEventId = calResult.args?.action === 'criar_evento' && res?.success === true && !res?.event?.id;
+          const finalCalMsg = (!missingEventId && calNatural) ? calNatural : fallbackCalMsg;
+          return recordSelfTurn(filterReply(finalCalMsg, { isCopilot: true }).text);
         }
 
         // PDF gerado por chamada de ferramenta do modelo: preparar prévia com o arquivo real
