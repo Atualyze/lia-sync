@@ -437,6 +437,7 @@ export async function createApp({ store = defaultStore, flow, dashboardAuth, web
     operationsStore,
     copilotTaskStore,
     liaRuntime,
+    campaignStore,
     getTelemetry,
     getSectors: () => {
       const projected = sectorProjection.active() || [];

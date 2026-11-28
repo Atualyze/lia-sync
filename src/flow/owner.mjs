@@ -45,7 +45,7 @@ import { parseAutonomousCommand } from '../runtime/schedule-parser.mjs';
 import { formatMessageContextForAI } from '../channels/message-context.mjs';
 
 export async function handleOwnerSession({
-  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, liaRuntime = null, logger, now, getHumanPhone, getTelemetry,
+  store, ai, whatsapp, reminderStore, operationsStore = null, copilotTaskStore = null, liaRuntime = null, campaignStore = null, logger, now, getHumanPhone, getTelemetry,
   botConfig, adminConfig, identity, owner, assistant, ownerLabel,
   isOwnerSender, getWaitingList, findSessionByTarget,
   phone, text, origin, nonText, mediaType, rawItem, pushName, authorizedResume, messageId, attachments, contextText = ''
@@ -1496,6 +1496,7 @@ export async function handleOwnerSession({
                   whatsapp,
                   ai,
                   botConfig,
+                  campaignStore,
                   session: sSelf,
                   prepareOnly: true
                 });
@@ -2359,6 +2360,7 @@ ${toolRes?.error || 'Erro desconhecido ao acionar o envio.'}`;
                   whatsapp,
                   ai,
                   botConfig,
+                  campaignStore,
                   session: sSelf,
                   adminConfig,
                   userText: cleanCommand,
@@ -2572,6 +2574,7 @@ ${errMsg}`;
                   whatsapp,
                   ai,
                   botConfig,
+                  campaignStore,
                   session: sSelf
                 });
                 if (freePix?.success) {

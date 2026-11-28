@@ -60,7 +60,7 @@ function resolveFunnelStage(s, history) {
   return 'novo';
 }
 
-export async function handleDashboardRoutes({ req, res, u, store, f, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null }) {
+export async function handleDashboardRoutes({ req, res, u, store, f, adminConfig = null, deliverReactivationReply = null, getActiveInstancePhone = null, notifyCopilot = null }) {
   if (req.method === 'GET' && u.pathname === '/api/dashboard/avatar') {
     const rawPhone = String(u.searchParams.get('phone') || '').trim();
     if (!rawPhone || isOwnerKey(rawPhone) || rawPhone.startsWith('sim:') || rawPhone.length > 64) {
@@ -198,7 +198,7 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           internalNotes: Array.isArray(s.internalNotes) ? s.internalNotes : [],
           activities: Array.isArray(s.activities) ? s.activities : [],
           customFields: s.customFields && typeof s.customFields === 'object' ? s.customFields : {},
-          sla: computeLeadSlaStatus(s),
+          sla: computeLeadSlaStatus(s, { slaHours: adminConfig?.active?.crm?.slaHours || 24 }),
           updatedAt: s.updatedAt,
           lastActivityIso,
           lastActivityTime,
