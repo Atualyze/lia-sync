@@ -8,6 +8,7 @@ import { validPhone } from '../dashboard.mjs';
 import { sendText, deleteChatForSync, getProfilePictureUrl } from '../whatsapp.mjs';
 import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus, getFreeTierQuotaSnapshot } from '../ai.mjs';
 import { applyStageAutomations } from '../crm/stage-automations.mjs';
+import { appendActivity, addInternalNote, computeLeadSlaStatus, normalizeCustomFields } from '../crm/crm-engine.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
@@ -194,6 +195,10 @@ export async function handleDashboardRoutes({ req, res, u, store, f, deliverReac
           human: isHumanHandoffActive(s),
           isInternal: Boolean(isCopilotSelf || (activeInstancePhone && sameInstancePhone(rawPhone, activeInstancePhone))),
           funnelStage: resolveFunnelStage(s, history),
+          internalNotes: Array.isArray(s.internalNotes) ? s.internalNotes : [],
+          activities: Array.isArray(s.activities) ? s.activities : [],
+          customFields: s.customFields && typeof s.customFields === 'object' ? s.customFields : {},
+          sla: computeLeadSlaStatus(s),
           updatedAt: s.updatedAt,
           lastActivityIso,
           lastActivityTime,
@@ -554,8 +559,13 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
       const nextStage = String(body.funnelStage).trim();
       if (session.funnelStage !== nextStage) {
         session.funnelStage = nextStage;
+        appendActivity(session, { type: 'stage_change', title: `Etapa alterada para ${nextStage}`, actor: 'Painel' });
         applyStageAutomations({ session, newStage: nextStage, botConfig: adminConfig?.active });
       }
+    }
+    if (body.customFields && typeof body.customFields === 'object') {
+      session.customFields = { ...(session.customFields || {}), ...normalizeCustomFields(body.customFields) };
+      appendActivity(session, { type: 'custom_field', title: 'Campos customizados salvos', actor: 'Painel' });
     }
     session.updatedAt = new Date().toISOString();
     store.markDirty();
@@ -563,7 +573,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     const kbIds = Array.isArray(session.knowledgeBaseIds) ? session.knowledgeBaseIds : (session.knowledgeBaseId ? [session.knowledgeBaseId] : []);
     const phoneFormatted = formatPhoneNumber(rawPhone);
     const displayName = (session.clientName || session.contactName || session.pushName || '').trim() || phoneFormatted;
-    const crmPayload = { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), knowledgeBaseIds: kbIds, knowledgeBaseId: session.knowledgeBaseId || null, supportModeEnabled: Boolean(session.supportModeEnabled), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo' };
+    const crmPayload = { clientName: session.clientName, email: session.email, dealValue: session.dealValue || 0, notes: session.notes || '', aiContext: session.aiContext || '', notALead: Boolean(session.notALead), knowledgeBaseIds: kbIds, knowledgeBaseId: session.knowledgeBaseId || null, supportModeEnabled: Boolean(session.supportModeEnabled), sectorId: session.sectorId || '', tags: session.tags || [], funnelStage: session.funnelStage || 'novo', customFields: session.customFields || {}, internalNotes: session.internalNotes || [], activities: session.activities || [], sla: computeLeadSlaStatus(session, { slaHours: adminConfig?.active?.crm?.slaHours || 24 }) };
     return json(res, 200, {
       ok: true,
       phone: rawPhone,
@@ -585,6 +595,18 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
         history: Array.isArray(session.history) ? session.history : []
       }
     });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/dashboard/crm-note') {
+    let body;
+    try { body = await readBody(req); } catch { return json(res, 400, { error: 'invalid_json' }); }
+    const rawPhone = String(body.phone || '').trim();
+    const session = store.get(rawPhone);
+    if (!session) return json(res, 404, { error: 'session_not_found' });
+    const note = addInternalNote(session, { text: body.text, author: body.author || 'Equipe' });
+    if (!note) return json(res, 400, { error: 'empty_note' });
+    store.markDirty();
+    await store.flush?.().catch(() => {});
+    return json(res, 200, { ok: true, note, internalNotes: session.internalNotes, activities: session.activities });
   }
   if (req.method === 'DELETE' && u.pathname === '/api/dashboard/crm-contact') {
     let body = {};
@@ -712,6 +734,7 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     const prevStage = session.funnelStage;
     session.funnelStage = stage;
     if (prevStage !== stage) {
+      appendActivity(session, { type: 'stage_change', title: `Etapa alterada para ${stage}`, actor: 'Kanban' });
       applyStageAutomations({ session, newStage: stage, botConfig: adminConfig?.active });
     }
     if (stage === 'fechado' && adminConfig?.active?.reputation?.enabled) {

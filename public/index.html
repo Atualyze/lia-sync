@@ -2750,6 +2750,16 @@
               <button type="button" class="btn-handoff primary" id="sa-add-btn">Adicionar Regra</button>
             </div>
             <div id="sa-rules-list" class="ops-muted" style="font-size:12px;">Nenhuma automação configurada.</div>
+          </div>
+          <div id="crm-sla-fields-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>SLA &amp; Campos Customizáveis do CRM</strong><div class="ops-muted" style="font-size:12px;">Define o prazo (em horas) para alertar leads parados e os campos extras preenchidos pela equipe ou pela Lia.</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input type="number" min="1" max="720" id="crm-sla-hours" class="kanban-stage-select" style="max-width:120px;" value="24" title="Prazo SLA em horas" />
+              <input type="text" id="crm-custom-schema" class="kanban-stage-select" style="flex:1;min-width:240px;" placeholder="Campos extras (ex: segmento, cnpj, cidade)" />
+              <button type="button" class="btn-handoff primary" id="crm-sla-save-btn">Salvar SLA &amp; Campos</button>
+            </div>
             </div>
           </div>
           <div id="canned-panel" class="panel" style="margin-top:16px;padding:16px;">
@@ -2954,6 +2964,7 @@
         <div id="crm-kb-list" style="max-height:130px;overflow:auto;"></div>
       </div>
       <label style="font-size:12px;display:block;margin-bottom:10px;">Contexto para a Lia (como tratar / atender este contato)<textarea id="crm-ai-context" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" maxlength="2000" placeholder="Ex.: Cliente VIP, prefere atendimento direto, já usa o plano Pro, não oferecer desconto sem falar com o gestor..."></textarea></label>
+      <label style="font-size:12px;display:block;margin-bottom:10px;">Campos Customizados (chave=valor por linha)<textarea id="crm-custom-fields" class="kanban-stage-select" style="width:100%;min-height:56px;margin-top:4px;" placeholder="segmento=barbearia&#10;cidade=Fortaleza"></textarea></label>
       <label style="font-size:12px;display:block;margin-bottom:12px;">Notas Internas<textarea id="crm-notes" class="kanban-stage-select" style="width:100%;min-height:68px;margin-top:4px;" placeholder="Anotações da equipe..."></textarea></label>
       <div class="crm-modal-actions" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <button type="button" class="btn-handoff" id="crm-delete-btn" style="color:var(--danger,#f87171);border-color:rgba(248,113,113,0.35);">Excluir Contato</button>

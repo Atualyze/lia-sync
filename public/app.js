@@ -1943,6 +1943,27 @@ function renderChat({ forceRender = false } = {}) {
       <p class="ops-muted" style="font-size:12px;white-space:pre-wrap;margin:4px 0 0;">${esc(session.aiContext || 'Nenhuma instrução específica cadastrada.')}</p>
     </div>
     ${(session.notes || session.contactNotes || session.crmNotes) ? `<div class="detail-block"><h3>Notas Internas</h3><p class="ops-muted" style="font-size:12px;white-space:pre-wrap;margin:4px 0 0;">${esc(session.notes || session.contactNotes || session.crmNotes)}</p></div>` : ''}
+    ${(() => {
+      const cfEntries = Object.entries(session.customFields || {});
+      return cfEntries.length
+        ? `<div class="detail-block"><h3>Campos Customizados</h3>${cfEntries.map(([k, v]) => `<div class="detail-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>`
+        : '';
+    })()}
+    <div class="detail-block">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 style="margin:0;">Notas Privadas (Internas)</h3>
+        ${session.sla?.active ? `<span class="pill mini ${session.sla.overdue ? 'err' : 'mint'}">${session.sla.overdue ? `SLA atrasado (${session.sla.idleHours}h)` : `SLA ok (${session.sla.idleHours}h)`}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input type="text" id="detail-note-input" class="kanban-stage-select" style="flex:1;font-size:12px;" placeholder="Nota interna (não vai ao WhatsApp)..." />
+        <button type="button" class="btn-handoff primary" style="padding:4px 10px;font-size:11px;" id="detail-note-btn">Salvar</button>
+      </div>
+      ${(session.internalNotes || []).slice(0, 5).map(n => `<div style="background:rgba(245,158,11,0.12);border-left:3px solid #f59e0b;padding:6px 8px;border-radius:4px;margin-top:4px;font-size:11.5px;"><div style="opacity:0.75;font-size:10.5px;">${esc(n.author || 'Equipe')} · ${esc(n.at ? new Date(n.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '')}</div><div>${esc(n.text)}</div></div>`).join('') || '<span class="ops-muted" style="font-size:11.5px;">Sem notas privadas ainda.</span>'}
+    </div>
+    <div class="detail-block">
+      <h3>Timeline de Atividades</h3>
+      ${(session.activities || []).slice(0, 8).map(a => `<div style="padding:4px 0;border-bottom:1px solid var(--border-hairline,rgba(255,255,255,0.06));font-size:11.5px;"><div><strong>${esc(a.title)}</strong> <span class="ops-muted" style="font-size:10.5px;">· ${esc(a.actor || '')} · ${esc(a.at ? new Date(a.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '')}</span></div>${a.detail ? `<div class="ops-muted" style="font-size:11px;">${esc(a.detail)}</div>` : ''}</div>`).join('') || '<span class="ops-muted" style="font-size:11.5px;">Nenhuma atividade registrada ainda.</span>'}
+    </div>
     <div class="detail-block">
       <h3>Sessão</h3>
       <div class="detail-row"><span>Modo atual</span><b>${session.human ? 'Atendimento Humano' : 'Lia (Automático)'}</b></div>
@@ -6522,6 +6543,12 @@ $('#crm-save-btn')?.addEventListener('click', async () => {
     knowledgeBaseId: selectedKbIds[0] || null,
     supportModeEnabled: Boolean($('#crm-support-mode')?.checked || selectedKbIds.length),
     notes: $('#crm-notes')?.value || '',
+    customFields: Object.fromEntries(
+      String($('#crm-custom-fields')?.value || '').split('\n')
+        .map(line => line.split('='))
+        .filter(([k, ...v]) => k && k.trim() && v.length)
+        .map(([k, ...v]) => [k.trim(), v.join('=').trim()])
+    ),
   };
   const origLabel = btn?.textContent || 'Salvar Ficha';
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
@@ -7054,9 +7081,34 @@ async function loadAccessAndStageAutomations() {
   if ($('#ac-ignore-groups')) $('#ac-ignore-groups').checked = ac.ignoreGroups !== false;
   if ($('#ac-whitelist')) $('#ac-whitelist').value = Array.isArray(ac.whitelist) ? ac.whitelist.join(', ') : '';
   if ($('#ac-blacklist')) $('#ac-blacklist').value = Array.isArray(ac.blacklist) ? ac.blacklist.join(', ') : '';
+  if ($('#crm-sla-hours')) $('#crm-sla-hours').value = Number(active.crm?.slaHours) || 24;
+  if ($('#crm-custom-schema')) $('#crm-custom-schema').value = Array.isArray(active.crm?.customFields) ? active.crm.customFields.join(', ') : '';
   cachedStageAutomations = Array.isArray(active.crm?.stageAutomations) ? [...active.crm.stageAutomations] : [];
   renderStageAutomationsList();
 }
+
+$('#crm-sla-save-btn')?.addEventListener('click', async () => {
+  const slaHours = Math.max(1, Math.min(720, Number($('#crm-sla-hours')?.value) || 24));
+  const customFields = String($('#crm-custom-schema')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  await saveCrmDraftAndPublish({ crm: { stageAutomations: cachedStageAutomations, slaHours, customFields } });
+  alert('SLA e campos customizados salvos e publicados!');
+});
+
+document.addEventListener('click', async (ev) => {
+  if (ev.target?.id !== 'detail-note-btn') return;
+  const input = $('#detail-note-input');
+  const text = String(input?.value || '').trim();
+  const phone = state.selected;
+  if (!text || !phone) return;
+  const res = await api('/api/dashboard/crm-note', { method: 'POST', body: JSON.stringify({ phone, text }) });
+  const target = (state.sessions || []).find(s => s.phone === phone);
+  if (target && res?.internalNotes) {
+    target.internalNotes = res.internalNotes;
+    target.activities = res.activities || target.activities;
+  }
+  if (input) input.value = '';
+  renderChat({ forceRender: true });
+});
 
 $('#ac-save-btn')?.addEventListener('click', async () => {
   const splitList = val => String(val || '').split(',').map(s => s.trim()).filter(Boolean);

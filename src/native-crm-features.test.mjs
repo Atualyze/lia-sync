@@ -10,6 +10,7 @@ import {
   clearFreeTierTracker
 } from './ai/free-tier-tracker.mjs';
 import { applyStageAutomations } from './crm/stage-automations.mjs';
+import { addInternalNote, computeLeadSlaStatus, normalizeCustomFields } from './crm/crm-engine.mjs';
 import { toolGerenciarCampanha } from './tools/gerenciar_campanha.mjs';
 
 test('evaluateInboundAccess aplica whitelist, blacklist e grupos corretamente sem bloquear o dono', () => {
@@ -88,4 +89,25 @@ test('toolGerenciarCampanha exige confirmação para criar/executar e bloqueia c
     { actor: 'owner', campaignStore: { enabled: true } }
   );
   assert.equal(previewRes.requiresConfirmation, true);
+});
+
+test('crm-engine: notas privadas, timeline, SLA e campos customizados funcionam integrados', () => {
+  const nowMs = Date.parse('2026-11-28T12:00:00Z');
+  const session = {
+    funnelStage: 'negociacao',
+    updatedAt: '2026-11-26T12:00:00Z'
+  };
+  const note = addInternalNote(session, { text: 'Cliente pediu retorno terça', author: 'Tauan' });
+  assert.equal(note.text, 'Cliente pediu retorno terça');
+  assert.equal(session.internalNotes.length, 1);
+  assert.equal(session.activities.length, 1);
+  assert.equal(session.activities[0].type, 'internal_note');
+
+  const sla = computeLeadSlaStatus(session, { slaHours: 24, nowMs });
+  assert.equal(sla.active, true);
+  assert.equal(sla.overdue, true);
+  assert.equal(sla.idleHours, 48);
+
+  const fields = normalizeCustomFields({ 'Segmento Loja': 'Barbearia', empty: '' });
+  assert.deepEqual(fields, { segmento_loja: 'Barbearia' });
 });

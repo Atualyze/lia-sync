@@ -3,6 +3,7 @@
  * Permite à Lia registrar interesse de compra, observações ou tags no perfil do contato
  */
 import { applyStageAutomations } from '../crm/stage-automations.mjs';
+import { appendActivity, normalizeCustomFields } from '../crm/crm-engine.mjs';
 
 export const toolAtualizarDadosCRM = {
   name: 'atualizar_dados_crm',
@@ -27,11 +28,15 @@ export const toolAtualizarDadosCRM = {
         type: 'ARRAY',
         items: { type: 'STRING' },
         description: 'Etiquetas (tags) curtas para classificar o lead no CRM (ex: ["orcamento", "site", "urgente"]).'
+      },
+      campos_customizados: {
+        type: 'OBJECT',
+        description: 'Campos extras do lead no CRM (ex: {"segmento":"barbearia","cnpj":"..."}).'
       }
     },
     required: []
   },
-  async execute({ interesse, observacoes, estagio, etiquetas }, context = {}) {
+  async execute({ interesse, observacoes, estagio, etiquetas, campos_customizados }, context = {}) {
     const session = context.session;
     if (!session) return { success: false, error: 'Não foi possível identificar o contato atual para atualizar o CRM.' };
     if (interesse) session.productInterest = interesse.trim();
@@ -41,13 +46,24 @@ export const toolAtualizarDadosCRM = {
       session.notes = observacoes.trim();
     }
     if (estagio) {
+      const prevStage = session.dealStage;
       session.dealStage = estagio;
+      if (prevStage !== estagio) {
+        appendActivity(session, { type: 'stage_change', title: `Estágio alterado para ${estagio}`, actor: 'Lia' });
+      }
       applyStageAutomations({
         session,
         newStage: estagio,
         botConfig: context.botConfig,
         notifyAdmin: context.notifyAdmin
       });
+    }
+    if (campos_customizados && typeof campos_customizados === 'object') {
+      const cleanFields = normalizeCustomFields(campos_customizados);
+      if (Object.keys(cleanFields).length) {
+        session.customFields = { ...(session.customFields || {}), ...cleanFields };
+        appendActivity(session, { type: 'custom_field', title: 'Campos customizados atualizados', detail: JSON.stringify(cleanFields), actor: 'Lia' });
+      }
     }
     if (Array.isArray(etiquetas) && etiquetas.length > 0) {
       const existing = Array.isArray(session.tags) ? session.tags : [];

@@ -143,7 +143,10 @@ export const DEFAULT_BOT_CONFIG = {
     allowedGroups: []
   },
   crm: {
-    stageAutomations: []
+    stageAutomations: [],
+    slaHours: 24,
+    quickReplies: [],
+    customFields: []
   },
   voice: {
     provider: 'auto', // 'auto' | 'gemini' | 'azure_speech' | 'azure_openai'
