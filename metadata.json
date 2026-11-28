@@ -1,9 +1,9 @@
 {
   "name": "Lia Sync",
-  "version": "3.6.0",
-  "description": "Runtime operacional persistente via WhatsApp com scheduler, revisão humana proativa e notificações idempotentes, aprendizado contínuo com fronteira de segurança, autonomia auditável em 4 categorias, fila persistente do Copiloto, portal Atualyze Pay e dashboard administrativo.",
-  "capabilities": [
+  "version": "3.8.0",
+  "description": "Central de Atendimento Inteligente via WhatsApp (Baileys/ManyChat/GHL), CRM Avançado Nativo, Agenda Unificada, Voz Neural Multi-Provedor e Copiloto Executivo com IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ],
-  "permissions": []
+  ]
 }
