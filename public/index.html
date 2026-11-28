@@ -1532,6 +1532,13 @@
                 </div>
               </div>
               <div id="metrics-circuit-list" class="circuit-list"></div>
+              <div class="panel-head" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-subtle, rgba(255,255,255,0.08));">
+                <div>
+                  <strong>Cotas &amp; Cooldowns Free-Tier</strong>
+                  <span>Consumo por pool gratuito e janelas de proteção 429</span>
+                </div>
+              </div>
+              <div id="metrics-freetier-list" class="circuit-list"></div>
             </section>
 
             <section class="panel metrics-section">
@@ -2706,6 +2713,43 @@
               <span class="ops-muted" style="font-size:12px;">seg</span>
               <input type="text" id="mc-msg" class="kanban-stage-select" style="flex:1;min-width:240px;" placeholder="Mensagem após ligação perdida..." />
               <button type="button" class="btn-handoff primary" id="mc-save-btn">Salvar Ligação Perdida</button>
+            </div>
+          </div>
+          <div id="access-control-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Controle de Acesso (Whitelist / Blacklist)</strong><div class="ops-muted" style="font-size:12px;">Define quem a Lia atende no WhatsApp antes de acionar a IA (o dono nunca é bloqueado).</div></div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="ac-ignore-groups" checked /> Ignorar grupos</label>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="ac-mode" class="kanban-stage-select" style="max-width:160px;">
+                <option value="open">Modo: Aberto</option>
+                <option value="whitelist">Modo: Whitelist</option>
+                <option value="blacklist">Modo: Blacklist</option>
+              </select>
+              <input type="text" id="ac-whitelist" class="kanban-stage-select" style="flex:1;min-width:200px;" placeholder="Whitelist (números separados por vírgula)" />
+              <input type="text" id="ac-blacklist" class="kanban-stage-select" style="flex:1;min-width:200px;" placeholder="Blacklist (números separados por vírgula)" />
+              <button type="button" class="btn-handoff primary" id="ac-save-btn">Salvar Acesso</button>
+            </div>
+          </div>
+          <div id="stage-automations-panel" class="panel" style="margin-top:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+              <div><strong>Automações por Estágio do Funil CRM</strong><div class="ops-muted" style="font-size:12px;">Adiciona tags, agenda follow-up e notifica o admin quando um lead muda de estágio.</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+              <select id="sa-stage" class="kanban-stage-select" style="max-width:160px;">
+                <option value="novo">Estágio: Novo</option>
+                <option value="em_atendimento">Em Atendimento</option>
+                <option value="agendado">Agendado</option>
+                <option value="negociacao">Negociação</option>
+                <option value="fechado">Fechado</option>
+                <option value="perdido">Perdido</option>
+              </select>
+              <input type="text" id="sa-tags" class="kanban-stage-select" style="flex:1;min-width:180px;" placeholder="Tags (ex: vip, retorno)" />
+              <input type="number" min="0" max="720" id="sa-followup-hours" class="kanban-stage-select" style="max-width:130px;" placeholder="Follow-up (h)" />
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="sa-notify-admin" /> Notificar Admin</label>
+              <button type="button" class="btn-handoff primary" id="sa-add-btn">Adicionar Regra</button>
+            </div>
+            <div id="sa-rules-list" class="ops-muted" style="font-size:12px;">Nenhuma automação configurada.</div>
             </div>
           </div>
           <div id="canned-panel" class="panel" style="margin-top:16px;padding:16px;">

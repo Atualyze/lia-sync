@@ -2272,6 +2272,13 @@ async function renderMetrics() {
 
     // 7. Lista de Circuit Breakers
     const circuitList = $('#metrics-circuit-list');
+    const freeTierList = $('#metrics-freetier-list');
+    if (freeTierList) {
+      const quotas = Array.isArray(data?.freeTierQuotas) ? data.freeTierQuotas : [];
+      freeTierList.innerHTML = quotas.length
+        ? quotas.map(q => `<div class="circuit-item"><div><strong>${esc(q.provider)}</strong> <span class="ops-muted" style="font-size:12px;">${esc(q.model || '')}</span></div><div style="display:flex;gap:8px;align-items:center;"><span class="ops-muted" style="font-size:12px;">${q.calls} req · ${q.tokens} tok · ${q.rateLimits}×429</span><span class="pill mini ${q.inCooldown ? 'err' : 'mint'}">${q.inCooldown ? `Cooldown ${Math.ceil(q.cooldownRemainingMs / 1000)}s` : 'Ativo'}</span></div></div>`).join('')
+        : '<div class="ops-muted" style="font-size:12px;padding:6px 0;">Nenhum consumo registrado nesta instância ainda.</div>';
+    }
     if (circuitList) {
       const provEntries = Object.entries(circuitBreakers || {});
       circuitList.innerHTML = provEntries
@@ -3650,6 +3657,7 @@ function showView(view, opts = {}) {
     renderAdminData();
     loadCadence().catch(() => {});
     loadReputation().catch(() => {});
+    loadAccessAndStageAutomations().catch(() => {});
     loadMissedCall().catch(() => {});
     loadCannedResponses().catch(() => {});
   }
@@ -7004,6 +7012,75 @@ $('#rep-save-btn')?.addEventListener('click', async () => {
     }),
   });
   alert('Configuração de Reputação salva!');
+});
+
+let cachedStageAutomations = [];
+function renderStageAutomationsList() {
+  const listEl = $('#sa-rules-list');
+  if (!listEl) return;
+  if (!cachedStageAutomations.length) {
+    listEl.innerHTML = 'Nenhuma automação configurada.';
+    return;
+  }
+  listEl.innerHTML = cachedStageAutomations.map((r, idx) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;margin-top:6px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:6px;">
+    <div><strong>${esc(r.stage)}</strong> · Tags: ${esc((r.addTags || []).join(', ') || 'nenhuma')} · Follow-up: ${Number(r.followUpHours) || 0}h ${r.notifyAdmin ? '· 🔔 Notifica Admin' : ''}</div>
+    <button type="button" class="btn-handoff" data-sa-del="${idx}">Remover</button>
+  </div>`).join('');
+  listEl.querySelectorAll('[data-sa-del]').forEach(btn => {
+    btn.onclick = async () => {
+      const idx = Number(btn.dataset.saDel);
+      cachedStageAutomations = cachedStageAutomations.filter((_, i) => i !== idx);
+      await saveCrmDraftAndPublish({ crm: { stageAutomations: cachedStageAutomations } });
+      renderStageAutomationsList();
+    };
+  });
+}
+
+async function saveCrmDraftAndPublish(patch) {
+  const cfgData = await api('/api/dashboard/config');
+  const baseRevision = cfgData?.revision;
+  await api('/api/dashboard/config/draft', {
+    method: 'PATCH',
+    body: JSON.stringify({ ...patch, ...(Number.isInteger(baseRevision) ? { baseRevision } : {}) })
+  });
+  await api('/api/dashboard/config/publish', { method: 'POST', body: JSON.stringify({}) });
+}
+
+async function loadAccessAndStageAutomations() {
+  const data = await api('/api/dashboard/config');
+  const active = data?.active || {};
+  const ac = active.accessControl || {};
+  if ($('#ac-mode')) $('#ac-mode').value = ac.mode || 'open';
+  if ($('#ac-ignore-groups')) $('#ac-ignore-groups').checked = ac.ignoreGroups !== false;
+  if ($('#ac-whitelist')) $('#ac-whitelist').value = Array.isArray(ac.whitelist) ? ac.whitelist.join(', ') : '';
+  if ($('#ac-blacklist')) $('#ac-blacklist').value = Array.isArray(ac.blacklist) ? ac.blacklist.join(', ') : '';
+  cachedStageAutomations = Array.isArray(active.crm?.stageAutomations) ? [...active.crm.stageAutomations] : [];
+  renderStageAutomationsList();
+}
+
+$('#ac-save-btn')?.addEventListener('click', async () => {
+  const splitList = val => String(val || '').split(',').map(s => s.trim()).filter(Boolean);
+  await saveCrmDraftAndPublish({
+    accessControl: {
+      mode: $('#ac-mode')?.value || 'open',
+      ignoreGroups: Boolean($('#ac-ignore-groups')?.checked),
+      whitelist: splitList($('#ac-whitelist')?.value),
+      blacklist: splitList($('#ac-blacklist')?.value)
+    }
+  });
+  alert('Controle de acesso salvo e publicado!');
+});
+
+$('#sa-add-btn')?.addEventListener('click', async () => {
+  const stage = $('#sa-stage')?.value || 'agendado';
+  const addTags = String($('#sa-tags')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const followUpHours = Math.max(0, Number($('#sa-followup-hours')?.value) || 0);
+  const notifyAdmin = Boolean($('#sa-notify-admin')?.checked);
+  cachedStageAutomations = [...cachedStageAutomations, { stage, addTags, followUpHours, notifyAdmin }];
+  await saveCrmDraftAndPublish({ crm: { stageAutomations: cachedStageAutomations } });
+  if ($('#sa-tags')) $('#sa-tags').value = '';
+  if ($('#sa-followup-hours')) $('#sa-followup-hours').value = '';
+  renderStageAutomationsList();
 });
 async function loadTenants() {
   const data = await api('/api/dashboard/tenants');
