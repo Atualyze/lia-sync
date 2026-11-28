@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.8.0 - CRM Avançado Nativo, Controle de Acesso, Safe Broadcast, Cotas Free-Tier & Áudio Ogg Opus
+- **CRM Avançado (`src/crm/crm-engine.mjs`, `src/crm/stage-automations.mjs`, `src/tools/atualizar_dados_crm.mjs`):** Notas Privadas Internas (`POST /api/dashboard/crm-note`), Timeline Unificada de Atividades, SLA configurável (`slaHours`), Campos Customizáveis (`customFields`) e Automações por Estágio do Funil.
+- **Controle de Acesso (`src/access-control.mjs`, `src/http/webhook.mjs`):** Whitelist / Blacklist / Grupos aplicados no webhook antes da IA, com configuração visual na aba CRM.
+- **Safe Broadcast (`src/campaigns.mjs`, `src/tools/gerenciar_campanha.mjs`):** lotes anti-ban (`batchSize`, `batchPauseSeconds`), mídia opcional e ferramenta nativa do Copiloto com confirmação explícita.
+- **Cotas Free-Tier & Compressão (`src/ai/free-tier-tracker.mjs`, `src/ai/context-compressor.mjs`, `src/ai/call.mjs`):** compactação de turnos antigos para pools gratuitos, cooldown automático em `429` e card de cotas em Métricas.
+- **Áudio Mobile & Estabilidade (`src/ai/voice.mjs`, `src/whatsapp/baileys-provider.mjs`, `Dockerfile`, `src/tools/gerenciar_agenda_google.mjs`):** áudio Ogg Opus PTT nativo + `ffmpeg` no Docker, fallback automático para Agenda Nativa (`AgendaStore`) e suporte a `rawJson: true` nos classificadores internos.
+- **Validação:** `npm run lint` (299 módulos), `eslint --max-warnings=0` e **750/750** testes aprovados.
+
+## 3.7.0 - Voz Neural Multi-Provedor (Azure & Gemini), Prompts Editáveis, Vínculo Copiloto & Correções de UI
+- **Voz Neural Multi-Provedor (`src/ai/voice.mjs`):** suporte completo a Azure AI Speech, Gemini Neural TTS e Azure OpenAI TTS com diretriz acústica e audição no painel.
+- **Prompts & Comandos:** prompts editáveis isolados para Copiloto e Cliente, e novos comandos `/crm` e `/versao` no Telegram.
+
 ## 3.6.0 - Agenda Unificada, Raio-X da Lia, Setores/Triagem Reais & Hardening
 - **Agenda Unificada (`src/agenda.mjs`, `src/http/agenda-routes.mjs`):** novo menu **Agenda** unificando reuniões próprias, retornos WhatsApp (`ReminderStore`), compromissos do `Lia Runtime` e Google Calendar opcional.
 - **Raio-X da Lia (`lastLiaTrace`):** telemetria por turno no dossiê do Inbox (modelo, tokens, latência, bases `.md` usadas e ferramentas).

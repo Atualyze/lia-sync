@@ -2,7 +2,21 @@
 
 Bot Node 22 ESM de alta performance com motor **WhatsApp Nativo via Baileys** (WebSocket direto, baixo consumo de RAM) e suporte opcional à Evolution API v2, integrado ao Supabase CRM e ao Chatwoot Lia.
 
-**Versão atual: 3.7.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+**Versão atual: 3.8.0** (pacote, painel, metadata, Runtime, autoconhecimento e documentação sincronizados).
+
+## Novidades da Versão 3.8.0 — CRM Avançado Nativo, Controle de Acesso, Safe Broadcast, Cotas Free-Tier & Áudio Ogg Opus
+
+- **CRM Avançado Nativo (`src/crm/crm-engine.mjs`, `src/crm/stage-automations.mjs`, `src/tools/atualizar_dados_crm.mjs`, `src/http/dashboard.mjs`, `public/index.html`, `public/app.js`):**
+  - **Notas Privadas Internas:** anotações da equipe destacadas em âmbar na ficha do contato (`POST /api/dashboard/crm-note`) que nunca são enviadas ao WhatsApp e alimentam a timeline.
+  - **Timeline Unificada de Atividades:** histórico cronológico por lead reunindo mudanças de estágio, notas privadas, campos customizados e atualizações da Lia.
+  - **SLA de Leads Parados:** cálculo automático de ociosidade em estágios ativos (`novo`, `em_atendimento`, `negociacao`) com `slaHours` configurável no painel e badge visual.
+  - **Campos Customizáveis & Automações por Estágio:** regras por estágio para aplicar tags, agendar follow-up e notificar o admin, além de campos extras editáveis no modal e via Lia (`campos_customizados`).
+- **Controle de Acesso Granular (`src/access-control.mjs`, `src/http/webhook.mjs`):** modos `open`, `whitelist` e `blacklist`, suporte a controle de grupos (`ignoreGroups`, `allowedGroups`) e proteção para nunca bloquear o dono.
+- **Safe Broadcast & Ferramenta de Campanha (`src/campaigns.mjs`, `src/tools/gerenciar_campanha.mjs`):** envio em lotes com pausa anti-ban configurável (`batchSize`, `batchPauseSeconds`), suporte a mídia opcional e ferramenta nativa do Copiloto com confirmação explícita.
+- **Gestão de Cotas Free-Tier & Compressão de Contexto (`src/ai/free-tier-tracker.mjs`, `src/ai/context-compressor.mjs`, `src/ai/call.mjs`):** compactação inteligente de histórico para provedores restritos (`groq`, `nvidia`, `cloudflare`, `openrouter:free`), cooldown automático em HTTP `429` e painel **Cotas & Cooldowns Free-Tier** em Métricas.
+- **Áudio WhatsApp Mobile (Ogg Opus PTT), Agenda Nativa & Classificadores (`src/ai/voice.mjs`, `src/whatsapp/baileys-provider.mjs`, `Dockerfile`, `src/tools/gerenciar_agenda_google.mjs`):** geração nativa em Ogg Opus (`ogg-24khz-16bit-mono-opus` / `opus`), transcodificação automática via `ffmpeg` no container para notas de voz `ptt: true`, fallback automático para a agenda nativa (`AgendaStore`) e `rawJson: true` para classificadores JSON internos.
+
+Detalhes técnicos: [`docs/release-3.8.0.md`](docs/release-3.8.0.md).
 
 ## Novidades da Versão 3.7.0 — Voz Neural Multi-Provedor (Azure & Gemini), Prompts Editáveis, Vínculo Copiloto & Correções de UI
 

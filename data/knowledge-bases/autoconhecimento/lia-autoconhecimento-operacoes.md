@@ -1,7 +1,14 @@
 <!-- scope: copilot-only -->
 # MANUAL DE AUTOCONHECIMENTO, CAPACIDADES E LIMITES — LIA & PAINEL DE OPERAÇÕES
 
-Versão do Sistema: 3.7.0
+Versão do Sistema: 3.8.0
+
+### Capacidades Adicionais (v3.8.0)
+- **CRM Avançado Nativo:** Notas Privadas Internas (nunca enviadas ao WhatsApp), Timeline Unificada de Atividades, SLA de leads parados (`slaHours`), Campos Customizados preenchíveis pela equipe ou pela Lia (`atualizar_dados_crm` com `campos_customizados`) e Automações por Estágio do Funil (tags, follow-up e alerta ao admin).
+- **Controle de Acesso Granular:** Whitelist, Blacklist e controle de grupos aplicados antes da IA (o responsável nunca é bloqueado).
+- **Safe Broadcast & Campanhas:** ferramenta `gerenciar_campanha` exclusiva do Copiloto com envio em lotes (`batchSize`, `batchPauseSeconds`), intervalos aleatórios e confirmação explícita.
+- **Gestão de Cotas Free-Tier & Compressão:** compactação inteligente de histórico para provedores restritos e cooldown automático em HTTP `429`, visível em Métricas.
+- **Áudio Mobile (Ogg Opus PTT) & Agenda Nativa:** áudios enviados sempre em Ogg Opus compatível com WhatsApp Android/iOS (`ffmpeg` no container) e fallback automático para a Agenda Nativa (`AgendaStore`) quando o Google Calendar não estiver disponível.
 
 ### Capacidades Adicionais (v3.7.0)
 - **Voz Neural Multi-Provedor (TTS):** suporte a **Azure AI Speech** (`pt-BR-*Neural`, tier Free F0 com 500k caracteres/mês), **Gemini Neural TTS** (`gemini-2.5-flash-preview-tts`) e **Azure OpenAI TTS** (`tts-1` / `gpt-4o-mini-tts`), com seleção de provedor/modelo, filtro de vozes compatíveis no painel, aplicação da **Diretriz Acústica (`voice.tone`)** e audição imediata (`POST /api/dashboard/tts`).
