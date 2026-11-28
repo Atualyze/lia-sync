@@ -23,6 +23,8 @@ export function authCache() {
     if (isAiStudioPreview(req)) {
       return {
         ok: true,
+        role: 'admin',
+        userId: 'ai-studio-preview',
         user: { id: 'ai-studio-preview', email: 'preview@aistudio.local', role: 'admin', active: true }
       };
     }
