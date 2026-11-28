@@ -97,14 +97,15 @@ export async function serveStatic(req, res, config) {
     const isMutableAsset = relative.endsWith('.html') || relative.endsWith('.js') || relative.endsWith('.css');
     const stat = await fs.stat(file);
     const etag = `"${stat.size}-${Math.floor(stat.mtimeMs)}"`;
+    const allowAiStudioFrame = process.env.AI_STUDIO_PREVIEW === 'true' && process.env.NODE_ENV !== 'production';
     const commonHeaders = {
       'content-type': contentType,
       'cache-control': isMutableAsset ? 'no-cache, must-revalidate' : 'public, max-age=86400',
       'etag': etag,
       'x-content-type-options': 'nosniff',
-      'x-frame-options': 'DENY',
+      ...(allowAiStudioFrame ? {} : { 'x-frame-options': 'DENY' }),
       'referrer-policy': 'no-referrer',
-      'content-security-policy': "default-src 'self'; frame-ancestors 'none'; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; media-src 'self' data: blob:; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com"
+      'content-security-policy': `default-src 'self'; ${allowAiStudioFrame ? "frame-ancestors 'self' https://aistudio.google.com https://*.google.com https://*.googleusercontent.com" : "frame-ancestors 'none'"}; script-src 'self' https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://js.hcaptcha.com https://hcaptcha.com; frame-src https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com https://*.challenges.cloudflare.com; media-src 'self' data: blob:; connect-src 'self' data: https://*.supabase.co https://challenges.cloudflare.com https://*.challenges.cloudflare.com https://*.cloudflarecaptcha.com https://*.hcaptcha.com`
     };
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, commonHeaders);
