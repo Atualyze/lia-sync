@@ -11,6 +11,7 @@ const child = spawn(process.execPath, [path.join(projectRoot, 'src', 'server.mjs
     ...process.env,
     WEBHOOK_TOKEN: process.env.WEBHOOK_TOKEN || 'dev-preview-webhook-token',
     ALLOW_UNAUTHENTICATED_DASHBOARD: process.env.ALLOW_UNAUTHENTICATED_DASHBOARD || 'true',
+    AI_STUDIO_PREVIEW: process.env.AI_STUDIO_PREVIEW || 'true',
     EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE || 'lia'
   }
 });
