@@ -485,20 +485,6 @@ export async function handleClientMessage({
         if (nonTextNotice.size > NON_TEXT_NOTICE_MAX_ENTRIES) nonTextNotice.delete(nonTextNotice.keys().next().value);
         s.history.push({ role: 'user', content: '[Arquivo/mídia enviada]' + formatMessageContextForAI(contextText), createdAt: new Date(now()).toISOString(), ...(messageId ? { id: messageId } : {}) });
         store.markDirty();
-        if (ai?.askAI) {
-          try {
-            const mediaReply = await ai.askAI({
-              system: `Você é ${assistant || 'a assistente virtual'} da empresa ${identity?.companyName || 'equipe'}.\n\n[ANEXO_SEM_TEXTO]\nO contato enviou um arquivo ou mídia sem texto explicativo. Responda de forma natural, breve e acolhedora perguntando como pode ajudar com o material enviado, sem usar frases engessadas.\n[/ANEXO_SEM_TEXTO]`,
-              history: s.history.slice(-8, -1),
-              userText: '[Arquivo/mídia enviada]',
-              botConfig,
-              disableToolCalling: true,
-              deadline: Date.now() + 12_000
-            });
-            const naturalMediaReply = String(mediaReply?.reply || '').trim();
-            if (naturalMediaReply) return naturalMediaReply;
-          } catch {}
-        }
         return 'Recebi seu arquivo por aqui! 📄\n\nSe preferir escrever ou mandar um áudio com o que você precisa, fico à disposição por aqui.';
       }
 
