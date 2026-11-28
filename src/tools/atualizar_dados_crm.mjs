@@ -2,6 +2,8 @@
  * Tool: atualizar_dados_crm
  * Permite à Lia registrar interesse de compra, observações ou tags no perfil do contato
  */
+import { applyStageAutomations } from '../crm/stage-automations.mjs';
+
 export const toolAtualizarDadosCRM = {
   name: 'atualizar_dados_crm',
   description: 'Registra o interesse do cliente, observações relevantes ou estágio de negociação no CRM.',
@@ -38,7 +40,15 @@ export const toolAtualizarDadosCRM = {
       session.crmNotes = observacoes.trim();
       session.notes = observacoes.trim();
     }
-    if (estagio) session.dealStage = estagio;
+    if (estagio) {
+      session.dealStage = estagio;
+      applyStageAutomations({
+        session,
+        newStage: estagio,
+        botConfig: context.botConfig,
+        notifyAdmin: context.notifyAdmin
+      });
+    }
     if (Array.isArray(etiquetas) && etiquetas.length > 0) {
       const existing = Array.isArray(session.tags) ? session.tags : [];
       const normalized = etiquetas

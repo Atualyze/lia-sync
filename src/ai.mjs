@@ -6,3 +6,4 @@ export { shouldEnableGoogleSearch, searchWebWithGemini } from './ai/search.mjs';
 export { analyzeDocument } from './ai/documents.mjs';
 export { transcribeAudio, synthesizeVoice, getVoiceRuntimeStatus } from './ai/voice.mjs';
 export { call, askAI, pingAI, getAIMetrics, resetMetrics } from './ai/call.mjs';
+export { getFreeTierQuotaSnapshot } from './ai/free-tier-tracker.mjs';

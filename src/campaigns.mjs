@@ -23,17 +23,19 @@ const publicRecipient = row => ({
 });
 
 export class CampaignStore {
-  constructor({ client, sender, logger = console, now = nowIso, random = Math.random, delay = sleep, maxPerRun = DEFAULT_RATE_LIMIT } = {}) {
+  constructor({ client, sender, mediaSender = null, logger = console, now = nowIso, random = Math.random, delay = sleep, maxPerRun = DEFAULT_RATE_LIMIT } = {}) {
     this.client = client;
     this.sender = sender;
+    this.mediaSender = mediaSender;
     this.logger = logger;
     this.now = now;
     this.random = random;
     this.delay = delay;
     this.maxPerRun = Math.max(1, Number(maxPerRun) || DEFAULT_RATE_LIMIT);
+    this._runtimeOptions = new Map();
   }
   get enabled() { return Boolean(this.client?.enabled); }
-  async create({ title, message, recipients, minDelay = 6, maxDelay = 15, actorId = null, idempotencyKey }) {
+  async create({ title, message, recipients, minDelay = 6, maxDelay = 15, batchSize = 10, batchPauseSeconds = 30, media = null, actorId = null, idempotencyKey }) {
     if (!this.enabled) throw Object.assign(new Error('campanhas exigem SUPABASE runtime configurado'), { code: 'campaign_persistence_unavailable' });
     const cleanRecipients = [];
     for (const item of Array.isArray(recipients) ? recipients : []) {
@@ -84,6 +86,12 @@ export class CampaignStore {
         this.logger.warn?.(`[campaigns] idempotência não finalizada para ${campaignId}: ${error.message}`);
       }
     }
+
+    this._runtimeOptions.set(campaignId, {
+      batchSize: Math.min(50, Math.max(1, Number(batchSize) || 10)),
+      batchPauseSeconds: Math.min(600, Math.max(0, Number(batchPauseSeconds) || 30)),
+      media: media && typeof media === 'object' ? media : null
+    });
 
     return this.get(campaignId);
   }
@@ -238,6 +246,7 @@ export class CampaignStore {
     }
     const claimed = await this.client.request('campaigns', { method: 'PATCH', query: `id=eq.${encodeURIComponent(id)}&status=in.(pending,paused)`, body: { status: 'running', started_at: campaign.started_at || this.now(), updated_at: this.now() }, prefer: 'return=representation' });
     if (!Array.isArray(claimed) || !claimed.length) return this.get(id);
+    const runtimeOpts = this._runtimeOptions.get(id) || { batchSize: 10, batchPauseSeconds: 30, media: null };
     const pending = campaign.recipients.filter(r => statusFor(r) === 'pending').slice(0, this.maxPerRun);
     let attempted = 0;
     for (const recipient of pending) {
@@ -251,14 +260,22 @@ export class CampaignStore {
         continue;
       }
       if (attempted > 0) {
-        const minSeconds = Math.max(MIN_DELAY_SECONDS, Number(campaign.min_delay_seconds) || 6);
-        const maxSeconds = Math.max(minSeconds, Number(campaign.max_delay_seconds) || minSeconds);
-        await this.delay((minSeconds + this.random() * (maxSeconds - minSeconds)) * 1000);
+        if (runtimeOpts.batchSize > 0 && attempted % runtimeOpts.batchSize === 0 && runtimeOpts.batchPauseSeconds > 0) {
+          await this.delay(runtimeOpts.batchPauseSeconds * 1000);
+        } else {
+          const minSeconds = Math.max(MIN_DELAY_SECONDS, Number(campaign.min_delay_seconds) || 6);
+          const maxSeconds = Math.max(minSeconds, Number(campaign.max_delay_seconds) || minSeconds);
+          await this.delay((minSeconds + this.random() * (maxSeconds - minSeconds)) * 1000);
+        }
       }
       attempted++;
       const text = campaign.message.replace(/\{\{\s*(nome|name)\s*\}\}/gi, recipient.name).replace(/\{\{\s*(telefone|phone)\s*\}\}/gi, recipient.phone);
       try {
-        await this.sender(recipient.phone, text);
+        if (runtimeOpts.media && typeof this.mediaSender === 'function') {
+          await this.mediaSender(recipient.phone, { ...runtimeOpts.media, caption: text });
+        } else {
+          await this.sender(recipient.phone, text);
+        }
         await this.patchRecipient(recipient.id, 'sending', { status: 'sent', sent_at: this.now(), error: null, attempt_count: attemptCount });
       } catch (error) {
         await this.patchRecipient(recipient.id, 'sending', { status: 'failed', error: safeErrorCode(error), attempt_count: attemptCount });

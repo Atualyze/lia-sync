@@ -9,6 +9,8 @@ import { responseSchema, buildOpenRouterBody, normalizeHistory, safeErrorDetail,
 import { shouldEnableGoogleSearch } from './search.mjs';
 import { getEnabledTools, getToolExecutionPolicy } from '../tools/index.mjs';
 import { resolveAdaptiveTemperature } from '../core/personality.mjs';
+import { compressHistoryForProvider } from './context-compressor.mjs';
+import { recordFreeTierUsage, recordFreeTierRateLimit, isFreeTierInCooldown } from './free-tier-tracker.mjs';
 import {
   getModelCapabilities,
   learnModelCapability,
@@ -407,12 +409,14 @@ export async function call(provider, {
     const systemForAttempt = (!sendNativeTools && nativeTools.length > 0)
       ? `${effectiveSystem}${buildCompactToolPrompt(nativeTools)}`
       : effectiveSystem;
+    const isConstrainedPool = provider === 'groq' || provider === 'nvidia' || provider === 'cloudflare' || (provider === 'openrouter' && /:free$/i.test(candidateModel));
+    const effectiveHistory = isConstrainedPool ? compressHistoryForProvider(history) : history;
     let body = provider === 'openrouter'
       ? buildOpenRouterBody({
           model: candidateModel,
           fallbackModels: [],
           system: systemForAttempt,
-          history,
+          history: effectiveHistory,
           userText,
           structuredOutputs: runtime.structuredOutputs && caps.supportsResponseFormat,
           requireParameters: runtime.requireParameters,
@@ -422,7 +426,7 @@ export async function call(provider, {
           model: candidateModel,
           temperature: adaptiveTemperature,
           max_tokens: effectiveMaxTokens,
-          messages: [{ role: 'system', content: systemForAttempt }, ...normalizeHistory(history), { role: 'user', content: userText }],
+          messages: [{ role: 'system', content: systemForAttempt }, ...normalizeHistory(effectiveHistory), { role: 'user', content: userText }],
           ...(caps.supportsResponseFormat ? { response_format: { type: 'json_object' } } : {}),
           ...(sendNativeTools ? { tools: nativeTools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: openAIToolSchema(tool.parameters) } })), tool_choice: 'auto' } : {})
         };
@@ -493,6 +497,7 @@ export async function call(provider, {
         if (response.status === 429) {
           const retryMs = parseRetryAfterMs(response.headers, rawErrText);
           if (retryMs) err.retryAfterMs = retryMs;
+          recordFreeTierRateLimit(provider, candidateModel, retryMs);
         }
         throw err;
       }
@@ -607,7 +612,13 @@ export async function askAI(args = {}) {
   const toolDeclarations = permittedTools.length
     ? permittedTools
     : (webOnlyFallback ? getEnabledTools(args?.botConfig, { actor }).filter(t => t.name === 'consultar_web') : []);
-  const providerList = providers(args?.botConfig);
+  const rawProviderList = providers(args?.botConfig);
+  const providerList = rawProviderList.length > 1
+    ? [
+        ...rawProviderList.filter(p => !isFreeTierInCooldown(p, providerDefaultModel(p, aiConfig, fixedModel) || '')),
+        ...rawProviderList.filter(p => isFreeTierInCooldown(p, providerDefaultModel(p, aiConfig, fixedModel) || ''))
+      ]
+    : rawProviderList;
   let creditExhaustionProvider = null;
   const attemptDiagnostics = [];
   for (let pIdx = 0; pIdx < providerList.length; pIdx++) {
@@ -661,6 +672,7 @@ export async function askAI(args = {}) {
         opened.delete(provider);
         lastErrors.delete(provider);
         const executedModel = res.model || providerModel || preferredModel;
+        recordFreeTierUsage(provider, executedModel, res.tokens?.totalTokens || 0);
         const settlementConfirmed = await res.budgetPermit?.commit?.(res.tokens, { provider, model: executedModel });
         if (res.budgetPermit?.requestId && settlementConfirmed !== true) {
           await recordAICall({ requestId: res.budgetPermit.requestId, provider, model: executedModel || 'unknown', latencyMs: Date.now() - start, promptTokens: res.tokens?.promptTokens, completionTokens: res.tokens?.completionTokens, totalTokens: res.tokens?.totalTokens, intent: 'falha', success: false, error: 'Liquidação de orçamento não confirmada' });

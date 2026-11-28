@@ -11,6 +11,7 @@ import { handleInboundOptOut } from '../prospecting/optout.mjs';
 import { enterHumanHandoff, resumeHumanHandoff } from '../flow/human-handoff-state.mjs';
 import { parseManyChatWebhookPayload } from '../whatsapp/manychat-provider.mjs';
 import { parseGhlWebhookPayload } from '../whatsapp/ghl-provider.mjs';
+import { evaluateInboundAccess } from '../access-control.mjs';
 
 export function stableIdlessEventKey(item, event) {
   const timestamp = item.eventTimestamp;
@@ -152,6 +153,16 @@ export async function processWhatsAppWebhookPayload({ payload, store, f, adminCo
       return isOwnerContact(jid, options) || isOwnerContact(phone, options);
     };
     const isSelfChat = isOwnerSelf(item.jid, item.phone);
+    const accessCheck = evaluateInboundAccess({
+      phone: item.phone,
+      jid: item.jid,
+      isOwner: isSelfChat,
+      accessControl: adminConfig?.active?.accessControl
+    });
+    if (!accessCheck.allowed) {
+      await finish('ignored', `access_${accessCheck.reason}`);
+      return;
+    }
     const isCallingAssistantDirectly = new RegExp(`^[@/]?${escapeRegExp(identity.botName)}\\b`, 'i').test(String(item.text || '').trim());
 
     if (item.fromMe) {

@@ -19,6 +19,7 @@ import { toolGerenciarCodigo } from './gerenciar_codigo.mjs';
 import { toolGerenciarConfiguracao } from './gerenciar_configuracao.mjs';
 import { toolGerenciarTarefasAutonomas } from './gerenciar_tarefas_autonomas.mjs';
 import { toolGerenciarGmailGoogle } from './gerenciar_gmail_google.mjs';
+import { toolGerenciarCampanha } from './gerenciar_campanha.mjs';
 
 export const TOOL_SETTINGS_SCHEMA = {
   gerenciar_agenda_google: [
@@ -65,7 +66,8 @@ export const ALL_TOOLS = [
   toolGerenciarCodigo,
   toolGerenciarConfiguracao,
   toolGerenciarTarefasAutonomas,
-  toolGerenciarGmailGoogle
+  toolGerenciarGmailGoogle,
+  toolGerenciarCampanha
 ];
 
 const TOOL_NAME_ALIASES = {
@@ -167,7 +169,8 @@ export const TOOL_EXECUTION_POLICIES = Object.freeze({
   gerenciar_codigo: { mode: 'source_change_pr', approval: 'explicit_confirmation', retry: 'never', effects: 'github_branch_and_pr_only' },
   gerenciar_configuracao: { mode: 'configuration_write', approval: 'publish_confirmation', retry: 'never', effects: 'draft_or_publish_config' },
   gerenciar_tarefas_autonomas: { mode: 'internal_write', approval: 'explicit_intent', retry: 'never', effects: 'runtime_commitment_or_goal' },
-  gerenciar_gmail_google: { mode: 'conditional', approval: 'draft_only_no_send', retry: 'never', effects: 'gmail_read_or_draft' }
+  gerenciar_gmail_google: { mode: 'conditional', approval: 'draft_only_no_send', retry: 'never', effects: 'gmail_read_or_draft' },
+  gerenciar_campanha: { mode: 'external_write', approval: 'explicit_confirmation', retry: 'never', effects: 'campaign_broadcast' }
 });
 
 export function getToolExecutionPolicy(toolName) {

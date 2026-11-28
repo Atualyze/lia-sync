@@ -135,6 +135,16 @@ export const DEFAULT_BOT_CONFIG = {
     minPositiveRating: 4,
     surveyMessage: 'Obrigado pelo contato! De 1 a 5, como você avalia nosso atendimento hoje?'
   },
+  accessControl: {
+    mode: 'open',
+    whitelist: [],
+    blacklist: [],
+    ignoreGroups: true,
+    allowedGroups: []
+  },
+  crm: {
+    stageAutomations: []
+  },
   voice: {
     provider: 'auto', // 'auto' | 'gemini' | 'azure_speech' | 'azure_openai'
     model: '',

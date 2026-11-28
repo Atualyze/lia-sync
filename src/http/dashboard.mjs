@@ -6,7 +6,8 @@ import { json, readBody, formatPhoneNumber, formatActivityTime, NOT_HANDLED } fr
 import { config } from '../config.mjs';
 import { validPhone } from '../dashboard.mjs';
 import { sendText, deleteChatForSync, getProfilePictureUrl } from '../whatsapp.mjs';
-import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus } from '../ai.mjs';
+import { getAIMetrics, getCircuitBreakers, resetMetrics, pingAI, OPENROUTER_FREE_MODELS, synthesizeVoice, getVoiceRuntimeStatus, getFreeTierQuotaSnapshot } from '../ai.mjs';
+import { applyStageAutomations } from '../crm/stage-automations.mjs';
 import { AI_AGENT_STRUCTURE } from '../knowledge.mjs';
 import { listProviderModels } from '../ai/catalog.mjs';
 import { MODEL_CAPABILITIES, decidirModeloPorContexto, detectarCapacidadesExigidas } from '../model-router.mjs';
@@ -550,7 +551,11 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
         .map((t) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 20);
     }
     if (body.funnelStage !== undefined && VALID_FUNNEL_STAGES.has(String(body.funnelStage).trim())) {
-      session.funnelStage = String(body.funnelStage).trim();
+      const nextStage = String(body.funnelStage).trim();
+      if (session.funnelStage !== nextStage) {
+        session.funnelStage = nextStage;
+        applyStageAutomations({ session, newStage: nextStage, botConfig: adminConfig?.active });
+      }
     }
     session.updatedAt = new Date().toISOString();
     store.markDirty();
@@ -704,7 +709,11 @@ export async function handleDashboardSettingsRoutes({ req, res, u, store, runtim
     if (!VALID_FUNNEL_STAGES.has(stage)) return json(res, 400, { error: 'invalid_stage' });
     const session = store.get(body.phone);
     if (!session) return json(res, 404, { error: 'session_not_found' });
+    const prevStage = session.funnelStage;
     session.funnelStage = stage;
+    if (prevStage !== stage) {
+      applyStageAutomations({ session, newStage: stage, botConfig: adminConfig?.active });
+    }
     if (stage === 'fechado' && adminConfig?.active?.reputation?.enabled) {
       void sendReputationSurvey({ session, phone: body.phone, sendText, reputationConfig: adminConfig.active.reputation }).catch(() => {});
     }
@@ -904,6 +913,7 @@ export async function handleDashboardRuntimeRoutes({ req, res, u, store, runtime
     }
     const sessions = Object.values(store.sessions);
     return json(res, 200, {
+      freeTierQuotas: getFreeTierQuotaSnapshot(),
       ...metrics,
       system: {
         uptime: Math.round(process.uptime()),
