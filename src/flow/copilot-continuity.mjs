@@ -151,6 +151,7 @@ export async function reviewCopilotToolCall({
       isOwner: true,
       autoRouting: false,
       disableToolCalling: true,
+      rawJson: true,
       deadline
     });
     return parseCopilotToolReview(result, { hasActiveTask });
@@ -218,7 +219,7 @@ export async function classifyCopilotTurn({
   try {
     const result = await ai.askAI({
       system, history: [], userText: JSON.stringify(payload), botConfig,
-      isOwner: true, autoRouting: false, disableToolCalling: true, deadline
+      isOwner: true, autoRouting: false, disableToolCalling: true, rawJson: true, deadline
     });
     const parsed = parseCopilotTurnIntent(result);
     if (parsed.intent === 'continue' && parsed.confidence < 0.65) {

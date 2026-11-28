@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import QRCode from 'qrcode';
 import {
@@ -122,6 +123,72 @@ export function evaluateBaileysMessageGate(msg, { type = 'notify', seenCache = n
   }
 
   return { allowed: true, reason: 'accepted' };
+}
+
+function transcodeToOggOpus(buffer, timeoutMs = 15_000) {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = out => {
+      if (settled) return;
+      settled = true;
+      resolve(out);
+    };
+    let proc;
+    try {
+      proc = spawn('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error',
+        '-i', 'pipe:0',
+        '-c:a', 'libopus',
+        '-b:a', '32k',
+        '-ac', '1',
+        '-ar', '24000',
+        '-application', 'voip',
+        '-f', 'ogg',
+        'pipe:1'
+      ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch {
+      return finish(null);
+    }
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch {}
+      finish(null);
+    }, timeoutMs);
+    timer.unref?.();
+    const chunks = [];
+    proc.stdout.on('data', chunk => chunks.push(chunk));
+    proc.on('error', () => {
+      clearTimeout(timer);
+      finish(null);
+    });
+    proc.on('close', code => {
+      clearTimeout(timer);
+      if (code !== 0) return finish(null);
+      const out = Buffer.concat(chunks);
+      finish(out.subarray(0, 4).toString('ascii') === 'OggS' ? out : null);
+    });
+    proc.stdin.on('error', () => {});
+    proc.stdin.end(buffer);
+  });
+}
+
+/**
+ * Garante que notas de voz (ptt: true) usem container Ogg Opus válido exigido pelo WhatsApp Mobile.
+ */
+export async function resolveWhatsAppAudioPayload(buffer, { transcode = transcodeToOggOpus } = {}) {
+  const isOgg = buffer.subarray(0, 4).toString('ascii') === 'OggS';
+  if (isOgg) {
+    return { audio: buffer, mimetype: 'audio/ogg; codecs=opus', ptt: true };
+  }
+  const transcoded = await transcode(buffer);
+  if (transcoded && transcoded.subarray(0, 4).toString('ascii') === 'OggS') {
+    return { audio: transcoded, mimetype: 'audio/ogg; codecs=opus', ptt: true };
+  }
+  const isWav = buffer.subarray(0, 4).toString('ascii') === 'RIFF';
+  const isMp3 = buffer.subarray(0, 3).toString('ascii') === 'ID3'
+    || (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0);
+  if (isWav) return { audio: buffer, mimetype: 'audio/wav', ptt: false };
+  if (isMp3) return { audio: buffer, mimetype: 'audio/mpeg', ptt: false };
+  return { audio: buffer, mimetype: 'audio/ogg; codecs=opus', ptt: true };
 }
 
 export class BaileysProvider {
@@ -616,12 +683,8 @@ export class BaileysProvider {
     const sock = this._requireConnected();
     const remoteJid = toRemoteJid(jid);
     const buffer = Buffer.from(cleanB64, 'base64');
-    const isWav = buffer.subarray(0, 4).toString('ascii') === 'RIFF';
-    const res = await sock.sendMessage(remoteJid, {
-      audio: buffer,
-      mimetype: isWav ? 'audio/wav' : 'audio/ogg; codecs=opus',
-      ptt: true
-    });
+    const payload = await resolveWhatsAppAudioPayload(buffer);
+    const res = await sock.sendMessage(remoteJid, payload);
     this.messagesSent += 1;
     this.lastMessageAt = new Date().toISOString();
     this._emitState();

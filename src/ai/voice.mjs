@@ -326,7 +326,7 @@ async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0
       headers: {
         'Ocp-Apim-Subscription-Key': config.azureSpeechKey,
         'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+        'X-Microsoft-OutputFormat': 'ogg-24khz-16bit-mono-opus',
         'User-Agent': 'lia-sync'
       },
       signal: AbortSignal.timeout(timeoutMs),
@@ -341,7 +341,7 @@ async function synthesizeWithAzureSpeech(cleanText, { selectedVoice, speed = 1.0
     if (!buf.length) return null;
     return {
       base64: buf.toString('base64'),
-      mimeType: 'audio/mpeg',
+      mimeType: 'audio/ogg; codecs=opus',
       voiceName: azureVoice,
       engine: 'azure-speech-pt-br'
     };
@@ -370,7 +370,7 @@ async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, spee
       input: cleanText,
       voice: openaiVoice,
       speed: Math.max(0.25, Math.min(2.0, Number(speed) || 1.0)),
-      response_format: 'mp3'
+      response_format: 'opus'
     };
     if (tone && /gpt-4o-mini-tts/i.test(ttsModel)) {
       bodyPayload.instructions = tone;
@@ -394,7 +394,7 @@ async function synthesizeWithAzureOpenAI(cleanText, { selectedVoice, model, spee
     if (!buf.length) return null;
     return {
       base64: buf.toString('base64'),
-      mimeType: 'audio/mpeg',
+      mimeType: 'audio/ogg; codecs=opus',
       voiceName: openaiVoice,
       engine: 'azure-openai-tts'
     };

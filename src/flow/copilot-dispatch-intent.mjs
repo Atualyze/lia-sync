@@ -101,6 +101,7 @@ export async function classifyPendingOutboundIntent({
       isOwner: true,
       autoRouting: false,
       disableToolCalling: true,
+      rawJson: true,
       deadline
     });
     const parsed = parsePendingOutboundIntent(result);

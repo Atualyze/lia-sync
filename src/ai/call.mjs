@@ -598,7 +598,7 @@ export async function askAI(args = {}) {
   const deadline = Number.isFinite(args?.deadline) ? args.deadline : Date.now() + 35000;
   const actor = args?.isOwner === true ? 'owner' : 'client';
   const isSynthesisTurn = /\[(?:UNTRUSTED_(?:WEB_SEARCH|KNOWLEDGE_BASE)|TOOL_RESULTS)_JSON\]/.test(String(args?.system || ''));
-  const disableToolCalling = args?.disableToolCalling === true;
+  const disableToolCalling = args?.disableToolCalling === true || args?.rawJson === true;
   const explicitDisableTools = disableToolCalling || args?.botConfig?.ai?.enableToolCalling === false || (args?.botConfig?.ai?.agentMode === 'assistente' && args?.botConfig?.ai?.enableToolCalling !== true);
   const toolMode = !isSynthesisTurn && !disableToolCalling && (actor === 'owner' || !explicitDisableTools);
   // O catálogo oferecido vem da allowlist do ator e das configurações publicadas, nunca de palavras-chave.
@@ -649,7 +649,9 @@ export async function askAI(args = {}) {
         preferredModel: provider === 'gemini' ? (preferredModel?.startsWith('gemini-') ? preferredModel : providerDefaultModel('gemini', aiConfig, null)) : null
       });
       if (res?.raw) {
-        const parsed = parseAIResponse(res.raw);
+        const parsed = args?.rawJson === true
+          ? { reply: String(res.raw).trim(), raw: res.raw, intent: 'outro', tool_calls: [] }
+          : parseAIResponse(res.raw);
         const hasUsableReply = Boolean(String(parsed?.reply || '').trim());
         const hasToolCalls = Array.isArray(parsed?.tool_calls) && parsed.tool_calls.length > 0;
         if (!hasUsableReply && !hasToolCalls) {

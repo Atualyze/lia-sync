@@ -231,6 +231,8 @@ export async function classifyNaturalControl({ ai, botConfig, text, pendingReact
       botConfig,
       isOwner: true,
       autoRouting: false,
+      disableToolCalling: true,
+      rawJson: true,
       deadline
     });
     return parseNaturalControlResult(result);
