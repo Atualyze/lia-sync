@@ -13,6 +13,16 @@ export function authCache() {
   const cache = new Map();
 
   return async (req, config) => {
+    if (
+      process.env.AI_STUDIO_PREVIEW === 'true'
+      && process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true'
+      && process.env.NODE_ENV !== 'production'
+    ) {
+      return {
+        ok: true,
+        user: { id: 'ai-studio-preview', email: 'preview@aistudio.local', role: 'admin', active: true }
+      };
+    }
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return { ok: false, status: 401, reason: 'missing_token' };
     if (!config.supabaseUrl || !config.supabaseKey) return { ok: false, status: 503, reason: 'supabase_not_configured' };

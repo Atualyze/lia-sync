@@ -954,6 +954,12 @@ async function initAuth() {
   try {
     const response = await fetch(`${API_BASE}/api/dashboard/auth/config`);
     const config = await response.json().catch(() => ({}));
+    if (config.previewBypass === true) {
+      state.userName = 'AI Studio Preview';
+      state.userRole = 'admin';
+      showDashboard();
+      return;
+    }
     if (!config.supabaseUrl || !config.publishableKey) {
       showLogin();
       $('#login-error').textContent = 'Autenticação indisponível: configure o provedor de login.';

@@ -209,7 +209,12 @@ export function createRouter({ store, f, adminConfig, auth, webhookAuthorize, ru
       if (!(ROLE_RANK[role] >= ROLE_RANK.operator)) return json(res, 403, { error: 'dashboard_role_not_authorized' });
       return proxyToChatwoot(req, res);
     }
-    if (u.pathname === '/api/dashboard/auth/config') return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: false });
+    if (u.pathname === '/api/dashboard/auth/config') {
+      const previewBypass = process.env.AI_STUDIO_PREVIEW === 'true'
+        && process.env.ALLOW_UNAUTHENTICATED_DASHBOARD === 'true'
+        && process.env.NODE_ENV !== 'production';
+      return json(res, 200, { supabaseUrl: config.supabaseUrl, publishableKey: config.supabaseKey, captchaSiteKey: config.supabaseCaptchaSiteKey, captchaProvider: config.supabaseCaptchaProvider, allowUnauthenticated: previewBypass, previewBypass });
+    }
     let authContext;
     if (u.pathname.startsWith('/api/dashboard/') || u.pathname.startsWith('/api/admin/')) {
       const authResult = await auth(req, config);
